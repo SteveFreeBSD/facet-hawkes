@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 
@@ -62,12 +62,24 @@ WEAKER_FALLBACK_TERMS = {
 
 
 @dataclass(frozen=True)
+class SubqueryRetrievalResult:
+    subquery: str
+    queries_tried: list[str]
+    selected_query: str | None
+    rows: list[dict[str, Any]]
+    stopped_reason: str
+
+
+@dataclass(frozen=True)
 class RetrievalResult:
     original_question: str
     queries_tried: list[str]
     selected_query: str | None
     rows: list[dict[str, Any]]
     stopped_reason: str
+    comparison_detected: bool = False
+    comparison_subqueries: list[str] = field(default_factory=list)
+    subquery_results: list[SubqueryRetrievalResult] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -117,6 +129,28 @@ def normalize_answer_role(role: str) -> str | None:
 
 def question_to_fts_query(question: str) -> str:
     return answer_query_candidates(question)[0]
+
+
+def detect_comparison_question(question: str) -> bool:
+    return bool(extract_comparison_subqueries(question))
+
+
+def extract_comparison_subqueries(question: str) -> list[str]:
+    normalized = _normalize_question_text(question)
+    patterns = [
+        r"^compare\s+(.+?)\s+(?:and|with)\s+(.+)$",
+        r"^what\s+is\s+the\s+difference\s+between\s+(.+?)\s+and\s+(.+)$",
+        r"^difference\s+between\s+(.+?)\s+and\s+(.+)$",
+        r"^how\s+is\s+(.+?)\s+different\s+from\s+(.+)$",
+        r"^how\s+are\s+(.+?)\s+and\s+(.+?)\s+different$",
+        r"^(.+?)\s+vs\.?\s+(.+)$",
+        r"^(.+?)\s+versus\s+(.+)$",
+    ]
+    for pattern in patterns:
+        match = re.match(pattern, normalized)
+        if match:
+            return _clean_comparison_parts(match.group(1), match.group(2))
+    return []
 
 
 def answer_query_candidates(question: str) -> list[str]:
@@ -335,6 +369,28 @@ def _content_tokens(question: str) -> list[str]:
     ]
 
 
+def _normalize_question_text(question: str) -> str:
+    normalized = question.lower().strip()
+    normalized = re.sub(r"[?!.]+$", "", normalized)
+    normalized = re.sub(r"\s+", " ", normalized)
+    return normalized
+
+
+def _clean_comparison_parts(left: str, right: str) -> list[str]:
+    cleaned = []
+    for part in (left, right):
+        part = re.sub(r"^(?:the|a|an)\s+", "", part.strip())
+        part = re.sub(r"\s+", " ", part)
+        tokens = _content_tokens(part)
+        if not tokens:
+            continue
+        query_tokens = _strong_domain_tokens(tokens) or tokens
+        query = " ".join(query_tokens)
+        if query and query not in cleaned:
+            cleaned.append(query)
+    return cleaned if len(cleaned) >= 2 else []
+
+
 def _expand_domain_phrases(tokens: list[str]) -> list[str]:
     expanded = list(tokens)
     token_set = set(tokens)
@@ -356,6 +412,111 @@ def _add_candidate(candidates: list[str], tokens: list[str]) -> None:
 
 
 def retrieve_with_fallbacks(
+    *,
+    search_func,
+    document_id: int,
+    question: str,
+    limit: int,
+    role: str | None,
+    section: str | None,
+) -> RetrievalResult:
+    comparison_subqueries = extract_comparison_subqueries(question)
+    if comparison_subqueries:
+        return _retrieve_comparison_with_fallbacks(
+            search_func=search_func,
+            document_id=document_id,
+            question=question,
+            subqueries=comparison_subqueries,
+            limit=limit,
+            role=role,
+            section=section,
+        )
+
+    queries = answer_query_candidates(question)
+    tried: list[str] = []
+    for query in queries:
+        tried.append(query)
+        rows = search_func(
+            document_id,
+            query,
+            limit=limit,
+            role=role,
+            section=section,
+        )
+        if rows:
+            return RetrievalResult(
+                original_question=question,
+                queries_tried=tried,
+                selected_query=query,
+                rows=rows,
+                stopped_reason="context_found",
+            )
+    return RetrievalResult(
+        original_question=question,
+        queries_tried=tried,
+        selected_query=None,
+        rows=[],
+        stopped_reason="no_context",
+    )
+
+
+def _retrieve_comparison_with_fallbacks(
+    *,
+    search_func,
+    document_id: int,
+    question: str,
+    subqueries: list[str],
+    limit: int,
+    role: str | None,
+    section: str | None,
+) -> RetrievalResult:
+    subquery_results = []
+    merged_rows = []
+    seen_chunk_ids = set()
+    all_queries_tried = []
+    selected_queries = []
+
+    for subquery in subqueries:
+        result = _retrieve_single_with_fallbacks(
+            search_func=search_func,
+            document_id=document_id,
+            question=subquery,
+            limit=limit,
+            role=role,
+            section=section,
+        )
+        subquery_results.append(
+            SubqueryRetrievalResult(
+                subquery=subquery,
+                queries_tried=result.queries_tried,
+                selected_query=result.selected_query,
+                rows=result.rows,
+                stopped_reason=result.stopped_reason,
+            )
+        )
+        all_queries_tried.extend(result.queries_tried)
+        if result.selected_query:
+            selected_queries.append(result.selected_query)
+        for row in result.rows:
+            chunk_id = row["id"]
+            if chunk_id in seen_chunk_ids:
+                continue
+            seen_chunk_ids.add(chunk_id)
+            merged_rows.append(row)
+
+    return RetrievalResult(
+        original_question=question,
+        queries_tried=all_queries_tried,
+        selected_query=" | ".join(selected_queries) if selected_queries else None,
+        rows=merged_rows,
+        stopped_reason="context_found" if merged_rows else "no_context",
+        comparison_detected=True,
+        comparison_subqueries=subqueries,
+        subquery_results=subquery_results,
+    )
+
+
+def _retrieve_single_with_fallbacks(
     *,
     search_func,
     document_id: int,

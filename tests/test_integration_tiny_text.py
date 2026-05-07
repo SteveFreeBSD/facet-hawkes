@@ -34,7 +34,9 @@ from ethnos.qa import (
     answer_query_candidates,
     benchmark_hit,
     build_answer_prompt,
+    detect_comparison_question,
     evaluate_answer_quality,
+    extract_comparison_subqueries,
     load_qa_benchmark,
     normalize_answer_role,
     rank_model_summaries,
@@ -440,6 +442,77 @@ def test_retrieve_with_fallbacks_tries_looser_queries_until_context_found():
     ]
 
 
+def test_comparison_question_detection_and_subquery_extraction():
+    assert detect_comparison_question("How is virtue ethics different from Kantian deontology?")
+    assert extract_comparison_subqueries(
+        "How is virtue ethics different from Kantian deontology?"
+    ) == ["virtue ethics", "kantian deontology"]
+    assert extract_comparison_subqueries("Compare utilitarianism and Kantian deontology.") == [
+        "utilitarianism",
+        "kantian deontology",
+    ]
+    assert extract_comparison_subqueries("natural law vs divine command theory") == [
+        "natural law",
+        "divine command",
+    ]
+    assert extract_comparison_subqueries("compare social contract with ethical egoism") == [
+        "social contract",
+        "ethical egoism",
+    ]
+    assert not detect_comparison_question("What is virtue ethics?")
+
+
+def test_comparison_retrieval_merges_both_sides_and_deduplicates():
+    row_a = {"id": 1, "source_citation": "a", "text": "virtue ethics"}
+    row_shared = {"id": 2, "source_citation": "shared", "text": "shared"}
+    row_b = {"id": 3, "source_citation": "b", "text": "kantian deontology"}
+    calls = []
+
+    def search_func(document_id, query, limit, role, section):
+        calls.append((query, limit, role, section))
+        if query == "virtue ethics":
+            return [row_a, row_shared]
+        if query == "kantian deontology":
+            return [row_shared, row_b]
+        return []
+
+    result = retrieve_with_fallbacks(
+        search_func=search_func,
+        document_id=1,
+        question="How is virtue ethics different from Kantian deontology?",
+        limit=3,
+        role="core",
+        section=None,
+    )
+
+    assert result.comparison_detected is True
+    assert result.comparison_subqueries == ["virtue ethics", "kantian deontology"]
+    assert [row["id"] for row in result.rows] == [1, 2, 3]
+    assert result.selected_query == "virtue ethics | kantian deontology"
+    assert len(result.subquery_results) == 2
+    assert calls[0] == ("virtue ethics", 3, "core", None)
+    assert calls[1] == ("kantian deontology", 3, "core", None)
+
+
+def test_normal_retrieval_does_not_use_comparison_logic():
+    def search_func(document_id, query, limit, role, section):
+        return [{"id": 1, "source_citation": "a", "text": "virtue ethics"}]
+
+    result = retrieve_with_fallbacks(
+        search_func=search_func,
+        document_id=1,
+        question="What is virtue ethics?",
+        limit=3,
+        role="core",
+        section=None,
+    )
+
+    assert result.comparison_detected is False
+    assert result.comparison_subqueries == []
+    assert result.subquery_results == []
+    assert result.selected_query == "virtue ethics"
+
+
 def test_ask_cli_uses_core_context_without_real_ollama(tmp_path, capsys, monkeypatch):
     db_path = tmp_path / "ethnos.sqlite"
     conn = connect(db_path)
@@ -689,6 +762,39 @@ def test_ask_cli_debug_retrieval_shows_query_attempts(tmp_path, capsys, monkeypa
     assert "original question: What does the book say about evolutionary ethics?" in output
     assert "derived query: evolutionary ethics" in output
     assert "stopped reason: context_found" in output
+
+
+def test_ask_cli_debug_retrieval_shows_comparison_subqueries(tmp_path, capsys, monkeypatch):
+    db_path = tmp_path / "ethnos.sqlite"
+    conn = connect(db_path)
+    init_db(conn)
+    document_id, chunks = _stored_labeled_record_document(conn)
+
+    def fake_answer_question(**kwargs):
+        return AnswerCallResult(raw_prompt=kwargs["prompt"], raw_response="Compared.")
+
+    monkeypatch.setattr("ethnos.cli.answer_question", fake_answer_question)
+
+    exit_code = main(
+        [
+            "--db",
+            str(db_path),
+            "ask",
+            str(document_id),
+            "How is evolutionary ethics different from references?",
+            "--role",
+            "all",
+            "--debug-retrieval",
+        ]
+    )
+    output = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert "comparison detected: True" in output
+    assert "subqueries: evolutionary ethics, references" in output
+    assert "subquery: evolutionary ethics" in output
+    assert "subquery: references" in output
+    assert f"merged selected chunks: {chunks[1].id}, {chunks[0].id}, {chunks[2].id}" in output
 
 
 def test_benchmark_file_loading_and_hit_detection(tmp_path):

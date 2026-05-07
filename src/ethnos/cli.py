@@ -1412,6 +1412,28 @@ def _retrieve_answer_context(
 def _print_retrieval_debug(retrieval) -> None:
     print("Retrieval debug:")
     print(f"  original question: {retrieval.original_question}")
+    print(f"  comparison detected: {retrieval.comparison_detected}")
+    if retrieval.comparison_detected:
+        print(f"  subqueries: {', '.join(retrieval.comparison_subqueries)}")
+        for result in retrieval.subquery_results:
+            print(f"  subquery: {result.subquery}")
+            print(f"    fallback queries tried: {', '.join(result.queries_tried)}")
+            print(
+                "    selected chunks: "
+                + (
+                    ", ".join(str(row["id"]) for row in result.rows)
+                    if result.rows
+                    else "none"
+                )
+            )
+        print(
+            "  merged selected chunks: "
+            + (
+                ", ".join(str(row["id"]) for row in retrieval.rows)
+                if retrieval.rows
+                else "none"
+            )
+        )
     print(f"  derived query: {retrieval.queries_tried[0] if retrieval.queries_tried else ''}")
     print(f"  fallback queries tried: {', '.join(retrieval.queries_tried)}")
     print(f"  selected query: {retrieval.selected_query or 'none'}")
@@ -1455,6 +1477,18 @@ def _maybe_write_answer_trace(
         "derived_query": retrieval.queries_tried[0] if retrieval.queries_tried else "",
         "fallback_queries_tried": retrieval.queries_tried[1:],
         "selected_query": retrieval.selected_query,
+        "comparison_detected": retrieval.comparison_detected,
+        "comparison_subqueries": retrieval.comparison_subqueries,
+        "comparison_subquery_results": [
+            {
+                "subquery": result.subquery,
+                "queries_tried": result.queries_tried,
+                "selected_query": result.selected_query,
+                "selected_chunks": [_trace_chunk(row) for row in result.rows],
+                "stopped_reason": result.stopped_reason,
+            }
+            for result in retrieval.subquery_results
+        ],
         "selected_chunks": [_trace_chunk(row) for row in retrieval.rows],
         "model": model_name,
         "num_predict": num_predict,
