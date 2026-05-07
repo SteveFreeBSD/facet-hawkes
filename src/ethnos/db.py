@@ -274,6 +274,62 @@ def list_chunks(conn: sqlite3.Connection, document_id: int) -> list[ChunkRecord]
     ]
 
 
+def select_chunks_for_structure(
+    conn: sqlite3.Connection,
+    document_id: int,
+    chunk_id: int | None = None,
+    limit: int | None = None,
+) -> list[ChunkRecord]:
+    if chunk_id is not None:
+        rows = conn.execute(
+            """
+            SELECT *
+            FROM chunks
+            WHERE document_id = ? AND id = ?
+            ORDER BY chunk_index
+            """,
+            (document_id, chunk_id),
+        ).fetchall()
+    elif limit is not None:
+        rows = conn.execute(
+            """
+            SELECT *
+            FROM chunks c
+            WHERE c.document_id = ?
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM model_outputs mo
+                  WHERE mo.chunk_id = c.id
+                    AND mo.validation_status = 'valid'
+              )
+            ORDER BY c.chunk_index
+            LIMIT ?
+            """,
+            (document_id, limit),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT * FROM chunks WHERE document_id = ? ORDER BY chunk_index",
+            (document_id,),
+        ).fetchall()
+
+    return [_chunk_from_row(row) for row in rows]
+
+
+def _chunk_from_row(row: sqlite3.Row) -> ChunkRecord:
+    return ChunkRecord(
+        id=row["id"],
+        document_id=row["document_id"],
+        page_start=row["page_start"],
+        page_end=row["page_end"],
+        chunk_index=row["chunk_index"],
+        text=row["text"],
+        heading=row["heading"],
+        char_count=row["char_count"],
+        source_citation=row["source_citation"],
+    )
+
+
 def save_chunks(conn: sqlite3.Connection, document_id: int, chunks: list[ChunkRecord]) -> None:
     with conn:
         clear_document_outputs(conn, document_id)

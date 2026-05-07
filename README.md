@@ -30,6 +30,12 @@ uv run ethnos search "photosynthesis"
 uv run ethnos export-markdown 1
 ```
 
+For a small Ollama smoke test, limit `structure` to one chunk:
+
+```bash
+uv run ethnos structure 1 --limit 1
+```
+
 The default database path is `data/ethnos.sqlite`. You can override it:
 
 ```bash

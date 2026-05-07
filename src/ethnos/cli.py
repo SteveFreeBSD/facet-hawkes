@@ -24,6 +24,7 @@ from .db import (
     save_extraction_result,
     save_model_output,
     search_chunks,
+    select_chunks_for_structure,
 )
 from .export import export_json, export_markdown
 from .ollama_client import extract_chunk
@@ -65,6 +66,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     structure_parser.add_argument("document_id", type=int)
     structure_parser.add_argument("--model", help="Ollama model name.")
+    selection = structure_parser.add_mutually_exclusive_group()
+    selection.add_argument("--chunk-id", type=int, help="Process one stored chunk id.")
+    selection.add_argument(
+        "--limit",
+        type=int,
+        help="Process the first N chunks without a valid stored model output.",
+    )
 
     search_parser = _command(subcommands, "search", "Search chunks with SQLite FTS5.", search)
     search_parser.add_argument("query")
@@ -140,9 +148,28 @@ def chunk_document(args: argparse.Namespace) -> int:
 def structure(args: argparse.Namespace) -> int:
     settings, conn = open_db(args)
     model_name = args.model or settings.ollama_model
-    chunks = list_chunks(conn, args.document_id)
+    if args.limit is not None and args.limit < 1:
+        raise SystemExit("--limit must be 1 or greater.")
+
+    chunks = select_chunks_for_structure(
+        conn,
+        document_id=args.document_id,
+        chunk_id=args.chunk_id,
+        limit=args.limit,
+    )
     if not chunks:
-        raise SystemExit("No chunks found. Run `ethnos chunk DOC_ID` first.")
+        raise SystemExit(
+            "No matching chunks found. Run `ethnos chunk DOC_ID` first or check the chunk id."
+        )
+
+    chunk_ids = [chunk.id for chunk in chunks if chunk.id is not None]
+    print("Structure run preview:")
+    print(f"  document id: {args.document_id}")
+    print(f"  model: {model_name}")
+    print(f"  chunks selected: {len(chunks)}")
+    print(f"  chunk ids: {', '.join(str(chunk_id) for chunk_id in chunk_ids)}")
+    if args.chunk_id is None and args.limit is None:
+        print("  selection: full document")
 
     run_id = create_extraction_run(
         conn,
