@@ -17,6 +17,7 @@ from .db import (
     get_document,
     init_db,
     list_chunks,
+    list_documents,
     list_pages,
     save_chunks,
     save_document_pages,
@@ -80,6 +81,7 @@ def build_parser() -> argparse.ArgumentParser:
     markdown_parser.add_argument("--output", type=Path)
 
     _command(subcommands, "db-info", "Show local database counts.", db_info_cmd)
+    _command(subcommands, "documents", "List stored documents.", documents_cmd)
     return parser
 
 
@@ -212,6 +214,36 @@ def export_markdown_cmd(args: argparse.Namespace) -> int:
 def db_info_cmd(args: argparse.Namespace) -> int:
     _, conn = open_db(args)
     print(json.dumps(db_info(conn), indent=2, sort_keys=True))
+    return 0
+
+
+def documents_cmd(args: argparse.Namespace) -> int:
+    _, conn = open_db(args)
+    documents = list_documents(conn)
+    if not documents:
+        print("No documents stored.")
+        return 0
+
+    headers = ["id", "filename", "pages", "sha256", "created_at", "source_path"]
+    rows = [
+        [
+            str(document["id"]),
+            document["filename"],
+            str(document["page_count"]),
+            document["sha256"][:12],
+            document["created_at"] or "",
+            document["source_path"],
+        ]
+        for document in documents
+    ]
+    widths = [
+        max(len(headers[index]), *(len(row[index]) for row in rows))
+        for index in range(len(headers))
+    ]
+    print("  ".join(header.ljust(widths[index]) for index, header in enumerate(headers)))
+    print("  ".join("-" * width for width in widths))
+    for row in rows:
+        print("  ".join(value.ljust(widths[index]) for index, value in enumerate(row)))
     return 0
 
 

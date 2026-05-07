@@ -24,6 +24,7 @@ uv sync --extra dev
 
 ```bash
 uv run ethnos ingest-pdf path/to/course.pdf
+uv run ethnos documents
 uv run ethnos chunk 1
 uv run ethnos search "photosynthesis"
 uv run ethnos export-markdown 1
@@ -50,4 +51,3 @@ ETHNOS_OLLAMA_MODEL=gemma-python
 ETHNOS_OLLAMA_HOST=http://localhost:11434
 ETHNOS_OLLAMA_TIMEOUT=300
 ```
-

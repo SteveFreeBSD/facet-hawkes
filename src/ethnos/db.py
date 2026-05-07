@@ -225,6 +225,17 @@ def get_document(conn: sqlite3.Connection, document_id: int) -> DocumentRecord:
     )
 
 
+def list_documents(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        """
+        SELECT id, filename, page_count, source_path, sha256, created_at
+        FROM documents
+        ORDER BY id
+        """
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
 def list_pages(conn: sqlite3.Connection, document_id: int) -> list[PageRecord]:
     rows = conn.execute(
         "SELECT * FROM pages WHERE document_id = ? ORDER BY page_number", (document_id,)
