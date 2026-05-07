@@ -17,6 +17,7 @@ class OllamaDebugInfo:
     schema_top_level_keys: list[str]
     format_kind: str
     think: bool
+    num_predict: int
     response_summary: dict | None = None
 
 
@@ -48,6 +49,7 @@ def extract_chunk(
     model_name: str,
     host: str,
     timeout: float,
+    num_predict: int,
     retries: int = 1,
     debug_ollama: bool = False,
 ) -> StructuredCallResult:
@@ -57,7 +59,7 @@ def extract_chunk(
 
     for attempt in range(retries + 1):
         attempt_prompt = prompt if attempt == 0 else _repair_prompt(prompt)
-        debug_info = _debug_info(attempt_prompt, schema) if debug_ollama else None
+        debug_info = _debug_info(attempt_prompt, schema, num_predict)
         try:
             chat_result = _chat(
                 prompt=attempt_prompt,
@@ -65,6 +67,7 @@ def extract_chunk(
                 model_name=model_name,
                 host=host,
                 timeout=timeout,
+                num_predict=num_predict,
             )
             raw_response = chat_result.content
         except Exception as exc:  # Ollama/httpx exceptions vary by version.
@@ -75,22 +78,22 @@ def extract_chunk(
                 parsed_json=None,
                 validation_status="request_failed",
                 validation_error=str(exc),
-                debug_info=debug_info,
+                debug_info=debug_info if debug_ollama else None,
             )
             continue
 
         result = _validate_response(attempt_prompt, raw_response)
-        if debug_info is not None:
-            result = _with_debug_info(
-                result,
-                OllamaDebugInfo(
-                    prompt_char_length=debug_info.prompt_char_length,
-                    schema_top_level_keys=debug_info.schema_top_level_keys,
-                    format_kind=debug_info.format_kind,
-                    think=debug_info.think,
-                    response_summary=chat_result.response_summary,
-                ),
-            )
+        result = _with_debug_info(
+            result,
+            OllamaDebugInfo(
+                prompt_char_length=debug_info.prompt_char_length,
+                schema_top_level_keys=debug_info.schema_top_level_keys,
+                format_kind=debug_info.format_kind,
+                think=debug_info.think,
+                num_predict=debug_info.num_predict,
+                response_summary=chat_result.response_summary,
+            ),
+        )
         if result.result is not None:
             return result
         last = result
@@ -106,6 +109,7 @@ def _chat(
     model_name: str,
     host: str,
     timeout: float,
+    num_predict: int,
 ) -> OllamaChatResult:
     try:
         from ollama import Client
@@ -114,7 +118,7 @@ def _chat(
 
     client = Client(host=host, timeout=timeout)
     response = client.chat(
-        **_chat_request_kwargs(model_name, prompt, schema),
+        **_chat_request_kwargs(model_name, prompt, schema, num_predict),
     )
     message = response.get("message", {})
     content = message.get("content", "")
@@ -126,7 +130,7 @@ def _chat(
     )
 
 
-def _chat_request_kwargs(model_name: str, prompt: str, schema: dict) -> dict:
+def _chat_request_kwargs(model_name: str, prompt: str, schema: dict, num_predict: int) -> dict:
     return {
         "model": model_name,
         "messages": [
@@ -137,7 +141,7 @@ def _chat_request_kwargs(model_name: str, prompt: str, schema: dict) -> dict:
             {"role": "user", "content": prompt},
         ],
         "format": schema,
-        "options": {"temperature": 0},
+        "options": {"temperature": 0, "num_predict": num_predict},
         "think": False,
     }
 
@@ -195,12 +199,13 @@ def _repair_prompt(original_prompt: str) -> str:
     )
 
 
-def _debug_info(prompt: str, schema: dict) -> OllamaDebugInfo:
+def _debug_info(prompt: str, schema: dict, num_predict: int) -> OllamaDebugInfo:
     return OllamaDebugInfo(
         prompt_char_length=len(prompt),
         schema_top_level_keys=sorted(schema.keys()),
         format_kind="json_schema",
         think=False,
+        num_predict=num_predict,
     )
 
 
@@ -227,6 +232,7 @@ def _response_summary(response: object) -> dict:
     return {
         "done": envelope.get("done"),
         "done_reason": envelope.get("done_reason"),
+        "eval_count": envelope.get("eval_count"),
         "message_content_length": len(content),
         "message_thinking_exists": "thinking" in message,
         "error": envelope.get("error"),

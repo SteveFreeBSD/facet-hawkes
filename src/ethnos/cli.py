@@ -66,6 +66,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     structure_parser.add_argument("document_id", type=int)
     structure_parser.add_argument("--model", help="Ollama model name.")
+    structure_parser.add_argument(
+        "--num-predict",
+        type=int,
+        help="Ollama output token budget for structured JSON.",
+    )
     selection = structure_parser.add_mutually_exclusive_group()
     selection.add_argument("--chunk-id", type=int, help="Process one stored chunk id.")
     selection.add_argument(
@@ -153,8 +158,11 @@ def chunk_document(args: argparse.Namespace) -> int:
 def structure(args: argparse.Namespace) -> int:
     settings, conn = open_db(args)
     model_name = args.model or settings.ollama_model
+    num_predict = structure_num_predict(args, settings)
     if args.limit is not None and args.limit < 1:
         raise SystemExit("--limit must be 1 or greater.")
+    if num_predict < 1:
+        raise SystemExit("--num-predict must be 1 or greater.")
 
     chunks = select_chunks_for_structure(
         conn,
@@ -171,6 +179,7 @@ def structure(args: argparse.Namespace) -> int:
     print("Structure run preview:")
     print(f"  document id: {args.document_id}")
     print(f"  model: {model_name}")
+    print(f"  num_predict: {num_predict}")
     print(f"  chunks selected: {len(chunks)}")
     print(f"  chunk ids: {', '.join(str(chunk_id) for chunk_id in chunk_ids)}")
     if args.chunk_id is None and args.limit is None:
@@ -195,6 +204,7 @@ def structure(args: argparse.Namespace) -> int:
             model_name=model_name,
             host=settings.ollama_host,
             timeout=settings.ollama_timeout,
+            num_predict=num_predict,
             debug_ollama=args.debug_ollama,
         )
         if args.debug_ollama:
@@ -212,6 +222,11 @@ def structure(args: argparse.Namespace) -> int:
         if result.result is None:
             failed_count += 1
             last_error = result.validation_error
+            if _ollama_done_reason(result) == "length":
+                print(
+                    f"Warning: chunk {chunk.id} hit Ollama output length limit; "
+                    "consider increasing --num-predict."
+                )
             if result.validation_status == "empty_response":
                 print(
                     f"Warning: chunk {chunk.id} produced an empty Ollama response; "
@@ -227,6 +242,17 @@ def structure(args: argparse.Namespace) -> int:
     return 0 if failed_count == 0 else 1
 
 
+def structure_num_predict(args: argparse.Namespace, settings) -> int:
+    return args.num_predict if args.num_predict is not None else settings.ollama_num_predict
+
+
+def _ollama_done_reason(result) -> str | None:
+    if result.debug_info is None or result.debug_info.response_summary is None:
+        return None
+    done_reason = result.debug_info.response_summary.get("done_reason")
+    return done_reason if isinstance(done_reason, str) else None
+
+
 def _print_ollama_debug(chunk_id: int | None, debug_info) -> None:
     if debug_info is None:
         print(f"Ollama debug for chunk {chunk_id}: unavailable")
@@ -236,6 +262,7 @@ def _print_ollama_debug(chunk_id: int | None, debug_info) -> None:
     print(f"  schema top-level keys: {', '.join(debug_info.schema_top_level_keys)}")
     print(f"  format: {debug_info.format_kind}")
     print(f"  think: {debug_info.think}")
+    print(f"  num_predict: {debug_info.num_predict}")
     if debug_info.response_summary is None:
         print("  response envelope: unavailable")
         return
