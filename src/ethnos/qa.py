@@ -240,6 +240,89 @@ def expected_answer_citations(item: dict[str, Any]) -> list[str]:
     return citations
 
 
+def summarize_answer_items(items: list[dict[str, Any]]) -> dict[str, Any]:
+    counts = {
+        "answer_pass": 0,
+        "answer_partial": 0,
+        "answer_fail": 0,
+        "no_context_expected": 0,
+        "no_context_unexpected": 0,
+        "model_error": 0,
+    }
+    answer_times = []
+    answer_lengths = []
+    retrieval_hits = 0
+    retrieval_misses = 0
+    no_context_cases = 0
+    for item in items:
+        retrieval_hits += int(item.get("hit") is True)
+        retrieval_misses += int(item.get("hit") is False)
+        no_context_cases += int(not item.get("selected_chunks"))
+        evaluation = item.get("answer_evaluation") or {}
+        status = evaluation.get("status")
+        if status == "pass":
+            counts["answer_pass"] += 1
+        elif status == "partial":
+            counts["answer_partial"] += 1
+        elif status == "fail":
+            counts["answer_fail"] += 1
+        elif status == "no_context_expected":
+            counts["no_context_expected"] += 1
+        elif status == "no_context_unexpected":
+            counts["no_context_unexpected"] += 1
+        elif status == "model_error":
+            counts["model_error"] += 1
+        answer_seconds = (item.get("timings") or {}).get("answer_seconds")
+        if answer_seconds is not None:
+            answer_times.append(float(answer_seconds))
+        answer_text = item.get("answer_text")
+        if answer_text:
+            answer_lengths.append(len(answer_text))
+    return {
+        "total": len(items),
+        "retrieval_hits": retrieval_hits,
+        "retrieval_misses": retrieval_misses,
+        "no_context_cases": no_context_cases,
+        **counts,
+        "average_answer_seconds": (
+            sum(answer_times) / len(answer_times) if answer_times else None
+        ),
+        "average_answer_length": (
+            sum(answer_lengths) / len(answer_lengths) if answer_lengths else None
+        ),
+    }
+
+
+def rank_model_summaries(model_summaries: list[dict[str, Any]]) -> dict[str, Any]:
+    usable = [summary for summary in model_summaries if summary.get("model_error", 0) == 0]
+    if not model_summaries:
+        return {"best_pass_count": [], "lowest_fail_count": [], "fastest_no_fail": None}
+    best_pass = max(summary.get("answer_pass", 0) for summary in model_summaries)
+    lowest_fail = min(summary.get("answer_fail", 0) for summary in model_summaries)
+    no_failure = [
+        summary
+        for summary in usable
+        if summary.get("answer_fail", 0) == 0
+        and summary.get("no_context_unexpected", 0) == 0
+    ]
+    fastest = None
+    if no_failure:
+        fastest = min(no_failure, key=lambda summary: summary.get("total_elapsed_seconds", 0))
+    return {
+        "best_pass_count": [
+            summary["model"]
+            for summary in model_summaries
+            if summary.get("answer_pass", 0) == best_pass
+        ],
+        "lowest_fail_count": [
+            summary["model"]
+            for summary in model_summaries
+            if summary.get("answer_fail", 0) == lowest_fail
+        ],
+        "fastest_no_fail": fastest["model"] if fastest else None,
+    }
+
+
 def _expects_no_context(item: dict[str, Any]) -> bool:
     return item.get("expected_source_chunks") == [] or item.get("expected_source_pages") == []
 

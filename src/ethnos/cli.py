@@ -46,7 +46,9 @@ from .qa import (
     load_qa_benchmark,
     normalize_answer_role,
     question_to_fts_query,
+    rank_model_summaries,
     retrieve_with_fallbacks,
+    summarize_answer_items,
 )
 from .section_presets import CONTENT_ROLES, PRESETS, SECTION_LABELS, get_section_preset
 
@@ -197,6 +199,10 @@ def build_parser() -> argparse.ArgumentParser:
     bench_parser.add_argument("--role", choices=ASK_ROLES, default="core")
     bench_parser.add_argument("--section", choices=sorted(SECTION_LABELS))
     bench_parser.add_argument("--model", help="Ollama model name for --ask runs.")
+    bench_parser.add_argument(
+        "--models",
+        help="Comma-separated Ollama model names for comparison, e.g. gemma-python,gemma-fast.",
+    )
     bench_parser.add_argument(
         "--num-predict",
         type=int,
@@ -625,11 +631,26 @@ def qa_bench_cmd(args: argparse.Namespace) -> int:
         raise SystemExit("--limit must be 1 or greater.")
     if args.ask and args.no_ask:
         raise SystemExit("Use either --ask or --no-ask, not both.")
+    if args.models and not args.ask:
+        raise SystemExit("--models requires --ask.")
     num_predict = structure_num_predict(args, settings)
     if num_predict < 1:
         raise SystemExit("--num-predict must be 1 or greater.")
     selected_role = normalize_answer_role(args.role)
     items = load_qa_benchmark(args.benchmark)
+    if args.models:
+        models = parse_models_arg(args.models)
+        if not models:
+            raise SystemExit("--models did not include any model names.")
+        return qa_bench_compare_models(
+            args=args,
+            settings=settings,
+            conn=conn,
+            items=items,
+            selected_role=selected_role,
+            num_predict=num_predict,
+            models=models,
+        )
     started_at = time.monotonic()
     report_items = []
     hits = misses = no_context = 0
@@ -764,6 +785,187 @@ def qa_bench_cmd(args: argparse.Namespace) -> int:
             ),
             "elapsed_seconds": elapsed,
             "items": report_items,
+        }
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
+        print(f"  wrote report: {args.output}")
+    return 0
+
+
+def qa_bench_compare_models(
+    *,
+    args: argparse.Namespace,
+    settings,
+    conn,
+    items: list[dict],
+    selected_role: str | None,
+    num_predict: int,
+    models: list[str],
+) -> int:
+    started_at = time.monotonic()
+    retrieval_entries = []
+    retrieval_hits = retrieval_misses = no_context = 0
+    for item in items:
+        retrieval = _retrieve_answer_context(
+            conn,
+            document_id=args.document_id,
+            question=item["question"],
+            limit=args.limit,
+            role=selected_role,
+            section=args.section,
+        )
+        hit = benchmark_hit(item, retrieval.rows)
+        retrieval_hits += int(hit)
+        retrieval_misses += int(not hit)
+        no_context += int(not retrieval.rows)
+        retrieval_entries.append(
+            {
+                "item": item,
+                "retrieval": retrieval,
+                "hit": hit,
+                "selected_chunks": [row["id"] for row in retrieval.rows],
+                "selected_citations": [row["source_citation"] for row in retrieval.rows],
+            }
+        )
+
+    print("QA model comparison")
+    print(f"  benchmark: {args.benchmark}")
+    print(f"  models: {', '.join(models)}")
+    print(f"  retrieval hits: {retrieval_hits}")
+    print(f"  retrieval misses: {retrieval_misses}")
+    print(f"  no-context cases: {no_context}")
+    print()
+
+    model_reports = []
+    model_summaries = []
+    for model_name in models:
+        print(f"Model: {model_name}")
+        model_started_at = time.monotonic()
+        model_items = []
+        for entry in retrieval_entries:
+            item = entry["item"]
+            retrieval = entry["retrieval"]
+            answer_text = None
+            answer_preview = None
+            answer_evaluation = None
+            answer_elapsed = None
+            model_error = None
+            if retrieval.rows:
+                prompt = build_answer_prompt(item["question"], retrieval.rows, max_chars=1200)
+                answer_started_at = time.monotonic()
+                try:
+                    result = answer_question(
+                        prompt=prompt,
+                        model_name=model_name,
+                        host=settings.ollama_host,
+                        timeout=settings.ollama_timeout,
+                        num_predict=num_predict,
+                    )
+                    answer_elapsed = time.monotonic() - answer_started_at
+                    answer_text = result.raw_response.strip()
+                    answer_preview = preview_text(result.raw_response, 240)
+                    answer_evaluation = evaluate_answer_quality(
+                        item, answer_text, retrieval.rows
+                    )
+                except Exception as exc:  # Ollama error types vary by version.
+                    answer_elapsed = time.monotonic() - answer_started_at
+                    model_error = str(exc)
+                    answer_evaluation = {
+                        "status": "model_error",
+                        "error": model_error,
+                        "missing_expected_terms": [],
+                        "forbidden_terms_found": [],
+                        "citation_hit": None,
+                        "expected_citations": [],
+                    }
+            else:
+                evaluation = evaluate_answer_quality(item, "", retrieval.rows)
+                answer_evaluation = {
+                    "status": evaluation.status,
+                    "missing_expected_terms": evaluation.missing_expected_terms,
+                    "forbidden_terms_found": evaluation.forbidden_terms_found,
+                    "citation_hit": evaluation.citation_hit,
+                    "expected_citations": evaluation.expected_citations,
+                }
+
+            if hasattr(answer_evaluation, "status"):
+                evaluation_dict = {
+                    "status": answer_evaluation.status,
+                    "missing_expected_terms": answer_evaluation.missing_expected_terms,
+                    "forbidden_terms_found": answer_evaluation.forbidden_terms_found,
+                    "citation_hit": answer_evaluation.citation_hit,
+                    "expected_citations": answer_evaluation.expected_citations,
+                }
+            else:
+                evaluation_dict = answer_evaluation
+
+            print(
+                f"  {item['id']}: retrieval={'hit' if entry['hit'] else 'miss'}, "
+                f"answer={evaluation_dict['status']}"
+            )
+            if model_error:
+                print(f"    model error: {model_error}")
+            elif answer_preview:
+                print(f"    preview: {answer_preview}")
+
+            model_items.append(
+                {
+                    "id": item["id"],
+                    "question": item["question"],
+                    "model": model_name,
+                    "derived_query": (
+                        retrieval.queries_tried[0] if retrieval.queries_tried else ""
+                    ),
+                    "queries_tried": retrieval.queries_tried,
+                    "selected_query": retrieval.selected_query,
+                    "selected_chunks": entry["selected_chunks"],
+                    "selected_source_citations": entry["selected_citations"],
+                    "expected_source_chunks": item.get("expected_source_chunks"),
+                    "expected_source_pages": item.get("expected_source_pages"),
+                    "hit": entry["hit"],
+                    "stopped_reason": retrieval.stopped_reason,
+                    "answer_text": answer_text,
+                    "answer_preview": answer_preview,
+                    "answer_evaluation": evaluation_dict,
+                    "timings": {
+                        "answer_seconds": answer_elapsed,
+                    },
+                    "model_error": model_error,
+                }
+            )
+        model_elapsed = time.monotonic() - model_started_at
+        summary = summarize_answer_items(model_items)
+        summary["model"] = model_name
+        summary["total_elapsed_seconds"] = model_elapsed
+        model_reports.append({"model": model_name, "summary": summary, "items": model_items})
+        model_summaries.append(summary)
+        _print_model_summary(summary)
+        print()
+
+    ranking = rank_model_summaries(model_summaries)
+    elapsed = time.monotonic() - started_at
+    print("Model comparison ranked summary:")
+    print(f"  best pass count: {', '.join(ranking['best_pass_count']) or 'none'}")
+    print(f"  lowest fail count: {', '.join(ranking['lowest_fail_count']) or 'none'}")
+    print(f"  fastest among models with no failures: {ranking['fastest_no_fail'] or 'none'}")
+    print(f"  elapsed total: {format_elapsed(elapsed)}")
+
+    if args.output:
+        report = {
+            "document_id": args.document_id,
+            "benchmark": str(args.benchmark),
+            "mode": "model_compare",
+            "models": models,
+            "retrieval_summary": {
+                "total": len(items),
+                "hits": retrieval_hits,
+                "misses": retrieval_misses,
+                "no_context_cases": no_context,
+            },
+            "ranking": ranking,
+            "model_summaries": model_summaries,
+            "models_report": model_reports,
+            "elapsed_seconds": elapsed,
         }
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
@@ -962,6 +1164,39 @@ def _print_non_core_records(rows: list[dict], limit: int = 20) -> None:
         )
     if len(rows) > limit:
         print(f"  ... {len(rows) - limit} more")
+
+
+def parse_models_arg(value: str) -> list[str]:
+    models = []
+    for part in value.split(","):
+        model = part.strip()
+        if model and model not in models:
+            models.append(model)
+    return models
+
+
+def _print_model_summary(summary: dict) -> None:
+    print("  summary:")
+    print(f"    total questions: {summary['total']}")
+    print(f"    retrieval hits: {summary['retrieval_hits']}")
+    print(f"    retrieval misses: {summary['retrieval_misses']}")
+    print(f"    answer pass: {summary['answer_pass']}")
+    print(f"    answer partial: {summary['answer_partial']}")
+    print(f"    answer fail: {summary['answer_fail']}")
+    print(f"    no-context expected: {summary['no_context_expected']}")
+    print(f"    no-context unexpected: {summary['no_context_unexpected']}")
+    print(f"    model errors: {summary['model_error']}")
+    print(f"    total elapsed: {format_elapsed(summary['total_elapsed_seconds'])}")
+    average_seconds = summary.get("average_answer_seconds")
+    average_length = summary.get("average_answer_length")
+    print(
+        f"    average answer time: "
+        f"{average_seconds:.1f}s" if average_seconds is not None else "    average answer time: n/a"
+    )
+    print(
+        f"    average answer length: "
+        f"{average_length:.0f} chars" if average_length is not None else "    average answer length: n/a"
+    )
 
 
 def _retrieve_answer_context(

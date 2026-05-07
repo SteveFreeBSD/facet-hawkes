@@ -6,7 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from ethnos.chunking import build_chunks
-from ethnos.cli import main
+from ethnos.cli import main, parse_models_arg
 from ethnos.db import (
     apply_section_preset,
     connect,
@@ -37,8 +37,10 @@ from ethnos.qa import (
     evaluate_answer_quality,
     load_qa_benchmark,
     normalize_answer_role,
+    rank_model_summaries,
     question_to_fts_query,
     retrieve_with_fallbacks,
+    summarize_answer_items,
 )
 from ethnos.section_presets import get_section_preset
 
@@ -757,6 +759,131 @@ def test_qa_bench_with_ask_writes_json_report(tmp_path, capsys, monkeypatch):
     assert report["items"][0]["answer_text"].startswith("Evolutionary ethics")
     assert report["items"][0]["answer_evaluation"]["status"] == "pass"
     assert "timings" in report["items"][0]
+
+
+def test_parse_models_arg_accepts_comma_separated_models():
+    assert parse_models_arg("gemma-python, gemma4:e2b,gemma-python") == [
+        "gemma-python",
+        "gemma4:e2b",
+    ]
+
+
+def test_model_summary_aggregation_and_ranking():
+    items = [
+        {
+            "hit": True,
+            "selected_chunks": [1],
+            "answer_text": "short answer",
+            "answer_evaluation": {"status": "pass"},
+            "timings": {"answer_seconds": 2.0},
+        },
+        {
+            "hit": True,
+            "selected_chunks": [2],
+            "answer_text": "partial answer",
+            "answer_evaluation": {"status": "partial"},
+            "timings": {"answer_seconds": 4.0},
+        },
+    ]
+
+    summary = summarize_answer_items(items)
+    summary["model"] = "model-a"
+    summary["total_elapsed_seconds"] = 6.0
+    other = {
+        **summary,
+        "model": "model-b",
+        "answer_pass": 2,
+        "answer_partial": 0,
+        "answer_fail": 0,
+        "total_elapsed_seconds": 8.0,
+    }
+    ranking = rank_model_summaries([summary, other])
+
+    assert summary["answer_pass"] == 1
+    assert summary["answer_partial"] == 1
+    assert summary["average_answer_seconds"] == 3.0
+    assert ranking["best_pass_count"] == ["model-b"]
+    assert ranking["lowest_fail_count"] == ["model-a", "model-b"]
+    assert ranking["fastest_no_fail"] == "model-a"
+
+
+def test_model_summary_counts_model_errors():
+    summary = summarize_answer_items(
+        [
+            {
+                "hit": True,
+                "selected_chunks": [1],
+                "answer_evaluation": {"status": "model_error"},
+                "timings": {"answer_seconds": 0.1},
+            }
+        ]
+    )
+
+    assert summary["model_error"] == 1
+    assert summary["answer_fail"] == 0
+
+
+def test_qa_bench_model_compare_writes_json_report(tmp_path, capsys, monkeypatch):
+    db_path = tmp_path / "ethnos.sqlite"
+    benchmark_path = tmp_path / "bench.json"
+    output_path = tmp_path / "compare.json"
+    conn = connect(db_path)
+    init_db(conn)
+    document_id, _ = _stored_labeled_record_document(conn)
+    benchmark_path.write_text(
+        json.dumps(
+            [
+                {
+                    "id": "core-answer",
+                    "question": "What is evolutionary ethics?",
+                    "expected_source_chunks": [1],
+                    "expected_answer_terms": ["evolutionary ethics"],
+                    "expected_citation_chunks": [1],
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    def fake_answer_question(**kwargs):
+        if kwargs["model_name"] == "missing-model":
+            raise RuntimeError("model not found")
+        return AnswerCallResult(
+            raw_prompt=kwargs["prompt"],
+            raw_response=(
+                f"Evolutionary ethics is answered by {kwargs['model_name']} "
+                "[labeled.pdf p. 1, chunk 1]."
+            ),
+        )
+
+    monkeypatch.setattr("ethnos.cli.answer_question", fake_answer_question)
+
+    exit_code = main(
+        [
+            "--db",
+            str(db_path),
+            "qa-bench",
+            str(document_id),
+            "--benchmark",
+            str(benchmark_path),
+            "--ask",
+            "--models",
+            "model-a,missing-model",
+            "--output",
+            str(output_path),
+        ]
+    )
+    output = capsys.readouterr().out
+    report = json.loads(output_path.read_text(encoding="utf-8"))
+
+    assert exit_code == 0
+    assert "Model: model-a" in output
+    assert "Model: missing-model" in output
+    assert report["mode"] == "model_compare"
+    assert report["models"] == ["model-a", "missing-model"]
+    assert report["model_summaries"][0]["answer_pass"] == 1
+    assert report["model_summaries"][1]["model_error"] == 1
+    assert report["models_report"][1]["items"][0]["answer_evaluation"]["status"] == "model_error"
 
 
 def test_select_chunks_for_structure_supports_limit_and_skips_valid_outputs(tmp_path):
