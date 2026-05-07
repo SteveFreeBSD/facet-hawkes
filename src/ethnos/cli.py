@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import time
+from collections import Counter
 import json
 from pathlib import Path
 from typing import Callable
@@ -25,6 +27,7 @@ from .db import (
     save_model_output,
     search_chunks,
     select_chunks_for_structure,
+    structure_status,
 )
 from .export import export_json, export_markdown
 from .ollama_client import extract_chunk
@@ -83,6 +86,16 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Print compact Ollama request/response diagnostics.",
     )
+    structure_parser.add_argument(
+        "--retry-failed",
+        action="store_true",
+        help="Process chunks whose latest model output failed.",
+    )
+    structure_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Reprocess selected chunks even if they already have valid output.",
+    )
 
     search_parser = _command(subcommands, "search", "Search chunks with SQLite FTS5.", search)
     search_parser.add_argument("query")
@@ -100,6 +113,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     _command(subcommands, "db-info", "Show local database counts.", db_info_cmd)
     _command(subcommands, "documents", "List stored documents.", documents_cmd)
+    status_parser = _command(
+        subcommands, "structure-status", "Show structured extraction status for a document.", structure_status_cmd
+    )
+    status_parser.add_argument("document_id", type=int)
     return parser
 
 
@@ -163,27 +180,39 @@ def structure(args: argparse.Namespace) -> int:
         raise SystemExit("--limit must be 1 or greater.")
     if num_predict < 1:
         raise SystemExit("--num-predict must be 1 or greater.")
+    if args.force and args.retry_failed:
+        raise SystemExit("Use either --force or --retry-failed, not both.")
 
     chunks = select_chunks_for_structure(
         conn,
         document_id=args.document_id,
         chunk_id=args.chunk_id,
         limit=args.limit,
+        retry_failed=args.retry_failed,
+        force=args.force,
     )
     if not chunks:
-        raise SystemExit(
-            "No matching chunks found. Run `ethnos chunk DOC_ID` first or check the chunk id."
-        )
+        print("No chunks selected.")
+        print("Default structure runs process never-attempted chunks only.")
+        print("Use --retry-failed for chunks whose latest output failed, or --force to reprocess.")
+        return 0
 
     chunk_ids = [chunk.id for chunk in chunks if chunk.id is not None]
-    print("Structure run preview:")
-    print(f"  document id: {args.document_id}")
-    print(f"  model: {model_name}")
-    print(f"  num_predict: {num_predict}")
-    print(f"  chunks selected: {len(chunks)}")
-    print(f"  chunk ids: {', '.join(str(chunk_id) for chunk_id in chunk_ids)}")
+    print("Structure run preview:", flush=True)
+    print(f"  document id: {args.document_id}", flush=True)
+    print(f"  model: {model_name}", flush=True)
+    print(f"  num_predict: {num_predict}", flush=True)
+    print(f"  chunks selected: {len(chunks)}", flush=True)
+    print(f"  chunk ids: {', '.join(str(chunk_id) for chunk_id in chunk_ids)}", flush=True)
     if args.chunk_id is None and args.limit is None:
-        print("  selection: full document")
+        print(
+            "  selection: forced full document" if args.force else "  selection: never attempted",
+            flush=True,
+        )
+    elif args.retry_failed:
+        print("  selection: latest failed", flush=True)
+    elif args.force:
+        print("  selection: forced", flush=True)
 
     run_id = create_extraction_run(
         conn,
@@ -194,10 +223,14 @@ def structure(args: argparse.Namespace) -> int:
     valid_count = 0
     failed_count = 0
     last_error = None
+    status_counts: Counter[str] = Counter()
+    started_at = time.monotonic()
 
-    for chunk in chunks:
+    for index, chunk in enumerate(chunks, start=1):
         if chunk.id is None:
             raise RuntimeError("Stored chunks must have database ids")
+        chunk_started_at = time.monotonic()
+        print(f"[{index}/{len(chunks)}] chunk {chunk.id}: {chunk.source_citation}", flush=True)
         result = extract_chunk(
             chunk=chunk,
             prompt_path=settings.prompt_path,
@@ -209,6 +242,9 @@ def structure(args: argparse.Namespace) -> int:
         )
         if args.debug_ollama:
             _print_ollama_debug(chunk.id, result.debug_info)
+        elapsed = time.monotonic() - chunk_started_at
+        status_counts[result.validation_status] += 1
+        print(f"  status: {result.validation_status} ({format_elapsed(elapsed)})", flush=True)
         save_model_output(
             conn,
             run_id=run_id,
@@ -225,12 +261,14 @@ def structure(args: argparse.Namespace) -> int:
             if _ollama_done_reason(result) == "length":
                 print(
                     f"Warning: chunk {chunk.id} hit Ollama output length limit; "
-                    "consider increasing --num-predict."
+                    "consider increasing --num-predict.",
+                    flush=True,
                 )
             if result.validation_status == "empty_response":
                 print(
                     f"Warning: chunk {chunk.id} produced an empty Ollama response; "
-                    "raw output was preserved."
+                    "raw output was preserved.",
+                    flush=True,
                 )
             continue
         save_extraction_result(conn, chunk.id, result.result)
@@ -238,8 +276,25 @@ def structure(args: argparse.Namespace) -> int:
 
     status = "completed" if failed_count == 0 else "completed_with_errors"
     finish_extraction_run(conn, run_id, status=status, error_message=last_error)
-    print(f"Structured {valid_count} chunks; {failed_count} failed. Run id: {run_id}")
+    total_elapsed = time.monotonic() - started_at
+    print(flush=True)
+    print("Structure run summary:", flush=True)
+    print(f"  chunks selected: {len(chunks)}", flush=True)
+    print(f"  chunks valid: {valid_count}", flush=True)
+    print(f"  chunks failed: {failed_count}", flush=True)
+    print(f"  empty_response: {status_counts['empty_response']}", flush=True)
+    print(f"  invalid_json: {status_counts['invalid_json']}", flush=True)
+    print(f"  validation_error: {status_counts['validation_error']}", flush=True)
+    print(f"  elapsed total: {format_elapsed(total_elapsed)}", flush=True)
+    print(f"  run id: {run_id}", flush=True)
     return 0 if failed_count == 0 else 1
+
+
+def format_elapsed(seconds: float) -> str:
+    if seconds < 60:
+        return f"{seconds:.1f}s"
+    minutes, remainder = divmod(seconds, 60)
+    return f"{int(minutes)}m {remainder:.1f}s"
 
 
 def structure_num_predict(args: argparse.Namespace, settings) -> int:
@@ -255,20 +310,20 @@ def _ollama_done_reason(result) -> str | None:
 
 def _print_ollama_debug(chunk_id: int | None, debug_info) -> None:
     if debug_info is None:
-        print(f"Ollama debug for chunk {chunk_id}: unavailable")
+        print(f"Ollama debug for chunk {chunk_id}: unavailable", flush=True)
         return
-    print(f"Ollama debug for chunk {chunk_id}:")
-    print(f"  prompt chars: {debug_info.prompt_char_length}")
-    print(f"  schema top-level keys: {', '.join(debug_info.schema_top_level_keys)}")
-    print(f"  format: {debug_info.format_kind}")
-    print(f"  think: {debug_info.think}")
-    print(f"  num_predict: {debug_info.num_predict}")
+    print(f"Ollama debug for chunk {chunk_id}:", flush=True)
+    print(f"  prompt chars: {debug_info.prompt_char_length}", flush=True)
+    print(f"  schema top-level keys: {', '.join(debug_info.schema_top_level_keys)}", flush=True)
+    print(f"  format: {debug_info.format_kind}", flush=True)
+    print(f"  think: {debug_info.think}", flush=True)
+    print(f"  num_predict: {debug_info.num_predict}", flush=True)
     if debug_info.response_summary is None:
-        print("  response envelope: unavailable")
+        print("  response envelope: unavailable", flush=True)
         return
-    print("  response envelope:")
+    print("  response envelope:", flush=True)
     for key, value in debug_info.response_summary.items():
-        print(f"    {key}: {value}")
+        print(f"    {key}: {value}", flush=True)
 
 
 def search(args: argparse.Namespace) -> int:
@@ -328,6 +383,31 @@ def documents_cmd(args: argparse.Namespace) -> int:
     print("  ".join("-" * width for width in widths))
     for row in rows:
         print("  ".join(value.ljust(widths[index]) for index, value in enumerate(row)))
+    return 0
+
+
+def structure_status_cmd(args: argparse.Namespace) -> int:
+    _, conn = open_db(args)
+    status = structure_status(conn, args.document_id)
+    print(f"Structure status for document {args.document_id}")
+    print(f"  total chunks: {status['total_chunks']}")
+    print(f"  chunks with valid output: {status['chunks_with_valid_output']}")
+    print(f"  chunks latest failed: {status['chunks_latest_failed']}")
+    print(f"  chunks never attempted: {status['chunks_never_attempted']}")
+    print(f"  topics: {status['topics']}")
+    print(f"  key_terms: {status['key_terms']}")
+    print(f"  examples: {status['examples']}")
+    print(f"  questions: {status['questions']}")
+    if status["latest_failed_chunks"]:
+        print("  latest failed chunk ids:")
+        print("    " + ", ".join(str(row["chunk_id"]) for row in status["latest_failed_chunks"][:30]))
+        if len(status["latest_failed_chunks"]) > 30:
+            print(f"    ... {len(status['latest_failed_chunks']) - 30} more")
+    if status["never_attempted_chunks"]:
+        print("  never attempted chunk ids:")
+        print("    " + ", ".join(str(row["chunk_id"]) for row in status["never_attempted_chunks"][:30]))
+        if len(status["never_attempted_chunks"]) > 30:
+            print(f"    ... {len(status['never_attempted_chunks']) - 30} more")
     return 0
 
 

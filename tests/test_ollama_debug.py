@@ -105,10 +105,10 @@ def test_num_predict_uses_environment_fallback(monkeypatch):
     assert structure_num_predict(args, settings) == 3072
 
 
-def test_default_num_predict_is_2048(monkeypatch):
+def test_default_num_predict_is_8192(monkeypatch):
     monkeypatch.delenv("ETHNOS_OLLAMA_NUM_PREDICT", raising=False)
 
-    assert load_settings().ollama_num_predict == 2048
+    assert load_settings().ollama_num_predict == 8192
 
 
 def test_done_reason_length_can_be_detected_for_warning():

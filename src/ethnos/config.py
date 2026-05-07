@@ -30,6 +30,6 @@ def load_settings() -> Settings:
         ollama_host=os.getenv("ETHNOS_OLLAMA_HOST", "http://localhost:11434"),
         ollama_model=os.getenv("ETHNOS_OLLAMA_MODEL", "gemma-python"),
         ollama_timeout=float(os.getenv("ETHNOS_OLLAMA_TIMEOUT", "300")),
-        ollama_num_predict=int(os.getenv("ETHNOS_OLLAMA_NUM_PREDICT", "2048")),
+        ollama_num_predict=int(os.getenv("ETHNOS_OLLAMA_NUM_PREDICT", "8192")),
         prompt_path=prompt_path,
     )

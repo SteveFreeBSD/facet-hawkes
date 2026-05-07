@@ -15,6 +15,7 @@ from ethnos.db import (
     create_extraction_run,
     search_chunks,
     select_chunks_for_structure,
+    structure_status,
 )
 from ethnos.models import ChunkRecord, DocumentRecord, ExtractionResult, PageRecord
 
@@ -156,6 +157,67 @@ def test_select_chunks_for_structure_supports_limit_and_skips_valid_outputs(tmp_
     assert [chunk.chunk_index for chunk in selected] == [2]
 
 
+def test_select_chunks_for_structure_retry_failed_and_force(tmp_path):
+    conn = connect(tmp_path / "ethnos.sqlite")
+    init_db(conn)
+    document = DocumentRecord(
+        source_path="/tmp/course.pdf",
+        filename="course.pdf",
+        sha256="retryfailed",
+        title="Course",
+        page_count=3,
+    )
+    pages = [
+        PageRecord(
+            document_id=0,
+            page_number=index,
+            raw_text=f"Chunk {index}",
+            cleaned_text=f"Chunk {index}",
+            char_count=7,
+        )
+        for index in range(1, 4)
+    ]
+    document_id = save_document_pages(conn, document, pages)
+    stored_document = document.model_copy(update={"id": document_id})
+    save_chunks(conn, document_id, build_chunks(stored_document, pages, target_chars=1))
+    chunks = select_chunks_for_structure(conn, document_id, force=True)
+
+    run_id = create_extraction_run(conn, document_id, "test-model", "test-prompt")
+    assert chunks[0].id is not None
+    assert chunks[1].id is not None
+    save_model_output(
+        conn,
+        run_id=run_id,
+        chunk_id=chunks[0].id,
+        raw_prompt="prompt",
+        raw_response='{"chunk_summary": "ok"}',
+        parsed_json={"chunk_summary": "ok"},
+        validation_status="valid",
+        validation_error=None,
+    )
+    save_model_output(
+        conn,
+        run_id=run_id,
+        chunk_id=chunks[1].id,
+        raw_prompt="prompt",
+        raw_response="{",
+        parsed_json=None,
+        validation_status="invalid_json",
+        validation_error="bad json",
+    )
+
+    assert [chunk.chunk_index for chunk in select_chunks_for_structure(conn, document_id)] == [3]
+    assert [
+        chunk.chunk_index
+        for chunk in select_chunks_for_structure(conn, document_id, retry_failed=True)
+    ] == [2]
+    assert [chunk.chunk_index for chunk in select_chunks_for_structure(conn, document_id, force=True)] == [
+        1,
+        2,
+        3,
+    ]
+
+
 def test_select_chunks_for_structure_requires_matching_document_for_chunk_id(tmp_path):
     conn = connect(tmp_path / "ethnos.sqlite")
     init_db(conn)
@@ -185,6 +247,64 @@ def test_select_chunks_for_structure_requires_matching_document_for_chunk_id(tmp
     assert stored_chunk.id is not None
     assert select_chunks_for_structure(conn, document_id, chunk_id=stored_chunk.id)[0].id == stored_chunk.id
     assert select_chunks_for_structure(conn, document_id + 1, chunk_id=stored_chunk.id) == []
+
+
+def test_structure_status_summarizes_document_progress(tmp_path):
+    conn = connect(tmp_path / "ethnos.sqlite")
+    init_db(conn)
+    document = DocumentRecord(
+        source_path="/tmp/course.pdf",
+        filename="course.pdf",
+        sha256="status",
+        title="Course",
+        page_count=3,
+    )
+    pages = [
+        PageRecord(
+            document_id=0,
+            page_number=index,
+            raw_text=f"Chunk {index}",
+            cleaned_text=f"Chunk {index}",
+            char_count=7,
+        )
+        for index in range(1, 4)
+    ]
+    document_id = save_document_pages(conn, document, pages)
+    stored_document = document.model_copy(update={"id": document_id})
+    save_chunks(conn, document_id, build_chunks(stored_document, pages, target_chars=1))
+    chunks = select_chunks_for_structure(conn, document_id, force=True)
+    run_id = create_extraction_run(conn, document_id, "test-model", "test-prompt")
+    assert chunks[0].id is not None
+    assert chunks[1].id is not None
+    save_model_output(
+        conn,
+        run_id=run_id,
+        chunk_id=chunks[0].id,
+        raw_prompt="prompt",
+        raw_response='{"chunk_summary": "ok"}',
+        parsed_json={"chunk_summary": "ok"},
+        validation_status="valid",
+        validation_error=None,
+    )
+    save_model_output(
+        conn,
+        run_id=run_id,
+        chunk_id=chunks[1].id,
+        raw_prompt="prompt",
+        raw_response="",
+        parsed_json=None,
+        validation_status="empty_response",
+        validation_error="empty",
+    )
+
+    status = structure_status(conn, document_id)
+
+    assert status["total_chunks"] == 3
+    assert status["chunks_with_valid_output"] == 1
+    assert status["chunks_latest_failed"] == 1
+    assert status["chunks_never_attempted"] == 1
+    assert [row["chunk_index"] for row in status["latest_failed_chunks"]] == [2]
+    assert [row["chunk_index"] for row in status["never_attempted_chunks"]] == [3]
 
 
 def test_save_extraction_result_falls_back_to_chunk_page_range(tmp_path):
