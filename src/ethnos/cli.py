@@ -73,6 +73,11 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         help="Process the first N chunks without a valid stored model output.",
     )
+    structure_parser.add_argument(
+        "--debug-ollama",
+        action="store_true",
+        help="Print compact Ollama request/response diagnostics.",
+    )
 
     search_parser = _command(subcommands, "search", "Search chunks with SQLite FTS5.", search)
     search_parser.add_argument("query")
@@ -190,7 +195,10 @@ def structure(args: argparse.Namespace) -> int:
             model_name=model_name,
             host=settings.ollama_host,
             timeout=settings.ollama_timeout,
+            debug_ollama=args.debug_ollama,
         )
+        if args.debug_ollama:
+            _print_ollama_debug(chunk.id, result.debug_info)
         save_model_output(
             conn,
             run_id=run_id,
@@ -217,6 +225,22 @@ def structure(args: argparse.Namespace) -> int:
     finish_extraction_run(conn, run_id, status=status, error_message=last_error)
     print(f"Structured {valid_count} chunks; {failed_count} failed. Run id: {run_id}")
     return 0 if failed_count == 0 else 1
+
+
+def _print_ollama_debug(chunk_id: int | None, debug_info) -> None:
+    if debug_info is None:
+        print(f"Ollama debug for chunk {chunk_id}: unavailable")
+        return
+    print(f"Ollama debug for chunk {chunk_id}:")
+    print(f"  prompt chars: {debug_info.prompt_char_length}")
+    print(f"  schema top-level keys: {', '.join(debug_info.schema_top_level_keys)}")
+    print(f"  format: {debug_info.format_kind}")
+    if debug_info.response_summary is None:
+        print("  response envelope: unavailable")
+        return
+    print("  response envelope:")
+    for key, value in debug_info.response_summary.items():
+        print(f"    {key}: {value}")
 
 
 def search(args: argparse.Namespace) -> int:
