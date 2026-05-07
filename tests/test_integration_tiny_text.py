@@ -541,6 +541,126 @@ def test_ask_cli_empty_context_does_not_call_ollama(tmp_path, capsys, monkeypatc
     assert "The document context did not contain enough information" in output
 
 
+def test_ask_cli_writes_trace_when_requested(tmp_path, capsys, monkeypatch):
+    db_path = tmp_path / "ethnos.sqlite"
+    trace_dir = tmp_path / "runs" / "answers"
+    conn = connect(db_path)
+    init_db(conn)
+    document_id, chunks = _stored_labeled_record_document(conn)
+
+    def fake_answer_question(**kwargs):
+        return AnswerCallResult(
+            raw_prompt=kwargs["prompt"],
+            raw_response="Evolutionary ethics is answered [labeled.pdf p. 1, chunk 1].",
+        )
+
+    monkeypatch.setattr("ethnos.cli.answer_question", fake_answer_question)
+
+    exit_code = main(
+        [
+            "--db",
+            str(db_path),
+            "ask",
+            str(document_id),
+            "What is evolutionary ethics?",
+            "--model",
+            "custom-model",
+            "--trace-dir",
+            str(trace_dir),
+        ]
+    )
+    output = capsys.readouterr().out
+    traces = list(trace_dir.glob("*.json"))
+    trace = json.loads(traces[0].read_text(encoding="utf-8"))
+
+    assert exit_code == 0
+    assert len(traces) == 1
+    assert "Trace:" in output
+    assert trace["document_id"] == document_id
+    assert trace["question"] == "What is evolutionary ethics?"
+    assert trace["model"] == "custom-model"
+    assert trace["num_predict"] == 8192
+    assert trace["context_found"] is True
+    assert trace["command_mode"] == "ask"
+    assert trace["selected_chunks"][0]["chunk_id"] == chunks[0].id
+    assert trace["selected_chunks"][0]["source_citation"] == "labeled.pdf p. 1, chunk 1"
+    assert trace["answer_text"].startswith("Evolutionary ethics is answered")
+
+
+def test_ask_cli_does_not_write_trace_by_default(tmp_path, capsys, monkeypatch):
+    db_path = tmp_path / "ethnos.sqlite"
+    conn = connect(db_path)
+    init_db(conn)
+    document_id, _ = _stored_labeled_record_document(conn)
+
+    def fake_answer_question(**kwargs):
+        return AnswerCallResult(raw_prompt=kwargs["prompt"], raw_response="Answered.")
+
+    monkeypatch.setattr("ethnos.cli.answer_question", fake_answer_question)
+
+    exit_code = main(["--db", str(db_path), "ask", str(document_id), "evolutionary ethics"])
+    output = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert "Trace:" not in output
+    assert not list(tmp_path.glob("*.json"))
+
+
+def test_chat_cli_exits_on_quit_without_ollama(tmp_path, capsys, monkeypatch):
+    db_path = tmp_path / "ethnos.sqlite"
+    conn = connect(db_path)
+    init_db(conn)
+    document_id, _ = _stored_labeled_record_document(conn)
+
+    monkeypatch.setattr("builtins.input", lambda prompt: "quit")
+
+    exit_code = main(["--db", str(db_path), "chat", str(document_id)])
+    output = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert f"ethnos chat for document {document_id}" in output
+    assert "model: gemma-python" in output
+
+
+def test_chat_cli_answers_and_writes_trace(tmp_path, capsys, monkeypatch):
+    db_path = tmp_path / "ethnos.sqlite"
+    trace_dir = tmp_path / "nested" / "runs"
+    conn = connect(db_path)
+    init_db(conn)
+    document_id, _ = _stored_labeled_record_document(conn)
+    inputs = iter(["What is evolutionary ethics?", "quit"])
+
+    def fake_input(prompt):
+        return next(inputs)
+
+    def fake_answer_question(**kwargs):
+        return AnswerCallResult(raw_prompt=kwargs["prompt"], raw_response="Chat answered.")
+
+    monkeypatch.setattr("builtins.input", fake_input)
+    monkeypatch.setattr("ethnos.cli.answer_question", fake_answer_question)
+
+    exit_code = main(
+        [
+            "--db",
+            str(db_path),
+            "chat",
+            str(document_id),
+            "--trace-dir",
+            str(trace_dir),
+        ]
+    )
+    output = capsys.readouterr().out
+    traces = list(trace_dir.glob("*.json"))
+    trace = json.loads(traces[0].read_text(encoding="utf-8"))
+
+    assert exit_code == 0
+    assert "Question: What is evolutionary ethics?" in output
+    assert "Chat answered." in output
+    assert len(traces) == 1
+    assert trace["command_mode"] == "chat"
+    assert trace["context_found"] is True
+
+
 def test_ask_cli_debug_retrieval_shows_query_attempts(tmp_path, capsys, monkeypatch):
     db_path = tmp_path / "ethnos.sqlite"
     conn = connect(db_path)

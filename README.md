@@ -33,6 +33,7 @@ uv run ethnos records 1 --type key_terms --role core --limit 10
 uv run ethnos quality-report 1
 uv run ethnos context 1 "methodological ethical naturalism" --limit 3
 uv run ethnos ask 1 "What is methodological ethical naturalism?"
+uv run ethnos chat 1
 uv run ethnos export-markdown 1
 uv run ethnos export-study 1 --output data/processed/study-guide.md
 ```
@@ -110,12 +111,37 @@ Ask a local model a grounded question using retrieved PDF context:
 uv run ethnos ask 1 "What is methodological ethical naturalism?"
 uv run ethnos ask 1 "What are the main ideas in evolutionary ethics?" --limit 4
 uv run ethnos ask 1 "Tell me about the accessibility checklist" --role all --limit 3
+uv run ethnos ask 1 "What is virtue ethics?" --trace-dir data/runs
 ```
 
 `ask` uses local Ollama only. It retrieves FTS5 context first, defaults to
 `--role core`, sends only the selected context and question to the model, and
 does not mutate the database. Use `--role all` to search across all labeled
 roles.
+
+The current default working model is `gemma-python`, with `think=False`,
+temperature `0`, and the configured answer budget from
+`ETHNOS_OLLAMA_NUM_PREDICT` (`8192` by default). Override the model per call:
+
+```bash
+uv run ethnos ask 1 "What is virtue ethics?" --model gemma-python
+```
+
+Start a simple local terminal loop with the same retrieval and answer path:
+
+```bash
+uv run ethnos chat 1
+uv run ethnos chat 1 --role core --limit 4 --trace-dir data/runs
+```
+
+In chat mode, type a question and press Enter. Type `quit`, `exit`, or `:q` to
+leave. Empty input is ignored.
+
+Use `--trace-dir` with `ask` or `chat` when you want inspectable local JSON
+traces of answered questions. Traces include the question, derived retrieval
+queries, selected chunks, citations, model name, answer text, and timings. They
+are not written by default. Keep them under `data/runs/` so they stay local and
+ignored by git.
 
 The default database path is `data/ethnos.sqlite`. You can override it:
 

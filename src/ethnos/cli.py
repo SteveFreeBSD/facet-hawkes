@@ -5,8 +5,10 @@ from __future__ import annotations
 import argparse
 import time
 from collections import Counter
+from datetime import datetime, timezone
 import json
 from pathlib import Path
+import re
 from typing import Callable
 
 from .chunking import build_chunks
@@ -186,6 +188,41 @@ def build_parser() -> argparse.ArgumentParser:
         "--debug-retrieval",
         action="store_true",
         help="Print answer retrieval query attempts.",
+    )
+    ask_parser.add_argument(
+        "--trace-dir",
+        type=Path,
+        help="Write one local JSON trace file for this answered question.",
+    )
+
+    chat_parser = _command(
+        subcommands, "chat", "Ask repeated grounded questions in a local terminal loop.", chat_cmd
+    )
+    chat_parser.add_argument("document_id", type=int)
+    chat_parser.add_argument("--role", choices=ASK_ROLES, default="core")
+    chat_parser.add_argument("--section", choices=sorted(SECTION_LABELS))
+    chat_parser.add_argument("--limit", type=int, default=5)
+    chat_parser.add_argument("--chars", type=int, default=1200)
+    chat_parser.add_argument("--model", help="Ollama model name.")
+    chat_parser.add_argument(
+        "--num-predict",
+        type=int,
+        help="Ollama output token budget for each answer.",
+    )
+    chat_parser.add_argument(
+        "--debug-ollama",
+        action="store_true",
+        help="Print compact Ollama request/response diagnostics.",
+    )
+    chat_parser.add_argument(
+        "--debug-retrieval",
+        action="store_true",
+        help="Print answer retrieval query attempts.",
+    )
+    chat_parser.add_argument(
+        "--trace-dir",
+        type=Path,
+        help="Write one local JSON trace file per answered question.",
     )
 
     bench_parser = _command(
@@ -557,8 +594,6 @@ def context_cmd(args: argparse.Namespace) -> int:
     _, conn = open_db(args)
     if args.limit < 1:
         raise SystemExit("--limit must be 1 or greater.")
-    if args.max_questions is not None and args.max_questions < 1:
-        raise SystemExit("--max-questions must be 1 or greater.")
     if args.chars < 1:
         raise SystemExit("--chars must be 1 or greater.")
     rows = context_chunks(
@@ -587,6 +622,70 @@ def context_cmd(args: argparse.Namespace) -> int:
 
 def ask_cmd(args: argparse.Namespace) -> int:
     settings, conn = open_db(args)
+    _validate_answer_options(args, settings)
+    return _answer_once(
+        settings=settings,
+        conn=conn,
+        document_id=args.document_id,
+        question=args.question,
+        role=args.role,
+        section=args.section,
+        limit=args.limit,
+        chars=args.chars,
+        model_name=args.model or settings.ollama_model,
+        num_predict=structure_num_predict(args, settings),
+        debug_retrieval=args.debug_retrieval,
+        debug_ollama=args.debug_ollama,
+        trace_dir=args.trace_dir,
+        mode="ask",
+    )
+
+
+def chat_cmd(args: argparse.Namespace) -> int:
+    settings, conn = open_db(args)
+    _validate_answer_options(args, settings)
+    model_name = args.model or settings.ollama_model
+    num_predict = structure_num_predict(args, settings)
+
+    print(f"ethnos chat for document {args.document_id}")
+    print(f"model: {model_name}")
+    print("Type quit, exit, or :q to leave.")
+
+    try:
+        while True:
+            try:
+                question = input("ethnos> ").strip()
+            except EOFError:
+                print()
+                break
+            if not question:
+                continue
+            if question.lower() in {"quit", "exit", ":q"}:
+                break
+            print()
+            _answer_once(
+                settings=settings,
+                conn=conn,
+                document_id=args.document_id,
+                question=question,
+                role=args.role,
+                section=args.section,
+                limit=args.limit,
+                chars=args.chars,
+                model_name=model_name,
+                num_predict=num_predict,
+                debug_retrieval=args.debug_retrieval,
+                debug_ollama=args.debug_ollama,
+                trace_dir=args.trace_dir,
+                mode="chat",
+            )
+            print()
+    except KeyboardInterrupt:
+        print("\nExiting.")
+    return 0
+
+
+def _validate_answer_options(args: argparse.Namespace, settings) -> None:
     if args.limit < 1:
         raise SystemExit("--limit must be 1 or greater.")
     if args.chars < 1:
@@ -595,45 +694,92 @@ def ask_cmd(args: argparse.Namespace) -> int:
     if num_predict < 1:
         raise SystemExit("--num-predict must be 1 or greater.")
 
-    selected_role = normalize_answer_role(args.role)
+
+def _answer_once(
+    *,
+    settings,
+    conn,
+    document_id: int,
+    question: str,
+    role: str,
+    section: str | None,
+    limit: int,
+    chars: int,
+    model_name: str,
+    num_predict: int,
+    debug_retrieval: bool,
+    debug_ollama: bool,
+    trace_dir: Path | None,
+    mode: str,
+) -> int:
+    started_at = time.monotonic()
+    selected_role = normalize_answer_role(role)
     retrieval = _retrieve_answer_context(
         conn,
-        document_id=args.document_id,
-        question=args.question,
-        limit=args.limit,
+        document_id=document_id,
+        question=question,
+        limit=limit,
         role=selected_role,
-        section=args.section,
+        section=section,
     )
-    print(f"Question: {args.question}")
-    if args.debug_retrieval or args.debug_ollama:
+    print(f"Question: {question}")
+    if debug_retrieval or debug_ollama:
         _print_retrieval_debug(retrieval)
     print()
     if not retrieval.rows:
+        answer_text = "The document context did not contain enough information to answer this question."
+        elapsed = time.monotonic() - started_at
         print("Selected context chunks: none")
         print()
         print("Answer:")
-        print("The document context did not contain enough information to answer this question.")
+        print(answer_text)
+        _maybe_write_answer_trace(
+            trace_dir=trace_dir,
+            document_id=document_id,
+            question=question,
+            retrieval=retrieval,
+            model_name=model_name,
+            num_predict=num_predict,
+            answer_text=answer_text,
+            elapsed_seconds=elapsed,
+            context_found=False,
+            mode=mode,
+        )
         return 0
 
     print("Selected context chunks:")
     _print_context_sources(retrieval.rows)
-    prompt = build_answer_prompt(args.question, retrieval.rows, max_chars=args.chars)
+    prompt = build_answer_prompt(question, retrieval.rows, max_chars=chars)
     result = answer_question(
         prompt=prompt,
-        model_name=args.model or settings.ollama_model,
+        model_name=model_name,
         host=settings.ollama_host,
         timeout=settings.ollama_timeout,
         num_predict=num_predict,
-        debug_ollama=args.debug_ollama,
+        debug_ollama=debug_ollama,
     )
-    if args.debug_ollama:
+    elapsed = time.monotonic() - started_at
+    if debug_ollama:
         _print_ollama_debug(None, result.debug_info)
+    answer_text = result.raw_response.strip() or "The document context did not contain enough information."
     print()
     print("Answer:")
-    print(result.raw_response.strip() or "The document context did not contain enough information.")
+    print(answer_text)
     print()
     print("Sources:")
     _print_context_sources(retrieval.rows)
+    _maybe_write_answer_trace(
+        trace_dir=trace_dir,
+        document_id=document_id,
+        question=question,
+        retrieval=retrieval,
+        model_name=model_name,
+        num_predict=num_predict,
+        answer_text=answer_text,
+        elapsed_seconds=elapsed,
+        context_found=True,
+        mode=mode,
+    )
     return 0
 
 
@@ -1282,6 +1428,64 @@ def _print_context_sources(rows: list[dict]) -> None:
             f"  chunk {row['id']}: {row['source_citation']} "
             f"({row['section_label'] or 'unlabeled'} / {row['content_role'] or 'unlabeled'})"
         )
+
+
+def _maybe_write_answer_trace(
+    *,
+    trace_dir: Path | None,
+    document_id: int,
+    question: str,
+    retrieval,
+    model_name: str,
+    num_predict: int,
+    answer_text: str,
+    elapsed_seconds: float,
+    context_found: bool,
+    mode: str,
+) -> Path | None:
+    if trace_dir is None:
+        return None
+    timestamp = datetime.now(timezone.utc)
+    trace_dir.mkdir(parents=True, exist_ok=True)
+    path = trace_dir / _answer_trace_filename(timestamp, mode, question)
+    trace = {
+        "timestamp": timestamp.isoformat(),
+        "document_id": document_id,
+        "question": question,
+        "derived_query": retrieval.queries_tried[0] if retrieval.queries_tried else "",
+        "fallback_queries_tried": retrieval.queries_tried[1:],
+        "selected_query": retrieval.selected_query,
+        "selected_chunks": [_trace_chunk(row) for row in retrieval.rows],
+        "model": model_name,
+        "num_predict": num_predict,
+        "answer_text": answer_text,
+        "elapsed_seconds": elapsed_seconds,
+        "context_found": context_found,
+        "command_mode": mode,
+    }
+    path.write_text(json.dumps(trace, indent=2, sort_keys=True), encoding="utf-8")
+    print()
+    print(f"Trace: {path}")
+    return path
+
+
+def _answer_trace_filename(timestamp: datetime, mode: str, question: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", question.lower()).strip("-")[:48]
+    if not slug:
+        slug = "question"
+    return f"{timestamp.strftime('%Y%m%dT%H%M%S%fZ')}-{mode}-{slug}.json"
+
+
+def _trace_chunk(row: dict) -> dict:
+    return {
+        "chunk_id": row["id"],
+        "chunk_index": row["chunk_index"],
+        "source_citation": row["source_citation"],
+        "section_label": row["section_label"],
+        "content_role": row["content_role"],
+        "page_start": row["page_start"],
+        "page_end": row["page_end"],
+    }
 
 
 def preview_text(text: str, max_chars: int) -> str:
