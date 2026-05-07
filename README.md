@@ -1,0 +1,53 @@
+# ethnos
+
+`ethnos` is a local-first PDF-to-knowledge pipeline for course material. It turns human-readable PDFs into structured, searchable records while preserving the raw inputs, source page metadata, chunk boundaries, prompts, and raw model outputs.
+
+The project intentionally starts with simple foundations:
+
+- `uv` for project and dependency management
+- PyMuPDF for PDF text extraction
+- Pydantic v2 for validation and JSON schema
+- SQLite and FTS5 for local storage and search
+- Ollama for local structured extraction
+
+No cloud APIs are used.
+
+## Setup
+
+Install `uv`, then run:
+
+```bash
+uv sync --extra dev
+```
+
+## Basic Use
+
+```bash
+uv run ethnos ingest-pdf path/to/course.pdf
+uv run ethnos chunk 1
+uv run ethnos search "photosynthesis"
+uv run ethnos export-markdown 1
+```
+
+The default database path is `data/ethnos.sqlite`. You can override it:
+
+```bash
+ETHNOS_DB_PATH=/path/to/ethnos.sqlite uv run ethnos db-info
+```
+
+## Ollama
+
+The default model is `gemma-python` at `http://localhost:11434`.
+
+```bash
+uv run ethnos structure 1
+```
+
+Override defaults with:
+
+```bash
+ETHNOS_OLLAMA_MODEL=gemma-python
+ETHNOS_OLLAMA_HOST=http://localhost:11434
+ETHNOS_OLLAMA_TIMEOUT=300
+```
+
