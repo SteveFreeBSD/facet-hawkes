@@ -102,6 +102,16 @@ def _chat(
 
 
 def _validate_response(prompt: str, raw_response: str) -> StructuredCallResult:
+    if not raw_response.strip():
+        return StructuredCallResult(
+            raw_prompt=prompt,
+            raw_response=raw_response,
+            result=None,
+            parsed_json=None,
+            validation_status="empty_response",
+            validation_error="Ollama returned an empty response body/content",
+        )
+
     try:
         parsed = json.loads(raw_response)
     except json.JSONDecodeError as exc:
@@ -142,4 +152,3 @@ def _repair_prompt(original_prompt: str) -> str:
         "Return only valid JSON, with no Markdown fences or commentary.\n\n"
         + original_prompt
     )
-

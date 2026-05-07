@@ -501,6 +501,76 @@ def test_model_outputs_history_is_preserved_across_normalized_replacement(tmp_pa
     assert conn.execute("SELECT name FROM topics").fetchone()["name"] == "Second Topic"
 
 
+def test_empty_response_is_stored_as_empty_response_and_preserves_rows(tmp_path):
+    from ethnos.db import save_extraction_result
+    from ethnos.ollama_client import _validate_response
+
+    conn = connect(tmp_path / "ethnos.sqlite")
+    init_db(conn)
+    chunk_id = _stored_chunk(conn, page_start=50, page_end=50)
+    document_id = conn.execute("SELECT document_id FROM chunks WHERE id = ?", (chunk_id,)).fetchone()[
+        "document_id"
+    ]
+    existing = ExtractionResult.model_validate(
+        {
+            "chunk_summary": "Existing result.",
+            "topics": [
+                {
+                    "name": "Existing Topic",
+                    "summary": "Existing summary.",
+                    "confidence": 0.8,
+                    "source_pages": [],
+                }
+            ],
+            "key_terms": [],
+            "examples": [],
+            "questions": [],
+        }
+    )
+    save_extraction_result(conn, chunk_id, existing)
+
+    result = _validate_response("prompt", "")
+    run_id = create_extraction_run(conn, document_id, "test-model", "prompt")
+    save_model_output(
+        conn,
+        run_id=run_id,
+        chunk_id=chunk_id,
+        raw_prompt=result.raw_prompt,
+        raw_response=result.raw_response,
+        parsed_json=result.parsed_json,
+        validation_status=result.validation_status,
+        validation_error=result.validation_error,
+    )
+
+    output = conn.execute("SELECT * FROM model_outputs").fetchone()
+    assert output["validation_status"] == "empty_response"
+    assert output["validation_error"] == "Ollama returned an empty response body/content"
+    assert output["raw_response"] == ""
+    assert conn.execute("SELECT name FROM topics").fetchone()["name"] == "Existing Topic"
+
+
+def test_whitespace_response_is_empty_response_but_raw_output_is_preserved(tmp_path):
+    from ethnos.ollama_client import _validate_response
+
+    result = _validate_response("prompt", "  \n\t  ")
+
+    assert result.validation_status == "empty_response"
+    assert result.validation_error == "Ollama returned an empty response body/content"
+    assert result.raw_response == "  \n\t  "
+    assert result.result is None
+
+
+def test_non_empty_invalid_json_stays_invalid_json():
+    from ethnos.ollama_client import _validate_response
+
+    result = _validate_response("prompt", "not json")
+
+    assert result.validation_status == "invalid_json"
+    assert "Expecting value" in result.validation_error
+    assert result.raw_response == "not json"
+    assert result.result is None
+
+
 def _stored_chunk(conn, page_start: int, page_end: int) -> int:
     document = DocumentRecord(
         source_path="/tmp/course.pdf",

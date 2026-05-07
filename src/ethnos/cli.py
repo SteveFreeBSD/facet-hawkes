@@ -204,6 +204,11 @@ def structure(args: argparse.Namespace) -> int:
         if result.result is None:
             failed_count += 1
             last_error = result.validation_error
+            if result.validation_status == "empty_response":
+                print(
+                    f"Warning: chunk {chunk.id} produced an empty Ollama response; "
+                    "raw output was preserved."
+                )
             continue
         save_extraction_result(conn, chunk.id, result.result)
         valid_count += 1
