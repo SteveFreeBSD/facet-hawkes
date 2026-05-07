@@ -12,8 +12,14 @@ from ethnos.db import (
     list_documents,
     save_chunks,
     save_document_pages,
+    save_extraction_result,
     save_model_output,
     create_extraction_run,
+    chunk_records,
+    context_chunks,
+    inspect_chunk,
+    list_structured_records,
+    quality_report,
     search_chunks,
     section_label_status,
     select_chunks_for_structure,
@@ -200,6 +206,132 @@ def test_label_sections_cli_dry_run_does_not_write_labels(tmp_path, capsys):
     assert conn.execute("SELECT COUNT(*) AS count FROM pages WHERE section_label IS NOT NULL").fetchone()[
         "count"
     ] == 0
+
+
+def test_inspect_chunk_helper_and_cli_output(tmp_path, capsys):
+    db_path = tmp_path / "ethnos.sqlite"
+    conn = connect(db_path)
+    init_db(conn)
+    document_id, chunks = _stored_labeled_record_document(conn)
+
+    inspection = inspect_chunk(conn, document_id, chunks[0].id)
+    records = chunk_records(conn, chunks[0].id)
+
+    assert inspection["chunk"]["section_label"] == "chapter_content"
+    assert inspection["counts"]["key_terms"] == 1
+    assert inspection["counts"]["questions"] == 1
+    assert records["key_terms"][0]["term"] == "Evolutionary ethics"
+
+    exit_code = main(["--db", str(db_path), "inspect-chunk", str(document_id), str(chunks[0].id), "--records"])
+    output = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert "Document: labeled.pdf" in output
+    assert f"Chunk id: {chunks[0].id}" in output
+    assert "Section: chapter_content" in output
+    assert "term: Evolutionary ethics" in output
+    assert "question: What does evolutionary ethics study?" in output
+
+
+def test_search_chunks_filters_by_role_and_section(tmp_path):
+    conn = connect(tmp_path / "ethnos.sqlite")
+    init_db(conn)
+    document_id, _ = _stored_labeled_record_document(conn)
+
+    core_results = search_chunks(conn, "evolutionary", document_id=document_id, role="core")
+    admin_results = search_chunks(conn, "evolutionary", document_id=document_id, role="admin")
+    section_results = search_chunks(
+        conn,
+        "evolutionary",
+        document_id=document_id,
+        section="chapter_content",
+    )
+
+    assert [row["content_role"] for row in core_results] == ["core"]
+    assert [row["section_label"] for row in admin_results] == ["front_matter"]
+    assert [row["section_label"] for row in section_results] == ["chapter_content"]
+
+
+def test_records_filter_by_type_role_section_and_chunk_id(tmp_path):
+    conn = connect(tmp_path / "ethnos.sqlite")
+    init_db(conn)
+    document_id, chunks = _stored_labeled_record_document(conn)
+
+    core_terms = list_structured_records(
+        conn, document_id, record_type="key_terms", role="core"
+    )
+    chapter_questions = list_structured_records(
+        conn, document_id, record_type="questions", section="chapter_content"
+    )
+    support_records = list_structured_records(conn, document_id, chunk_id=chunks[1].id)
+
+    assert [row["term"] for row in core_terms] == ["Evolutionary ethics"]
+    assert [row["question"] for row in chapter_questions] == [
+        "What does evolutionary ethics study?"
+    ]
+    assert {row["record_type"] for row in support_records} == {"key_terms"}
+    assert support_records[0]["chunk_id"] == chunks[1].id
+
+
+def test_quality_report_summarizes_assimilation_scope(tmp_path):
+    conn = connect(tmp_path / "ethnos.sqlite")
+    init_db(conn)
+    document_id, chunks = _stored_labeled_record_document(conn)
+    run_id = create_extraction_run(conn, document_id, "test-model", "prompt")
+    save_model_output(
+        conn,
+        run_id=run_id,
+        chunk_id=chunks[0].id,
+        raw_prompt="prompt",
+        raw_response="{}",
+        parsed_json={},
+        validation_status="valid",
+        validation_error=None,
+    )
+    save_model_output(
+        conn,
+        run_id=run_id,
+        chunk_id=chunks[1].id,
+        raw_prompt="prompt",
+        raw_response="{",
+        parsed_json=None,
+        validation_status="invalid_json",
+        validation_error="bad json",
+    )
+
+    report = quality_report(conn, document_id)
+
+    assert report["model_output_status_counts"] == [
+        {"validation_status": "invalid_json", "count": 1},
+        {"validation_status": "valid", "count": 1},
+    ]
+    assert report["latest_output_status_counts"] == [
+        {"validation_status": "invalid_json", "count": 1},
+        {"validation_status": "never_attempted", "count": 2},
+        {"validation_status": "valid", "count": 1},
+    ]
+    assert {"content_role": "core", "count": 1} in report["key_terms_by_role"]
+    assert report["top_repeated_key_terms"] == [{"term": "evolutionary ethics", "count": 2}]
+    assert [row["id"] for row in report["chunks_with_no_terms_or_questions"]] == [chunks[3].id]
+    assert {row["content_role"] for row in report["non_core_chunks_with_records"]} == {
+        "admin",
+        "support",
+    }
+
+
+def test_context_chunks_defaults_to_core_and_supports_filters(tmp_path):
+    conn = connect(tmp_path / "ethnos.sqlite")
+    init_db(conn)
+    document_id, _ = _stored_labeled_record_document(conn)
+
+    default_results = context_chunks(conn, document_id, "evolutionary", limit=10)
+    support_results = context_chunks(
+        conn, document_id, "evolutionary", limit=10, role="support"
+    )
+
+    assert [row["content_role"] for row in default_results] == ["core"]
+    assert "Naturalism appears in evolutionary ethics" in default_results[0]["text"]
+    assert [row["section_label"] for row in support_results] == ["chapter_references"]
 
 
 def test_select_chunks_for_structure_supports_limit_and_skips_valid_outputs(tmp_path):
@@ -865,6 +997,162 @@ def test_non_empty_invalid_json_stays_invalid_json():
     assert "Expecting value" in result.validation_error
     assert result.raw_response == "not json"
     assert result.result is None
+
+
+def _stored_labeled_record_document(conn):
+    document = DocumentRecord(
+        source_path="/tmp/labeled.pdf",
+        filename="labeled.pdf",
+        sha256="labeled-fixture",
+        title="Labeled",
+        page_count=4,
+    )
+    pages = [
+        PageRecord(
+            document_id=0,
+            page_number=index,
+            raw_text=f"Page {index}",
+            cleaned_text=f"Page {index}",
+            char_count=6,
+        )
+        for index in range(1, 5)
+    ]
+    document_id = save_document_pages(conn, document, pages)
+    save_chunks(
+        conn,
+        document_id,
+        [
+            ChunkRecord(
+                document_id=document_id,
+                page_start=1,
+                page_end=1,
+                chunk_index=1,
+                text="Naturalism appears in evolutionary ethics as core course content.",
+                char_count=64,
+                source_citation="labeled.pdf p. 1, chunk 1",
+            ),
+            ChunkRecord(
+                document_id=document_id,
+                page_start=2,
+                page_end=2,
+                chunk_index=2,
+                text="References mention evolutionary ethics and related bibliography.",
+                char_count=62,
+                source_citation="labeled.pdf p. 2, chunk 2",
+            ),
+            ChunkRecord(
+                document_id=document_id,
+                page_start=3,
+                page_end=3,
+                chunk_index=3,
+                text="Front matter says evolutionary ethics appears in the book.",
+                char_count=58,
+                source_citation="labeled.pdf p. 3, chunk 3",
+            ),
+            ChunkRecord(
+                document_id=document_id,
+                page_start=4,
+                page_end=4,
+                chunk_index=4,
+                text="A quiet unlabeled inspection chunk.",
+                char_count=35,
+                source_citation="labeled.pdf p. 4, chunk 4",
+            ),
+        ],
+    )
+    conn.execute(
+        """
+        UPDATE chunks
+        SET section_label = 'chapter_content', content_role = 'core', section_confidence = 1.0
+        WHERE document_id = ? AND chunk_index = 1
+        """,
+        (document_id,),
+    )
+    conn.execute(
+        """
+        UPDATE chunks
+        SET section_label = 'chapter_references', content_role = 'support', section_confidence = 1.0
+        WHERE document_id = ? AND chunk_index = 2
+        """,
+        (document_id,),
+    )
+    conn.execute(
+        """
+        UPDATE chunks
+        SET section_label = 'front_matter', content_role = 'admin', section_confidence = 1.0
+        WHERE document_id = ? AND chunk_index = 3
+        """,
+        (document_id,),
+    )
+    conn.execute(
+        """
+        UPDATE chunks
+        SET section_label = 'chapter_content', content_role = 'core', section_confidence = 1.0
+        WHERE document_id = ? AND chunk_index = 4
+        """,
+        (document_id,),
+    )
+    conn.commit()
+    chunks = select_chunks_for_structure(conn, document_id, force=True)
+    core_result = ExtractionResult.model_validate(
+        {
+            "chunk_summary": "Core discussion.",
+            "topics": [],
+            "key_terms": [
+                {
+                    "term": "Evolutionary ethics",
+                    "definition": "An approach that connects ethics with evolutionary explanations.",
+                    "context": "",
+                    "source_pages": [1],
+                }
+            ],
+            "examples": [],
+            "questions": [
+                {
+                    "question": "What does evolutionary ethics study?",
+                    "answer": "It studies ethical ideas in relation to evolutionary explanations.",
+                    "difficulty": "medium",
+                    "source_pages": [1],
+                }
+            ],
+        }
+    )
+    support_result = ExtractionResult.model_validate(
+        {
+            "chunk_summary": "Reference material.",
+            "topics": [],
+            "key_terms": [
+                {
+                    "term": "Evolutionary ethics",
+                    "definition": "A repeated reference term in support material.",
+                    "context": "",
+                    "source_pages": [2],
+                }
+            ],
+            "examples": [],
+            "questions": [],
+        }
+    )
+    admin_result = ExtractionResult.model_validate(
+        {
+            "chunk_summary": "Administrative material.",
+            "topics": [],
+            "key_terms": [],
+            "examples": [],
+            "questions": [
+                {
+                    "question": "Where is evolutionary ethics mentioned?",
+                    "answer": "It is mentioned in the front matter.",
+                    "difficulty": "easy",
+                    "source_pages": [3],
+                }
+            ],
+        }
+    )
+    save_extraction_result(conn, chunks[0].id, core_result)
+    save_extraction_result(conn, chunks[1].id, support_result)
+    save_extraction_result(conn, chunks[2].id, admin_result)
+    return document_id, chunks
 
 
 def _stored_three_page_document(conn) -> int:

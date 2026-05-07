@@ -721,17 +721,91 @@ def clear_document_outputs(conn: sqlite3.Connection, document_id: int) -> None:
     conn.execute("DELETE FROM extraction_runs WHERE document_id = ?", (document_id,))
 
 
-def search_chunks(conn: sqlite3.Connection, query: str, limit: int = 10) -> list[dict[str, Any]]:
+def inspect_chunk(
+    conn: sqlite3.Connection, document_id: int, chunk_id: int
+) -> dict[str, Any]:
+    row = conn.execute(
+        """
+        SELECT
+            d.filename,
+            c.*
+        FROM chunks c
+        JOIN documents d ON d.id = c.document_id
+        WHERE c.document_id = ? AND c.id = ?
+        """,
+        (document_id, chunk_id),
+    ).fetchone()
+    if row is None:
+        raise ValueError(f"No chunk {chunk_id} found for document {document_id}")
+    counts = {}
+    for table in ["key_terms", "questions", "topics", "examples"]:
+        counts[table] = conn.execute(
+            f"SELECT COUNT(*) AS count FROM {table} WHERE chunk_id = ?", (chunk_id,)
+        ).fetchone()["count"]
+    return {"chunk": dict(row), "counts": counts}
+
+
+def chunk_records(conn: sqlite3.Connection, chunk_id: int) -> dict[str, list[dict[str, Any]]]:
+    return {
+        "key_terms": _chunk_table_rows(conn, "key_terms", chunk_id),
+        "questions": _chunk_table_rows(conn, "questions", chunk_id),
+        "topics": _chunk_table_rows(conn, "topics", chunk_id),
+        "examples": _chunk_table_rows(conn, "examples", chunk_id),
+    }
+
+
+def _chunk_table_rows(conn: sqlite3.Connection, table: str, chunk_id: int) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        f"""
+        SELECT *
+        FROM {table}
+        WHERE chunk_id = ?
+        ORDER BY id
+        """,
+        (chunk_id,),
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def search_chunks(
+    conn: sqlite3.Connection,
+    query: str,
+    limit: int = 10,
+    *,
+    document_id: int | None = None,
+    role: str | None = None,
+    section: str | None = None,
+) -> list[dict[str, Any]]:
     try:
-        return _search_chunks(conn, query, limit)
+        return _search_chunks(conn, query, limit, document_id=document_id, role=role, section=section)
     except sqlite3.OperationalError:
         quoted = '"' + query.replace('"', '""') + '"'
-        return _search_chunks(conn, quoted, limit)
+        return _search_chunks(conn, quoted, limit, document_id=document_id, role=role, section=section)
 
 
-def _search_chunks(conn: sqlite3.Connection, query: str, limit: int) -> list[dict[str, Any]]:
+def _search_chunks(
+    conn: sqlite3.Connection,
+    query: str,
+    limit: int,
+    *,
+    document_id: int | None,
+    role: str | None,
+    section: str | None,
+) -> list[dict[str, Any]]:
+    filters = ["chunks_fts MATCH ?"]
+    params: list[Any] = [query]
+    if document_id is not None:
+        filters.append("c.document_id = ?")
+        params.append(document_id)
+    if role is not None:
+        filters.append("c.content_role = ?")
+        params.append(role)
+    if section is not None:
+        filters.append("c.section_label = ?")
+        params.append(section)
+    params.append(limit)
     rows = conn.execute(
-        """
+        f"""
         SELECT
             c.id,
             c.document_id,
@@ -739,15 +813,245 @@ def _search_chunks(conn: sqlite3.Connection, query: str, limit: int) -> list[dic
             c.page_start,
             c.page_end,
             c.source_citation,
+            c.section_label,
+            c.content_role,
             snippet(chunks_fts, 0, '[', ']', '...', 24) AS snippet,
             bm25(chunks_fts) AS score
         FROM chunks_fts
         JOIN chunks c ON c.id = chunks_fts.rowid
-        WHERE chunks_fts MATCH ?
+        WHERE {" AND ".join(filters)}
         ORDER BY score
         LIMIT ?
         """,
-        (query, limit),
+        params,
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def list_structured_records(
+    conn: sqlite3.Connection,
+    document_id: int,
+    *,
+    record_type: str = "all",
+    role: str | None = None,
+    section: str | None = None,
+    chunk_id: int | None = None,
+    limit: int | None = None,
+) -> list[dict[str, Any]]:
+    tables = ["key_terms", "questions", "topics", "examples"]
+    selected_tables = tables if record_type == "all" else [record_type]
+    records: list[dict[str, Any]] = []
+    for table in selected_tables:
+        records.extend(
+            _structured_rows_for_table(
+                conn,
+                document_id,
+                table,
+                role=role,
+                section=section,
+                chunk_id=chunk_id,
+            )
+        )
+    records.sort(key=lambda row: (row["chunk_index"], row["record_type"], row["id"]))
+    if limit is not None:
+        return records[:limit]
+    return records
+
+
+def _structured_rows_for_table(
+    conn: sqlite3.Connection,
+    document_id: int,
+    table: str,
+    *,
+    role: str | None,
+    section: str | None,
+    chunk_id: int | None,
+) -> list[dict[str, Any]]:
+    filters = ["c.document_id = ?"]
+    params: list[Any] = [document_id]
+    if role is not None:
+        filters.append("c.content_role = ?")
+        params.append(role)
+    if section is not None:
+        filters.append("c.section_label = ?")
+        params.append(section)
+    if chunk_id is not None:
+        filters.append("c.id = ?")
+        params.append(chunk_id)
+    rows = conn.execute(
+        f"""
+        SELECT
+            t.*,
+            c.document_id,
+            c.chunk_index,
+            c.source_citation,
+            c.section_label,
+            c.content_role
+        FROM {table} t
+        JOIN chunks c ON c.id = t.chunk_id
+        WHERE {" AND ".join(filters)}
+        ORDER BY c.chunk_index, t.id
+        """,
+        params,
+    ).fetchall()
+    return [{"record_type": table, **dict(row)} for row in rows]
+
+
+def context_chunks(
+    conn: sqlite3.Connection,
+    document_id: int,
+    query: str,
+    *,
+    limit: int = 5,
+    role: str | None = "core",
+    section: str | None = None,
+) -> list[dict[str, Any]]:
+    results = search_chunks(
+        conn,
+        query,
+        limit,
+        document_id=document_id,
+        role=role,
+        section=section,
+    )
+    if not results:
+        return []
+    chunk_ids = [row["id"] for row in results]
+    placeholders = ", ".join("?" for _ in chunk_ids)
+    text_rows = conn.execute(
+        f"SELECT id, text FROM chunks WHERE id IN ({placeholders})",
+        chunk_ids,
+    ).fetchall()
+    text_by_id = {row["id"]: row["text"] for row in text_rows}
+    return [{**row, "text": text_by_id.get(row["id"], "")} for row in results]
+
+
+def quality_report(conn: sqlite3.Connection, document_id: int) -> dict[str, Any]:
+    status = section_label_status(conn, document_id)
+    latest_rows = list_structure_chunk_status(conn, document_id)
+    return {
+        "document_id": document_id,
+        "sections": status,
+        "model_output_status_counts": _model_output_status_counts(conn, document_id),
+        "latest_output_status_counts": _latest_output_status_counts(latest_rows),
+        "key_terms_by_role": _normalized_count_by_role(conn, "key_terms", document_id),
+        "questions_by_role": _normalized_count_by_role(conn, "questions", document_id),
+        "top_repeated_key_terms": _top_repeated_key_terms(conn, document_id),
+        "chunks_with_no_terms_or_questions": _chunks_with_no_terms_or_questions(conn, document_id),
+        "non_core_chunks_with_records": _non_core_chunks_with_records(conn, document_id),
+        "topics": _normalized_record_counts(conn, document_id)["topics"],
+        "examples": _normalized_record_counts(conn, document_id)["examples"],
+    }
+
+
+def _model_output_status_counts(
+    conn: sqlite3.Connection, document_id: int
+) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        """
+        SELECT mo.validation_status, COUNT(*) AS count
+        FROM model_outputs mo
+        JOIN chunks c ON c.id = mo.chunk_id
+        WHERE c.document_id = ?
+        GROUP BY mo.validation_status
+        ORDER BY mo.validation_status
+        """,
+        (document_id,),
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def _latest_output_status_counts(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    counts: dict[str, int] = {}
+    for row in rows:
+        status = row["latest_status"] or "never_attempted"
+        counts[status] = counts.get(status, 0) + 1
+    return [
+        {"validation_status": status, "count": count}
+        for status, count in sorted(counts.items())
+    ]
+
+
+def _normalized_count_by_role(
+    conn: sqlite3.Connection, table: str, document_id: int
+) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        f"""
+        SELECT COALESCE(c.content_role, 'unlabeled') AS content_role, COUNT(*) AS count
+        FROM {table} t
+        JOIN chunks c ON c.id = t.chunk_id
+        WHERE c.document_id = ?
+        GROUP BY content_role
+        ORDER BY content_role
+        """,
+        (document_id,),
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def _top_repeated_key_terms(conn: sqlite3.Connection, document_id: int) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        """
+        SELECT LOWER(TRIM(kt.term)) AS term, COUNT(*) AS count
+        FROM key_terms kt
+        JOIN chunks c ON c.id = kt.chunk_id
+        WHERE c.document_id = ?
+        GROUP BY LOWER(TRIM(kt.term))
+        HAVING COUNT(*) > 1
+        ORDER BY count DESC, term
+        LIMIT 10
+        """,
+        (document_id,),
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def _chunks_with_no_terms_or_questions(
+    conn: sqlite3.Connection, document_id: int
+) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        """
+        SELECT
+            c.id,
+            c.chunk_index,
+            c.source_citation,
+            c.section_label,
+            c.content_role
+        FROM chunks c
+        LEFT JOIN key_terms kt ON kt.chunk_id = c.id
+        LEFT JOIN questions q ON q.chunk_id = c.id
+        WHERE c.document_id = ?
+        GROUP BY c.id
+        HAVING COUNT(DISTINCT kt.id) = 0 AND COUNT(DISTINCT q.id) = 0
+        ORDER BY c.chunk_index
+        """,
+        (document_id,),
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def _non_core_chunks_with_records(
+    conn: sqlite3.Connection, document_id: int
+) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        """
+        SELECT
+            c.id,
+            c.chunk_index,
+            c.source_citation,
+            c.section_label,
+            c.content_role,
+            COUNT(DISTINCT kt.id) AS key_terms,
+            COUNT(DISTINCT q.id) AS questions
+        FROM chunks c
+        LEFT JOIN key_terms kt ON kt.chunk_id = c.id
+        LEFT JOIN questions q ON q.chunk_id = c.id
+        WHERE c.document_id = ? AND COALESCE(c.content_role, 'unknown') != 'core'
+        GROUP BY c.id
+        HAVING COUNT(DISTINCT kt.id) > 0 OR COUNT(DISTINCT q.id) > 0
+        ORDER BY c.chunk_index
+        """,
+        (document_id,),
     ).fetchall()
     return [dict(row) for row in rows]
 

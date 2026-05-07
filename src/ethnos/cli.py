@@ -12,16 +12,21 @@ from typing import Callable
 from .chunking import build_chunks
 from .config import load_settings
 from .db import (
+    chunk_records,
     connect,
+    context_chunks,
     create_extraction_run,
     db_info,
     apply_section_preset,
     finish_extraction_run,
     get_document,
+    inspect_chunk,
     init_db,
+    list_structured_records,
     list_chunks,
     list_documents,
     list_pages,
+    quality_report,
     save_chunks,
     save_document_pages,
     save_extraction_result,
@@ -34,7 +39,7 @@ from .db import (
 from .export import export_json, export_markdown, export_study
 from .ollama_client import extract_chunk
 from .pdf_extract import extract_pdf
-from .section_presets import PRESETS, get_section_preset
+from .section_presets import CONTENT_ROLES, PRESETS, SECTION_LABELS, get_section_preset
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -100,9 +105,48 @@ def build_parser() -> argparse.ArgumentParser:
         help="Reprocess selected chunks even if they already have valid output.",
     )
 
+    inspect_parser = _command(
+        subcommands, "inspect-chunk", "Inspect one stored chunk and its extracted records.", inspect_chunk_cmd
+    )
+    inspect_parser.add_argument("document_id", type=int)
+    inspect_parser.add_argument("chunk_id", type=int)
+    inspect_parser.add_argument("--full-text", action="store_true")
+    inspect_parser.add_argument("--records", action="store_true")
+
     search_parser = _command(subcommands, "search", "Search chunks with SQLite FTS5.", search)
     search_parser.add_argument("query")
     search_parser.add_argument("--limit", type=int, default=10)
+    search_parser.add_argument("--role", choices=sorted(CONTENT_ROLES))
+    search_parser.add_argument("--section", choices=sorted(SECTION_LABELS))
+
+    records_parser = _command(
+        subcommands, "records", "List normalized structured records.", records_cmd
+    )
+    records_parser.add_argument("document_id", type=int)
+    records_parser.add_argument(
+        "--type",
+        choices=["all", "key_terms", "questions", "topics", "examples"],
+        default="all",
+    )
+    records_parser.add_argument("--role", choices=sorted(CONTENT_ROLES))
+    records_parser.add_argument("--section", choices=sorted(SECTION_LABELS))
+    records_parser.add_argument("--chunk-id", type=int)
+    records_parser.add_argument("--limit", type=int, default=20)
+
+    quality_parser = _command(
+        subcommands, "quality-report", "Summarize assimilation quality and scope.", quality_report_cmd
+    )
+    quality_parser.add_argument("document_id", type=int)
+
+    context_parser = _command(
+        subcommands, "context", "Show retrieval-ready context for a query.", context_cmd
+    )
+    context_parser.add_argument("document_id", type=int)
+    context_parser.add_argument("query")
+    context_parser.add_argument("--limit", type=int, default=5)
+    context_parser.add_argument("--role", choices=sorted(CONTENT_ROLES), default="core")
+    context_parser.add_argument("--section", choices=sorted(SECTION_LABELS))
+    context_parser.add_argument("--chars", type=int, default=900)
 
     json_parser = _command(subcommands, "export-json", "Export document data as JSON.", export_json_cmd)
     json_parser.add_argument("document_id", type=int)
@@ -347,13 +391,123 @@ def _print_ollama_debug(chunk_id: int | None, debug_info) -> None:
         print(f"    {key}: {value}", flush=True)
 
 
+def inspect_chunk_cmd(args: argparse.Namespace) -> int:
+    _, conn = open_db(args)
+    inspection = inspect_chunk(conn, args.document_id, args.chunk_id)
+    chunk = inspection["chunk"]
+    counts = inspection["counts"]
+    print(f"Document: {chunk['filename']}")
+    print(f"Chunk id: {chunk['id']}")
+    print(f"Chunk index: {chunk['chunk_index']}")
+    print(f"Pages: {format_page_range(chunk['page_start'], chunk['page_end'])}")
+    print(f"Source: {chunk['source_citation']}")
+    print(f"Section: {chunk['section_label'] or 'unlabeled'}")
+    print(f"Role: {chunk['content_role'] or 'unlabeled'}")
+    print("Record counts:")
+    print(f"  key_terms: {counts['key_terms']}")
+    print(f"  questions: {counts['questions']}")
+    print(f"  topics: {counts['topics']}")
+    print(f"  examples: {counts['examples']}")
+    print()
+    print("Chunk text:")
+    print(chunk["text"] if args.full_text else preview_text(chunk["text"], 1000))
+    if args.records:
+        print()
+        _print_chunk_records(chunk_records(conn, args.chunk_id))
+    return 0
+
+
 def search(args: argparse.Namespace) -> int:
     _, conn = open_db(args)
-    results = search_chunks(conn, args.query, args.limit)
+    results = search_chunks(conn, args.query, args.limit, role=args.role, section=args.section)
     for result in results:
-        print(f"[{result['source_citation']}]")
+        print(f"[chunk {result['id']}] {result['source_citation']}")
+        print(f"section: {result['section_label'] or 'unlabeled'} | role: {result['content_role'] or 'unlabeled'}")
         print(result["snippet"])
         print()
+    return 0
+
+
+def records_cmd(args: argparse.Namespace) -> int:
+    _, conn = open_db(args)
+    if args.limit is not None and args.limit < 1:
+        raise SystemExit("--limit must be 1 or greater.")
+    rows = list_structured_records(
+        conn,
+        args.document_id,
+        record_type=args.type,
+        role=args.role,
+        section=args.section,
+        chunk_id=args.chunk_id,
+        limit=args.limit,
+    )
+    if not rows:
+        print("No records found.")
+        return 0
+    for row in rows:
+        _print_record(row)
+    return 0
+
+
+def quality_report_cmd(args: argparse.Namespace) -> int:
+    _, conn = open_db(args)
+    report = quality_report(conn, args.document_id)
+    print(f"Quality report for document {args.document_id}")
+    _print_section_count_summary("Pages by section/role", report["sections"]["pages"])
+    print(f"  unlabeled pages: {report['sections']['unlabeled_pages']}")
+    _print_section_count_summary("Chunks by section/role", report["sections"]["chunks"])
+    print(f"  unlabeled chunks: {report['sections']['unlabeled_chunks']}")
+    _print_status_counts("Total model output statuses", report["model_output_status_counts"])
+    _print_status_counts("Latest output statuses", report["latest_output_status_counts"])
+    _print_role_counts("Key terms by role", report["key_terms_by_role"])
+    _print_role_counts("Questions by role", report["questions_by_role"])
+    print("Top repeated key terms:")
+    if report["top_repeated_key_terms"]:
+        for row in report["top_repeated_key_terms"]:
+            print(f"  {row['term']}: {row['count']}")
+    else:
+        print("  none")
+    _print_chunk_list(
+        "Chunks with no key_terms and no questions",
+        report["chunks_with_no_terms_or_questions"],
+    )
+    _print_non_core_records(report["non_core_chunks_with_records"])
+    print(f"Topics: {report['topics']}")
+    if report["topics"] < 10:
+        print("  Warning: topics are sparse; do not treat topics as the main structure.")
+    print(f"Examples: {report['examples']}")
+    if report["examples"] == 0:
+        print("  Warning: no examples were extracted.")
+    return 0
+
+
+def context_cmd(args: argparse.Namespace) -> int:
+    _, conn = open_db(args)
+    if args.limit < 1:
+        raise SystemExit("--limit must be 1 or greater.")
+    if args.chars < 1:
+        raise SystemExit("--chars must be 1 or greater.")
+    rows = context_chunks(
+        conn,
+        args.document_id,
+        args.query,
+        limit=args.limit,
+        role=args.role,
+        section=args.section,
+    )
+    if not rows:
+        print("No context chunks found.")
+        return 0
+    print(f"Context for document {args.document_id}: {args.query}")
+    print(f"role: {args.role or 'all'} | section: {args.section or 'all'}")
+    for row in rows:
+        print()
+        print(f"[chunk {row['id']}] {row['source_citation']}")
+        print(f"section: {row['section_label'] or 'unlabeled'} | role: {row['content_role'] or 'unlabeled'}")
+        print("Snippet:")
+        print(row["snippet"])
+        print("Context text:")
+        print(preview_text(row["text"], args.chars))
     return 0
 
 
@@ -474,6 +628,118 @@ def _print_section_count_summary(title: str, rows: list[dict]) -> None:
         return
     for row in rows:
         print(f"  {row['section_label']} / {row['content_role']}: {row['count']}")
+
+
+def _print_chunk_records(records: dict[str, list[dict]]) -> None:
+    print("Extracted records:")
+    for section in ["key_terms", "questions", "topics", "examples"]:
+        print(f"{section}:")
+        if not records[section]:
+            print("  none")
+            continue
+        for row in records[section]:
+            _print_record({"record_type": section, **row})
+
+
+def _print_record(row: dict) -> None:
+    record_type = row["record_type"]
+    source_pages = format_source_pages(row.get("source_pages"))
+    if record_type == "key_terms":
+        print(f"[key_term] chunk {row['chunk_id']} | {source_pages}")
+        print(f"  term: {row['term']}")
+        print(f"  definition: {row['definition']}")
+    elif record_type == "questions":
+        print(f"[question] chunk {row['chunk_id']} | {source_pages}")
+        print(f"  question: {row['question']}")
+        print(f"  answer: {row['answer']}")
+    elif record_type == "topics":
+        print(f"[topic] chunk {row['chunk_id']} | {source_pages}")
+        print(f"  name: {row['name']}")
+        print(f"  summary: {row['summary']}")
+    elif record_type == "examples":
+        print(f"[example] chunk {row['chunk_id']} | {source_pages}")
+        print(f"  title: {row['title']}")
+        print(f"  body: {row['body']}")
+    print()
+
+
+def _print_status_counts(title: str, rows: list[dict]) -> None:
+    print(f"{title}:")
+    if not rows:
+        print("  none")
+        return
+    for row in rows:
+        print(f"  {row['validation_status']}: {row['count']}")
+
+
+def _print_role_counts(title: str, rows: list[dict]) -> None:
+    print(f"{title}:")
+    if not rows:
+        print("  none")
+        return
+    for row in rows:
+        print(f"  {row['content_role']}: {row['count']}")
+
+
+def _print_chunk_list(title: str, rows: list[dict], limit: int = 20) -> None:
+    print(f"{title}: {len(rows)}")
+    for row in rows[:limit]:
+        print(
+            f"  chunk {row['id']} ({row['section_label'] or 'unlabeled'} / "
+            f"{row['content_role'] or 'unlabeled'}): {row['source_citation']}"
+        )
+    if len(rows) > limit:
+        print(f"  ... {len(rows) - limit} more")
+
+
+def _print_non_core_records(rows: list[dict], limit: int = 20) -> None:
+    print(f"Admin/support chunks with key_terms/questions: {len(rows)}")
+    for row in rows[:limit]:
+        print(
+            f"  chunk {row['id']} ({row['section_label'] or 'unlabeled'} / "
+            f"{row['content_role'] or 'unlabeled'}): "
+            f"key_terms={row['key_terms']}, questions={row['questions']}"
+        )
+    if len(rows) > limit:
+        print(f"  ... {len(rows) - limit} more")
+
+
+def preview_text(text: str, max_chars: int) -> str:
+    compact = " ".join(text.split())
+    if len(compact) <= max_chars:
+        return compact
+    return compact[: max_chars - 3].rstrip() + "..."
+
+
+def format_page_range(page_start: int, page_end: int) -> str:
+    if page_start == page_end:
+        return f"p. {page_start}"
+    return f"pp. {page_start}-{page_end}"
+
+
+def format_source_pages(raw_pages) -> str:
+    if raw_pages is None:
+        return "source pages: none"
+    if isinstance(raw_pages, str):
+        try:
+            pages = json.loads(raw_pages)
+        except json.JSONDecodeError:
+            return f"source pages: {raw_pages}"
+    else:
+        pages = raw_pages
+    if not pages:
+        return "source pages: none"
+    pages = sorted(set(int(page) for page in pages))
+    ranges: list[str] = []
+    start = previous = pages[0]
+    for page in pages[1:]:
+        if page == previous + 1:
+            previous = page
+            continue
+        ranges.append(str(start) if start == previous else f"{start}-{previous}")
+        start = previous = page
+    ranges.append(str(start) if start == previous else f"{start}-{previous}")
+    return "source pages: " + ", ".join(ranges)
 
 
 def _write_or_print(text: str, output: Path | None) -> None:

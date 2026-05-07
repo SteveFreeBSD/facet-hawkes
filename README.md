@@ -28,6 +28,10 @@ uv run ethnos documents
 uv run ethnos chunk 1
 uv run ethnos structure-status 1
 uv run ethnos search "photosynthesis"
+uv run ethnos inspect-chunk 1 80 --records
+uv run ethnos records 1 --type key_terms --role core --limit 10
+uv run ethnos quality-report 1
+uv run ethnos context 1 "methodological ethical naturalism" --limit 3
 uv run ethnos export-markdown 1
 uv run ethnos export-study 1 --output data/processed/study-guide.md
 ```
@@ -54,6 +58,49 @@ Markdown export can write to a file to avoid flooding the terminal:
 
 ```bash
 uv run ethnos export-markdown 1 --output data/processed/ethics.md
+```
+
+## Inspecting Assimilated Knowledge
+
+`section_label` names the kind of document section, such as `chapter_content`,
+`chapter_references`, `front_matter`, or `accessibility`. `content_role` is a
+broader bucket for filtering: `core`, `support`, `admin`, `artifact`, or
+`unknown`.
+
+Inspect one chunk:
+
+```bash
+uv run ethnos inspect-chunk 1 80
+uv run ethnos inspect-chunk 1 80 --full-text
+uv run ethnos inspect-chunk 1 80 --records
+```
+
+Filter full-text search by section metadata:
+
+```bash
+uv run ethnos search "evolutionary ethics" --role core
+uv run ethnos search "references" --section chapter_references
+```
+
+List normalized structured records:
+
+```bash
+uv run ethnos records 1 --type key_terms --role core --limit 10
+uv run ethnos records 1 --type questions --section chapter_content --limit 10
+uv run ethnos records 1 --chunk-id 80
+```
+
+Summarize the shape and quality of the assimilated data without calling Ollama:
+
+```bash
+uv run ethnos quality-report 1
+```
+
+Show retrieval-ready context for a query without asking a model:
+
+```bash
+uv run ethnos context 1 "methodological ethical naturalism" --limit 3
+uv run ethnos context 1 "license" --role admin --chars 500
 ```
 
 The default database path is `data/ethnos.sqlite`. You can override it:
