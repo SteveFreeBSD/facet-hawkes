@@ -15,6 +15,7 @@ from .db import (
     connect,
     create_extraction_run,
     db_info,
+    apply_section_preset,
     finish_extraction_run,
     get_document,
     init_db,
@@ -26,12 +27,14 @@ from .db import (
     save_extraction_result,
     save_model_output,
     search_chunks,
+    section_label_status,
     select_chunks_for_structure,
     structure_status,
 )
-from .export import export_json, export_markdown
+from .export import export_json, export_markdown, export_study
 from .ollama_client import extract_chunk
 from .pdf_extract import extract_pdf
+from .section_presets import PRESETS, get_section_preset
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -111,12 +114,30 @@ def build_parser() -> argparse.ArgumentParser:
     markdown_parser.add_argument("document_id", type=int)
     markdown_parser.add_argument("--output", type=Path)
 
+    study_parser = _command(
+        subcommands, "export-study", "Export a structured Markdown study guide.", export_study_cmd
+    )
+    study_parser.add_argument("document_id", type=int)
+    study_parser.add_argument("--output", type=Path, required=True)
+
     _command(subcommands, "db-info", "Show local database counts.", db_info_cmd)
     _command(subcommands, "documents", "List stored documents.", documents_cmd)
     status_parser = _command(
         subcommands, "structure-status", "Show structured extraction status for a document.", structure_status_cmd
     )
     status_parser.add_argument("document_id", type=int)
+
+    label_parser = _command(
+        subcommands, "label-sections", "Apply manual section labels to pages and chunks.", label_sections_cmd
+    )
+    label_parser.add_argument("document_id", type=int)
+    label_parser.add_argument("--preset", required=True, choices=sorted(PRESETS))
+    label_parser.add_argument("--dry-run", action="store_true")
+
+    section_status_parser = _command(
+        subcommands, "section-status", "Show section-label status for a document.", section_status_cmd
+    )
+    section_status_parser.add_argument("document_id", type=int)
     return parser
 
 
@@ -350,6 +371,19 @@ def export_markdown_cmd(args: argparse.Namespace) -> int:
     return 0
 
 
+def export_study_cmd(args: argparse.Namespace) -> int:
+    _, conn = open_db(args)
+    guide = export_study(conn, args.document_id)
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(guide.markdown, encoding="utf-8")
+    print(f"Wrote study guide: {args.output}")
+    print(f"  document: {guide.filename}")
+    print(f"  chunks: {guide.chunk_count}")
+    print(f"  key terms: {guide.key_term_count}")
+    print(f"  questions: {guide.question_count}")
+    return 0
+
+
 def db_info_cmd(args: argparse.Namespace) -> int:
     _, conn = open_db(args)
     print(json.dumps(db_info(conn), indent=2, sort_keys=True))
@@ -409,6 +443,37 @@ def structure_status_cmd(args: argparse.Namespace) -> int:
         if len(status["never_attempted_chunks"]) > 30:
             print(f"    ... {len(status['never_attempted_chunks']) - 30} more")
     return 0
+
+
+def label_sections_cmd(args: argparse.Namespace) -> int:
+    _, conn = open_db(args)
+    preset = get_section_preset(args.preset)
+    summary = apply_section_preset(conn, args.document_id, preset, dry_run=args.dry_run)
+    action = "Section label dry run" if args.dry_run else "Applied section labels"
+    print(f"{action} for document {args.document_id} using preset {args.preset}")
+    _print_section_count_summary("Pages", summary["pages"])
+    _print_section_count_summary("Chunks", summary["chunks"])
+    return 0
+
+
+def section_status_cmd(args: argparse.Namespace) -> int:
+    _, conn = open_db(args)
+    status = section_label_status(conn, args.document_id)
+    print(f"Section status for document {args.document_id}")
+    _print_section_count_summary("Pages", status["pages"])
+    print(f"  unlabeled pages: {status['unlabeled_pages']}")
+    _print_section_count_summary("Chunks", status["chunks"])
+    print(f"  unlabeled chunks: {status['unlabeled_chunks']}")
+    return 0
+
+
+def _print_section_count_summary(title: str, rows: list[dict]) -> None:
+    print(f"{title}:")
+    if not rows:
+        print("  none")
+        return
+    for row in rows:
+        print(f"  {row['section_label']} / {row['content_role']}: {row['count']}")
 
 
 def _write_or_print(text: str, output: Path | None) -> None:

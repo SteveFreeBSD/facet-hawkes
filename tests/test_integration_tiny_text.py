@@ -6,6 +6,7 @@ from pydantic import ValidationError
 from ethnos.chunking import build_chunks
 from ethnos.cli import main
 from ethnos.db import (
+    apply_section_preset,
     connect,
     init_db,
     list_documents,
@@ -14,10 +15,13 @@ from ethnos.db import (
     save_model_output,
     create_extraction_run,
     search_chunks,
+    section_label_status,
     select_chunks_for_structure,
     structure_status,
 )
 from ethnos.models import ChunkRecord, DocumentRecord, ExtractionResult, PageRecord
+from ethnos.export import export_study
+from ethnos.section_presets import get_section_preset
 
 
 def test_tiny_text_to_sqlite_and_fts(tmp_path):
@@ -104,6 +108,98 @@ def test_documents_cli_lists_stored_documents(tmp_path, capsys):
     assert "12" in output
     assert "1234567890ab" in output
     assert "/tmp/course.pdf" in output
+
+
+def test_section_label_columns_exist_after_db_init(tmp_path):
+    conn = connect(tmp_path / "ethnos.sqlite")
+    init_db(conn)
+
+    page_columns = {row["name"] for row in conn.execute("PRAGMA table_info(pages)")}
+    chunk_columns = {row["name"] for row in conn.execute("PRAGMA table_info(chunks)")}
+
+    assert {"section_label", "content_role"}.issubset(page_columns)
+    assert {"section_label", "content_role", "section_confidence"}.issubset(chunk_columns)
+
+
+def test_section_label_dry_run_does_not_write_labels(tmp_path):
+    conn = connect(tmp_path / "ethnos.sqlite")
+    init_db(conn)
+    document_id = _stored_three_page_document(conn)
+
+    summary = apply_section_preset(conn, document_id, get_section_preset("ethics"), dry_run=True)
+
+    assert summary["pages"] == [
+        {"section_label": "front_matter", "content_role": "admin", "count": 3}
+    ]
+    assert summary["chunks"] == [
+        {"section_label": "front_matter", "content_role": "admin", "count": 3}
+    ]
+    assert conn.execute("SELECT COUNT(*) AS count FROM pages WHERE section_label IS NOT NULL").fetchone()[
+        "count"
+    ] == 0
+    assert conn.execute("SELECT COUNT(*) AS count FROM chunks WHERE section_label IS NOT NULL").fetchone()[
+        "count"
+    ] == 0
+
+
+def test_label_sections_applies_expected_labels(tmp_path):
+    conn = connect(tmp_path / "ethnos.sqlite")
+    init_db(conn)
+    document_id = _stored_three_page_document(conn)
+
+    apply_section_preset(conn, document_id, get_section_preset("ethics"))
+
+    page = conn.execute(
+        "SELECT section_label, content_role FROM pages WHERE page_number = 1"
+    ).fetchone()
+    chunk = conn.execute(
+        """
+        SELECT section_label, content_role, section_confidence
+        FROM chunks
+        WHERE chunk_index = 1
+        """
+    ).fetchone()
+    assert dict(page) == {"section_label": "front_matter", "content_role": "admin"}
+    assert chunk["section_label"] == "front_matter"
+    assert chunk["content_role"] == "admin"
+    assert chunk["section_confidence"] == 1.0
+
+
+def test_section_status_helper_counts_labels(tmp_path):
+    conn = connect(tmp_path / "ethnos.sqlite")
+    init_db(conn)
+    document_id = _stored_three_page_document(conn)
+    apply_section_preset(conn, document_id, get_section_preset("ethics"))
+
+    status = section_label_status(conn, document_id)
+
+    assert status["pages"] == [
+        {"section_label": "front_matter", "content_role": "admin", "count": 3}
+    ]
+    assert status["chunks"] == [
+        {"section_label": "front_matter", "content_role": "admin", "count": 3}
+    ]
+    assert status["unlabeled_pages"] == 0
+    assert status["unlabeled_chunks"] == 0
+
+
+def test_label_sections_cli_dry_run_does_not_write_labels(tmp_path, capsys):
+    db_path = tmp_path / "ethnos.sqlite"
+    conn = connect(db_path)
+    init_db(conn)
+    _stored_three_page_document(conn)
+
+    exit_code = main(
+        ["--db", str(db_path), "label-sections", "1", "--preset", "ethics", "--dry-run"]
+    )
+    output = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert "Section label dry run for document 1 using preset ethics" in output
+    assert "front_matter / admin: 3" in output
+    assert conn.execute("SELECT COUNT(*) AS count FROM pages WHERE section_label IS NOT NULL").fetchone()[
+        "count"
+    ] == 0
 
 
 def test_select_chunks_for_structure_supports_limit_and_skips_valid_outputs(tmp_path):
@@ -669,6 +765,86 @@ def test_empty_response_is_stored_as_empty_response_and_preserves_rows(tmp_path)
     assert conn.execute("SELECT name FROM topics").fetchone()["name"] == "Existing Topic"
 
 
+def test_export_study_uses_terms_questions_and_source_pages(tmp_path):
+    conn = connect(tmp_path / "ethnos.sqlite")
+    init_db(conn)
+    chunk_id = _stored_chunk(conn, page_start=2, page_end=3)
+    result = ExtractionResult.model_validate(
+        {
+            "chunk_summary": "Ethics concepts.",
+            "topics": [],
+            "key_terms": [
+                {
+                    "term": "Moral relativism",
+                    "definition": "The view that moral judgments depend on a context or standpoint.",
+                    "context": "",
+                    "source_pages": [],
+                }
+            ],
+            "examples": [],
+            "questions": [
+                {
+                    "question": "What does moral relativism claim?",
+                    "answer": "It claims moral judgments depend on a context or standpoint.",
+                    "difficulty": "medium",
+                    "source_pages": [],
+                }
+            ],
+        }
+    )
+
+    from ethnos.db import save_extraction_result
+
+    save_extraction_result(conn, chunk_id, result)
+    guide = export_study(conn, 1)
+
+    assert guide.key_term_count == 1
+    assert guide.question_count == 1
+    assert "# Study Guide: course.pdf" in guide.markdown
+    assert "## Key Terms" in guide.markdown
+    assert "**Moral relativism**" in guide.markdown
+    assert "Source pages: pp. 2-3" in guide.markdown
+    assert "## Study Questions" in guide.markdown
+    assert "What does moral relativism claim?" in guide.markdown
+    assert "- [ ] Can I explain Moral relativism? (pp. 2-3)" in guide.markdown
+
+
+def test_export_study_cli_requires_output_and_writes_file(tmp_path):
+    db_path = tmp_path / "ethnos.sqlite"
+    output_path = tmp_path / "exports" / "study.md"
+    conn = connect(db_path)
+    init_db(conn)
+    chunk_id = _stored_chunk(conn, page_start=5, page_end=5)
+    result = ExtractionResult.model_validate(
+        {
+            "chunk_summary": "Ethics concepts.",
+            "topics": [],
+            "key_terms": [
+                {
+                    "term": "Virtue ethics",
+                    "definition": "An approach focused on character and virtue.",
+                    "context": "",
+                    "source_pages": [],
+                }
+            ],
+            "examples": [],
+            "questions": [],
+        }
+    )
+
+    from ethnos.db import save_extraction_result
+
+    save_extraction_result(conn, chunk_id, result)
+
+    exit_code = main(["--db", str(db_path), "export-study", "1", "--output", str(output_path)])
+
+    assert exit_code == 0
+    markdown = output_path.read_text(encoding="utf-8")
+    assert "# Study Guide: course.pdf" in markdown
+    assert "Virtue ethics" in markdown
+    assert "Source pages: p. 5" in markdown
+
+
 def test_whitespace_response_is_empty_response_but_raw_output_is_preserved(tmp_path):
     from ethnos.ollama_client import _validate_response
 
@@ -689,6 +865,44 @@ def test_non_empty_invalid_json_stays_invalid_json():
     assert "Expecting value" in result.validation_error
     assert result.raw_response == "not json"
     assert result.result is None
+
+
+def _stored_three_page_document(conn) -> int:
+    document = DocumentRecord(
+        source_path="/tmp/sections.pdf",
+        filename="sections.pdf",
+        sha256="sections-fixture",
+        title="Sections",
+        page_count=3,
+    )
+    pages = [
+        PageRecord(
+            document_id=0,
+            page_number=index,
+            raw_text=f"Page {index}",
+            cleaned_text=f"Page {index}",
+            char_count=6,
+        )
+        for index in range(1, 4)
+    ]
+    document_id = save_document_pages(conn, document, pages)
+    save_chunks(
+        conn,
+        document_id,
+        [
+            ChunkRecord(
+                document_id=document_id,
+                page_start=index,
+                page_end=index,
+                chunk_index=index,
+                text=f"Chunk {index}",
+                char_count=7,
+                source_citation=f"sections.pdf p. {index}, chunk {index}",
+            )
+            for index in range(1, 4)
+        ],
+    )
+    return document_id
 
 
 def _stored_chunk(conn, page_start: int, page_end: int) -> int:

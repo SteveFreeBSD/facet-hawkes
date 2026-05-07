@@ -29,6 +29,7 @@ uv run ethnos chunk 1
 uv run ethnos structure-status 1
 uv run ethnos search "photosynthesis"
 uv run ethnos export-markdown 1
+uv run ethnos export-study 1 --output data/processed/study-guide.md
 ```
 
 For a small Ollama smoke test, limit `structure` to one chunk:
