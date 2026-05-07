@@ -70,6 +70,15 @@ class RetrievalResult:
     stopped_reason: str
 
 
+@dataclass(frozen=True)
+class AnswerEvaluation:
+    status: str
+    missing_expected_terms: list[str]
+    forbidden_terms_found: list[str]
+    citation_hit: bool | None
+    expected_citations: list[str]
+
+
 def build_answer_context(rows: list[dict], max_chars: int) -> str:
     parts = []
     for row in rows:
@@ -163,6 +172,76 @@ def benchmark_hit(item: dict[str, Any], rows: list[dict[str, Any]]) -> bool:
             if pages & expected:
                 return True
     return False
+
+
+def evaluate_answer_quality(
+    item: dict[str, Any], answer_text: str, rows: list[dict[str, Any]]
+) -> AnswerEvaluation:
+    if _expects_no_context(item):
+        status = "no_context_expected" if not rows else "fail"
+        return AnswerEvaluation(
+            status=status,
+            missing_expected_terms=[],
+            forbidden_terms_found=[],
+            citation_hit=None,
+            expected_citations=[],
+        )
+    if not rows:
+        return AnswerEvaluation(
+            status="no_context_unexpected",
+            missing_expected_terms=list(item.get("expected_answer_terms", [])),
+            forbidden_terms_found=[],
+            citation_hit=False,
+            expected_citations=[],
+        )
+
+    answer_lower = answer_text.lower()
+    expected_terms = list(item.get("expected_answer_terms", []))
+    missing_terms = [term for term in expected_terms if term.lower() not in answer_lower]
+    forbidden_terms = [
+        term for term in item.get("forbidden_terms", []) if term.lower() in answer_lower
+    ]
+    expected_citations = expected_answer_citations(item)
+    citation_hit = None
+    if expected_citations:
+        citation_hit = any(citation.lower() in answer_lower for citation in expected_citations)
+
+    if forbidden_terms:
+        status = "fail"
+    else:
+        checks = len(expected_terms) + (1 if citation_hit is not None else 0)
+        passed = (len(expected_terms) - len(missing_terms)) + int(citation_hit is True)
+        if checks == 0:
+            status = "pass" if answer_text.strip() else "fail"
+        elif passed == checks:
+            status = "pass"
+        elif passed > 0:
+            status = "partial"
+        else:
+            status = "fail"
+
+    return AnswerEvaluation(
+        status=status,
+        missing_expected_terms=missing_terms,
+        forbidden_terms_found=forbidden_terms,
+        citation_hit=citation_hit,
+        expected_citations=expected_citations,
+    )
+
+
+def expected_answer_citations(item: dict[str, Any]) -> list[str]:
+    citations = []
+    for chunk in item.get("expected_citation_chunks", []):
+        citations.append(f"chunk {int(chunk)}")
+    for page in item.get("expected_citation_pages", []):
+        page = int(page)
+        citations.append(f"p. {page}")
+        citations.append(f"pp. {page}")
+    return citations
+
+
+def _expects_no_context(item: dict[str, Any]) -> bool:
+    return item.get("expected_source_chunks") == [] or item.get("expected_source_pages") == []
 
 
 def _content_tokens(question: str) -> list[str]:

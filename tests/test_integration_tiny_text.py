@@ -34,6 +34,7 @@ from ethnos.qa import (
     answer_query_candidates,
     benchmark_hit,
     build_answer_prompt,
+    evaluate_answer_quality,
     load_qa_benchmark,
     normalize_answer_role,
     question_to_fts_query,
@@ -578,6 +579,7 @@ def test_benchmark_file_loading_and_hit_detection(tmp_path):
                     "question": "What is evolutionary ethics?",
                     "expected_source_chunks": [1],
                     "expected_source_pages": [1],
+                    "expected_answer_terms": ["evolutionary ethics"],
                 }
             ]
         ),
@@ -588,9 +590,74 @@ def test_benchmark_file_loading_and_hit_detection(tmp_path):
     row = {"id": 1, "chunk_index": 1, "page_start": 1, "page_end": 1}
 
     assert items[0]["id"] == "sample"
+    assert items[0]["expected_answer_terms"] == ["evolutionary ethics"]
     assert benchmark_hit(items[0], [row]) is True
     assert benchmark_hit({"expected_source_chunks": [], "expected_source_pages": []}, []) is True
     assert benchmark_hit({"expected_source_chunks": [], "expected_source_pages": []}, [row]) is False
+
+
+def test_answer_quality_evaluation_pass_partial_fail_and_forbidden_terms():
+    row = {
+        "id": 1,
+        "chunk_index": 1,
+        "page_start": 1,
+        "page_end": 1,
+        "source_citation": "labeled.pdf p. 1, chunk 1",
+    }
+    item = {
+        "expected_answer_terms": ["evolutionary ethics", "core context"],
+        "expected_citation_chunks": [1],
+        "forbidden_terms": ["invented"],
+    }
+
+    passed = evaluate_answer_quality(
+        item,
+        "Evolutionary ethics appears in core context [labeled.pdf p. 1, chunk 1].",
+        [row],
+    )
+    partial = evaluate_answer_quality(
+        item,
+        "Evolutionary ethics appears here, but without the rest.",
+        [row],
+    )
+    failed = evaluate_answer_quality(item, "A thin answer.", [row])
+    forbidden = evaluate_answer_quality(item, "An invented answer about evolutionary ethics.", [row])
+
+    assert passed.status == "pass"
+    assert passed.citation_hit is True
+    assert partial.status == "partial"
+    assert partial.missing_expected_terms == ["core context"]
+    assert failed.status == "fail"
+    assert forbidden.status == "fail"
+    assert forbidden.forbidden_terms_found == ["invented"]
+
+
+def test_answer_quality_expected_citation_page_detection():
+    row = {
+        "id": 1,
+        "chunk_index": 1,
+        "page_start": 2,
+        "page_end": 3,
+        "source_citation": "labeled.pdf pp. 2-3, chunk 1",
+    }
+    evaluation = evaluate_answer_quality(
+        {"expected_answer_terms": ["term"], "expected_citation_pages": [2]},
+        "The term appears here [labeled.pdf pp. 2-3, chunk 1].",
+        [row],
+    )
+
+    assert evaluation.status == "pass"
+    assert evaluation.citation_hit is True
+
+
+def test_answer_quality_no_context_expected_behavior():
+    evaluation = evaluate_answer_quality(
+        {"expected_source_chunks": [], "expected_source_pages": []},
+        "",
+        [],
+    )
+
+    assert evaluation.status == "no_context_expected"
 
 
 def test_qa_bench_retrieval_only_path(tmp_path, capsys):
@@ -636,6 +703,60 @@ def test_qa_bench_retrieval_only_path(tmp_path, capsys):
     assert "hits: 2" in output
     assert "misses: 0" in output
     assert "no-context cases: 1" in output
+
+
+def test_qa_bench_with_ask_writes_json_report(tmp_path, capsys, monkeypatch):
+    db_path = tmp_path / "ethnos.sqlite"
+    benchmark_path = tmp_path / "bench.json"
+    output_path = tmp_path / "report.json"
+    conn = connect(db_path)
+    init_db(conn)
+    document_id, _ = _stored_labeled_record_document(conn)
+    benchmark_path.write_text(
+        json.dumps(
+            [
+                {
+                    "id": "core-answer",
+                    "question": "What is evolutionary ethics?",
+                    "expected_source_chunks": [1],
+                    "expected_answer_terms": ["evolutionary ethics"],
+                    "expected_citation_chunks": [1],
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    def fake_answer_question(**kwargs):
+        return AnswerCallResult(
+            raw_prompt=kwargs["prompt"],
+            raw_response="Evolutionary ethics is answered [labeled.pdf p. 1, chunk 1].",
+        )
+
+    monkeypatch.setattr("ethnos.cli.answer_question", fake_answer_question)
+
+    exit_code = main(
+        [
+            "--db",
+            str(db_path),
+            "qa-bench",
+            str(document_id),
+            "--benchmark",
+            str(benchmark_path),
+            "--ask",
+            "--output",
+            str(output_path),
+        ]
+    )
+    output = capsys.readouterr().out
+    report = json.loads(output_path.read_text(encoding="utf-8"))
+
+    assert exit_code == 0
+    assert "answer pass: 1" in output
+    assert report["answer_pass"] == 1
+    assert report["items"][0]["answer_text"].startswith("Evolutionary ethics")
+    assert report["items"][0]["answer_evaluation"]["status"] == "pass"
+    assert "timings" in report["items"][0]
 
 
 def test_select_chunks_for_structure_supports_limit_and_skips_valid_outputs(tmp_path):

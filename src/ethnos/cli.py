@@ -42,6 +42,7 @@ from .pdf_extract import extract_pdf
 from .qa import (
     benchmark_hit,
     build_answer_prompt,
+    evaluate_answer_quality,
     load_qa_benchmark,
     normalize_answer_role,
     question_to_fts_query,
@@ -191,9 +192,16 @@ def build_parser() -> argparse.ArgumentParser:
     bench_parser.add_argument("document_id", type=int)
     bench_parser.add_argument("--benchmark", type=Path, required=True)
     bench_parser.add_argument("--ask", action="store_true", help="Also call Ollama for answer previews.")
+    bench_parser.add_argument("--no-ask", action="store_true", help="Retrieval-only mode. This is the default.")
     bench_parser.add_argument("--limit", type=int, default=5)
     bench_parser.add_argument("--role", choices=ASK_ROLES, default="core")
     bench_parser.add_argument("--section", choices=sorted(SECTION_LABELS))
+    bench_parser.add_argument("--model", help="Ollama model name for --ask runs.")
+    bench_parser.add_argument(
+        "--num-predict",
+        type=int,
+        help="Ollama output token budget for --ask answers.",
+    )
     bench_parser.add_argument("--output", type=Path)
 
     json_parser = _command(subcommands, "export-json", "Export document data as JSON.", export_json_cmd)
@@ -615,13 +623,21 @@ def qa_bench_cmd(args: argparse.Namespace) -> int:
     settings, conn = open_db(args)
     if args.limit < 1:
         raise SystemExit("--limit must be 1 or greater.")
+    if args.ask and args.no_ask:
+        raise SystemExit("Use either --ask or --no-ask, not both.")
+    num_predict = structure_num_predict(args, settings)
+    if num_predict < 1:
+        raise SystemExit("--num-predict must be 1 or greater.")
     selected_role = normalize_answer_role(args.role)
     items = load_qa_benchmark(args.benchmark)
     started_at = time.monotonic()
     report_items = []
     hits = misses = no_context = 0
+    answer_counts = Counter()
+    run_answers = bool(args.ask)
 
     for item in items:
+        item_started_at = time.monotonic()
         retrieval = _retrieve_answer_context(
             conn,
             document_id=args.document_id,
@@ -646,20 +662,44 @@ def qa_bench_cmd(args: argparse.Namespace) -> int:
         print(f"  expected pages: {item.get('expected_source_pages', 'not specified')}")
         print(f"  status: {'hit' if hit else 'miss'}")
 
+        answer_text = None
         answer_preview = None
-        if args.ask and retrieval.rows:
+        answer_evaluation = None
+        answer_elapsed = None
+        if run_answers and retrieval.rows:
             prompt = build_answer_prompt(item["question"], retrieval.rows, max_chars=1200)
+            answer_started_at = time.monotonic()
             result = answer_question(
                 prompt=prompt,
-                model_name=settings.ollama_model,
+                model_name=args.model or settings.ollama_model,
                 host=settings.ollama_host,
                 timeout=settings.ollama_timeout,
-                num_predict=settings.ollama_num_predict,
+                num_predict=num_predict,
             )
+            answer_elapsed = time.monotonic() - answer_started_at
+            answer_text = result.raw_response.strip()
             answer_preview = preview_text(result.raw_response, 400)
-            print(f"  answer preview: {answer_preview}")
+        if run_answers:
+            answer_evaluation = evaluate_answer_quality(item, answer_text or "", retrieval.rows)
+            answer_counts[answer_evaluation.status] += 1
+            print(f"  answer status: {answer_evaluation.status}")
+            if answer_evaluation.missing_expected_terms:
+                print(
+                    "  missing expected terms: "
+                    + ", ".join(answer_evaluation.missing_expected_terms)
+                )
+            if answer_evaluation.forbidden_terms_found:
+                print(
+                    "  forbidden terms found: "
+                    + ", ".join(answer_evaluation.forbidden_terms_found)
+                )
+            if answer_evaluation.citation_hit is not None:
+                print(f"  citation hit: {answer_evaluation.citation_hit}")
+            if answer_preview:
+                print(f"  answer preview: {answer_preview}")
         print()
 
+        item_elapsed = time.monotonic() - item_started_at
         report_items.append(
             {
                 "id": item["id"],
@@ -673,7 +713,23 @@ def qa_bench_cmd(args: argparse.Namespace) -> int:
                 "expected_source_pages": item.get("expected_source_pages"),
                 "hit": hit,
                 "stopped_reason": retrieval.stopped_reason,
+                "answer_text": answer_text,
                 "answer_preview": answer_preview,
+                "answer_evaluation": (
+                    {
+                        "status": answer_evaluation.status,
+                        "missing_expected_terms": answer_evaluation.missing_expected_terms,
+                        "forbidden_terms_found": answer_evaluation.forbidden_terms_found,
+                        "citation_hit": answer_evaluation.citation_hit,
+                        "expected_citations": answer_evaluation.expected_citations,
+                    }
+                    if answer_evaluation is not None
+                    else None
+                ),
+                "timings": {
+                    "item_seconds": item_elapsed,
+                    "answer_seconds": answer_elapsed,
+                },
             }
         )
 
@@ -683,6 +739,12 @@ def qa_bench_cmd(args: argparse.Namespace) -> int:
     print(f"  hits: {hits}")
     print(f"  misses: {misses}")
     print(f"  no-context cases: {no_context}")
+    if run_answers:
+        print(f"  answer pass: {answer_counts['pass']}")
+        print(f"  answer partial: {answer_counts['partial']}")
+        print(f"  answer fail: {answer_counts['fail']}")
+        print(f"  no-context expected: {answer_counts['no_context_expected']}")
+        print(f"  no-context unexpected: {answer_counts['no_context_unexpected']}")
     print(f"  elapsed: {format_elapsed(elapsed)}")
 
     if args.output:
@@ -693,6 +755,13 @@ def qa_bench_cmd(args: argparse.Namespace) -> int:
             "hits": hits,
             "misses": misses,
             "no_context_cases": no_context,
+            "answer_pass": answer_counts["pass"] if run_answers else None,
+            "answer_partial": answer_counts["partial"] if run_answers else None,
+            "answer_fail": answer_counts["fail"] if run_answers else None,
+            "no_context_expected": answer_counts["no_context_expected"] if run_answers else None,
+            "no_context_unexpected": (
+                answer_counts["no_context_unexpected"] if run_answers else None
+            ),
             "elapsed_seconds": elapsed,
             "items": report_items,
         }
