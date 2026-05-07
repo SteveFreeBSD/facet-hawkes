@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import pytest
+from pydantic import ValidationError
+
 from ethnos.chunking import build_chunks
 from ethnos.cli import main
 from ethnos.db import (
@@ -290,6 +293,212 @@ def test_save_extraction_result_preserves_valid_model_source_pages(tmp_path):
     save_extraction_result(conn, chunk_id, result)
 
     assert conn.execute("SELECT source_pages FROM topics").fetchone()["source_pages"] == "[3]"
+
+
+def test_valid_extraction_rerun_replaces_normalized_rows_for_chunk(tmp_path):
+    conn = connect(tmp_path / "ethnos.sqlite")
+    init_db(conn)
+    chunk_id = _stored_chunk(conn, page_start=20, page_end=20)
+
+    from ethnos.db import save_extraction_result
+
+    first = ExtractionResult.model_validate(
+        {
+            "chunk_summary": "First result.",
+            "topics": [
+                {
+                    "name": "Old Topic",
+                    "summary": "Old summary.",
+                    "confidence": 0.6,
+                    "source_pages": [],
+                }
+            ],
+            "key_terms": [
+                {
+                    "term": "Old Term",
+                    "definition": "Old definition.",
+                    "context": "",
+                    "source_pages": [],
+                }
+            ],
+            "examples": [],
+            "questions": [
+                {
+                    "question": "Old question?",
+                    "answer": "Old answer.",
+                    "difficulty": "easy",
+                    "source_pages": [],
+                }
+            ],
+        }
+    )
+    second = ExtractionResult.model_validate(
+        {
+            "chunk_summary": "Second result.",
+            "topics": [
+                {
+                    "name": "New Topic",
+                    "summary": "New summary.",
+                    "confidence": 0.9,
+                    "source_pages": [],
+                }
+            ],
+            "key_terms": [],
+            "examples": [
+                {
+                    "title": "New Example",
+                    "body": "New example body.",
+                    "source_pages": [],
+                }
+            ],
+            "questions": [
+                {
+                    "question": "New question?",
+                    "answer": "New answer.",
+                    "difficulty": "medium",
+                    "source_pages": [],
+                }
+            ],
+        }
+    )
+
+    save_extraction_result(conn, chunk_id, first)
+    save_extraction_result(conn, chunk_id, second)
+
+    assert conn.execute("SELECT name FROM topics").fetchall()[0]["name"] == "New Topic"
+    assert conn.execute("SELECT COUNT(*) AS count FROM key_terms").fetchone()["count"] == 0
+    assert conn.execute("SELECT title FROM examples").fetchone()["title"] == "New Example"
+    assert conn.execute("SELECT question FROM questions").fetchone()["question"] == "New question?"
+
+
+def test_failed_validation_does_not_clear_existing_normalized_rows(tmp_path):
+    conn = connect(tmp_path / "ethnos.sqlite")
+    init_db(conn)
+    chunk_id = _stored_chunk(conn, page_start=30, page_end=30)
+
+    from ethnos.db import save_extraction_result
+
+    valid = ExtractionResult.model_validate(
+        {
+            "chunk_summary": "Valid result.",
+            "topics": [
+                {
+                    "name": "Existing Topic",
+                    "summary": "Existing summary.",
+                    "confidence": 0.8,
+                    "source_pages": [],
+                }
+            ],
+            "key_terms": [],
+            "examples": [],
+            "questions": [
+                {
+                    "question": "Existing question?",
+                    "answer": "Existing answer.",
+                    "difficulty": "easy",
+                    "source_pages": [],
+                }
+            ],
+        }
+    )
+    save_extraction_result(conn, chunk_id, valid)
+
+    with pytest.raises(ValidationError):
+        ExtractionResult.model_validate(
+            {
+                "chunk_summary": "Invalid result.",
+                "topics": [],
+                "key_terms": [],
+                "examples": [],
+                "questions": [
+                    {
+                        "question": "Bad question?",
+                        "answer": "",
+                        "difficulty": "easy",
+                        "source_pages": [],
+                    }
+                ],
+            }
+        )
+
+    assert conn.execute("SELECT name FROM topics").fetchone()["name"] == "Existing Topic"
+    assert conn.execute("SELECT question FROM questions").fetchone()["question"] == "Existing question?"
+
+
+def test_model_outputs_history_is_preserved_across_normalized_replacement(tmp_path):
+    conn = connect(tmp_path / "ethnos.sqlite")
+    init_db(conn)
+    chunk_id = _stored_chunk(conn, page_start=40, page_end=40)
+    document_id = conn.execute("SELECT document_id FROM chunks WHERE id = ?", (chunk_id,)).fetchone()[
+        "document_id"
+    ]
+    first_run_id = create_extraction_run(conn, document_id, "test-model", "prompt")
+    second_run_id = create_extraction_run(conn, document_id, "test-model", "prompt")
+    save_model_output(
+        conn,
+        run_id=first_run_id,
+        chunk_id=chunk_id,
+        raw_prompt="first prompt",
+        raw_response="first raw response",
+        parsed_json={"chunk_summary": "first"},
+        validation_status="valid",
+        validation_error=None,
+    )
+    save_model_output(
+        conn,
+        run_id=second_run_id,
+        chunk_id=chunk_id,
+        raw_prompt="second prompt",
+        raw_response="second raw response",
+        parsed_json={"chunk_summary": "second"},
+        validation_status="valid",
+        validation_error=None,
+    )
+
+    from ethnos.db import save_extraction_result
+
+    first = ExtractionResult.model_validate(
+        {
+            "chunk_summary": "First result.",
+            "topics": [
+                {
+                    "name": "First Topic",
+                    "summary": "First summary.",
+                    "confidence": 0.7,
+                    "source_pages": [],
+                }
+            ],
+            "key_terms": [],
+            "examples": [],
+            "questions": [],
+        }
+    )
+    second = ExtractionResult.model_validate(
+        {
+            "chunk_summary": "Second result.",
+            "topics": [
+                {
+                    "name": "Second Topic",
+                    "summary": "Second summary.",
+                    "confidence": 0.8,
+                    "source_pages": [],
+                }
+            ],
+            "key_terms": [],
+            "examples": [],
+            "questions": [],
+        }
+    )
+
+    save_extraction_result(conn, chunk_id, first)
+    save_extraction_result(conn, chunk_id, second)
+
+    outputs = conn.execute(
+        "SELECT raw_response FROM model_outputs WHERE chunk_id = ? ORDER BY id", (chunk_id,)
+    ).fetchall()
+    assert [row["raw_response"] for row in outputs] == ["first raw response", "second raw response"]
+    assert conn.execute("SELECT COUNT(*) AS count FROM extraction_runs").fetchone()["count"] == 2
+    assert conn.execute("SELECT name FROM topics").fetchone()["name"] == "Second Topic"
 
 
 def _stored_chunk(conn, page_start: int, page_end: int) -> int:

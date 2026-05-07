@@ -422,6 +422,7 @@ def save_extraction_result(
 ) -> None:
     fallback_source_pages = _chunk_source_pages(conn, chunk_id)
     with conn:
+        _delete_normalized_chunk_records(conn, chunk_id)
         for topic in result.topics:
             source_pages = _record_source_pages(topic.source_pages, fallback_source_pages)
             conn.execute(
@@ -476,6 +477,13 @@ def save_extraction_result(
                     json.dumps(source_pages),
                 ),
             )
+
+
+def _delete_normalized_chunk_records(conn: sqlite3.Connection, chunk_id: int) -> None:
+    conn.execute("DELETE FROM topics WHERE chunk_id = ?", (chunk_id,))
+    conn.execute("DELETE FROM key_terms WHERE chunk_id = ?", (chunk_id,))
+    conn.execute("DELETE FROM examples WHERE chunk_id = ?", (chunk_id,))
+    conn.execute("DELETE FROM questions WHERE chunk_id = ?", (chunk_id,))
 
 
 def _chunk_source_pages(conn: sqlite3.Connection, chunk_id: int) -> list[int]:
