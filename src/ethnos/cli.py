@@ -195,7 +195,17 @@ def build_parser() -> argparse.ArgumentParser:
     bench_parser.add_argument("--benchmark", type=Path, required=True)
     bench_parser.add_argument("--ask", action="store_true", help="Also call Ollama for answer previews.")
     bench_parser.add_argument("--no-ask", action="store_true", help="Retrieval-only mode. This is the default.")
-    bench_parser.add_argument("--limit", type=int, default=5)
+    bench_parser.add_argument(
+        "--limit",
+        type=int,
+        default=5,
+        help="Retrieved context chunks per benchmark question.",
+    )
+    bench_parser.add_argument(
+        "--max-questions",
+        type=int,
+        help="Maximum benchmark questions to run; useful for smoke tests.",
+    )
     bench_parser.add_argument("--role", choices=ASK_ROLES, default="core")
     bench_parser.add_argument("--section", choices=sorted(SECTION_LABELS))
     bench_parser.add_argument("--model", help="Ollama model name for --ask runs.")
@@ -547,6 +557,8 @@ def context_cmd(args: argparse.Namespace) -> int:
     _, conn = open_db(args)
     if args.limit < 1:
         raise SystemExit("--limit must be 1 or greater.")
+    if args.max_questions is not None and args.max_questions < 1:
+        raise SystemExit("--max-questions must be 1 or greater.")
     if args.chars < 1:
         raise SystemExit("--chars must be 1 or greater.")
     rows = context_chunks(
@@ -638,6 +650,7 @@ def qa_bench_cmd(args: argparse.Namespace) -> int:
         raise SystemExit("--num-predict must be 1 or greater.")
     selected_role = normalize_answer_role(args.role)
     items = load_qa_benchmark(args.benchmark)
+    items = limit_benchmark_items(items, args.max_questions)
     if args.models:
         models = parse_models_arg(args.models)
         if not models:
@@ -659,6 +672,7 @@ def qa_bench_cmd(args: argparse.Namespace) -> int:
 
     for item in items:
         item_started_at = time.monotonic()
+        item_number = len(report_items) + 1
         retrieval = _retrieve_answer_context(
             conn,
             document_id=args.document_id,
@@ -675,6 +689,8 @@ def qa_bench_cmd(args: argparse.Namespace) -> int:
         selected_citations = [row["source_citation"] for row in retrieval.rows]
 
         print(f"{item['id']}: {item['question']}")
+        if run_answers:
+            print(progress_line(args.model or settings.ollama_model, item_number, len(items), item["id"]), flush=True)
         print(f"  derived query: {retrieval.queries_tried[0] if retrieval.queries_tried else ''}")
         print(f"  fallback queries tried: {', '.join(retrieval.queries_tried)}")
         print(f"  selected chunks: {', '.join(str(chunk) for chunk in selected_chunks) or 'none'}")
@@ -690,6 +706,7 @@ def qa_bench_cmd(args: argparse.Namespace) -> int:
         if run_answers and retrieval.rows:
             prompt = build_answer_prompt(item["question"], retrieval.rows, max_chars=1200)
             answer_started_at = time.monotonic()
+            print("  answer generation: start", flush=True)
             result = answer_question(
                 prompt=prompt,
                 model_name=args.model or settings.ollama_model,
@@ -698,6 +715,7 @@ def qa_bench_cmd(args: argparse.Namespace) -> int:
                 num_predict=num_predict,
             )
             answer_elapsed = time.monotonic() - answer_started_at
+            print(f"  answer generation elapsed: {format_elapsed(answer_elapsed)}", flush=True)
             answer_text = result.raw_response.strip()
             answer_preview = preview_text(result.raw_response, 400)
         if run_answers:
@@ -839,10 +857,10 @@ def qa_bench_compare_models(
     model_reports = []
     model_summaries = []
     for model_name in models:
-        print(f"Model: {model_name}")
+        print(f"Model: {model_name}", flush=True)
         model_started_at = time.monotonic()
         model_items = []
-        for entry in retrieval_entries:
+        for index, entry in enumerate(retrieval_entries, start=1):
             item = entry["item"]
             retrieval = entry["retrieval"]
             answer_text = None
@@ -850,9 +868,11 @@ def qa_bench_compare_models(
             answer_evaluation = None
             answer_elapsed = None
             model_error = None
+            print(progress_line(model_name, index, len(retrieval_entries), item["id"]), flush=True)
             if retrieval.rows:
                 prompt = build_answer_prompt(item["question"], retrieval.rows, max_chars=1200)
                 answer_started_at = time.monotonic()
+                print("  answer generation: start", flush=True)
                 try:
                     result = answer_question(
                         prompt=prompt,
@@ -862,6 +882,10 @@ def qa_bench_compare_models(
                         num_predict=num_predict,
                     )
                     answer_elapsed = time.monotonic() - answer_started_at
+                    print(
+                        f"  answer generation elapsed: {format_elapsed(answer_elapsed)}",
+                        flush=True,
+                    )
                     answer_text = result.raw_response.strip()
                     answer_preview = preview_text(result.raw_response, 240)
                     answer_evaluation = evaluate_answer_quality(
@@ -869,6 +893,10 @@ def qa_bench_compare_models(
                     )
                 except Exception as exc:  # Ollama error types vary by version.
                     answer_elapsed = time.monotonic() - answer_started_at
+                    print(
+                        f"  answer generation elapsed: {format_elapsed(answer_elapsed)}",
+                        flush=True,
+                    )
                     model_error = str(exc)
                     answer_evaluation = {
                         "status": "model_error",
@@ -1173,6 +1201,16 @@ def parse_models_arg(value: str) -> list[str]:
         if model and model not in models:
             models.append(model)
     return models
+
+
+def limit_benchmark_items(items: list[dict], max_questions: int | None) -> list[dict]:
+    if max_questions is None:
+        return items
+    return items[:max_questions]
+
+
+def progress_line(model_name: str, question_number: int, total_questions: int, question_id: str) -> str:
+    return f"[{model_name}] question {question_number}/{total_questions}: {question_id}"
 
 
 def _print_model_summary(summary: dict) -> None:

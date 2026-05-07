@@ -6,7 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from ethnos.chunking import build_chunks
-from ethnos.cli import main, parse_models_arg
+from ethnos.cli import limit_benchmark_items, main, parse_models_arg, progress_line
 from ethnos.db import (
     apply_section_preset,
     connect,
@@ -705,6 +705,95 @@ def test_qa_bench_retrieval_only_path(tmp_path, capsys):
     assert "hits: 2" in output
     assert "misses: 0" in output
     assert "no-context cases: 1" in output
+
+
+def test_limit_benchmark_items_and_progress_line():
+    items = [{"id": "one"}, {"id": "two"}, {"id": "three"}]
+
+    assert limit_benchmark_items(items, None) == items
+    assert limit_benchmark_items(items, 2) == [{"id": "one"}, {"id": "two"}]
+    assert progress_line("gemma-python", 2, 14, "virtue-ethics") == (
+        "[gemma-python] question 2/14: virtue-ethics"
+    )
+
+
+def test_qa_bench_max_questions_limits_processed_items(tmp_path, capsys):
+    db_path = tmp_path / "ethnos.sqlite"
+    benchmark_path = tmp_path / "bench.json"
+    conn = connect(db_path)
+    init_db(conn)
+    document_id, _ = _stored_labeled_record_document(conn)
+    benchmark_path.write_text(
+        json.dumps(
+            [
+                {"id": "one", "question": "evolutionary ethics", "expected_source_chunks": [1]},
+                {"id": "two", "question": "evolutionary ethics", "expected_source_chunks": [1]},
+                {"id": "three", "question": "evolutionary ethics", "expected_source_chunks": [1]},
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    exit_code = main(
+        [
+            "--db",
+            str(db_path),
+            "qa-bench",
+            str(document_id),
+            "--benchmark",
+            str(benchmark_path),
+            "--max-questions",
+            "2",
+        ]
+    )
+    output = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert "one: evolutionary ethics" in output
+    assert "two: evolutionary ethics" in output
+    assert "three: evolutionary ethics" not in output
+    assert "total: 2" in output
+
+
+def test_qa_bench_limit_remains_retrieved_chunk_limit(tmp_path, capsys):
+    db_path = tmp_path / "ethnos.sqlite"
+    benchmark_path = tmp_path / "bench.json"
+    conn = connect(db_path)
+    init_db(conn)
+    document_id, _ = _stored_labeled_record_document(conn)
+    benchmark_path.write_text(
+        json.dumps(
+            [
+                {
+                    "id": "all-roles",
+                    "question": "evolutionary",
+                    "expected_source_chunks": [1],
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    exit_code = main(
+        [
+            "--db",
+            str(db_path),
+            "qa-bench",
+            str(document_id),
+            "--benchmark",
+            str(benchmark_path),
+            "--role",
+            "all",
+            "--limit",
+            "2",
+        ]
+    )
+    output = capsys.readouterr().out
+
+    assert exit_code == 0
+    selected_line = next(line for line in output.splitlines() if "selected chunks:" in line)
+    selected_chunks = selected_line.split("selected chunks:", 1)[1].strip().split(", ")
+    assert len(selected_chunks) == 2
 
 
 def test_qa_bench_with_ask_writes_json_report(tmp_path, capsys, monkeypatch):
