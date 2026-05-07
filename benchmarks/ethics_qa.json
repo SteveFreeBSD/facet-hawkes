@@ -1,0 +1,101 @@
+[
+  {
+    "id": "methodological-naturalism",
+    "question": "What is methodological ethical naturalism?",
+    "expected_source_chunks": [80, 81, 82],
+    "expected_source_pages": [93, 94, 95],
+    "expected_terms": ["methodological ethical naturalism"],
+    "notes": "Should retrieve the evolutionary ethics chapter discussion of methodological naturalism."
+  },
+  {
+    "id": "evolutionary-ethics",
+    "question": "What are the main ideas in evolutionary ethics?",
+    "expected_source_chunks": [79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90],
+    "expected_source_pages": [92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102],
+    "expected_terms": ["evolutionary ethics"]
+  },
+  {
+    "id": "trolley-problem",
+    "question": "What is the trolley problem used to explain?",
+    "expected_source_chunks": [55],
+    "expected_source_pages": [65],
+    "expected_terms": ["trolley problem", "utilitarianism"]
+  },
+  {
+    "id": "trolley-utilitarianism",
+    "question": "How does utilitarianism handle the trolley problem?",
+    "expected_source_chunks": [55],
+    "expected_source_pages": [65],
+    "expected_terms": ["trolley problem", "utilitarianism"]
+  },
+  {
+    "id": "trolley-cases",
+    "question": "What does the book say about trolley cases and utilitarianism?",
+    "expected_source_chunks": [55],
+    "expected_source_pages": [65],
+    "expected_terms": ["trolley problem", "utilitarianism"]
+  },
+  {
+    "id": "utilitarianism",
+    "question": "What is utilitarianism?",
+    "expected_source_chunks": [51, 52, 53, 54, 55, 56, 57, 58],
+    "expected_source_pages": [62, 63, 64, 65, 66, 67, 68, 69],
+    "expected_terms": ["utilitarianism"]
+  },
+  {
+    "id": "kantian-deontology",
+    "question": "What is Kantian deontology?",
+    "expected_source_chunks": [59, 60, 61, 62, 63, 64, 65, 66, 67],
+    "expected_source_pages": [70, 71, 72, 73, 74, 75, 76, 77, 78],
+    "expected_terms": ["Kantian deontology"]
+  },
+  {
+    "id": "virtue-ethics",
+    "question": "What is virtue ethics?",
+    "expected_source_chunks": [31, 32, 33, 34, 35, 36, 37, 38, 39],
+    "expected_source_pages": [44, 45, 46, 47, 48, 49, 50, 51, 52],
+    "expected_terms": ["virtue ethics"]
+  },
+  {
+    "id": "ethical-egoism",
+    "question": "What is ethical egoism?",
+    "expected_source_chunks": [11, 41, 42, 43, 44],
+    "expected_source_pages": [19, 54, 55, 56, 57],
+    "expected_terms": ["ethical egoism"]
+  },
+  {
+    "id": "social-contract",
+    "question": "What is social contract theory?",
+    "expected_source_chunks": [41, 44, 45, 48, 49],
+    "expected_source_pages": [54, 57, 58, 60],
+    "expected_terms": ["social contract"]
+  },
+  {
+    "id": "relativism",
+    "question": "What is moral relativism?",
+    "expected_source_chunks": [12, 13, 14, 15, 16, 17, 18, 19],
+    "expected_source_pages": [21, 22, 23, 24, 25, 26, 27, 28, 29, 30],
+    "expected_terms": ["relativism", "moral relativism"]
+  },
+  {
+    "id": "divine-command-natural-law",
+    "question": "What does the book say about divine command theory and natural law?",
+    "expected_source_chunks": [10, 21, 22, 24, 26],
+    "expected_source_pages": [18, 32, 33, 34, 36, 38],
+    "expected_terms": ["divine command theory", "natural law"]
+  },
+  {
+    "id": "feminist-ethics",
+    "question": "What is feminist ethics?",
+    "expected_source_chunks": [69, 70, 71, 72, 73, 74, 75, 76, 77],
+    "expected_source_pages": [81, 82, 83, 84, 85, 86, 87, 88, 89],
+    "expected_terms": ["feminist ethics"]
+  },
+  {
+    "id": "out-of-scope-quantum",
+    "question": "How does quantum computing use error correction?",
+    "expected_source_chunks": [],
+    "expected_source_pages": [],
+    "notes": "Out-of-scope question; retrieval should find no strong document context."
+  }
+]

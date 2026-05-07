@@ -39,7 +39,14 @@ from .db import (
 from .export import export_json, export_markdown, export_study
 from .ollama_client import answer_question, extract_chunk
 from .pdf_extract import extract_pdf
-from .qa import build_answer_prompt, normalize_answer_role, question_to_fts_query
+from .qa import (
+    benchmark_hit,
+    build_answer_prompt,
+    load_qa_benchmark,
+    normalize_answer_role,
+    question_to_fts_query,
+    retrieve_with_fallbacks,
+)
 from .section_presets import CONTENT_ROLES, PRESETS, SECTION_LABELS, get_section_preset
 
 
@@ -172,6 +179,22 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Print compact Ollama request/response diagnostics.",
     )
+    ask_parser.add_argument(
+        "--debug-retrieval",
+        action="store_true",
+        help="Print answer retrieval query attempts.",
+    )
+
+    bench_parser = _command(
+        subcommands, "qa-bench", "Run a retrieval benchmark for local PDF QA.", qa_bench_cmd
+    )
+    bench_parser.add_argument("document_id", type=int)
+    bench_parser.add_argument("--benchmark", type=Path, required=True)
+    bench_parser.add_argument("--ask", action="store_true", help="Also call Ollama for answer previews.")
+    bench_parser.add_argument("--limit", type=int, default=5)
+    bench_parser.add_argument("--role", choices=ASK_ROLES, default="core")
+    bench_parser.add_argument("--section", choices=sorted(SECTION_LABELS))
+    bench_parser.add_argument("--output", type=Path)
 
     json_parser = _command(subcommands, "export-json", "Export document data as JSON.", export_json_cmd)
     json_parser.add_argument("document_id", type=int)
@@ -547,18 +570,19 @@ def ask_cmd(args: argparse.Namespace) -> int:
         raise SystemExit("--num-predict must be 1 or greater.")
 
     selected_role = normalize_answer_role(args.role)
-    retrieval_query = question_to_fts_query(args.question)
-    rows = context_chunks(
+    retrieval = _retrieve_answer_context(
         conn,
-        args.document_id,
-        retrieval_query,
+        document_id=args.document_id,
+        question=args.question,
         limit=args.limit,
         role=selected_role,
         section=args.section,
     )
     print(f"Question: {args.question}")
+    if args.debug_retrieval or args.debug_ollama:
+        _print_retrieval_debug(retrieval)
     print()
-    if not rows:
+    if not retrieval.rows:
         print("Selected context chunks: none")
         print()
         print("Answer:")
@@ -566,8 +590,8 @@ def ask_cmd(args: argparse.Namespace) -> int:
         return 0
 
     print("Selected context chunks:")
-    _print_context_sources(rows)
-    prompt = build_answer_prompt(args.question, rows, max_chars=args.chars)
+    _print_context_sources(retrieval.rows)
+    prompt = build_answer_prompt(args.question, retrieval.rows, max_chars=args.chars)
     result = answer_question(
         prompt=prompt,
         model_name=args.model or settings.ollama_model,
@@ -583,7 +607,98 @@ def ask_cmd(args: argparse.Namespace) -> int:
     print(result.raw_response.strip() or "The document context did not contain enough information.")
     print()
     print("Sources:")
-    _print_context_sources(rows)
+    _print_context_sources(retrieval.rows)
+    return 0
+
+
+def qa_bench_cmd(args: argparse.Namespace) -> int:
+    settings, conn = open_db(args)
+    if args.limit < 1:
+        raise SystemExit("--limit must be 1 or greater.")
+    selected_role = normalize_answer_role(args.role)
+    items = load_qa_benchmark(args.benchmark)
+    started_at = time.monotonic()
+    report_items = []
+    hits = misses = no_context = 0
+
+    for item in items:
+        retrieval = _retrieve_answer_context(
+            conn,
+            document_id=args.document_id,
+            question=item["question"],
+            limit=args.limit,
+            role=selected_role,
+            section=args.section,
+        )
+        hit = benchmark_hit(item, retrieval.rows)
+        hits += int(hit)
+        misses += int(not hit)
+        no_context += int(not retrieval.rows)
+        selected_chunks = [row["id"] for row in retrieval.rows]
+        selected_citations = [row["source_citation"] for row in retrieval.rows]
+
+        print(f"{item['id']}: {item['question']}")
+        print(f"  derived query: {retrieval.queries_tried[0] if retrieval.queries_tried else ''}")
+        print(f"  fallback queries tried: {', '.join(retrieval.queries_tried)}")
+        print(f"  selected chunks: {', '.join(str(chunk) for chunk in selected_chunks) or 'none'}")
+        print(f"  selected source citations: {', '.join(selected_citations) or 'none'}")
+        print(f"  expected chunks: {item.get('expected_source_chunks', 'not specified')}")
+        print(f"  expected pages: {item.get('expected_source_pages', 'not specified')}")
+        print(f"  status: {'hit' if hit else 'miss'}")
+
+        answer_preview = None
+        if args.ask and retrieval.rows:
+            prompt = build_answer_prompt(item["question"], retrieval.rows, max_chars=1200)
+            result = answer_question(
+                prompt=prompt,
+                model_name=settings.ollama_model,
+                host=settings.ollama_host,
+                timeout=settings.ollama_timeout,
+                num_predict=settings.ollama_num_predict,
+            )
+            answer_preview = preview_text(result.raw_response, 400)
+            print(f"  answer preview: {answer_preview}")
+        print()
+
+        report_items.append(
+            {
+                "id": item["id"],
+                "question": item["question"],
+                "derived_query": retrieval.queries_tried[0] if retrieval.queries_tried else "",
+                "queries_tried": retrieval.queries_tried,
+                "selected_query": retrieval.selected_query,
+                "selected_chunks": selected_chunks,
+                "selected_source_citations": selected_citations,
+                "expected_source_chunks": item.get("expected_source_chunks"),
+                "expected_source_pages": item.get("expected_source_pages"),
+                "hit": hit,
+                "stopped_reason": retrieval.stopped_reason,
+                "answer_preview": answer_preview,
+            }
+        )
+
+    elapsed = time.monotonic() - started_at
+    print("QA benchmark summary:")
+    print(f"  total: {len(items)}")
+    print(f"  hits: {hits}")
+    print(f"  misses: {misses}")
+    print(f"  no-context cases: {no_context}")
+    print(f"  elapsed: {format_elapsed(elapsed)}")
+
+    if args.output:
+        report = {
+            "document_id": args.document_id,
+            "benchmark": str(args.benchmark),
+            "total": len(items),
+            "hits": hits,
+            "misses": misses,
+            "no_context_cases": no_context,
+            "elapsed_seconds": elapsed,
+            "items": report_items,
+        }
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
+        print(f"  wrote report: {args.output}")
     return 0
 
 
@@ -778,6 +893,45 @@ def _print_non_core_records(rows: list[dict], limit: int = 20) -> None:
         )
     if len(rows) > limit:
         print(f"  ... {len(rows) - limit} more")
+
+
+def _retrieve_answer_context(
+    conn,
+    *,
+    document_id: int,
+    question: str,
+    limit: int,
+    role: str | None,
+    section: str | None,
+):
+    return retrieve_with_fallbacks(
+        search_func=lambda doc_id, query, limit, role, section: context_chunks(
+            conn,
+            doc_id,
+            query,
+            limit=limit,
+            role=role,
+            section=section,
+        ),
+        document_id=document_id,
+        question=question,
+        limit=limit,
+        role=role,
+        section=section,
+    )
+
+
+def _print_retrieval_debug(retrieval) -> None:
+    print("Retrieval debug:")
+    print(f"  original question: {retrieval.original_question}")
+    print(f"  derived query: {retrieval.queries_tried[0] if retrieval.queries_tried else ''}")
+    print(f"  fallback queries tried: {', '.join(retrieval.queries_tried)}")
+    print(f"  selected query: {retrieval.selected_query or 'none'}")
+    print(
+        "  selected chunks: "
+        + (", ".join(str(row["id"]) for row in retrieval.rows) if retrieval.rows else "none")
+    )
+    print(f"  stopped reason: {retrieval.stopped_reason}")
 
 
 def _print_context_sources(rows: list[dict]) -> None:

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import pytest
 from pydantic import ValidationError
 
@@ -28,7 +30,15 @@ from ethnos.db import (
 from ethnos.models import ChunkRecord, DocumentRecord, ExtractionResult, PageRecord
 from ethnos.export import export_study
 from ethnos.ollama_client import AnswerCallResult
-from ethnos.qa import build_answer_prompt, normalize_answer_role, question_to_fts_query
+from ethnos.qa import (
+    answer_query_candidates,
+    benchmark_hit,
+    build_answer_prompt,
+    load_qa_benchmark,
+    normalize_answer_role,
+    question_to_fts_query,
+    retrieve_with_fallbacks,
+)
 from ethnos.section_presets import get_section_preset
 
 
@@ -368,6 +378,65 @@ def test_question_to_fts_query_removes_question_filler_words():
     )
 
 
+def test_answer_query_candidates_preserve_phrases_and_tune_trolley_questions():
+    assert answer_query_candidates("What is Kantian deontology?")[0] == "kantian deontology"
+    assert answer_query_candidates("What is virtue ethics?")[0] == "virtue ethics"
+    assert answer_query_candidates("What is natural law?")[0] == "natural law"
+    assert answer_query_candidates("What is social contract theory?")[0] == "social contract theory"
+    assert (
+        answer_query_candidates("What is methodological ethical naturalism?")[0]
+        == "methodological ethical naturalism"
+    )
+
+    candidates = answer_query_candidates(
+        "What does the book say about trolley cases and utilitarianism?"
+    )
+
+    assert candidates[:3] == [
+        "trolley cases utilitarianism",
+        "trolley problem utilitarianism",
+        "trolley utilitarianism",
+    ]
+
+
+def test_retrieve_with_fallbacks_tries_looser_queries_until_context_found():
+    calls = []
+
+    def fake_search(document_id, query, limit, role, section):
+        calls.append(query)
+        if query == "trolley utilitarianism":
+            return [
+                {
+                    "id": 55,
+                    "chunk_index": 55,
+                    "page_start": 65,
+                    "page_end": 65,
+                    "source_citation": "ethics.pdf p. 65, chunk 55",
+                    "section_label": "chapter_content",
+                    "content_role": "core",
+                    "text": "Trolley text",
+                }
+            ]
+        return []
+
+    result = retrieve_with_fallbacks(
+        search_func=fake_search,
+        document_id=1,
+        question="What does the book say about trolley cases and utilitarianism?",
+        limit=5,
+        role="core",
+        section=None,
+    )
+
+    assert result.selected_query == "trolley utilitarianism"
+    assert result.stopped_reason == "context_found"
+    assert calls == [
+        "trolley cases utilitarianism",
+        "trolley problem utilitarianism",
+        "trolley utilitarianism",
+    ]
+
+
 def test_ask_cli_uses_core_context_without_real_ollama(tmp_path, capsys, monkeypatch):
     db_path = tmp_path / "ethnos.sqlite"
     conn = connect(db_path)
@@ -467,6 +536,106 @@ def test_ask_cli_empty_context_does_not_call_ollama(tmp_path, capsys, monkeypatc
     assert exit_code == 0
     assert "Selected context chunks: none" in output
     assert "The document context did not contain enough information" in output
+
+
+def test_ask_cli_debug_retrieval_shows_query_attempts(tmp_path, capsys, monkeypatch):
+    db_path = tmp_path / "ethnos.sqlite"
+    conn = connect(db_path)
+    init_db(conn)
+    document_id, _ = _stored_labeled_record_document(conn)
+
+    def fake_answer_question(**kwargs):
+        return AnswerCallResult(raw_prompt=kwargs["prompt"], raw_response="Answered.")
+
+    monkeypatch.setattr("ethnos.cli.answer_question", fake_answer_question)
+
+    exit_code = main(
+        [
+            "--db",
+            str(db_path),
+            "ask",
+            str(document_id),
+            "What does the book say about evolutionary ethics?",
+            "--debug-retrieval",
+        ]
+    )
+    output = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert "Retrieval debug:" in output
+    assert "original question: What does the book say about evolutionary ethics?" in output
+    assert "derived query: evolutionary ethics" in output
+    assert "stopped reason: context_found" in output
+
+
+def test_benchmark_file_loading_and_hit_detection(tmp_path):
+    benchmark_path = tmp_path / "bench.json"
+    benchmark_path.write_text(
+        json.dumps(
+            [
+                {
+                    "id": "sample",
+                    "question": "What is evolutionary ethics?",
+                    "expected_source_chunks": [1],
+                    "expected_source_pages": [1],
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    items = load_qa_benchmark(benchmark_path)
+    row = {"id": 1, "chunk_index": 1, "page_start": 1, "page_end": 1}
+
+    assert items[0]["id"] == "sample"
+    assert benchmark_hit(items[0], [row]) is True
+    assert benchmark_hit({"expected_source_chunks": [], "expected_source_pages": []}, []) is True
+    assert benchmark_hit({"expected_source_chunks": [], "expected_source_pages": []}, [row]) is False
+
+
+def test_qa_bench_retrieval_only_path(tmp_path, capsys):
+    db_path = tmp_path / "ethnos.sqlite"
+    benchmark_path = tmp_path / "bench.json"
+    conn = connect(db_path)
+    init_db(conn)
+    document_id, _ = _stored_labeled_record_document(conn)
+    benchmark_path.write_text(
+        json.dumps(
+            [
+                {
+                    "id": "core-hit",
+                    "question": "What is evolutionary ethics?",
+                    "expected_source_chunks": [1],
+                },
+                {
+                    "id": "no-context",
+                    "question": "quantum computing",
+                    "expected_source_chunks": [],
+                    "expected_source_pages": [],
+                },
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    exit_code = main(
+        [
+            "--db",
+            str(db_path),
+            "qa-bench",
+            str(document_id),
+            "--benchmark",
+            str(benchmark_path),
+        ]
+    )
+    output = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert "core-hit: What is evolutionary ethics?" in output
+    assert "no-context: quantum computing" in output
+    assert "hits: 2" in output
+    assert "misses: 0" in output
+    assert "no-context cases: 1" in output
 
 
 def test_select_chunks_for_structure_supports_limit_and_skips_valid_outputs(tmp_path):
