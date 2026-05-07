@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from ethnos.cli import _print_ollama_debug, build_parser
-from ethnos.ollama_client import OllamaDebugInfo, _response_summary
+from ethnos.ollama_client import OllamaDebugInfo, _chat_request_kwargs, _response_summary
 
 
 def test_structure_parser_accepts_debug_ollama_flag():
@@ -38,6 +38,7 @@ def test_print_ollama_debug_outputs_request_and_response_summary(capsys):
         prompt_char_length=321,
         schema_top_level_keys=["properties", "required", "title", "type"],
         format_kind="json_schema",
+        think=False,
         response_summary={
             "done": True,
             "done_reason": "stop",
@@ -56,6 +57,20 @@ def test_print_ollama_debug_outputs_request_and_response_summary(capsys):
     assert "prompt chars: 321" in output
     assert "schema top-level keys: properties, required, title, type" in output
     assert "format: json_schema" in output
+    assert "think: False" in output
     assert "message_content_length: 0" in output
     assert "total_duration: 456" in output
 
+
+def test_structured_chat_request_disables_thinking():
+    schema = {"type": "object", "properties": {"chunk_summary": {"type": "string"}}}
+
+    kwargs = _chat_request_kwargs("gemma-python", "prompt text", schema)
+
+    assert kwargs["model"] == "gemma-python"
+    assert kwargs["messages"][0]["role"] == "system"
+    assert kwargs["messages"][1] == {"role": "user", "content": "prompt text"}
+    assert kwargs["format"] == schema
+    assert kwargs["options"] == {"temperature": 0}
+    assert kwargs["think"] is False
+    assert "stream" not in kwargs

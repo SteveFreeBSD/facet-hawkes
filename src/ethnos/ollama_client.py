@@ -16,6 +16,7 @@ class OllamaDebugInfo:
     prompt_char_length: int
     schema_top_level_keys: list[str]
     format_kind: str
+    think: bool
     response_summary: dict | None = None
 
 
@@ -86,6 +87,7 @@ def extract_chunk(
                     prompt_char_length=debug_info.prompt_char_length,
                     schema_top_level_keys=debug_info.schema_top_level_keys,
                     format_kind=debug_info.format_kind,
+                    think=debug_info.think,
                     response_summary=chat_result.response_summary,
                 ),
             )
@@ -112,16 +114,7 @@ def _chat(
 
     client = Client(host=host, timeout=timeout)
     response = client.chat(
-        model=model_name,
-        messages=[
-            {
-                "role": "system",
-                "content": "You extract structured study data and return only schema-valid JSON.",
-            },
-            {"role": "user", "content": prompt},
-        ],
-        format=schema,
-        options={"temperature": 0},
+        **_chat_request_kwargs(model_name, prompt, schema),
     )
     message = response.get("message", {})
     content = message.get("content", "")
@@ -131,6 +124,22 @@ def _chat(
         content=content,
         response_summary=_response_summary(response),
     )
+
+
+def _chat_request_kwargs(model_name: str, prompt: str, schema: dict) -> dict:
+    return {
+        "model": model_name,
+        "messages": [
+            {
+                "role": "system",
+                "content": "You extract structured study data and return only schema-valid JSON.",
+            },
+            {"role": "user", "content": prompt},
+        ],
+        "format": schema,
+        "options": {"temperature": 0},
+        "think": False,
+    }
 
 
 def _validate_response(prompt: str, raw_response: str) -> StructuredCallResult:
@@ -191,6 +200,7 @@ def _debug_info(prompt: str, schema: dict) -> OllamaDebugInfo:
         prompt_char_length=len(prompt),
         schema_top_level_keys=sorted(schema.keys()),
         format_kind="json_schema",
+        think=False,
     )
 
 

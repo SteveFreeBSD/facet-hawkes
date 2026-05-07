@@ -235,6 +235,7 @@ def _print_ollama_debug(chunk_id: int | None, debug_info) -> None:
     print(f"  prompt chars: {debug_info.prompt_char_length}")
     print(f"  schema top-level keys: {', '.join(debug_info.schema_top_level_keys)}")
     print(f"  format: {debug_info.format_kind}")
+    print(f"  think: {debug_info.think}")
     if debug_info.response_summary is None:
         print("  response envelope: unavailable")
         return
