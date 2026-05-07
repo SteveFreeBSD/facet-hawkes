@@ -38,6 +38,13 @@ class StructuredCallResult:
     debug_info: OllamaDebugInfo | None = None
 
 
+@dataclass(frozen=True)
+class AnswerCallResult:
+    raw_prompt: str
+    raw_response: str
+    debug_info: OllamaDebugInfo | None = None
+
+
 def load_prompt(prompt_path: Path, chunk: ChunkRecord) -> str:
     template = prompt_path.read_text(encoding="utf-8")
     return template.format(source_citation=chunk.source_citation, chunk_text=chunk.text)
@@ -103,6 +110,38 @@ def extract_chunk(
     return last
 
 
+def answer_question(
+    prompt: str,
+    model_name: str,
+    host: str,
+    timeout: float,
+    num_predict: int,
+    debug_ollama: bool = False,
+) -> AnswerCallResult:
+    chat_result = _chat_plain(
+        prompt=prompt,
+        model_name=model_name,
+        host=host,
+        timeout=timeout,
+        num_predict=num_predict,
+    )
+    debug_info = None
+    if debug_ollama:
+        debug_info = OllamaDebugInfo(
+            prompt_char_length=len(prompt),
+            schema_top_level_keys=[],
+            format_kind="plain_text",
+            think=False,
+            num_predict=num_predict,
+            response_summary=chat_result.response_summary,
+        )
+    return AnswerCallResult(
+        raw_prompt=prompt,
+        raw_response=chat_result.content,
+        debug_info=debug_info,
+    )
+
+
 def _chat(
     prompt: str,
     schema: dict,
@@ -130,6 +169,32 @@ def _chat(
     )
 
 
+def _chat_plain(
+    prompt: str,
+    model_name: str,
+    host: str,
+    timeout: float,
+    num_predict: int,
+) -> OllamaChatResult:
+    try:
+        from ollama import Client
+    except ImportError as exc:
+        raise RuntimeError("The ollama Python package is required. Install with `uv sync`.") from exc
+
+    client = Client(host=host, timeout=timeout)
+    response = client.chat(
+        **_answer_chat_request_kwargs(model_name, prompt, num_predict),
+    )
+    message = response.get("message", {})
+    content = message.get("content", "")
+    if not isinstance(content, str):
+        raise RuntimeError("Ollama response did not include string message content")
+    return OllamaChatResult(
+        content=content,
+        response_summary=_response_summary(response),
+    )
+
+
 def _chat_request_kwargs(model_name: str, prompt: str, schema: dict, num_predict: int) -> dict:
     return {
         "model": model_name,
@@ -141,6 +206,24 @@ def _chat_request_kwargs(model_name: str, prompt: str, schema: dict, num_predict
             {"role": "user", "content": prompt},
         ],
         "format": schema,
+        "options": {"temperature": 0, "num_predict": num_predict},
+        "think": False,
+    }
+
+
+def _answer_chat_request_kwargs(model_name: str, prompt: str, num_predict: int) -> dict:
+    return {
+        "model": model_name,
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "You answer questions from provided local PDF context. "
+                    "Use only the supplied context and cite its chunk citations."
+                ),
+            },
+            {"role": "user", "content": prompt},
+        ],
         "options": {"temperature": 0, "num_predict": num_predict},
         "think": False,
     }

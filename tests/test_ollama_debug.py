@@ -4,7 +4,13 @@ from argparse import Namespace
 
 from ethnos.cli import _print_ollama_debug, build_parser, structure_num_predict
 from ethnos.config import load_settings
-from ethnos.ollama_client import OllamaDebugInfo, StructuredCallResult, _chat_request_kwargs, _response_summary
+from ethnos.ollama_client import (
+    OllamaDebugInfo,
+    StructuredCallResult,
+    _answer_chat_request_kwargs,
+    _chat_request_kwargs,
+    _response_summary,
+)
 
 
 def test_structure_parser_accepts_debug_ollama_flag():
@@ -85,6 +91,18 @@ def test_structured_chat_request_disables_thinking():
     assert kwargs["messages"][1] == {"role": "user", "content": "prompt text"}
     assert kwargs["format"] == schema
     assert kwargs["options"] == {"temperature": 0, "num_predict": 4096}
+    assert kwargs["think"] is False
+    assert "stream" not in kwargs
+
+
+def test_answer_chat_request_uses_plain_text_and_disables_thinking():
+    kwargs = _answer_chat_request_kwargs("gemma-python", "answer prompt", num_predict=1024)
+
+    assert kwargs["model"] == "gemma-python"
+    assert kwargs["messages"][0]["role"] == "system"
+    assert kwargs["messages"][1] == {"role": "user", "content": "answer prompt"}
+    assert "format" not in kwargs
+    assert kwargs["options"] == {"temperature": 0, "num_predict": 1024}
     assert kwargs["think"] is False
     assert "stream" not in kwargs
 

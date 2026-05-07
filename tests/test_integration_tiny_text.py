@@ -27,6 +27,8 @@ from ethnos.db import (
 )
 from ethnos.models import ChunkRecord, DocumentRecord, ExtractionResult, PageRecord
 from ethnos.export import export_study
+from ethnos.ollama_client import AnswerCallResult
+from ethnos.qa import build_answer_prompt, normalize_answer_role, question_to_fts_query
 from ethnos.section_presets import get_section_preset
 
 
@@ -332,6 +334,139 @@ def test_context_chunks_defaults_to_core_and_supports_filters(tmp_path):
     assert [row["content_role"] for row in default_results] == ["core"]
     assert "Naturalism appears in evolutionary ethics" in default_results[0]["text"]
     assert [row["section_label"] for row in support_results] == ["chapter_references"]
+
+
+def test_answer_prompt_construction_is_grounded_and_cited(tmp_path):
+    conn = connect(tmp_path / "ethnos.sqlite")
+    init_db(conn)
+    document_id, _ = _stored_labeled_record_document(conn)
+    rows = context_chunks(conn, document_id, "evolutionary", limit=1)
+
+    prompt = build_answer_prompt("What is evolutionary ethics?", rows, max_chars=120)
+
+    assert "Answer only from the context below." in prompt
+    assert "If the context does not contain enough information" in prompt
+    assert "What is evolutionary ethics?" in prompt
+    assert "[labeled.pdf p. 1, chunk 1]" in prompt
+    assert "source_citation: labeled.pdf p. 1, chunk 1" in prompt
+    assert "Naturalism appears in evolutionary ethics" in prompt
+
+
+def test_normalize_answer_role_all_means_no_filter():
+    assert normalize_answer_role("all") is None
+    assert normalize_answer_role("core") == "core"
+
+
+def test_question_to_fts_query_removes_question_filler_words():
+    assert (
+        question_to_fts_query("What is methodological ethical naturalism?")
+        == "methodological ethical naturalism"
+    )
+    assert (
+        question_to_fts_query("What are the main ideas in evolutionary ethics?")
+        == "evolutionary ethics"
+    )
+
+
+def test_ask_cli_uses_core_context_without_real_ollama(tmp_path, capsys, monkeypatch):
+    db_path = tmp_path / "ethnos.sqlite"
+    conn = connect(db_path)
+    init_db(conn)
+    document_id, chunks = _stored_labeled_record_document(conn)
+    calls = []
+
+    def fake_answer_question(**kwargs):
+        calls.append(kwargs)
+        return AnswerCallResult(
+            raw_prompt=kwargs["prompt"],
+            raw_response="Evolutionary ethics is answered from core context. (labeled.pdf p. 1, chunk 1)",
+        )
+
+    monkeypatch.setattr("ethnos.cli.answer_question", fake_answer_question)
+
+    exit_code = main(["--db", str(db_path), "ask", str(document_id), "evolutionary ethics"])
+    output = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert len(calls) == 1
+    assert "Question: evolutionary ethics" in output
+    assert f"chunk {chunks[0].id}: labeled.pdf p. 1, chunk 1" in output
+    assert f"chunk {chunks[1].id}: labeled.pdf p. 2, chunk 2" not in output
+    assert "Answer:" in output
+    assert "Evolutionary ethics is answered from core context." in output
+    assert "source_citation: labeled.pdf p. 1, chunk 1" in calls[0]["prompt"]
+
+
+def test_ask_cli_role_all_disables_role_filter(tmp_path, capsys, monkeypatch):
+    db_path = tmp_path / "ethnos.sqlite"
+    conn = connect(db_path)
+    init_db(conn)
+    document_id, chunks = _stored_labeled_record_document(conn)
+
+    def fake_answer_question(**kwargs):
+        return AnswerCallResult(raw_prompt=kwargs["prompt"], raw_response="Answered.")
+
+    monkeypatch.setattr("ethnos.cli.answer_question", fake_answer_question)
+
+    exit_code = main(
+        ["--db", str(db_path), "ask", str(document_id), "evolutionary", "--role", "all", "--limit", "10"]
+    )
+    output = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert f"chunk {chunks[0].id}: labeled.pdf p. 1, chunk 1" in output
+    assert f"chunk {chunks[1].id}: labeled.pdf p. 2, chunk 2" in output
+    assert f"chunk {chunks[2].id}: labeled.pdf p. 3, chunk 3" in output
+
+
+def test_ask_cli_section_filter_selects_matching_context(tmp_path, capsys, monkeypatch):
+    db_path = tmp_path / "ethnos.sqlite"
+    conn = connect(db_path)
+    init_db(conn)
+    document_id, chunks = _stored_labeled_record_document(conn)
+
+    def fake_answer_question(**kwargs):
+        return AnswerCallResult(raw_prompt=kwargs["prompt"], raw_response="Answered from references.")
+
+    monkeypatch.setattr("ethnos.cli.answer_question", fake_answer_question)
+
+    exit_code = main(
+        [
+            "--db",
+            str(db_path),
+            "ask",
+            str(document_id),
+            "evolutionary",
+            "--role",
+            "all",
+            "--section",
+            "chapter_references",
+        ]
+    )
+    output = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert f"chunk {chunks[1].id}: labeled.pdf p. 2, chunk 2" in output
+    assert f"chunk {chunks[0].id}: labeled.pdf p. 1, chunk 1" not in output
+
+
+def test_ask_cli_empty_context_does_not_call_ollama(tmp_path, capsys, monkeypatch):
+    db_path = tmp_path / "ethnos.sqlite"
+    conn = connect(db_path)
+    init_db(conn)
+    document_id, _ = _stored_labeled_record_document(conn)
+
+    def fail_answer_question(**kwargs):
+        raise AssertionError("Ollama should not be called when no context is found")
+
+    monkeypatch.setattr("ethnos.cli.answer_question", fail_answer_question)
+
+    exit_code = main(["--db", str(db_path), "ask", str(document_id), "missingterm"])
+    output = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert "Selected context chunks: none" in output
+    assert "The document context did not contain enough information" in output
 
 
 def test_select_chunks_for_structure_supports_limit_and_skips_valid_outputs(tmp_path):

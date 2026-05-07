@@ -37,9 +37,13 @@ from .db import (
     structure_status,
 )
 from .export import export_json, export_markdown, export_study
-from .ollama_client import extract_chunk
+from .ollama_client import answer_question, extract_chunk
 from .pdf_extract import extract_pdf
+from .qa import build_answer_prompt, normalize_answer_role, question_to_fts_query
 from .section_presets import CONTENT_ROLES, PRESETS, SECTION_LABELS, get_section_preset
+
+
+ASK_ROLES = sorted([*CONTENT_ROLES, "all"])
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -147,6 +151,27 @@ def build_parser() -> argparse.ArgumentParser:
     context_parser.add_argument("--role", choices=sorted(CONTENT_ROLES), default="core")
     context_parser.add_argument("--section", choices=sorted(SECTION_LABELS))
     context_parser.add_argument("--chars", type=int, default=900)
+
+    ask_parser = _command(
+        subcommands, "ask", "Answer a question using retrieved local PDF context.", ask_cmd
+    )
+    ask_parser.add_argument("document_id", type=int)
+    ask_parser.add_argument("question")
+    ask_parser.add_argument("--role", choices=ASK_ROLES, default="core")
+    ask_parser.add_argument("--section", choices=sorted(SECTION_LABELS))
+    ask_parser.add_argument("--limit", type=int, default=5)
+    ask_parser.add_argument("--chars", type=int, default=1200)
+    ask_parser.add_argument("--model", help="Ollama model name.")
+    ask_parser.add_argument(
+        "--num-predict",
+        type=int,
+        help="Ollama output token budget for the answer.",
+    )
+    ask_parser.add_argument(
+        "--debug-ollama",
+        action="store_true",
+        help="Print compact Ollama request/response diagnostics.",
+    )
 
     json_parser = _command(subcommands, "export-json", "Export document data as JSON.", export_json_cmd)
     json_parser.add_argument("document_id", type=int)
@@ -511,6 +536,57 @@ def context_cmd(args: argparse.Namespace) -> int:
     return 0
 
 
+def ask_cmd(args: argparse.Namespace) -> int:
+    settings, conn = open_db(args)
+    if args.limit < 1:
+        raise SystemExit("--limit must be 1 or greater.")
+    if args.chars < 1:
+        raise SystemExit("--chars must be 1 or greater.")
+    num_predict = structure_num_predict(args, settings)
+    if num_predict < 1:
+        raise SystemExit("--num-predict must be 1 or greater.")
+
+    selected_role = normalize_answer_role(args.role)
+    retrieval_query = question_to_fts_query(args.question)
+    rows = context_chunks(
+        conn,
+        args.document_id,
+        retrieval_query,
+        limit=args.limit,
+        role=selected_role,
+        section=args.section,
+    )
+    print(f"Question: {args.question}")
+    print()
+    if not rows:
+        print("Selected context chunks: none")
+        print()
+        print("Answer:")
+        print("The document context did not contain enough information to answer this question.")
+        return 0
+
+    print("Selected context chunks:")
+    _print_context_sources(rows)
+    prompt = build_answer_prompt(args.question, rows, max_chars=args.chars)
+    result = answer_question(
+        prompt=prompt,
+        model_name=args.model or settings.ollama_model,
+        host=settings.ollama_host,
+        timeout=settings.ollama_timeout,
+        num_predict=num_predict,
+        debug_ollama=args.debug_ollama,
+    )
+    if args.debug_ollama:
+        _print_ollama_debug(None, result.debug_info)
+    print()
+    print("Answer:")
+    print(result.raw_response.strip() or "The document context did not contain enough information.")
+    print()
+    print("Sources:")
+    _print_context_sources(rows)
+    return 0
+
+
 def export_json_cmd(args: argparse.Namespace) -> int:
     _, conn = open_db(args)
     text = export_json(conn, args.document_id)
@@ -702,6 +778,14 @@ def _print_non_core_records(rows: list[dict], limit: int = 20) -> None:
         )
     if len(rows) > limit:
         print(f"  ... {len(rows) - limit} more")
+
+
+def _print_context_sources(rows: list[dict]) -> None:
+    for row in rows:
+        print(
+            f"  chunk {row['id']}: {row['source_citation']} "
+            f"({row['section_label'] or 'unlabeled'} / {row['content_role'] or 'unlabeled'})"
+        )
 
 
 def preview_text(text: str, max_chars: int) -> str:

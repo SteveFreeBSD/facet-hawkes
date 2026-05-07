@@ -32,6 +32,7 @@ uv run ethnos inspect-chunk 1 80 --records
 uv run ethnos records 1 --type key_terms --role core --limit 10
 uv run ethnos quality-report 1
 uv run ethnos context 1 "methodological ethical naturalism" --limit 3
+uv run ethnos ask 1 "What is methodological ethical naturalism?"
 uv run ethnos export-markdown 1
 uv run ethnos export-study 1 --output data/processed/study-guide.md
 ```
@@ -102,6 +103,19 @@ Show retrieval-ready context for a query without asking a model:
 uv run ethnos context 1 "methodological ethical naturalism" --limit 3
 uv run ethnos context 1 "license" --role admin --chars 500
 ```
+
+Ask a local model a grounded question using retrieved PDF context:
+
+```bash
+uv run ethnos ask 1 "What is methodological ethical naturalism?"
+uv run ethnos ask 1 "What are the main ideas in evolutionary ethics?" --limit 4
+uv run ethnos ask 1 "Tell me about the accessibility checklist" --role all --limit 3
+```
+
+`ask` uses local Ollama only. It retrieves FTS5 context first, defaults to
+`--role core`, sends only the selected context and question to the model, and
+does not mutate the database. Use `--role all` to search across all labeled
+roles.
 
 The default database path is `data/ethnos.sqlite`. You can override it:
 
