@@ -13,7 +13,7 @@ from ethnos.db import (
     search_chunks,
     select_chunks_for_structure,
 )
-from ethnos.models import DocumentRecord, PageRecord
+from ethnos.models import ChunkRecord, DocumentRecord, ExtractionResult, PageRecord
 
 
 def test_tiny_text_to_sqlite_and_fts(tmp_path):
@@ -182,3 +182,140 @@ def test_select_chunks_for_structure_requires_matching_document_for_chunk_id(tmp
     assert stored_chunk.id is not None
     assert select_chunks_for_structure(conn, document_id, chunk_id=stored_chunk.id)[0].id == stored_chunk.id
     assert select_chunks_for_structure(conn, document_id + 1, chunk_id=stored_chunk.id) == []
+
+
+def test_save_extraction_result_falls_back_to_chunk_page_range(tmp_path):
+    conn = connect(tmp_path / "ethnos.sqlite")
+    init_db(conn)
+    chunk_id = _stored_chunk(conn, page_start=1, page_end=7)
+    result = ExtractionResult.model_validate(
+        {
+            "chunk_summary": "A broad ethics overview.",
+            "topics": [
+                {
+                    "name": "Ethics",
+                    "summary": "The chunk introduces ethics.",
+                    "confidence": 0.8,
+                    "source_pages": [],
+                }
+            ],
+            "key_terms": [
+                {
+                    "term": "Ethics",
+                    "definition": "The study of moral questions.",
+                    "context": "Introductory course material.",
+                    "source_pages": [],
+                }
+            ],
+            "examples": [
+                {
+                    "title": "Moral dilemma",
+                    "body": "A sample ethical choice.",
+                    "source_pages": [],
+                }
+            ],
+            "questions": [
+                {
+                    "question": "What is ethics?",
+                    "answer": "The study of moral questions.",
+                    "difficulty": "easy",
+                    "source_pages": [],
+                }
+            ],
+        }
+    )
+
+    from ethnos.db import save_extraction_result
+
+    save_extraction_result(conn, chunk_id, result)
+
+    expected = "[1, 2, 3, 4, 5, 6, 7]"
+    assert conn.execute("SELECT source_pages FROM topics").fetchone()["source_pages"] == expected
+    assert conn.execute("SELECT source_pages FROM key_terms").fetchone()["source_pages"] == expected
+    assert conn.execute("SELECT source_pages FROM examples").fetchone()["source_pages"] == expected
+    assert conn.execute("SELECT source_pages FROM questions").fetchone()["source_pages"] == expected
+
+
+def test_save_extraction_result_falls_back_to_single_page_chunk(tmp_path):
+    conn = connect(tmp_path / "ethnos.sqlite")
+    init_db(conn)
+    chunk_id = _stored_chunk(conn, page_start=12, page_end=12)
+    result = ExtractionResult.model_validate(
+        {
+            "chunk_summary": "A single-page chunk.",
+            "topics": [
+                {
+                    "name": "Virtue Ethics",
+                    "summary": "The chunk discusses virtue ethics.",
+                    "confidence": 0.7,
+                    "source_pages": [],
+                }
+            ],
+            "key_terms": [],
+            "examples": [],
+            "questions": [],
+        }
+    )
+
+    from ethnos.db import save_extraction_result
+
+    save_extraction_result(conn, chunk_id, result)
+
+    assert conn.execute("SELECT source_pages FROM topics").fetchone()["source_pages"] == "[12]"
+
+
+def test_save_extraction_result_preserves_valid_model_source_pages(tmp_path):
+    conn = connect(tmp_path / "ethnos.sqlite")
+    init_db(conn)
+    chunk_id = _stored_chunk(conn, page_start=1, page_end=7)
+    result = ExtractionResult.model_validate(
+        {
+            "chunk_summary": "A chunk with model citations.",
+            "topics": [
+                {
+                    "name": "Kantian Ethics",
+                    "summary": "The model cited a specific page.",
+                    "confidence": 0.9,
+                    "source_pages": [3],
+                }
+            ],
+            "key_terms": [],
+            "examples": [],
+            "questions": [],
+        }
+    )
+
+    from ethnos.db import save_extraction_result
+
+    save_extraction_result(conn, chunk_id, result)
+
+    assert conn.execute("SELECT source_pages FROM topics").fetchone()["source_pages"] == "[3]"
+
+
+def _stored_chunk(conn, page_start: int, page_end: int) -> int:
+    document = DocumentRecord(
+        source_path="/tmp/course.pdf",
+        filename="course.pdf",
+        sha256=f"chunk-{page_start}-{page_end}",
+        title="Course",
+        page_count=page_end,
+    )
+    document_id = save_document_pages(conn, document, [])
+    save_chunks(
+        conn,
+        document_id,
+        [
+            ChunkRecord(
+                document_id=document_id,
+                page_start=page_start,
+                page_end=page_end,
+                chunk_index=1,
+                text="Chunk text.",
+                char_count=11,
+                source_citation=f"course.pdf pp. {page_start}-{page_end}, chunk 1",
+            )
+        ],
+    )
+    stored_chunk = select_chunks_for_structure(conn, document_id)[0]
+    assert stored_chunk.id is not None
+    return stored_chunk.id

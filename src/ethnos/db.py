@@ -420,8 +420,10 @@ def save_model_output(
 def save_extraction_result(
     conn: sqlite3.Connection, chunk_id: int, result: ExtractionResult
 ) -> None:
+    fallback_source_pages = _chunk_source_pages(conn, chunk_id)
     with conn:
         for topic in result.topics:
+            source_pages = _record_source_pages(topic.source_pages, fallback_source_pages)
             conn.execute(
                 """
                 INSERT INTO topics (chunk_id, name, summary, confidence, source_pages)
@@ -432,10 +434,11 @@ def save_extraction_result(
                     topic.name,
                     topic.summary,
                     topic.confidence,
-                    json.dumps(topic.source_pages),
+                    json.dumps(source_pages),
                 ),
             )
         for term in result.key_terms:
+            source_pages = _record_source_pages(term.source_pages, fallback_source_pages)
             conn.execute(
                 """
                 INSERT INTO key_terms (chunk_id, term, definition, context, source_pages)
@@ -446,18 +449,20 @@ def save_extraction_result(
                     term.term,
                     term.definition,
                     term.context,
-                    json.dumps(term.source_pages),
+                    json.dumps(source_pages),
                 ),
             )
         for example in result.examples:
+            source_pages = _record_source_pages(example.source_pages, fallback_source_pages)
             conn.execute(
                 """
                 INSERT INTO examples (chunk_id, title, body, source_pages)
                 VALUES (?, ?, ?, ?)
                 """,
-                (chunk_id, example.title, example.body, json.dumps(example.source_pages)),
+                (chunk_id, example.title, example.body, json.dumps(source_pages)),
             )
         for question in result.questions:
+            source_pages = _record_source_pages(question.source_pages, fallback_source_pages)
             conn.execute(
                 """
                 INSERT INTO questions (chunk_id, question, answer, difficulty, source_pages)
@@ -468,9 +473,22 @@ def save_extraction_result(
                     question.question,
                     question.answer,
                     question.difficulty,
-                    json.dumps(question.source_pages),
+                    json.dumps(source_pages),
                 ),
             )
+
+
+def _chunk_source_pages(conn: sqlite3.Connection, chunk_id: int) -> list[int]:
+    row = conn.execute(
+        "SELECT page_start, page_end FROM chunks WHERE id = ?", (chunk_id,)
+    ).fetchone()
+    if row is None:
+        raise ValueError(f"No chunk found with id {chunk_id}")
+    return list(range(row["page_start"], row["page_end"] + 1))
+
+
+def _record_source_pages(model_pages: list[int], fallback_pages: list[int]) -> list[int]:
+    return model_pages if model_pages else fallback_pages
 
 
 def clear_document_outputs(conn: sqlite3.Connection, document_id: int) -> None:
