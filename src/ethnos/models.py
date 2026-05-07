@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from typing_extensions import Annotated
+
+
+NonEmptyStr = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 
 
 class DocumentRecord(BaseModel):
@@ -48,8 +52,8 @@ class ChunkRecord(BaseModel):
 class TopicExtraction(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    name: str
-    summary: str
+    name: NonEmptyStr
+    summary: NonEmptyStr
     confidence: float = Field(ge=0.0, le=1.0)
     source_pages: list[int] = Field(default_factory=list)
 
@@ -57,8 +61,8 @@ class TopicExtraction(BaseModel):
 class KeyTerm(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    term: str
-    definition: str
+    term: NonEmptyStr
+    definition: NonEmptyStr
     context: str = ""
     source_pages: list[int] = Field(default_factory=list)
 
@@ -66,16 +70,16 @@ class KeyTerm(BaseModel):
 class Example(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    title: str
-    body: str
+    title: NonEmptyStr
+    body: NonEmptyStr
     source_pages: list[int] = Field(default_factory=list)
 
 
 class StudyQuestion(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    question: str
-    answer: str
+    question: NonEmptyStr
+    answer: NonEmptyStr
     difficulty: Literal["easy", "medium", "hard"] = "medium"
     source_pages: list[int] = Field(default_factory=list)
 
@@ -88,4 +92,3 @@ class ExtractionResult(BaseModel):
     key_terms: list[KeyTerm] = Field(default_factory=list)
     examples: list[Example] = Field(default_factory=list)
     questions: list[StudyQuestion] = Field(default_factory=list)
-
