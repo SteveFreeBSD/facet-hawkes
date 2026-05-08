@@ -316,11 +316,11 @@ def select_chunks_for_structure(
             continue
         if force:
             selected.append(row)
-        elif row["has_valid_output"]:
-            continue
         elif retry_failed:
             if row["latest_status"] is not None and row["latest_status"] != "valid":
                 selected.append(row)
+        elif row["has_valid_output"]:
+            continue
         elif row["latest_status"] is None:
             selected.append(row)
 
