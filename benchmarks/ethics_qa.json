@@ -81,6 +81,26 @@
     "expected_citation_pages": [44, 45]
   },
   {
+    "id": "virtue-vs-kantian",
+    "question": "How does virtue ethics differ from Kantian deontology?",
+    "expected_source_chunks": [31, 32, 33, 34, 35, 36, 37, 38, 39, 59, 60, 61, 62, 63, 64, 65, 66, 67],
+    "expected_source_pages": [44, 45, 46, 47, 48, 49, 50, 51, 52, 70, 71, 72, 73, 74, 75, 76, 77, 78],
+    "expected_terms": ["virtue ethics", "Kantian deontology"],
+    "expected_answer_terms": ["character", "virtue", "duty", "categorical imperative"],
+    "expected_citation_chunks": [31, 32, 59, 60],
+    "expected_citation_pages": [44, 45, 70, 71]
+  },
+  {
+    "id": "utilitarianism-vs-kantian",
+    "question": "How does utilitarianism compare to Kantian deontology?",
+    "expected_source_chunks": [51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67],
+    "expected_source_pages": [62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78],
+    "expected_terms": ["utilitarianism", "Kantian deontology"],
+    "expected_answer_terms": ["consequences", "utility", "duty", "categorical imperative"],
+    "expected_citation_chunks": [51, 52, 59],
+    "expected_citation_pages": [62, 63, 70]
+  },
+  {
     "id": "ethical-egoism",
     "question": "What is ethical egoism?",
     "expected_source_chunks": [11, 41, 42, 43, 44],
@@ -101,6 +121,16 @@
     "expected_citation_pages": [54, 57, 58, 60]
   },
   {
+    "id": "ethical-egoism-vs-social-contract",
+    "question": "Compare ethical egoism with social contract theory.",
+    "expected_source_chunks": [11, 41, 42, 43, 44, 45, 48, 49],
+    "expected_source_pages": [19, 54, 55, 56, 57, 58, 60],
+    "expected_terms": ["ethical egoism", "social contract"],
+    "expected_answer_terms": ["self-interest", "contract", "Hobbes"],
+    "expected_citation_chunks": [11, 41, 45, 49],
+    "expected_citation_pages": [19, 54, 58, 60]
+  },
+  {
     "id": "relativism",
     "question": "What is moral relativism?",
     "expected_source_chunks": [12, 13, 14, 15, 16, 17, 18, 19],
@@ -113,6 +143,16 @@
   {
     "id": "divine-command-natural-law",
     "question": "What does the book say about divine command theory and natural law?",
+    "expected_source_chunks": [10, 21, 22, 24, 26],
+    "expected_source_pages": [18, 32, 33, 34, 36, 38],
+    "expected_terms": ["divine command theory", "natural law"],
+    "expected_answer_terms": ["divine command", "natural law"],
+    "expected_citation_chunks": [21, 22, 24, 26],
+    "expected_citation_pages": [32, 33, 34, 36, 38]
+  },
+  {
+    "id": "divine-command-vs-natural-law",
+    "question": "How does divine command theory differ from natural law theory?",
     "expected_source_chunks": [10, 21, 22, 24, 26],
     "expected_source_pages": [18, 32, 33, 34, 36, 38],
     "expected_terms": ["divine command theory", "natural law"],
