@@ -34,6 +34,7 @@ def test_structure_parser_accepts_debug_ollama_flag():
             "4096",
             "--num-ctx",
             "32768",
+            "--all-roles",
             "--debug-ollama",
         ]
     )
@@ -42,6 +43,7 @@ def test_structure_parser_accepts_debug_ollama_flag():
     assert args.chunk_id == 80
     assert args.num_predict == 4096
     assert args.num_ctx == 32768
+    assert args.all_roles is True
     assert args.debug_ollama is True
 
 

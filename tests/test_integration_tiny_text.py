@@ -1638,6 +1638,28 @@ def test_select_chunks_for_structure_retry_failed_and_force(tmp_path):
     ]
 
 
+def test_select_chunks_for_structure_defaults_to_core_and_unlabeled_roles(tmp_path):
+    conn = connect(tmp_path / "ethnos.sqlite")
+    init_db(conn)
+    document_id, chunks = _stored_labeled_record_document(conn)
+
+    assert [chunk.chunk_index for chunk in select_chunks_for_structure(conn, document_id, force=True)] == [
+        1,
+        4,
+    ]
+    assert [
+        chunk.chunk_index
+        for chunk in select_chunks_for_structure(conn, document_id, force=True, all_roles=True)
+    ] == [1, 2, 3, 4]
+    assert select_chunks_for_structure(conn, document_id, chunk_id=chunks[1].id, force=True) == []
+    assert [
+        chunk.chunk_index
+        for chunk in select_chunks_for_structure(
+            conn, document_id, chunk_id=chunks[1].id, force=True, all_roles=True
+        )
+    ] == [2]
+
+
 def test_select_chunks_for_structure_requires_matching_document_for_chunk_id(tmp_path):
     conn = connect(tmp_path / "ethnos.sqlite")
     init_db(conn)
@@ -2515,7 +2537,7 @@ def _stored_labeled_record_document(conn):
         (document_id,),
     )
     conn.commit()
-    chunks = select_chunks_for_structure(conn, document_id, force=True)
+    chunks = select_chunks_for_structure(conn, document_id, force=True, all_roles=True)
     core_result = ExtractionResult.model_validate(
         {
             "chunk_summary": "Core discussion.",

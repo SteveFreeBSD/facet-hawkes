@@ -313,11 +313,14 @@ def select_chunks_for_structure(
     limit: int | None = None,
     retry_failed: bool = False,
     force: bool = False,
+    all_roles: bool = False,
 ) -> list[ChunkRecord]:
     status_rows = list_structure_chunk_status(conn, document_id)
     selected = []
     for row in status_rows:
         if chunk_id is not None and row["chunk_id"] != chunk_id:
+            continue
+        if not all_roles and not _is_study_content_role(row["content_role"]):
             continue
         if force:
             selected.append(row)
@@ -361,6 +364,7 @@ def list_structure_chunk_status(conn: sqlite3.Connection, document_id: int) -> l
             c.heading,
             c.char_count,
             c.source_citation,
+            c.content_role,
             CASE WHEN vo.chunk_id IS NULL THEN 0 ELSE 1 END AS has_valid_output,
             lo.validation_status AS latest_status,
             lo.validation_error AS latest_error,
@@ -842,7 +846,11 @@ def _should_persist_study_records(conn: sqlite3.Connection, chunk_id: int) -> bo
     row = conn.execute("SELECT content_role FROM chunks WHERE id = ?", (chunk_id,)).fetchone()
     if row is None:
         raise ValueError(f"No chunk found with id {chunk_id}")
-    return row["content_role"] in (None, "", "core")
+    return _is_study_content_role(row["content_role"])
+
+
+def _is_study_content_role(content_role: str | None) -> bool:
+    return content_role in (None, "", "core")
 
 
 def clear_document_outputs(conn: sqlite3.Connection, document_id: int) -> None:

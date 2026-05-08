@@ -130,6 +130,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Reprocess selected chunks even if they already have valid output.",
     )
+    structure_parser.add_argument(
+        "--all-roles",
+        action="store_true",
+        help="Include admin/support chunks instead of the default core-only structure run.",
+    )
 
     inspect_parser = _command(
         subcommands, "inspect-chunk", "Inspect one stored chunk and its extracted records.", inspect_chunk_cmd
@@ -416,10 +421,12 @@ def structure(args: argparse.Namespace) -> int:
         limit=args.limit,
         retry_failed=args.retry_failed,
         force=args.force,
+        all_roles=args.all_roles,
     )
     if not chunks:
         print("No chunks selected.")
-        print("Default structure runs process never-attempted chunks only.")
+        print("Default structure runs process never-attempted core/unlabeled chunks only.")
+        print("Use --all-roles to include admin/support chunks.")
         print("Use --retry-failed for chunks whose latest output failed, or --force to reprocess.")
         return 0
 
@@ -429,6 +436,7 @@ def structure(args: argparse.Namespace) -> int:
     print(f"  model: {model_name}", flush=True)
     print(f"  num_predict: {num_predict}", flush=True)
     print(f"  num_ctx: {num_ctx}", flush=True)
+    print(f"  roles: {'all' if args.all_roles else 'core/unlabeled'}", flush=True)
     print(f"  chunks selected: {len(chunks)}", flush=True)
     print(f"  chunk ids: {', '.join(str(chunk_id) for chunk_id in chunk_ids)}", flush=True)
     if args.chunk_id is None and args.limit is None:

@@ -45,16 +45,18 @@ For a small Ollama smoke test, limit `structure` to one chunk:
 uv run ethnos structure 1 --limit 1 --debug-ollama
 ```
 
-By default, `structure` processes chunks that have never been attempted. Use
-`--retry-failed` to retry chunks whose latest model output failed, and use
-`--force` only when you intentionally want to reprocess chunks that already
-have a valid model output. Raw model outputs and extraction-run history are
-preserved.
+By default, `structure` processes core/unlabeled chunks that have never been
+attempted, skipping admin/support chunks to avoid spending Ollama time on
+non-study material. Use `--all-roles` when you intentionally want structured
+outputs for every labeled chunk. Use `--retry-failed` to retry chunks whose
+latest model output failed, and use `--force` only when you intentionally want
+to reprocess chunks that already have a valid model output. Raw model outputs
+and extraction-run history are preserved.
 
-The default structured-output budget is `8192` tokens. Override it with:
+The default structured-output budget is `2048` tokens. Override it with:
 
 ```bash
-uv run ethnos structure 1 --num-predict 12000
+uv run ethnos structure 1 --num-predict 3072
 ```
 
 Markdown export can write to a file to avoid flooding the terminal:
