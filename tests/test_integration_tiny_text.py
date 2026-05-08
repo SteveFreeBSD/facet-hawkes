@@ -9,6 +9,7 @@ from ethnos.chunking import build_chunks
 from ethnos.cli import limit_benchmark_items, main, parse_models_arg, progress_line
 from ethnos.db import (
     apply_section_preset,
+    backfill_chunk_summaries,
     connect,
     init_db,
     list_documents,
@@ -423,6 +424,7 @@ def test_quality_report_summarizes_assimilation_scope(tmp_path):
         "admin",
         "support",
     }
+    assert report["chunk_summaries"] == 3
 
 
 def test_context_chunks_defaults_to_core_and_supports_filters(tmp_path):
@@ -2060,6 +2062,111 @@ def test_model_outputs_history_is_preserved_across_normalized_replacement(tmp_pa
     assert [row["raw_response"] for row in outputs] == ["first raw response", "second raw response"]
     assert conn.execute("SELECT COUNT(*) AS count FROM extraction_runs").fetchone()["count"] == 2
     assert conn.execute("SELECT name FROM topics").fetchone()["name"] == "Second Topic"
+
+
+def test_backfill_chunk_summaries_replays_latest_valid_model_output(tmp_path, capsys):
+    db_path = tmp_path / "ethnos.sqlite"
+    conn = connect(db_path)
+    init_db(conn)
+    chunk_id = _stored_chunk(conn, page_start=50, page_end=50)
+    document_id = conn.execute(
+        "SELECT document_id FROM chunks WHERE id = ?", (chunk_id,)
+    ).fetchone()["document_id"]
+    old_result = ExtractionResult.model_validate(
+        {
+            "chunk_summary": "Old summary.",
+            "topics": [],
+            "key_terms": [
+                {
+                    "term": "Old Term",
+                    "definition": "Old definition.",
+                    "context": "",
+                    "source_pages": [],
+                }
+            ],
+            "examples": [],
+            "questions": [],
+        }
+    )
+    save_extraction_result(conn, chunk_id, old_result)
+    conn.execute("DELETE FROM chunk_summaries WHERE chunk_id = ?", (chunk_id,))
+    conn.commit()
+
+    run_id = create_extraction_run(conn, document_id, "test-model", "prompt")
+    save_model_output(
+        conn,
+        run_id=run_id,
+        chunk_id=chunk_id,
+        raw_prompt="old prompt",
+        raw_response="old raw response",
+        parsed_json=old_result.model_dump(mode="json"),
+        validation_status="valid",
+        validation_error=None,
+    )
+    save_model_output(
+        conn,
+        run_id=run_id,
+        chunk_id=chunk_id,
+        raw_prompt="new prompt",
+        raw_response="new raw response",
+        parsed_json={
+            "chunk_summary": "Backfilled summary.",
+            "topics": [
+                {
+                    "name": "Backfilled Topic",
+                    "summary": "A topic from the latest valid output.",
+                    "confidence": 0.8,
+                    "source_pages": [],
+                }
+            ],
+            "key_terms": [
+                {
+                    "term": "New Term",
+                    "definition": "New definition.",
+                    "context": "",
+                    "source_pages": [],
+                }
+            ],
+            "examples": [],
+            "questions": [
+                {
+                    "question": "What was backfilled?",
+                    "answer": "The latest valid model output.",
+                    "difficulty": "easy",
+                    "source_pages": [],
+                }
+            ],
+        },
+        validation_status="valid",
+        validation_error=None,
+    )
+
+    report = backfill_chunk_summaries(conn, document_id)
+
+    assert report["candidates"] == 1
+    assert report["backfilled"] == 1
+    assert report["skipped_invalid"] == 0
+    assert report["backfilled_chunks"] == [chunk_id]
+    assert conn.execute("SELECT summary FROM chunk_summaries").fetchone()["summary"] == (
+        "Backfilled summary."
+    )
+    assert [row["term"] for row in conn.execute("SELECT term FROM key_terms").fetchall()] == [
+        "New Term"
+    ]
+    assert conn.execute("SELECT name FROM topics").fetchone()["name"] == "Backfilled Topic"
+    assert conn.execute("SELECT question FROM questions").fetchone()["question"] == (
+        "What was backfilled?"
+    )
+
+    conn.execute("DELETE FROM chunk_summaries WHERE chunk_id = ?", (chunk_id,))
+    conn.commit()
+    exit_code = main(["--db", str(db_path), "backfill-summaries", str(document_id)])
+    output = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert "Backfilled chunk summaries for document" in output
+    assert "candidates: 1" in output
+    assert "backfilled: 1" in output
 
 
 def test_export_json_includes_normalized_chunk_summary(tmp_path):

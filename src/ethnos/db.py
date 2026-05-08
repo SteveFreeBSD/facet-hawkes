@@ -713,6 +713,55 @@ def save_extraction_result(
             )
 
 
+def backfill_chunk_summaries(conn: sqlite3.Connection, document_id: int) -> dict[str, Any]:
+    rows = conn.execute(
+        """
+        WITH latest_valid_outputs AS (
+            SELECT c.id AS chunk_id, MAX(mo.id) AS model_output_id
+            FROM chunks c
+            JOIN model_outputs mo ON mo.chunk_id = c.id
+            LEFT JOIN chunk_summaries cs ON cs.chunk_id = c.id
+            WHERE c.document_id = ?
+              AND cs.id IS NULL
+              AND mo.validation_status = 'valid'
+              AND mo.parsed_json IS NOT NULL
+            GROUP BY c.id
+        )
+        SELECT lvo.chunk_id, lvo.model_output_id, mo.parsed_json
+        FROM latest_valid_outputs lvo
+        JOIN model_outputs mo ON mo.id = lvo.model_output_id
+        ORDER BY lvo.chunk_id
+        """,
+        (document_id,),
+    ).fetchall()
+    report: dict[str, Any] = {
+        "document_id": document_id,
+        "candidates": len(rows),
+        "backfilled": 0,
+        "skipped_invalid": 0,
+        "backfilled_chunks": [],
+        "errors": [],
+    }
+    for row in rows:
+        try:
+            parsed = json.loads(row["parsed_json"])
+            result = ExtractionResult.model_validate(parsed)
+        except (json.JSONDecodeError, ValueError) as exc:
+            report["skipped_invalid"] += 1
+            report["errors"].append(
+                {
+                    "chunk_id": row["chunk_id"],
+                    "model_output_id": row["model_output_id"],
+                    "error": str(exc),
+                }
+            )
+            continue
+        save_extraction_result(conn, row["chunk_id"], result)
+        report["backfilled"] += 1
+        report["backfilled_chunks"].append(row["chunk_id"])
+    return report
+
+
 def _delete_normalized_chunk_records(conn: sqlite3.Connection, chunk_id: int) -> None:
     conn.execute("DELETE FROM chunk_summaries WHERE chunk_id = ?", (chunk_id,))
     conn.execute("DELETE FROM topics WHERE chunk_id = ?", (chunk_id,))
@@ -1060,6 +1109,7 @@ def quality_report(conn: sqlite3.Connection, document_id: int) -> dict[str, Any]
         "top_repeated_key_terms": _top_repeated_key_terms(conn, document_id),
         "chunks_with_no_terms_or_questions": _chunks_with_no_terms_or_questions(conn, document_id),
         "non_core_chunks_with_records": _non_core_chunks_with_records(conn, document_id),
+        "chunk_summaries": record_counts["chunk_summaries"],
         "topics": record_counts["topics"],
         "examples": record_counts["examples"],
     }

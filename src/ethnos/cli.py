@@ -21,6 +21,7 @@ from .db import (
     db_info,
     add_continuation_context_chunks,
     apply_section_preset,
+    backfill_chunk_summaries,
     finish_extraction_run,
     get_document,
     inspect_chunk,
@@ -169,6 +170,14 @@ def build_parser() -> argparse.ArgumentParser:
         subcommands, "quality-report", "Summarize assimilation quality and scope.", quality_report_cmd
     )
     quality_parser.add_argument("document_id", type=int)
+
+    backfill_parser = _command(
+        subcommands,
+        "backfill-summaries",
+        "Backfill normalized chunk summaries from valid model outputs.",
+        backfill_summaries_cmd,
+    )
+    backfill_parser.add_argument("document_id", type=int)
 
     context_parser = _command(
         subcommands, "context", "Show retrieval-ready context for a query.", context_cmd
@@ -652,6 +661,7 @@ def quality_report_cmd(args: argparse.Namespace) -> int:
         report["chunks_with_no_terms_or_questions"],
     )
     _print_non_core_records(report["non_core_chunks_with_records"])
+    print(f"Chunk summaries: {report['chunk_summaries']}")
     print(f"Topics: {report['topics']}")
     if report["topics"] < 10:
         print("  Warning: topics are sparse; do not treat topics as the main structure.")
@@ -659,6 +669,27 @@ def quality_report_cmd(args: argparse.Namespace) -> int:
     if report["examples"] == 0:
         print("  Warning: no examples were extracted.")
     return 0
+
+
+def backfill_summaries_cmd(args: argparse.Namespace) -> int:
+    _, conn = open_db(args)
+    report = backfill_chunk_summaries(conn, args.document_id)
+    print(f"Backfilled chunk summaries for document {args.document_id}")
+    print(f"  candidates: {report['candidates']}")
+    print(f"  backfilled: {report['backfilled']}")
+    print(f"  skipped_invalid: {report['skipped_invalid']}")
+    if report["backfilled_chunks"]:
+        print("  chunk ids: " + ", ".join(str(chunk_id) for chunk_id in report["backfilled_chunks"]))
+    if report["errors"]:
+        print("  validation errors:")
+        for error in report["errors"][:10]:
+            print(
+                f"    chunk {error['chunk_id']} / model_output {error['model_output_id']}: "
+                f"{preview_text(error['error'], 160)}"
+            )
+        if len(report["errors"]) > 10:
+            print(f"    ... {len(report['errors']) - 10} more")
+    return 0 if report["skipped_invalid"] == 0 else 1
 
 
 def context_cmd(args: argparse.Namespace) -> int:
