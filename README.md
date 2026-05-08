@@ -26,7 +26,7 @@ uv sync --extra dev
 uv run ethnos ingest-pdf path/to/course.pdf
 uv run ethnos documents
 uv run ethnos chunk 1
-uv run ethnos structure-status 1
+uv run ethnos section-status 1
 uv run ethnos search "photosynthesis"
 uv run ethnos inspect-chunk 1 80 --records
 uv run ethnos records 1 --type key_terms --role core --limit 10
@@ -34,6 +34,7 @@ uv run ethnos quality-report 1
 uv run ethnos context 1 "methodological ethical naturalism" --limit 3
 uv run ethnos ask 1 "What is methodological ethical naturalism?"
 uv run ethnos chat 1
+uv run ethnos qa-bench 1 --benchmark benchmarks/ethics_qa.json --no-ask
 uv run ethnos export-markdown 1
 uv run ethnos export-study 1 --output data/processed/study-guide.md
 ```
@@ -95,6 +96,7 @@ uv run ethnos records 1 --chunk-id 80
 Summarize the shape and quality of the assimilated data without calling Ollama:
 
 ```bash
+uv run ethnos section-status 1
 uv run ethnos quality-report 1
 ```
 
@@ -142,6 +144,12 @@ traces of answered questions. Traces include the question, derived retrieval
 queries, selected chunks, citations, model name, answer text, and timings. They
 are not written by default. Keep them under `data/runs/` so they stay local and
 ignored by git.
+
+Run the local retrieval-only benchmark without calling Ollama:
+
+```bash
+uv run ethnos qa-bench 1 --benchmark benchmarks/ethics_qa.json --no-ask
+```
 
 The default database path is `data/ethnos.sqlite`. You can override it:
 
