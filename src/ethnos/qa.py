@@ -139,10 +139,15 @@ def extract_comparison_subqueries(question: str) -> list[str]:
     normalized = _normalize_question_text(question)
     patterns = [
         r"^compare\s+(.+?)\s+(?:and|with)\s+(.+)$",
+        r"^compare\s+(.+?)\s+to\s+(.+)$",
         r"^what\s+is\s+the\s+difference\s+between\s+(.+?)\s+and\s+(.+)$",
         r"^difference\s+between\s+(.+?)\s+and\s+(.+)$",
         r"^how\s+is\s+(.+?)\s+different\s+from\s+(.+)$",
+        r"^how\s+does\s+(.+?)\s+differ\s+from\s+(.+)$",
+        r"^how\s+do\s+(.+?)\s+differ\s+from\s+(.+)$",
         r"^how\s+are\s+(.+?)\s+and\s+(.+?)\s+different$",
+        r"^how\s+does\s+(.+?)\s+compare\s+to\s+(.+)$",
+        r"^how\s+do\s+(.+?)\s+compare\s+to\s+(.+)$",
         r"^(.+?)\s+vs\.?\s+(.+)$",
         r"^(.+?)\s+versus\s+(.+)$",
     ]

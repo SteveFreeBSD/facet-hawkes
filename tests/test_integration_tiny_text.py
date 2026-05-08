@@ -447,10 +447,16 @@ def test_comparison_question_detection_and_subquery_extraction():
     assert extract_comparison_subqueries(
         "How is virtue ethics different from Kantian deontology?"
     ) == ["virtue ethics", "kantian deontology"]
+    assert extract_comparison_subqueries(
+        "How does virtue ethics differ from Kantian deontology?"
+    ) == ["virtue ethics", "kantian deontology"]
     assert extract_comparison_subqueries("Compare utilitarianism and Kantian deontology.") == [
         "utilitarianism",
         "kantian deontology",
     ]
+    assert extract_comparison_subqueries(
+        "How does utilitarianism compare to Kantian deontology?"
+    ) == ["utilitarianism", "kantian deontology"]
     assert extract_comparison_subqueries("natural law vs divine command theory") == [
         "natural law",
         "divine command",
