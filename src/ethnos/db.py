@@ -64,6 +64,14 @@ def init_db(conn: sqlite3.Connection) -> None:
             UNIQUE(document_id, chunk_index)
         );
 
+        CREATE TABLE IF NOT EXISTS chunk_summaries (
+            id INTEGER PRIMARY KEY,
+            chunk_id INTEGER NOT NULL REFERENCES chunks(id) ON DELETE CASCADE,
+            summary TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(chunk_id)
+        );
+
         CREATE TABLE IF NOT EXISTS topics (
             id INTEGER PRIMARY KEY,
             chunk_id INTEGER NOT NULL REFERENCES chunks(id) ON DELETE CASCADE,
@@ -641,6 +649,13 @@ def save_extraction_result(
     fallback_source_pages = _chunk_source_pages(conn, chunk_id)
     with conn:
         _delete_normalized_chunk_records(conn, chunk_id)
+        conn.execute(
+            """
+            INSERT INTO chunk_summaries (chunk_id, summary)
+            VALUES (?, ?)
+            """,
+            (chunk_id, result.chunk_summary),
+        )
         for topic in result.topics:
             source_pages = _record_source_pages(topic.source_pages, fallback_source_pages)
             conn.execute(
@@ -698,6 +713,7 @@ def save_extraction_result(
 
 
 def _delete_normalized_chunk_records(conn: sqlite3.Connection, chunk_id: int) -> None:
+    conn.execute("DELETE FROM chunk_summaries WHERE chunk_id = ?", (chunk_id,))
     conn.execute("DELETE FROM topics WHERE chunk_id = ?", (chunk_id,))
     conn.execute("DELETE FROM key_terms WHERE chunk_id = ?", (chunk_id,))
     conn.execute("DELETE FROM examples WHERE chunk_id = ?", (chunk_id,))
@@ -1147,6 +1163,7 @@ def export_document(conn: sqlite3.Connection, document_id: int) -> dict[str, Any
         "document": document.model_dump(),
         "pages": [page.model_dump() for page in pages],
         "chunks": [chunk.model_dump() for chunk in chunks],
+        "chunk_summaries": _rows(conn, "chunk_summaries", document_id),
         "topics": _rows(conn, "topics", document_id),
         "key_terms": _rows(conn, "key_terms", document_id),
         "examples": _rows(conn, "examples", document_id),

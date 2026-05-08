@@ -28,7 +28,7 @@ from ethnos.db import (
     structure_status,
 )
 from ethnos.models import ChunkRecord, DocumentRecord, ExtractionResult, PageRecord
-from ethnos.export import export_study
+from ethnos.export import export_json, export_study
 from ethnos.ollama_client import AnswerCallResult
 from ethnos.qa import (
     answer_query_candidates,
@@ -1804,6 +1804,12 @@ def test_valid_extraction_rerun_replaces_normalized_rows_for_chunk(tmp_path):
     save_extraction_result(conn, chunk_id, first)
     save_extraction_result(conn, chunk_id, second)
 
+    summary_rows = conn.execute(
+        "SELECT chunk_id, summary FROM chunk_summaries WHERE chunk_id = ?", (chunk_id,)
+    ).fetchall()
+    assert [dict(row) for row in summary_rows] == [
+        {"chunk_id": chunk_id, "summary": "Second result."}
+    ]
     assert conn.execute("SELECT name FROM topics").fetchall()[0]["name"] == "New Topic"
     assert conn.execute("SELECT COUNT(*) AS count FROM key_terms").fetchone()["count"] == 0
     assert conn.execute("SELECT title FROM examples").fetchone()["title"] == "New Example"
@@ -1938,6 +1944,33 @@ def test_model_outputs_history_is_preserved_across_normalized_replacement(tmp_pa
     assert [row["raw_response"] for row in outputs] == ["first raw response", "second raw response"]
     assert conn.execute("SELECT COUNT(*) AS count FROM extraction_runs").fetchone()["count"] == 2
     assert conn.execute("SELECT name FROM topics").fetchone()["name"] == "Second Topic"
+
+
+def test_export_json_includes_normalized_chunk_summary(tmp_path):
+    conn = connect(tmp_path / "ethnos.sqlite")
+    init_db(conn)
+    chunk_id = _stored_chunk(conn, page_start=2, page_end=3)
+    result = ExtractionResult.model_validate(
+        {
+            "chunk_summary": "Ethics concepts.",
+            "topics": [],
+            "key_terms": [],
+            "examples": [],
+            "questions": [],
+        }
+    )
+
+    from ethnos.db import save_extraction_result
+
+    save_extraction_result(conn, chunk_id, result)
+    exported = json.loads(export_json(conn, 1))
+
+    assert len(exported["chunk_summaries"]) == 1
+    summary = exported["chunk_summaries"][0]
+    assert summary["chunk_id"] == chunk_id
+    assert summary["summary"] == "Ethics concepts."
+    assert summary["created_at"]
+    assert "chunk_summary" not in exported["chunks"][0]
 
 
 def test_empty_response_is_stored_as_empty_response_and_preserves_rows(tmp_path):
