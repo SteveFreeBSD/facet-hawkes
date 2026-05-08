@@ -46,9 +46,33 @@ Also avoid long Ollama benchmarks, multi-model comparisons, PDF re-extraction,
 structured re-extraction, and product-feature experiments during baseline
 stabilization.
 
+## Local Database Recovery
+
+`data/ethnos.sqlite` is ignored local runtime state. Deleting or replacing it
+does not delete the source code, but it does remove the local processed
+database. The source PDF for the current baseline is
+`data/incoming/ethics.pdf`.
+
+To recover from a missing, corrupted, or intentionally replaced database,
+recreate it from the source PDF:
+
+```bash
+.venv/bin/uv run ethnos ingest-pdf data/incoming/ethics.pdf
+.venv/bin/uv run ethnos chunk 1
+.venv/bin/uv run ethnos label-sections 1
+.venv/bin/uv run ethnos structure 1
+```
+
+The `structure` step is expensive because it calls Ollama. Do not run it inside
+Codex during baseline stabilization unless explicitly requested.
+
+To back up the current processed database manually, copy
+`data/ethnos.sqlite` to another file under `data/` or to a location outside the
+repo. Database backups should stay ignored local data and should not be
+committed.
+
 ## Next Sensible Project Areas
 
-- Improve recovery notes for restoring or replacing the local SQLite database.
 - Add a small troubleshooting guide for Ollama connection and model-loading failures.
 - Clarify how traces should be inspected when an answer looks suspicious.
 - Tighten tests around chat continuation behavior.
