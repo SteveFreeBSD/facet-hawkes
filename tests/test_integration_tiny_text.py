@@ -866,6 +866,38 @@ def test_answer_quality_evaluation_pass_partial_fail_and_forbidden_terms():
     assert forbidden.forbidden_terms_found == ["invented"]
 
 
+def test_answer_quality_expected_any_terms_groups():
+    row = {
+        "id": 1,
+        "chunk_index": 1,
+        "page_start": 1,
+        "page_end": 1,
+        "source_citation": "labeled.pdf p. 1, chunk 1",
+    }
+    item = {
+        "expected_answer_terms": ["consequences"],
+        "expected_any_terms": [
+            ["utility", "happiness", "pleasure"],
+            ["duty", "duties", "obligation"],
+        ],
+    }
+
+    passed = evaluate_answer_quality(
+        item,
+        "Consequences, happiness, and obligation matter here.",
+        [row],
+    )
+    partial = evaluate_answer_quality(
+        item,
+        "Consequences and happiness are discussed.",
+        [row],
+    )
+
+    assert passed.status == "pass"
+    assert partial.status == "partial"
+    assert partial.missing_expected_terms == ["any of: duty | duties | obligation"]
+
+
 def test_answer_quality_expected_citation_page_detection():
     row = {
         "id": 1,

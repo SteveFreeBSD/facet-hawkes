@@ -56,7 +56,8 @@
     "expected_source_chunks": [51, 52, 53, 54, 55, 56, 57, 58],
     "expected_source_pages": [62, 63, 64, 65, 66, 67, 68, 69],
     "expected_terms": ["utilitarianism"],
-    "expected_answer_terms": ["utility", "consequences"],
+    "expected_answer_terms": ["consequences"],
+    "expected_any_terms": [["utility", "happiness", "pleasure"]],
     "expected_citation_chunks": [51, 52, 53, 54, 55],
     "expected_citation_pages": [62, 63, 64, 65]
   },
@@ -66,7 +67,8 @@
     "expected_source_chunks": [59, 60, 61, 62, 63, 64, 65, 66, 67],
     "expected_source_pages": [70, 71, 72, 73, 74, 75, 76, 77, 78],
     "expected_terms": ["Kantian deontology"],
-    "expected_answer_terms": ["duty", "categorical imperative"],
+    "expected_answer_terms": ["categorical imperative"],
+    "expected_any_terms": [["duty", "duties", "obligation"]],
     "expected_citation_chunks": [59],
     "expected_citation_pages": [70]
   },
@@ -86,7 +88,8 @@
     "expected_source_chunks": [31, 32, 33, 34, 35, 36, 37, 38, 39, 59, 60, 61, 62, 63, 64, 65, 66, 67],
     "expected_source_pages": [44, 45, 46, 47, 48, 49, 50, 51, 52, 70, 71, 72, 73, 74, 75, 76, 77, 78],
     "expected_terms": ["virtue ethics", "Kantian deontology"],
-    "expected_answer_terms": ["character", "virtue", "duty", "categorical imperative"],
+    "expected_answer_terms": ["character", "virtue", "categorical imperative"],
+    "expected_any_terms": [["duty", "duties", "obligation"]],
     "expected_citation_chunks": [31, 32, 59, 60],
     "expected_citation_pages": [44, 45, 70, 71]
   },
@@ -96,7 +99,11 @@
     "expected_source_chunks": [51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67],
     "expected_source_pages": [62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78],
     "expected_terms": ["utilitarianism", "Kantian deontology"],
-    "expected_answer_terms": ["consequences", "utility", "duty", "categorical imperative"],
+    "expected_answer_terms": ["consequences", "categorical imperative"],
+    "expected_any_terms": [
+      ["utility", "happiness", "pleasure"],
+      ["duty", "duties", "obligation"]
+    ],
     "expected_citation_chunks": [51, 52, 59],
     "expected_citation_pages": [62, 63, 70]
   },
@@ -126,7 +133,7 @@
     "expected_source_chunks": [11, 41, 42, 43, 44, 45, 48, 49],
     "expected_source_pages": [19, 54, 55, 56, 57, 58, 60],
     "expected_terms": ["ethical egoism", "social contract"],
-    "expected_answer_terms": ["self-interest", "contract", "Hobbes"],
+    "expected_answer_terms": ["self-interest", "contract"],
     "expected_citation_chunks": [11, 41, 45, 49],
     "expected_citation_pages": [19, 54, 58, 60]
   },

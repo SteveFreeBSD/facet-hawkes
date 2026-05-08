@@ -216,6 +216,7 @@ def benchmark_hit(item: dict[str, Any], rows: list[dict[str, Any]]) -> bool:
 def evaluate_answer_quality(
     item: dict[str, Any], answer_text: str, rows: list[dict[str, Any]]
 ) -> AnswerEvaluation:
+    expected_any_groups = _normalize_expected_any_terms(item)
     if _expects_no_context(item):
         status = "no_context_expected" if not rows else "fail"
         return AnswerEvaluation(
@@ -226,9 +227,13 @@ def evaluate_answer_quality(
             expected_citations=[],
         )
     if not rows:
+        missing_expected = list(item.get("expected_answer_terms", []))
+        missing_expected.extend(
+            _format_any_group(group) for group in expected_any_groups
+        )
         return AnswerEvaluation(
             status="no_context_unexpected",
-            missing_expected_terms=list(item.get("expected_answer_terms", [])),
+            missing_expected_terms=missing_expected,
             forbidden_terms_found=[],
             citation_hit=False,
             expected_citations=[],
@@ -237,6 +242,14 @@ def evaluate_answer_quality(
     answer_lower = answer_text.lower()
     expected_terms = list(item.get("expected_answer_terms", []))
     missing_terms = [term for term in expected_terms if term.lower() not in answer_lower]
+    missing_any_groups = [
+        group
+        for group in expected_any_groups
+        if not any(term.lower() in answer_lower for term in group)
+    ]
+    missing_expected_terms = missing_terms + [
+        _format_any_group(group) for group in missing_any_groups
+    ]
     forbidden_terms = [
         term for term in item.get("forbidden_terms", []) if term.lower() in answer_lower
     ]
@@ -248,8 +261,14 @@ def evaluate_answer_quality(
     if forbidden_terms:
         status = "fail"
     else:
-        checks = len(expected_terms) + (1 if citation_hit is not None else 0)
-        passed = (len(expected_terms) - len(missing_terms)) + int(citation_hit is True)
+        checks = len(expected_terms) + len(expected_any_groups) + (
+            1 if citation_hit is not None else 0
+        )
+        passed = (
+            (len(expected_terms) - len(missing_terms))
+            + (len(expected_any_groups) - len(missing_any_groups))
+            + int(citation_hit is True)
+        )
         if checks == 0:
             status = "pass" if answer_text.strip() else "fail"
         elif passed == checks:
@@ -261,7 +280,7 @@ def evaluate_answer_quality(
 
     return AnswerEvaluation(
         status=status,
-        missing_expected_terms=missing_terms,
+        missing_expected_terms=missing_expected_terms,
         forbidden_terms_found=forbidden_terms,
         citation_hit=citation_hit,
         expected_citations=expected_citations,
@@ -277,6 +296,23 @@ def expected_answer_citations(item: dict[str, Any]) -> list[str]:
         citations.append(f"p. {page}")
         citations.append(f"pp. {page}")
     return citations
+
+
+def _normalize_expected_any_terms(item: dict[str, Any]) -> list[list[str]]:
+    groups = []
+    for group in item.get("expected_any_terms", []):
+        if isinstance(group, (list, tuple, set)):
+            terms = [str(term).strip() for term in group if str(term).strip()]
+        else:
+            term = str(group).strip()
+            terms = [term] if term else []
+        if terms:
+            groups.append(terms)
+    return groups
+
+
+def _format_any_group(group: list[str]) -> str:
+    return "any of: " + " | ".join(group)
 
 
 def summarize_answer_items(items: list[dict[str, Any]]) -> dict[str, Any]:
