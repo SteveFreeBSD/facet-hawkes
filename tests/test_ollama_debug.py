@@ -165,7 +165,7 @@ def test_default_ollama_budgets_and_context(monkeypatch):
 
     assert settings.ollama_structure_num_predict == 2048
     assert settings.ollama_answer_num_predict == 1536
-    assert settings.ollama_num_ctx == 8192
+    assert settings.ollama_num_ctx == 4096
 
 
 def test_num_ctx_uses_cli_option_before_settings():

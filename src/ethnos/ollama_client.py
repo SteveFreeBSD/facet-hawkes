@@ -208,6 +208,7 @@ def _chat_request_kwargs(
         ],
         "format": schema,
         "options": {"temperature": 0, "num_predict": num_predict, "num_ctx": num_ctx},
+        "keep_alive": -1,
     }
 
 
@@ -227,6 +228,7 @@ def _answer_chat_request_kwargs(
             {"role": "user", "content": prompt},
         ],
         "options": {"temperature": 0, "num_predict": num_predict, "num_ctx": num_ctx},
+        "keep_alive": -1,
     }
 
 
