@@ -19,6 +19,7 @@ class Settings:
     ollama_structure_num_predict: int
     ollama_answer_num_predict: int
     ollama_num_ctx: int
+    ollama_think: bool
     prompt_path: Path
 
 
@@ -30,7 +31,7 @@ def load_settings() -> Settings:
     return Settings(
         db_path=db_path,
         ollama_host=os.getenv("ETHNOS_OLLAMA_HOST", "http://localhost:11434"),
-        ollama_model=os.getenv("ETHNOS_OLLAMA_MODEL", "gemma4:e4b"),
+        ollama_model=os.getenv("ETHNOS_OLLAMA_MODEL", "gemma-python"),
         ollama_timeout=float(os.getenv("ETHNOS_OLLAMA_TIMEOUT", "300")),
         ollama_structure_num_predict=int(
             os.getenv(
@@ -44,6 +45,7 @@ def load_settings() -> Settings:
                 os.getenv("ETHNOS_OLLAMA_NUM_PREDICT", "1536"),
             )
         ),
-        ollama_num_ctx=int(os.getenv("ETHNOS_OLLAMA_NUM_CTX", "4096")),
+        ollama_num_ctx=int(os.getenv("ETHNOS_OLLAMA_NUM_CTX", "8192")),
+        ollama_think=os.getenv("ETHNOS_OLLAMA_THINK", "false").lower() in ("1", "true", "yes"),
         prompt_path=prompt_path,
     )

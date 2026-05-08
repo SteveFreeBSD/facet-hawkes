@@ -459,6 +459,7 @@ def structure(args: argparse.Namespace) -> int:
             num_predict=num_predict,
             num_ctx=num_ctx,
             debug_ollama=args.debug_ollama,
+            think=settings.ollama_think,
             client=ollama_client,
         )
         if args.debug_ollama:
@@ -737,6 +738,7 @@ def ask_cmd(args: argparse.Namespace) -> int:
         model_name=args.model or settings.ollama_model,
         num_predict=answer_num_predict(args, settings),
         num_ctx=ollama_num_ctx(args, settings),
+        think=settings.ollama_think,
         debug_retrieval=args.debug_retrieval,
         debug_ollama=args.debug_ollama,
         trace_dir=args.trace_dir,
@@ -789,6 +791,7 @@ def chat_cmd(args: argparse.Namespace) -> int:
                 model_name=model_name,
                 num_predict=num_predict,
                 num_ctx=num_ctx,
+                think=settings.ollama_think,
                 debug_retrieval=args.debug_retrieval,
                 debug_ollama=args.debug_ollama,
                 trace_dir=args.trace_dir,
@@ -829,6 +832,7 @@ def _answer_once(
     model_name: str,
     num_predict: int,
     num_ctx: int,
+    think: bool,
     debug_retrieval: bool,
     debug_ollama: bool,
     trace_dir: Path | None,
@@ -897,6 +901,7 @@ def _answer_once(
         timeout=settings.ollama_timeout,
         num_predict=num_predict,
         num_ctx=num_ctx,
+        think=think,
         client=client,
     )
     elapsed = time.monotonic() - started_at
@@ -1017,6 +1022,7 @@ def qa_bench_cmd(args: argparse.Namespace) -> int:
                 timeout=settings.ollama_timeout,
                 num_predict=num_predict,
                 num_ctx=num_ctx,
+                think=settings.ollama_think,
                 client=run_client,
             )
             answer_elapsed = time.monotonic() - answer_started_at
@@ -1188,6 +1194,7 @@ def qa_bench_compare_models(
                         timeout=settings.ollama_timeout,
                         num_predict=num_predict,
                         num_ctx=num_ctx,
+                        think=settings.ollama_think,
                         client=ollama_client,
                     )
                     answer_elapsed = time.monotonic() - answer_started_at

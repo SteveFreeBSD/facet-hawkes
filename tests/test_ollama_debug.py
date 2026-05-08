@@ -60,10 +60,22 @@ def test_response_summary_reports_compact_envelope_fields():
     assert summary["done_reason"] == "stop"
     assert summary["eval_count"] == 17
     assert summary["message_content_length"] == 2
+    assert summary["message_thinking_length"] == 15
     assert summary["message_thinking_exists"] is True
     assert summary["error"] is None
     assert summary["total_duration"] == 123
     assert "message" in summary["top_level_keys"]
+
+
+def test_response_summary_ignores_empty_thinking_field():
+    response = {
+        "message": {"role": "assistant", "content": "{}", "thinking": ""},
+    }
+
+    summary = _response_summary(response)
+
+    assert summary["message_thinking_length"] == 0
+    assert summary["message_thinking_exists"] is False
 
 
 def test_print_ollama_debug_outputs_request_and_response_summary(capsys):
@@ -78,6 +90,7 @@ def test_print_ollama_debug_outputs_request_and_response_summary(capsys):
             "done_reason": "length",
             "eval_count": 2048,
             "message_content_length": 0,
+            "message_thinking_length": 0,
             "message_thinking_exists": False,
             "error": None,
             "total_duration": 456,
@@ -112,7 +125,7 @@ def test_structured_chat_request_sets_context_without_thinking():
     assert kwargs["messages"][1] == {"role": "user", "content": "prompt text"}
     assert kwargs["format"] == schema
     assert kwargs["options"] == {"temperature": 0, "num_predict": 4096, "num_ctx": 8192}
-    assert "think" not in kwargs
+    assert kwargs["think"] is False
     assert "stream" not in kwargs
 
 
@@ -126,8 +139,28 @@ def test_answer_chat_request_uses_plain_text_and_context_without_thinking():
     assert kwargs["messages"][1] == {"role": "user", "content": "answer prompt"}
     assert "format" not in kwargs
     assert kwargs["options"] == {"temperature": 0, "num_predict": 1024, "num_ctx": 8192}
-    assert "think" not in kwargs
+    assert kwargs["think"] is False
     assert "stream" not in kwargs
+
+
+def test_default_ollama_think_is_false(monkeypatch):
+    monkeypatch.delenv("ETHNOS_OLLAMA_THINK", raising=False)
+    settings = load_settings()
+    assert settings.ollama_think is False
+
+
+def test_ollama_think_can_be_enabled_via_env(monkeypatch):
+    monkeypatch.setenv("ETHNOS_OLLAMA_THINK", "true")
+    settings = load_settings()
+    assert settings.ollama_think is True
+
+
+def test_chat_request_kwargs_passes_think_true():
+    schema = {"type": "object"}
+    kwargs = _chat_request_kwargs(
+        "gemma-python", "prompt", schema, num_predict=2048, num_ctx=8192, think=True
+    )
+    assert kwargs["think"] is True
 
 
 def test_num_predict_uses_cli_option_before_settings():
@@ -163,9 +196,10 @@ def test_default_ollama_budgets_and_context(monkeypatch):
 
     settings = load_settings()
 
+    assert settings.ollama_model == "gemma-python"
     assert settings.ollama_structure_num_predict == 2048
     assert settings.ollama_answer_num_predict == 1536
-    assert settings.ollama_num_ctx == 4096
+    assert settings.ollama_num_ctx == 8192
 
 
 def test_num_ctx_uses_cli_option_before_settings():

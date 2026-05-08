@@ -60,6 +60,7 @@ def extract_chunk(
     num_ctx: int,
     retries: int = 1,
     debug_ollama: bool = False,
+    think: bool = False,
     client: object | None = None,
 ) -> StructuredCallResult:
     prompt = load_prompt(prompt_path, chunk)
@@ -78,6 +79,7 @@ def extract_chunk(
                 model_name=model_name,
                 num_predict=num_predict,
                 num_ctx=num_ctx,
+                think=think,
             )
             raw_response = chat_result.content
         except Exception as exc:  # Ollama/httpx exceptions vary by version.
@@ -120,6 +122,7 @@ def answer_question(
     timeout: float,
     num_predict: int,
     num_ctx: int,
+    think: bool = False,
     client: object | None = None,
 ) -> AnswerCallResult:
     client = client if client is not None else create_client(host, timeout)
@@ -129,6 +132,7 @@ def answer_question(
         model_name=model_name,
         num_predict=num_predict,
         num_ctx=num_ctx,
+        think=think,
     )
     debug_info = OllamaDebugInfo(
         prompt_char_length=len(prompt),
@@ -161,10 +165,11 @@ def _chat(
     model_name: str,
     num_predict: int,
     num_ctx: int,
+    think: bool = False,
 ) -> OllamaChatResult:
     return _do_chat(
         client,
-        _chat_request_kwargs(model_name, prompt, schema, num_predict, num_ctx),
+        _chat_request_kwargs(model_name, prompt, schema, num_predict, num_ctx, think),
     )
 
 
@@ -174,10 +179,11 @@ def _chat_plain(
     model_name: str,
     num_predict: int,
     num_ctx: int,
+    think: bool = False,
 ) -> OllamaChatResult:
     return _do_chat(
         client,
-        _answer_chat_request_kwargs(model_name, prompt, num_predict, num_ctx),
+        _answer_chat_request_kwargs(model_name, prompt, num_predict, num_ctx, think),
     )
 
 
@@ -195,7 +201,7 @@ def _do_chat(client: object, request_kwargs: dict) -> OllamaChatResult:
 
 
 def _chat_request_kwargs(
-    model_name: str, prompt: str, schema: dict, num_predict: int, num_ctx: int
+    model_name: str, prompt: str, schema: dict, num_predict: int, num_ctx: int, think: bool = False
 ) -> dict:
     return {
         "model": model_name,
@@ -208,12 +214,12 @@ def _chat_request_kwargs(
         ],
         "format": schema,
         "options": {"temperature": 0, "num_predict": num_predict, "num_ctx": num_ctx},
-        "keep_alive": -1,
+        "think": think,
     }
 
 
 def _answer_chat_request_kwargs(
-    model_name: str, prompt: str, num_predict: int, num_ctx: int
+    model_name: str, prompt: str, num_predict: int, num_ctx: int, think: bool = False
 ) -> dict:
     return {
         "model": model_name,
@@ -228,7 +234,7 @@ def _answer_chat_request_kwargs(
             {"role": "user", "content": prompt},
         ],
         "options": {"temperature": 0, "num_predict": num_predict, "num_ctx": num_ctx},
-        "keep_alive": -1,
+        "think": think,
     }
 
 
@@ -315,12 +321,16 @@ def _response_summary(response: object) -> dict:
     content = message.get("content", "")
     if not isinstance(content, str):
         content = ""
+    thinking = message.get("thinking", "")
+    if not isinstance(thinking, str):
+        thinking = ""
     return {
         "done": envelope.get("done"),
         "done_reason": envelope.get("done_reason"),
         "eval_count": envelope.get("eval_count"),
         "message_content_length": len(content),
-        "message_thinking_exists": "thinking" in message,
+        "message_thinking_length": len(thinking),
+        "message_thinking_exists": bool(thinking),
         "error": envelope.get("error"),
         "total_duration": envelope.get("total_duration"),
         "top_level_keys": sorted(envelope.keys()),

@@ -934,7 +934,7 @@ def test_ask_cli_writes_trace_when_requested(tmp_path, capsys, monkeypatch):
     assert trace["question"] == "What is evolutionary ethics?"
     assert trace["model"] == "custom-model"
     assert trace["num_predict"] == 1536
-    assert trace["num_ctx"] == 4096
+    assert trace["num_ctx"] == 8192
     assert trace["context_found"] is True
     assert trace["command_mode"] == "ask"
     assert trace["selected_chunks"][0]["chunk_id"] == chunks[0].id
@@ -974,7 +974,7 @@ def test_chat_cli_exits_on_quit_without_ollama(tmp_path, capsys, monkeypatch):
 
     assert exit_code == 0
     assert f"ethnos chat for document {document_id}" in output
-    assert "model: gemma4:e4b" in output
+    assert "model: gemma-python" in output
 
 
 def test_chat_cli_answers_and_writes_trace(tmp_path, capsys, monkeypatch):
