@@ -32,6 +32,7 @@ from .db import (
     list_documents,
     list_pages,
     quality_report,
+    refresh_normalized_records,
     save_chunks,
     save_document_pages,
     save_extraction_result,
@@ -178,6 +179,14 @@ def build_parser() -> argparse.ArgumentParser:
         backfill_summaries_cmd,
     )
     backfill_parser.add_argument("document_id", type=int)
+
+    refresh_parser = _command(
+        subcommands,
+        "refresh-records",
+        "Refresh normalized records from latest valid model outputs.",
+        refresh_records_cmd,
+    )
+    refresh_parser.add_argument("document_id", type=int)
 
     context_parser = _command(
         subcommands, "context", "Show retrieval-ready context for a query.", context_cmd
@@ -658,7 +667,7 @@ def quality_report_cmd(args: argparse.Namespace) -> int:
     else:
         print("  none")
     _print_chunk_list(
-        "Chunks with no key_terms and no questions",
+        "Core chunks with no key_terms and no questions",
         report["chunks_with_no_terms_or_questions"],
     )
     _print_non_core_records(report["non_core_chunks_with_records"])
@@ -681,6 +690,27 @@ def backfill_summaries_cmd(args: argparse.Namespace) -> int:
     print(f"  skipped_invalid: {report['skipped_invalid']}")
     if report["backfilled_chunks"]:
         print("  chunk ids: " + ", ".join(str(chunk_id) for chunk_id in report["backfilled_chunks"]))
+    if report["errors"]:
+        print("  validation errors:")
+        for error in report["errors"][:10]:
+            print(
+                f"    chunk {error['chunk_id']} / model_output {error['model_output_id']}: "
+                f"{preview_text(error['error'], 160)}"
+            )
+        if len(report["errors"]) > 10:
+            print(f"    ... {len(report['errors']) - 10} more")
+    return 0 if report["skipped_invalid"] == 0 else 1
+
+
+def refresh_records_cmd(args: argparse.Namespace) -> int:
+    _, conn = open_db(args)
+    report = refresh_normalized_records(conn, args.document_id)
+    print(f"Refreshed normalized records for document {args.document_id}")
+    print(f"  candidates: {report['candidates']}")
+    print(f"  refreshed: {report['refreshed']}")
+    print(f"  skipped_invalid: {report['skipped_invalid']}")
+    if report["refreshed_chunks"]:
+        print("  chunk ids: " + ", ".join(str(chunk_id) for chunk_id in report["refreshed_chunks"]))
     if report["errors"]:
         print("  validation errors:")
         for error in report["errors"][:10]:
@@ -1503,7 +1533,7 @@ def _print_chunk_list(title: str, rows: list[dict], limit: int = 20) -> None:
 
 
 def _print_non_core_records(rows: list[dict], limit: int = 20) -> None:
-    print(f"Admin/support chunks with key_terms/questions: {len(rows)}")
+    print(f"Non-core chunks with key_terms/questions: {len(rows)}")
     for row in rows[:limit]:
         print(
             f"  chunk {row['id']} ({row['section_label'] or 'unlabeled'} / "

@@ -653,6 +653,7 @@ def save_extraction_result(
     conn: sqlite3.Connection, chunk_id: int, result: ExtractionResult
 ) -> None:
     fallback_source_pages = _chunk_source_pages(conn, chunk_id)
+    persist_study_records = _should_persist_study_records(conn, chunk_id)
     with conn:
         _delete_normalized_chunk_records(conn, chunk_id)
         conn.execute(
@@ -662,6 +663,8 @@ def save_extraction_result(
             """,
             (chunk_id, result.chunk_summary),
         )
+        if not persist_study_records:
+            return
         for topic in result.topics:
             source_pages = _record_source_pages(topic.source_pages, fallback_source_pages)
             conn.execute(
@@ -767,6 +770,53 @@ def backfill_chunk_summaries(conn: sqlite3.Connection, document_id: int) -> dict
     return report
 
 
+def refresh_normalized_records(conn: sqlite3.Connection, document_id: int) -> dict[str, Any]:
+    rows = conn.execute(
+        """
+        WITH latest_valid_outputs AS (
+            SELECT c.id AS chunk_id, MAX(mo.id) AS model_output_id
+            FROM chunks c
+            JOIN model_outputs mo ON mo.chunk_id = c.id
+            WHERE c.document_id = ?
+              AND mo.validation_status = 'valid'
+              AND mo.parsed_json IS NOT NULL
+            GROUP BY c.id
+        )
+        SELECT lvo.chunk_id, lvo.model_output_id, mo.parsed_json
+        FROM latest_valid_outputs lvo
+        JOIN model_outputs mo ON mo.id = lvo.model_output_id
+        ORDER BY lvo.chunk_id
+        """,
+        (document_id,),
+    ).fetchall()
+    report: dict[str, Any] = {
+        "document_id": document_id,
+        "candidates": len(rows),
+        "refreshed": 0,
+        "skipped_invalid": 0,
+        "refreshed_chunks": [],
+        "errors": [],
+    }
+    for row in rows:
+        try:
+            parsed = json.loads(row["parsed_json"])
+            result = ExtractionResult.model_validate(parsed)
+        except (json.JSONDecodeError, ValueError) as exc:
+            report["skipped_invalid"] += 1
+            report["errors"].append(
+                {
+                    "chunk_id": row["chunk_id"],
+                    "model_output_id": row["model_output_id"],
+                    "error": str(exc),
+                }
+            )
+            continue
+        save_extraction_result(conn, row["chunk_id"], result)
+        report["refreshed"] += 1
+        report["refreshed_chunks"].append(row["chunk_id"])
+    return report
+
+
 def _delete_normalized_chunk_records(conn: sqlite3.Connection, chunk_id: int) -> None:
     conn.execute("DELETE FROM chunk_summaries WHERE chunk_id = ?", (chunk_id,))
     conn.execute("DELETE FROM topics WHERE chunk_id = ?", (chunk_id,))
@@ -786,6 +836,13 @@ def _chunk_source_pages(conn: sqlite3.Connection, chunk_id: int) -> list[int]:
 
 def _record_source_pages(model_pages: list[int], fallback_pages: list[int]) -> list[int]:
     return model_pages if model_pages else fallback_pages
+
+
+def _should_persist_study_records(conn: sqlite3.Connection, chunk_id: int) -> bool:
+    row = conn.execute("SELECT content_role FROM chunks WHERE id = ?", (chunk_id,)).fetchone()
+    if row is None:
+        raise ValueError(f"No chunk found with id {chunk_id}")
+    return row["content_role"] in (None, "", "core")
 
 
 def clear_document_outputs(conn: sqlite3.Connection, document_id: int) -> None:
@@ -1196,7 +1253,7 @@ def _chunks_with_no_terms_or_questions(
         FROM chunks c
         LEFT JOIN key_terms kt ON kt.chunk_id = c.id
         LEFT JOIN questions q ON q.chunk_id = c.id
-        WHERE c.document_id = ?
+        WHERE c.document_id = ? AND COALESCE(c.content_role, 'core') = 'core'
         GROUP BY c.id
         HAVING COUNT(DISTINCT kt.id) = 0 AND COUNT(DISTINCT q.id) = 0
         ORDER BY c.chunk_index

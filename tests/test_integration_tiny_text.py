@@ -25,6 +25,7 @@ from ethnos.db import (
     inspect_page,
     list_structured_records,
     quality_report,
+    refresh_normalized_records,
     search_chunks,
     section_label_status,
     select_chunks_for_structure,
@@ -357,7 +358,6 @@ def test_records_filter_by_type_role_section_and_chunk_id(tmp_path, capsys):
     assert [row["summary"] for row in chunk_summaries] == ["Core discussion."]
     assert {row["record_type"] for row in support_records} == {
         "chunk_summaries",
-        "key_terms",
     }
     assert {row["chunk_id"] for row in support_records} == {chunks[1].id}
 
@@ -418,12 +418,9 @@ def test_quality_report_summarizes_assimilation_scope(tmp_path):
         {"validation_status": "valid", "count": 1},
     ]
     assert {"content_role": "core", "count": 1} in report["key_terms_by_role"]
-    assert report["top_repeated_key_terms"] == [{"term": "evolutionary ethics", "count": 2}]
+    assert report["top_repeated_key_terms"] == []
     assert [row["id"] for row in report["chunks_with_no_terms_or_questions"]] == [chunks[3].id]
-    assert {row["content_role"] for row in report["non_core_chunks_with_records"]} == {
-        "admin",
-        "support",
-    }
+    assert report["non_core_chunks_with_records"] == []
     assert report["chunk_summaries"] == 3
 
 
@@ -2167,6 +2164,84 @@ def test_backfill_chunk_summaries_replays_latest_valid_model_output(tmp_path, ca
     assert "Backfilled chunk summaries for document" in output
     assert "candidates: 1" in output
     assert "backfilled: 1" in output
+
+
+def test_non_core_save_and_refresh_keep_summary_only(tmp_path, capsys):
+    db_path = tmp_path / "ethnos.sqlite"
+    conn = connect(db_path)
+    init_db(conn)
+    document_id, chunks = _stored_labeled_record_document(conn)
+    support_chunk_id = chunks[1].id
+    assert support_chunk_id is not None
+
+    records = chunk_records(conn, support_chunk_id)
+
+    assert records["chunk_summaries"][0]["summary"] == "Reference material."
+    assert records["topics"] == []
+    assert records["key_terms"] == []
+    assert records["examples"] == []
+    assert records["questions"] == []
+
+    run_id = create_extraction_run(conn, document_id, "test-model", "prompt")
+    save_model_output(
+        conn,
+        run_id=run_id,
+        chunk_id=support_chunk_id,
+        raw_prompt="prompt",
+        raw_response="raw",
+        parsed_json={
+            "chunk_summary": "Refreshed support summary.",
+            "topics": [
+                {
+                    "name": "Support Topic",
+                    "summary": "Should not become a study topic.",
+                    "confidence": 0.7,
+                    "source_pages": [],
+                }
+            ],
+            "key_terms": [
+                {
+                    "term": "Support Term",
+                    "definition": "Should not become a study term.",
+                    "context": "",
+                    "source_pages": [],
+                }
+            ],
+            "examples": [
+                {
+                    "title": "Support Example",
+                    "body": "Should not become a study example.",
+                    "source_pages": [],
+                }
+            ],
+            "questions": [
+                {
+                    "question": "Should this be saved?",
+                    "answer": "No.",
+                    "difficulty": "easy",
+                    "source_pages": [],
+                }
+            ],
+        },
+        validation_status="valid",
+        validation_error=None,
+    )
+
+    report = refresh_normalized_records(conn, document_id)
+    refreshed = chunk_records(conn, support_chunk_id)
+
+    assert report["refreshed"] == 1
+    assert refreshed["chunk_summaries"][0]["summary"] == "Refreshed support summary."
+    assert refreshed["topics"] == []
+    assert refreshed["key_terms"] == []
+    assert refreshed["examples"] == []
+    assert refreshed["questions"] == []
+
+    exit_code = main(["--db", str(db_path), "refresh-records", str(document_id)])
+    output = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert "Refreshed normalized records for document" in output
 
 
 def test_export_json_includes_normalized_chunk_summary(tmp_path):

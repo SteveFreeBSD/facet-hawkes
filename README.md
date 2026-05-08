@@ -153,6 +153,13 @@ Run the local retrieval-only benchmark without calling Ollama:
 uv run ethnos qa-bench 1 --benchmark benchmarks/ethics_qa.json --no-ask
 ```
 
+Refresh normalized records from existing valid model outputs after changing
+storage policy, without calling Ollama:
+
+```bash
+uv run ethnos refresh-records 1
+```
+
 The default database path is `data/ethnos.sqlite`. You can override it:
 
 ```bash
@@ -176,8 +183,9 @@ ETHNOS_OLLAMA_TIMEOUT=300
 ETHNOS_OLLAMA_STRUCTURE_NUM_PREDICT=2048
 ETHNOS_OLLAMA_ANSWER_NUM_PREDICT=1536
 ETHNOS_OLLAMA_NUM_CTX=8192
+ETHNOS_OLLAMA_THINK=false
 ```
 
-Some Gemma-family responses may report `message_thinking_exists: True` in
-`--debug-ollama` output even though ethnos does not request thinking mode. Treat
-that as model/server response metadata; it is not currently a failure condition.
+By default ethnos sends `think=false` to Ollama because local Gemma models can
+spend the whole output budget on hidden thinking tokens. `--debug-ollama`
+reports `message_thinking_length` so this is visible during smoke checks.
