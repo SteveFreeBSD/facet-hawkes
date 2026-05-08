@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
 from typing_extensions import Annotated
 
 
@@ -54,8 +54,17 @@ class TopicExtraction(BaseModel):
 
     name: NonEmptyStr
     summary: NonEmptyStr
-    confidence: float = Field(ge=0.0, le=1.0)
+    confidence: float
     source_pages: list[int] = Field(default_factory=list)
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def clamp_confidence(cls, v: Any) -> float:
+        """Normalize confidence to 0-1.  Gemma sometimes returns integer scales."""
+        v = float(v)
+        if v > 1.0:
+            v = v / (5.0 if v <= 5.0 else 10.0)
+        return max(0.0, min(1.0, v))
 
 
 class KeyTerm(BaseModel):
