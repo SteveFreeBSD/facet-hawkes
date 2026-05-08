@@ -152,7 +152,7 @@ def build_parser() -> argparse.ArgumentParser:
     records_parser.add_argument("document_id", type=int)
     records_parser.add_argument(
         "--type",
-        choices=["all", "key_terms", "questions", "topics", "examples"],
+        choices=["all", "chunk_summaries", "key_terms", "questions", "topics", "examples"],
         default="all",
     )
     records_parser.add_argument("--role", choices=sorted(CONTENT_ROLES))
@@ -1331,7 +1331,7 @@ def _print_section_count_summary(title: str, rows: list[dict]) -> None:
 
 def _print_chunk_records(records: dict[str, list[dict]]) -> None:
     print("Extracted records:")
-    for section in ["key_terms", "questions", "topics", "examples"]:
+    for section in ["chunk_summaries", "key_terms", "questions", "topics", "examples"]:
         print(f"{section}:")
         if not records[section]:
             print("  none")
@@ -1343,7 +1343,10 @@ def _print_chunk_records(records: dict[str, list[dict]]) -> None:
 def _print_record(row: dict) -> None:
     record_type = row["record_type"]
     source_pages = format_source_pages(row.get("source_pages"))
-    if record_type == "key_terms":
+    if record_type == "chunk_summaries":
+        print(f"[chunk_summary] chunk {row['chunk_id']}")
+        print(f"  summary: {row['summary']}")
+    elif record_type == "key_terms":
         print(f"[key_term] chunk {row['chunk_id']} | {source_pages}")
         print(f"  term: {row['term']}")
         print(f"  definition: {row['definition']}")

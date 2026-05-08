@@ -782,6 +782,7 @@ def inspect_chunk(
 
 def chunk_records(conn: sqlite3.Connection, chunk_id: int) -> dict[str, list[dict[str, Any]]]:
     return {
+        "chunk_summaries": _chunk_table_rows(conn, "chunk_summaries", chunk_id),
         "key_terms": _chunk_table_rows(conn, "key_terms", chunk_id),
         "questions": _chunk_table_rows(conn, "questions", chunk_id),
         "topics": _chunk_table_rows(conn, "topics", chunk_id),
@@ -873,7 +874,7 @@ def list_structured_records(
     chunk_id: int | None = None,
     limit: int | None = None,
 ) -> list[dict[str, Any]]:
-    tables = ["key_terms", "questions", "topics", "examples"]
+    tables = ["chunk_summaries", "key_terms", "questions", "topics", "examples"]
     selected_tables = tables if record_type == "all" else [record_type]
     records: list[dict[str, Any]] = []
     for table in selected_tables:
@@ -1224,6 +1225,7 @@ def db_info(conn: sqlite3.Connection) -> dict[str, Any]:
         "documents",
         "pages",
         "chunks",
+        "chunk_summaries",
         "topics",
         "key_terms",
         "examples",

@@ -19,6 +19,7 @@ from ethnos.db import (
     create_extraction_run,
     chunk_records,
     context_chunks,
+    db_info,
     inspect_chunk,
     inspect_page,
     list_structured_records,
@@ -240,6 +241,8 @@ def test_inspect_chunk_helper_and_cli_output(tmp_path, capsys):
     assert inspection["chunk"]["section_label"] == "chapter_content"
     assert inspection["counts"]["key_terms"] == 1
     assert inspection["counts"]["questions"] == 1
+    assert db_info(conn)["chunk_summaries"] == 3
+    assert records["chunk_summaries"][0]["summary"] == "Core discussion."
     assert records["key_terms"][0]["term"] == "Evolutionary ethics"
 
     exit_code = main(["--db", str(db_path), "inspect-chunk", str(document_id), str(chunks[0].id), "--records"])
@@ -249,6 +252,9 @@ def test_inspect_chunk_helper_and_cli_output(tmp_path, capsys):
     assert "Document: labeled.pdf" in output
     assert f"Chunk id: {chunks[0].id}" in output
     assert "Section: chapter_content" in output
+    assert "chunk_summaries:" in output
+    assert "[chunk_summary] chunk" in output
+    assert "summary: Core discussion." in output
     assert "term: Evolutionary ethics" in output
     assert "question: What does evolutionary ethics study?" in output
 
@@ -324,8 +330,9 @@ def test_search_chunks_filters_by_role_and_section(tmp_path):
     assert [row["section_label"] for row in section_results] == ["chapter_content"]
 
 
-def test_records_filter_by_type_role_section_and_chunk_id(tmp_path):
-    conn = connect(tmp_path / "ethnos.sqlite")
+def test_records_filter_by_type_role_section_and_chunk_id(tmp_path, capsys):
+    db_path = tmp_path / "ethnos.sqlite"
+    conn = connect(db_path)
     init_db(conn)
     document_id, chunks = _stored_labeled_record_document(conn)
 
@@ -335,14 +342,39 @@ def test_records_filter_by_type_role_section_and_chunk_id(tmp_path):
     chapter_questions = list_structured_records(
         conn, document_id, record_type="questions", section="chapter_content"
     )
+    chunk_summaries = list_structured_records(
+        conn, document_id, record_type="chunk_summaries", role="core"
+    )
     support_records = list_structured_records(conn, document_id, chunk_id=chunks[1].id)
 
     assert [row["term"] for row in core_terms] == ["Evolutionary ethics"]
     assert [row["question"] for row in chapter_questions] == [
         "What does evolutionary ethics study?"
     ]
-    assert {row["record_type"] for row in support_records} == {"key_terms"}
-    assert support_records[0]["chunk_id"] == chunks[1].id
+    assert [row["summary"] for row in chunk_summaries] == ["Core discussion."]
+    assert {row["record_type"] for row in support_records} == {
+        "chunk_summaries",
+        "key_terms",
+    }
+    assert {row["chunk_id"] for row in support_records} == {chunks[1].id}
+
+    exit_code = main(
+        [
+            "--db",
+            str(db_path),
+            "records",
+            str(document_id),
+            "--type",
+            "chunk_summaries",
+            "--role",
+            "core",
+        ]
+    )
+    output = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert "[chunk_summary] chunk" in output
+    assert "summary: Core discussion." in output
 
 
 def test_quality_report_summarizes_assimilation_scope(tmp_path):
