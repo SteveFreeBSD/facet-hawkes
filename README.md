@@ -99,6 +99,7 @@ Summarize the shape and quality of the assimilated data without calling Ollama:
 
 ```bash
 uv run ethnos section-status 1
+uv run ethnos structure-status 1
 uv run ethnos quality-report 1
 ```
 
@@ -191,3 +192,14 @@ ETHNOS_OLLAMA_THINK=false
 By default ethnos sends `think=false` to Ollama because local Gemma models can
 spend the whole output budget on hidden thinking tokens. `--debug-ollama`
 reports `message_thinking_length` so this is visible during smoke checks.
+
+On the current CPU-only baseline machine, `OLLAMA_FLASH_ATTENTION=1` is enabled
+as an Ollama service override and gave a modest one-chunk speed improvement.
+Per-request `use_mlock` was rejected by the installed Ollama build, and forcing
+16 threads was slower than the default/8-thread CPU path. Treat service and
+thread tuning as benchmarked local configuration, not portable project
+defaults.
+
+The current local `ethics.pdf` database baseline has 100/100 chunks with valid
+latest structured output, 100 chunk summaries, 251 key terms, 187 questions, and
+zero non-core key terms/questions.

@@ -6,8 +6,14 @@ This is the known-good local baseline for `ethnos`.
 
 - `ethics.pdf` is document `1`.
 - PDF ingestion works.
-- Chunks exist.
+- 118 pages and 100 chunks exist in the current local database.
 - Section labels exist, with no unlabeled pages or chunks in the current database.
+- Structured extraction is complete for the current local database: 100/100
+  chunks have a valid latest model output.
+- Normalized records are populated: 100 chunk summaries, 112 topics, 251 key
+  terms, 73 examples, and 187 questions.
+- Non-core chunks have zero persisted key terms/questions; admin/support
+  material is summary-only.
 - `ask` works with local Ollama retrieval context.
 - `chat` works with the same retrieval and answer path.
 - `ask` and `chat` can write local JSON traces with `--trace-dir`.
@@ -16,7 +22,18 @@ This is the known-good local baseline for `ethnos`.
 
 ## Working Model
 
-The chosen working model for now is `gemma-python`.
+The chosen working model for now is `gemma-python`, with thinking disabled by
+default. Current defaults are:
+
+- `ETHNOS_OLLAMA_STRUCTURE_NUM_PREDICT=2048`
+- `ETHNOS_OLLAMA_ANSWER_NUM_PREDICT=1536`
+- `ETHNOS_OLLAMA_NUM_CTX=8192`
+- `ETHNOS_OLLAMA_THINK=false`
+
+The local Ollama service has `OLLAMA_FLASH_ATTENTION=1` enabled. A one-chunk
+smoke comparison showed a modest improvement, with normal run-to-run variance.
+Per-request `use_mlock` was rejected by this Ollama build, and forcing
+`num_thread=16` was slower on the Ryzen 7 PRO 5850U CPU path.
 
 ## Smoke Checks
 
@@ -28,6 +45,8 @@ python -m compileall -q src tests
 .venv/bin/uv run ethnos documents
 .venv/bin/uv run ethnos db-info
 .venv/bin/uv run ethnos section-status 1
+.venv/bin/uv run ethnos structure-status 1
+.venv/bin/uv run ethnos quality-report 1
 .venv/bin/uv run ethnos qa-bench 1 --benchmark benchmarks/ethics_qa.json --no-ask
 git status --short
 ```
@@ -40,6 +59,7 @@ Do not run these during baseline stabilization unless explicitly requested:
 .venv/bin/uv run ethnos qa-bench 1 --benchmark benchmarks/ethics_qa.json --ask
 .venv/bin/uv run ethnos structure 1 --force
 .venv/bin/uv run ethnos structure 1 --retry-failed
+.venv/bin/uv run ethnos structure 1 --all-roles
 ```
 
 Also avoid long Ollama benchmarks, multi-model comparisons, PDF re-extraction,
@@ -63,8 +83,11 @@ recreate it from the source PDF:
 .venv/bin/uv run ethnos structure 1
 ```
 
-The `structure` step is expensive because it calls Ollama. Do not run it inside
-Codex during baseline stabilization unless explicitly requested.
+The `structure` step is expensive because it calls Ollama. By default it
+processes only core/unlabeled chunks and skips admin/support chunks. Use
+`--all-roles` only when you intentionally want model outputs for every labeled
+chunk. Do not run long structure passes inside Codex during baseline
+stabilization unless explicitly requested.
 
 To back up the current processed database manually, copy
 `data/ethnos.sqlite` to another file under `data/` or to a location outside the
