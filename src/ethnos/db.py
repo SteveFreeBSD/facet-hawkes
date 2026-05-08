@@ -392,6 +392,7 @@ def structure_status(conn: sqlite3.Connection, document_id: int) -> dict[str, An
         "chunks_with_valid_output": len(valid_outputs),
         "chunks_latest_failed": len(latest_failed),
         "chunks_never_attempted": len(never_attempted),
+        "chunk_summaries": counts["chunk_summaries"],
         "topics": counts["topics"],
         "key_terms": counts["key_terms"],
         "examples": counts["examples"],
@@ -1207,7 +1208,7 @@ def _rows(conn: sqlite3.Connection, table: str, document_id: int) -> list[dict[s
 
 def _normalized_record_counts(conn: sqlite3.Connection, document_id: int) -> dict[str, int]:
     counts = {}
-    for table in ["topics", "key_terms", "examples", "questions"]:
+    for table in ["chunk_summaries", "topics", "key_terms", "examples", "questions"]:
         counts[table] = conn.execute(
             f"""
             SELECT COUNT(*) AS count

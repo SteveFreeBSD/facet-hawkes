@@ -1690,6 +1690,19 @@ def test_structure_status_summarizes_document_progress(tmp_path):
         validation_status="valid",
         validation_error=None,
     )
+    save_extraction_result(
+        conn,
+        chunks[0].id,
+        ExtractionResult.model_validate(
+            {
+                "chunk_summary": "Stored normalized summary.",
+                "topics": [],
+                "key_terms": [],
+                "examples": [],
+                "questions": [],
+            }
+        ),
+    )
     save_model_output(
         conn,
         run_id=run_id,
@@ -1707,6 +1720,7 @@ def test_structure_status_summarizes_document_progress(tmp_path):
     assert status["chunks_with_valid_output"] == 1
     assert status["chunks_latest_failed"] == 1
     assert status["chunks_never_attempted"] == 1
+    assert status["chunk_summaries"] == 1
     assert [row["chunk_index"] for row in status["latest_failed_chunks"]] == [2]
     assert [row["chunk_index"] for row in status["never_attempted_chunks"]] == [3]
 

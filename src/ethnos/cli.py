@@ -1281,6 +1281,7 @@ def structure_status_cmd(args: argparse.Namespace) -> int:
     print(f"  chunks with valid output: {status['chunks_with_valid_output']}")
     print(f"  chunks latest failed: {status['chunks_latest_failed']}")
     print(f"  chunks never attempted: {status['chunks_never_attempted']}")
+    print(f"  chunk_summaries: {status['chunk_summaries']}")
     print(f"  topics: {status['topics']}")
     print(f"  key_terms: {status['key_terms']}")
     print(f"  examples: {status['examples']}")
