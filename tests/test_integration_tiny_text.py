@@ -35,12 +35,14 @@ from ethnos.qa import (
     benchmark_hit,
     build_answer_prompt,
     detect_comparison_question,
+    detect_chat_followup,
     evaluate_answer_quality,
     extract_comparison_subqueries,
     load_qa_benchmark,
     normalize_answer_role,
     rank_model_summaries,
     question_to_fts_query,
+    resolve_chat_followup,
     retrieve_with_fallbacks,
     summarize_answer_items,
 )
@@ -500,6 +502,87 @@ def test_comparison_retrieval_merges_both_sides_and_deduplicates():
     assert calls[1] == ("kantian deontology", 3, "core", None)
 
 
+def test_ask_retrieval_adds_incomplete_chunk_continuation(tmp_path, monkeypatch):
+    db_path = tmp_path / "ethnos.sqlite"
+    conn = connect(db_path)
+    init_db(conn)
+    document = DocumentRecord(
+        source_path="/tmp/course.pdf",
+        filename="course.pdf",
+        sha256="continuation-fixture",
+        title="Course",
+        page_count=2,
+    )
+    pages = [
+        PageRecord(
+            document_id=0,
+            page_number=1,
+            raw_text="Virtue ethics links goodness with wisdom because",
+            cleaned_text="Virtue ethics links goodness with wisdom because",
+            char_count=50,
+        ),
+        PageRecord(
+            document_id=0,
+            page_number=2,
+            raw_text="character and wisdom matter.",
+            cleaned_text="character and wisdom matter.",
+            char_count=28,
+        ),
+    ]
+    document_id = save_document_pages(conn, document, pages)
+    save_chunks(
+        conn,
+        document_id,
+        [
+            ChunkRecord(
+                document_id=document_id,
+                page_start=1,
+                page_end=1,
+                chunk_index=1,
+                text="Virtue ethics links goodness with wisdom because",
+                char_count=50,
+                source_citation="course.pdf p. 1, chunk 1",
+            ),
+            ChunkRecord(
+                document_id=document_id,
+                page_start=2,
+                page_end=2,
+                chunk_index=2,
+                text="character and wisdom matter.",
+                char_count=28,
+                source_citation="course.pdf p. 2, chunk 2",
+            ),
+        ],
+    )
+    conn.execute(
+        "UPDATE chunks SET section_label = 'chapter_content', content_role = 'core'"
+    )
+    conn.commit()
+
+    calls = []
+
+    def fake_answer_question(**kwargs):
+        calls.append(kwargs)
+        return AnswerCallResult(raw_prompt=kwargs["prompt"], raw_response="Answered.")
+
+    monkeypatch.setattr("ethnos.cli.answer_question", fake_answer_question)
+
+    exit_code = main(
+        [
+            "--db",
+            str(db_path),
+            "ask",
+            str(document_id),
+            "virtue ethics",
+            "--limit",
+            "1",
+        ]
+    )
+    assert exit_code == 0
+    assert "course.pdf p. 1, chunk 1" in calls[0]["prompt"]
+    assert "course.pdf p. 2, chunk 2" in calls[0]["prompt"]
+
+
 def test_normal_retrieval_does_not_use_comparison_logic():
     def search_func(document_id, query, limit, role, section):
         return [{"id": 1, "source_citation": "a", "text": "virtue ethics"}]
@@ -517,6 +600,109 @@ def test_normal_retrieval_does_not_use_comparison_logic():
     assert result.comparison_subqueries == []
     assert result.subquery_results == []
     assert result.selected_query == "virtue ethics"
+
+
+def test_chat_followup_detection_and_rewrite_helpers():
+    previous = retrieve_with_fallbacks(
+        search_func=lambda document_id, query, limit, role, section: [
+            {"id": 1, "source_citation": "a", "text": "virtue ethics"}
+        ],
+        document_id=1,
+        question="What is virtue ethics?",
+        limit=3,
+        role="core",
+        section=None,
+    )
+
+    resolution = resolve_chat_followup(
+        "How is that different from utilitarianism?",
+        previous_question="What is virtue ethics?",
+        previous_retrieval=previous,
+    )
+
+    assert detect_chat_followup("How is that different from utilitarianism?")
+    assert resolution.detected is True
+    assert resolution.previous_topic == "virtue ethics"
+    assert resolution.rewritten_question == "How is virtue ethics different from utilitarianism?"
+
+
+def test_chat_followup_uses_previous_topic_for_retrieval_and_trace(
+    tmp_path, capsys, monkeypatch
+):
+    db_path = tmp_path / "ethnos.sqlite"
+    trace_dir = tmp_path / "runs"
+    conn = connect(db_path)
+    init_db(conn)
+    document_id, chunks = _stored_labeled_record_document(conn)
+    inputs = iter(["What is evolutionary ethics?", "How is that different from references?", "quit"])
+    calls = []
+
+    def fake_input(prompt):
+        return next(inputs)
+
+    def fake_answer_question(**kwargs):
+        calls.append(kwargs)
+        return AnswerCallResult(raw_prompt=kwargs["prompt"], raw_response="Answered.")
+
+    monkeypatch.setattr("builtins.input", fake_input)
+    monkeypatch.setattr("ethnos.cli.answer_question", fake_answer_question)
+
+    exit_code = main(
+        [
+            "--db",
+            str(db_path),
+            "chat",
+            str(document_id),
+            "--role",
+            "all",
+            "--debug-retrieval",
+            "--trace-dir",
+            str(trace_dir),
+        ]
+    )
+    output = capsys.readouterr().out
+    traces = sorted(trace_dir.glob("*.json"))
+    followup_trace = json.loads(traces[-1].read_text(encoding="utf-8"))
+
+    assert exit_code == 0
+    assert len(calls) == 2
+    assert "Resolved follow-up for retrieval: How is evolutionary ethics different from references?" in calls[1]["prompt"]
+    assert "follow-up detected: True" in output
+    assert "rewritten retrieval question: How is evolutionary ethics different from references?" in output
+    assert f"chunk {chunks[0].id}: labeled.pdf p. 1, chunk 1" in output
+    assert f"chunk {chunks[1].id}: labeled.pdf p. 2, chunk 2" in output
+    assert followup_trace["follow_up_detected"] is True
+    assert followup_trace["previous_question"] == "What is evolutionary ethics?"
+    assert (
+        followup_trace["rewritten_retrieval_question"]
+        == "How is evolutionary ethics different from references?"
+    )
+    assert followup_trace["comparison_detected"] is True
+
+
+def test_ask_remains_stateless_for_followup_words(tmp_path, capsys, monkeypatch):
+    db_path = tmp_path / "ethnos.sqlite"
+    conn = connect(db_path)
+    init_db(conn)
+    document_id, _ = _stored_labeled_record_document(conn)
+
+    calls = []
+
+    def fake_answer_question(**kwargs):
+        calls.append(kwargs)
+        return AnswerCallResult(raw_prompt=kwargs["prompt"], raw_response="Answered.")
+
+    monkeypatch.setattr("ethnos.cli.answer_question", fake_answer_question)
+
+    exit_code = main(
+        ["--db", str(db_path), "ask", str(document_id), "How is that different from references?"]
+    )
+    output = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert "Follow-up debug:" not in output
+    if calls:
+        assert "Resolved follow-up for retrieval:" not in calls[0]["prompt"]
 
 
 def test_ask_cli_uses_core_context_without_real_ollama(tmp_path, capsys, monkeypatch):

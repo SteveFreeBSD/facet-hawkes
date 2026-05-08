@@ -91,6 +91,14 @@ class AnswerEvaluation:
     expected_citations: list[str]
 
 
+@dataclass(frozen=True)
+class FollowUpResolution:
+    detected: bool
+    previous_question: str | None
+    previous_topic: str | None
+    rewritten_question: str | None
+
+
 def build_answer_context(rows: list[dict], max_chars: int) -> str:
     parts = []
     for row in rows:
@@ -156,6 +164,46 @@ def extract_comparison_subqueries(question: str) -> list[str]:
         if match:
             return _clean_comparison_parts(match.group(1), match.group(2))
     return []
+
+
+def detect_chat_followup(question: str) -> bool:
+    normalized = _normalize_question_text(question)
+    return bool(
+        re.search(r"\b(that|this|it|they|those)\b", normalized)
+        or "the first one" in normalized
+        or "the second one" in normalized
+    )
+
+
+def resolve_chat_followup(
+    question: str,
+    *,
+    previous_question: str | None,
+    previous_retrieval: RetrievalResult | None,
+) -> FollowUpResolution:
+    detected = detect_chat_followup(question)
+    if not detected:
+        return FollowUpResolution(
+            detected=False,
+            previous_question=previous_question,
+            previous_topic=None,
+            rewritten_question=None,
+        )
+    previous_topic = _previous_topic_for_followup(question, previous_retrieval)
+    if previous_topic is None:
+        return FollowUpResolution(
+            detected=True,
+            previous_question=previous_question,
+            previous_topic=None,
+            rewritten_question=None,
+        )
+    rewritten = _rewrite_followup_question(question, previous_topic)
+    return FollowUpResolution(
+        detected=True,
+        previous_question=previous_question,
+        previous_topic=previous_topic,
+        rewritten_question=rewritten if rewritten != question else None,
+    )
 
 
 def answer_query_candidates(question: str) -> list[str]:
@@ -430,6 +478,53 @@ def _clean_comparison_parts(left: str, right: str) -> list[str]:
         if query and query not in cleaned:
             cleaned.append(query)
     return cleaned if len(cleaned) >= 2 else []
+
+
+def _previous_topic_for_followup(
+    question: str, previous_retrieval: RetrievalResult | None
+) -> str | None:
+    if previous_retrieval is None:
+        return None
+    normalized = _normalize_question_text(question)
+    if "the first one" in normalized and previous_retrieval.comparison_subqueries:
+        return previous_retrieval.comparison_subqueries[0]
+    if (
+        "the second one" in normalized
+        and len(previous_retrieval.comparison_subqueries) >= 2
+    ):
+        return previous_retrieval.comparison_subqueries[1]
+    if previous_retrieval.comparison_subqueries:
+        return " and ".join(previous_retrieval.comparison_subqueries)
+    if previous_retrieval.selected_query:
+        return previous_retrieval.selected_query.split(" | ", 1)[0]
+    if previous_retrieval.queries_tried:
+        return previous_retrieval.queries_tried[0]
+    return None
+
+
+def _rewrite_followup_question(question: str, previous_topic: str) -> str:
+    rewritten = re.sub(
+        r"\bthe first one\b",
+        previous_topic,
+        question,
+        count=1,
+        flags=re.IGNORECASE,
+    )
+    rewritten = re.sub(
+        r"\bthe second one\b",
+        previous_topic,
+        rewritten,
+        count=1,
+        flags=re.IGNORECASE,
+    )
+    rewritten = re.sub(
+        r"\b(that|this|it|they|those)\b",
+        previous_topic,
+        rewritten,
+        count=1,
+        flags=re.IGNORECASE,
+    )
+    return rewritten
 
 
 def _expand_domain_phrases(tokens: list[str]) -> list[str]:

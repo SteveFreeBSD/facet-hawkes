@@ -926,6 +926,89 @@ def context_chunks(
     return [{**row, "text": text_by_id.get(row["id"], "")} for row in results]
 
 
+def add_continuation_context_chunks(
+    conn: sqlite3.Connection,
+    document_id: int,
+    rows: list[dict[str, Any]],
+    *,
+    role: str | None = "core",
+    section: str | None = None,
+) -> list[dict[str, Any]]:
+    """Add the next chunk when a selected chunk visibly cuts off mid-sentence."""
+    if not rows:
+        return rows
+    expanded: list[dict[str, Any]] = []
+    seen_ids = set()
+    for row in rows:
+        _append_context_row(expanded, seen_ids, row)
+        if _looks_like_incomplete_chunk(row.get("text", "")):
+            continuation = _next_context_chunk(
+                conn,
+                document_id,
+                int(row["chunk_index"]) + 1,
+                role=role,
+                section=section,
+            )
+            if continuation is not None:
+                _append_context_row(expanded, seen_ids, continuation)
+    return expanded
+
+
+def _append_context_row(
+    rows: list[dict[str, Any]], seen_ids: set[int], row: dict[str, Any]
+) -> None:
+    chunk_id = int(row["id"])
+    if chunk_id in seen_ids:
+        return
+    seen_ids.add(chunk_id)
+    rows.append(row)
+
+
+def _looks_like_incomplete_chunk(text: str) -> bool:
+    stripped = text.rstrip()
+    if not stripped:
+        return False
+    return stripped[-1] not in ".?!)]}\"'"
+
+
+def _next_context_chunk(
+    conn: sqlite3.Connection,
+    document_id: int,
+    chunk_index: int,
+    *,
+    role: str | None,
+    section: str | None,
+) -> dict[str, Any] | None:
+    filters = ["document_id = ?", "chunk_index = ?"]
+    params: list[Any] = [document_id, chunk_index]
+    if role is not None:
+        filters.append("content_role = ?")
+        params.append(role)
+    if section is not None:
+        filters.append("section_label = ?")
+        params.append(section)
+    row = conn.execute(
+        f"""
+        SELECT
+            id,
+            document_id,
+            chunk_index,
+            page_start,
+            page_end,
+            source_citation,
+            section_label,
+            content_role,
+            '' AS snippet,
+            0.0 AS score,
+            text
+        FROM chunks
+        WHERE {" AND ".join(filters)}
+        """,
+        params,
+    ).fetchone()
+    return dict(row) if row is not None else None
+
+
 def quality_report(conn: sqlite3.Connection, document_id: int) -> dict[str, Any]:
     status = section_label_status(conn, document_id)
     latest_rows = list_structure_chunk_status(conn, document_id)

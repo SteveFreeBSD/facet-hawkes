@@ -19,6 +19,7 @@ from .db import (
     context_chunks,
     create_extraction_run,
     db_info,
+    add_continuation_context_chunks,
     apply_section_preset,
     finish_extraction_run,
     get_document,
@@ -44,6 +45,7 @@ from .pdf_extract import extract_pdf
 from .qa import (
     benchmark_hit,
     build_answer_prompt,
+    resolve_chat_followup,
     evaluate_answer_quality,
     load_qa_benchmark,
     normalize_answer_role,
@@ -623,7 +625,7 @@ def context_cmd(args: argparse.Namespace) -> int:
 def ask_cmd(args: argparse.Namespace) -> int:
     settings, conn = open_db(args)
     _validate_answer_options(args, settings)
-    return _answer_once(
+    _answer_once(
         settings=settings,
         conn=conn,
         document_id=args.document_id,
@@ -639,6 +641,7 @@ def ask_cmd(args: argparse.Namespace) -> int:
         trace_dir=args.trace_dir,
         mode="ask",
     )
+    return 0
 
 
 def chat_cmd(args: argparse.Namespace) -> int:
@@ -650,6 +653,8 @@ def chat_cmd(args: argparse.Namespace) -> int:
     print(f"ethnos chat for document {args.document_id}")
     print(f"model: {model_name}")
     print("Type quit, exit, or :q to leave.")
+    previous_question = None
+    previous_retrieval = None
 
     try:
         while True:
@@ -662,12 +667,18 @@ def chat_cmd(args: argparse.Namespace) -> int:
                 continue
             if question.lower() in {"quit", "exit", ":q"}:
                 break
+            followup = resolve_chat_followup(
+                question,
+                previous_question=previous_question,
+                previous_retrieval=previous_retrieval,
+            )
             print()
-            _answer_once(
+            previous_retrieval = _answer_once(
                 settings=settings,
                 conn=conn,
                 document_id=args.document_id,
                 question=question,
+                retrieval_question=followup.rewritten_question or question,
                 role=args.role,
                 section=args.section,
                 limit=args.limit,
@@ -678,7 +689,9 @@ def chat_cmd(args: argparse.Namespace) -> int:
                 debug_ollama=args.debug_ollama,
                 trace_dir=args.trace_dir,
                 mode="chat",
+                followup=followup,
             )
+            previous_question = question
             print()
     except KeyboardInterrupt:
         print("\nExiting.")
@@ -701,6 +714,7 @@ def _answer_once(
     conn,
     document_id: int,
     question: str,
+    retrieval_question: str | None = None,
     role: str,
     section: str | None,
     limit: int,
@@ -711,19 +725,25 @@ def _answer_once(
     debug_ollama: bool,
     trace_dir: Path | None,
     mode: str,
-) -> int:
+    followup=None,
+):
     started_at = time.monotonic()
+    retrieval_question = retrieval_question or question
     selected_role = normalize_answer_role(role)
     retrieval = _retrieve_answer_context(
         conn,
         document_id=document_id,
-        question=question,
+        question=retrieval_question,
         limit=limit,
         role=selected_role,
         section=section,
     )
     print(f"Question: {question}")
     if debug_retrieval or debug_ollama:
+        if followup is not None:
+            _print_followup_debug(followup)
+        if retrieval_question != question:
+            print(f"Retrieval question: {retrieval_question}")
         _print_retrieval_debug(retrieval)
     print()
     if not retrieval.rows:
@@ -744,12 +764,22 @@ def _answer_once(
             elapsed_seconds=elapsed,
             context_found=False,
             mode=mode,
+            followup=followup,
+            rewritten_retrieval_question=(
+                retrieval_question if retrieval_question != question else None
+            ),
         )
-        return 0
+        return retrieval
 
     print("Selected context chunks:")
     _print_context_sources(retrieval.rows)
-    prompt = build_answer_prompt(question, retrieval.rows, max_chars=chars)
+    prompt_question = question
+    if followup is not None and followup.detected and retrieval_question != question:
+        prompt_question = (
+            f"{question}\n"
+            f"Resolved follow-up for retrieval: {retrieval_question}"
+        )
+    prompt = build_answer_prompt(prompt_question, retrieval.rows, max_chars=chars)
     result = answer_question(
         prompt=prompt,
         model_name=model_name,
@@ -779,8 +809,12 @@ def _answer_once(
         elapsed_seconds=elapsed,
         context_found=True,
         mode=mode,
+        followup=followup,
+        rewritten_retrieval_question=(
+            retrieval_question if retrieval_question != question else None
+        ),
     )
-    return 0
+    return retrieval
 
 
 def qa_bench_cmd(args: argparse.Namespace) -> int:
@@ -1393,11 +1427,17 @@ def _retrieve_answer_context(
     section: str | None,
 ):
     return retrieve_with_fallbacks(
-        search_func=lambda doc_id, query, limit, role, section: context_chunks(
+        search_func=lambda doc_id, query, limit, role, section: add_continuation_context_chunks(
             conn,
             doc_id,
-            query,
-            limit=limit,
+            context_chunks(
+                conn,
+                doc_id,
+                query,
+                limit=limit,
+                role=role,
+                section=section,
+            ),
             role=role,
             section=section,
         ),
@@ -1407,6 +1447,14 @@ def _retrieve_answer_context(
         role=role,
         section=section,
     )
+
+
+def _print_followup_debug(followup) -> None:
+    print("Follow-up debug:")
+    print(f"  follow-up detected: {followup.detected}")
+    print(f"  previous question: {followup.previous_question or 'none'}")
+    print(f"  previous topic/query: {followup.previous_topic or 'none'}")
+    print(f"  rewritten retrieval question: {followup.rewritten_question or 'none'}")
 
 
 def _print_retrieval_debug(retrieval) -> None:
@@ -1464,6 +1512,8 @@ def _maybe_write_answer_trace(
     elapsed_seconds: float,
     context_found: bool,
     mode: str,
+    followup=None,
+    rewritten_retrieval_question: str | None = None,
 ) -> Path | None:
     if trace_dir is None:
         return None
@@ -1496,6 +1546,12 @@ def _maybe_write_answer_trace(
         "elapsed_seconds": elapsed_seconds,
         "context_found": context_found,
         "command_mode": mode,
+        "follow_up_detected": bool(followup.detected) if followup is not None else False,
+        "previous_question": (
+            followup.previous_question if followup is not None else None
+        ),
+        "previous_topic": followup.previous_topic if followup is not None else None,
+        "rewritten_retrieval_question": rewritten_retrieval_question,
     }
     path.write_text(json.dumps(trace, indent=2, sort_keys=True), encoding="utf-8")
     print()
