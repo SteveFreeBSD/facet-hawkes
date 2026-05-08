@@ -121,12 +121,14 @@ uv run ethnos ask 1 "What is virtue ethics?" --trace-dir data/runs
 does not mutate the database. Use `--role all` to search across all labeled
 roles.
 
-The current default working model is `gemma-python`, with `think=False`,
-temperature `0`, and the configured answer budget from
-`ETHNOS_OLLAMA_NUM_PREDICT` (`8192` by default). Override the model per call:
+The current default working model is `gemma-python`, with temperature `0`, an
+answer budget from `ETHNOS_OLLAMA_ANSWER_NUM_PREDICT` (`1536` by default), and
+context from `ETHNOS_OLLAMA_NUM_CTX` (`8192` by default). Override the model or
+context window per call:
 
 ```bash
 uv run ethnos ask 1 "What is virtue ethics?" --model gemma-python
+uv run ethnos ask 1 "What is virtue ethics?" --num-ctx 32768
 ```
 
 Start a simple local terminal loop with the same retrieval and answer path:
@@ -171,5 +173,11 @@ Override defaults with:
 ETHNOS_OLLAMA_MODEL=gemma-python
 ETHNOS_OLLAMA_HOST=http://localhost:11434
 ETHNOS_OLLAMA_TIMEOUT=300
-ETHNOS_OLLAMA_NUM_PREDICT=8192
+ETHNOS_OLLAMA_STRUCTURE_NUM_PREDICT=2048
+ETHNOS_OLLAMA_ANSWER_NUM_PREDICT=1536
+ETHNOS_OLLAMA_NUM_CTX=8192
 ```
+
+Some Gemma-family responses may report `message_thinking_exists: True` in
+`--debug-ollama` output even though ethnos does not request thinking mode. Treat
+that as model/server response metadata; it is not currently a failure condition.

@@ -19,8 +19,12 @@ Return examples only when the chunk itself provides examples. Do not invent exam
 
 Preserve source page references when they are present in the input metadata.
 
+Required JSON keys: chunk_summary, topics, key_terms, examples, questions.
+
 Source citation: {source_citation}
 
 Chunk text:
 
 {chunk_text}
+
+JSON:

@@ -41,7 +41,7 @@ from .db import (
     structure_status,
 )
 from .export import export_json, export_markdown, export_study
-from .ollama_client import answer_question, extract_chunk
+from .ollama_client import answer_question, create_client, extract_chunk
 from .pdf_extract import extract_pdf
 from .qa import (
     benchmark_hit,
@@ -100,6 +100,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--num-predict",
         type=int,
         help="Ollama output token budget for structured JSON.",
+    )
+    structure_parser.add_argument(
+        "--num-ctx",
+        type=int,
+        help="Ollama context window token budget.",
     )
     selection = structure_parser.add_mutually_exclusive_group()
     selection.add_argument("--chunk-id", type=int, help="Process one stored chunk id.")
@@ -191,6 +196,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Ollama output token budget for the answer.",
     )
     ask_parser.add_argument(
+        "--num-ctx",
+        type=int,
+        help="Ollama context window token budget.",
+    )
+    ask_parser.add_argument(
         "--debug-ollama",
         action="store_true",
         help="Print compact Ollama request/response diagnostics.",
@@ -219,6 +229,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--num-predict",
         type=int,
         help="Ollama output token budget for each answer.",
+    )
+    chat_parser.add_argument(
+        "--num-ctx",
+        type=int,
+        help="Ollama context window token budget.",
     )
     chat_parser.add_argument(
         "--debug-ollama",
@@ -265,6 +280,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--num-predict",
         type=int,
         help="Ollama output token budget for --ask answers.",
+    )
+    bench_parser.add_argument(
+        "--num-ctx",
+        type=int,
+        help="Ollama context window token budget for --ask answers.",
     )
     bench_parser.add_argument("--output", type=Path)
 
@@ -361,10 +381,13 @@ def structure(args: argparse.Namespace) -> int:
     settings, conn = open_db(args)
     model_name = args.model or settings.ollama_model
     num_predict = structure_num_predict(args, settings)
+    num_ctx = ollama_num_ctx(args, settings)
     if args.limit is not None and args.limit < 1:
         raise SystemExit("--limit must be 1 or greater.")
     if num_predict < 1:
         raise SystemExit("--num-predict must be 1 or greater.")
+    if num_ctx < 1:
+        raise SystemExit("--num-ctx must be 1 or greater.")
     if args.force and args.retry_failed:
         raise SystemExit("Use either --force or --retry-failed, not both.")
 
@@ -387,6 +410,7 @@ def structure(args: argparse.Namespace) -> int:
     print(f"  document id: {args.document_id}", flush=True)
     print(f"  model: {model_name}", flush=True)
     print(f"  num_predict: {num_predict}", flush=True)
+    print(f"  num_ctx: {num_ctx}", flush=True)
     print(f"  chunks selected: {len(chunks)}", flush=True)
     print(f"  chunk ids: {', '.join(str(chunk_id) for chunk_id in chunk_ids)}", flush=True)
     if args.chunk_id is None and args.limit is None:
@@ -399,6 +423,7 @@ def structure(args: argparse.Namespace) -> int:
     elif args.force:
         print("  selection: forced", flush=True)
 
+    ollama_client = create_client(settings.ollama_host, settings.ollama_timeout)
     run_id = create_extraction_run(
         conn,
         document_id=args.document_id,
@@ -423,7 +448,9 @@ def structure(args: argparse.Namespace) -> int:
             host=settings.ollama_host,
             timeout=settings.ollama_timeout,
             num_predict=num_predict,
+            num_ctx=num_ctx,
             debug_ollama=args.debug_ollama,
+            client=ollama_client,
         )
         if args.debug_ollama:
             _print_ollama_debug(chunk.id, result.debug_info)
@@ -483,7 +510,19 @@ def format_elapsed(seconds: float) -> str:
 
 
 def structure_num_predict(args: argparse.Namespace, settings) -> int:
-    return args.num_predict if args.num_predict is not None else settings.ollama_num_predict
+    return (
+        args.num_predict
+        if args.num_predict is not None
+        else settings.ollama_structure_num_predict
+    )
+
+
+def answer_num_predict(args: argparse.Namespace, settings) -> int:
+    return args.num_predict if args.num_predict is not None else settings.ollama_answer_num_predict
+
+
+def ollama_num_ctx(args: argparse.Namespace, settings) -> int:
+    return args.num_ctx if getattr(args, "num_ctx", None) is not None else settings.ollama_num_ctx
 
 
 def _ollama_done_reason(result) -> str | None:
@@ -501,8 +540,8 @@ def _print_ollama_debug(chunk_id: int | None, debug_info) -> None:
     print(f"  prompt chars: {debug_info.prompt_char_length}", flush=True)
     print(f"  schema top-level keys: {', '.join(debug_info.schema_top_level_keys)}", flush=True)
     print(f"  format: {debug_info.format_kind}", flush=True)
-    print(f"  think: {debug_info.think}", flush=True)
     print(f"  num_predict: {debug_info.num_predict}", flush=True)
+    print(f"  num_ctx: {debug_info.num_ctx}", flush=True)
     if debug_info.response_summary is None:
         print("  response envelope: unavailable", flush=True)
         return
@@ -524,6 +563,7 @@ def inspect_chunk_cmd(args: argparse.Namespace) -> int:
     print(f"Section: {chunk['section_label'] or 'unlabeled'}")
     print(f"Role: {chunk['content_role'] or 'unlabeled'}")
     print("Record counts:")
+    print(f"  chunk_summaries: {counts['chunk_summaries']}")
     print(f"  key_terms: {counts['key_terms']}")
     print(f"  questions: {counts['questions']}")
     print(f"  topics: {counts['topics']}")
@@ -664,7 +704,8 @@ def ask_cmd(args: argparse.Namespace) -> int:
         limit=args.limit,
         chars=args.chars,
         model_name=args.model or settings.ollama_model,
-        num_predict=structure_num_predict(args, settings),
+        num_predict=answer_num_predict(args, settings),
+        num_ctx=ollama_num_ctx(args, settings),
         debug_retrieval=args.debug_retrieval,
         debug_ollama=args.debug_ollama,
         trace_dir=args.trace_dir,
@@ -677,8 +718,10 @@ def chat_cmd(args: argparse.Namespace) -> int:
     settings, conn = open_db(args)
     _validate_answer_options(args, settings)
     model_name = args.model or settings.ollama_model
-    num_predict = structure_num_predict(args, settings)
+    num_predict = answer_num_predict(args, settings)
+    num_ctx = ollama_num_ctx(args, settings)
 
+    ollama_client = create_client(settings.ollama_host, settings.ollama_timeout)
     print(f"ethnos chat for document {args.document_id}")
     print(f"model: {model_name}")
     print("Type quit, exit, or :q to leave.")
@@ -714,11 +757,13 @@ def chat_cmd(args: argparse.Namespace) -> int:
                 chars=args.chars,
                 model_name=model_name,
                 num_predict=num_predict,
+                num_ctx=num_ctx,
                 debug_retrieval=args.debug_retrieval,
                 debug_ollama=args.debug_ollama,
                 trace_dir=args.trace_dir,
                 mode="chat",
                 followup=followup,
+                client=ollama_client,
             )
             previous_question = question
             print()
@@ -732,9 +777,11 @@ def _validate_answer_options(args: argparse.Namespace, settings) -> None:
         raise SystemExit("--limit must be 1 or greater.")
     if args.chars < 1:
         raise SystemExit("--chars must be 1 or greater.")
-    num_predict = structure_num_predict(args, settings)
+    num_predict = answer_num_predict(args, settings)
     if num_predict < 1:
         raise SystemExit("--num-predict must be 1 or greater.")
+    if ollama_num_ctx(args, settings) < 1:
+        raise SystemExit("--num-ctx must be 1 or greater.")
 
 
 def _answer_once(
@@ -750,11 +797,13 @@ def _answer_once(
     chars: int,
     model_name: str,
     num_predict: int,
+    num_ctx: int,
     debug_retrieval: bool,
     debug_ollama: bool,
     trace_dir: Path | None,
     mode: str,
     followup=None,
+    client: object | None = None,
 ):
     started_at = time.monotonic()
     retrieval_question = retrieval_question or question
@@ -789,6 +838,7 @@ def _answer_once(
             retrieval=retrieval,
             model_name=model_name,
             num_predict=num_predict,
+            num_ctx=num_ctx,
             answer_text=answer_text,
             elapsed_seconds=elapsed,
             context_found=False,
@@ -815,11 +865,18 @@ def _answer_once(
         host=settings.ollama_host,
         timeout=settings.ollama_timeout,
         num_predict=num_predict,
-        debug_ollama=debug_ollama,
+        num_ctx=num_ctx,
+        client=client,
     )
     elapsed = time.monotonic() - started_at
     if debug_ollama:
         _print_ollama_debug(None, result.debug_info)
+    if _ollama_done_reason(result) == "length":
+        print(
+            f"Warning: answer hit Ollama output length limit; "
+            "consider increasing --num-predict.",
+            flush=True,
+        )
     answer_text = result.raw_response.strip() or "The document context did not contain enough information."
     print()
     print("Answer:")
@@ -834,6 +891,7 @@ def _answer_once(
         retrieval=retrieval,
         model_name=model_name,
         num_predict=num_predict,
+        num_ctx=num_ctx,
         answer_text=answer_text,
         elapsed_seconds=elapsed,
         context_found=True,
@@ -854,9 +912,12 @@ def qa_bench_cmd(args: argparse.Namespace) -> int:
         raise SystemExit("Use either --ask or --no-ask, not both.")
     if args.models and not args.ask:
         raise SystemExit("--models requires --ask.")
-    num_predict = structure_num_predict(args, settings)
+    num_predict = answer_num_predict(args, settings)
+    num_ctx = ollama_num_ctx(args, settings)
     if num_predict < 1:
         raise SystemExit("--num-predict must be 1 or greater.")
+    if num_ctx < 1:
+        raise SystemExit("--num-ctx must be 1 or greater.")
     selected_role = normalize_answer_role(args.role)
     items = load_qa_benchmark(args.benchmark)
     items = limit_benchmark_items(items, args.max_questions)
@@ -871,6 +932,7 @@ def qa_bench_cmd(args: argparse.Namespace) -> int:
             items=items,
             selected_role=selected_role,
             num_predict=num_predict,
+            num_ctx=num_ctx,
             models=models,
         )
     started_at = time.monotonic()
@@ -878,6 +940,7 @@ def qa_bench_cmd(args: argparse.Namespace) -> int:
     hits = misses = no_context = 0
     answer_counts = Counter()
     run_answers = bool(args.ask)
+    run_client = create_client(settings.ollama_host, settings.ollama_timeout) if run_answers else None
 
     for item in items:
         item_started_at = time.monotonic()
@@ -922,6 +985,8 @@ def qa_bench_cmd(args: argparse.Namespace) -> int:
                 host=settings.ollama_host,
                 timeout=settings.ollama_timeout,
                 num_predict=num_predict,
+                num_ctx=num_ctx,
+                client=run_client,
             )
             answer_elapsed = time.monotonic() - answer_started_at
             print(f"  answer generation elapsed: {format_elapsed(answer_elapsed)}", flush=True)
@@ -1027,6 +1092,7 @@ def qa_bench_compare_models(
     items: list[dict],
     selected_role: str | None,
     num_predict: int,
+    num_ctx: int,
     models: list[str],
 ) -> int:
     started_at = time.monotonic()
@@ -1067,6 +1133,7 @@ def qa_bench_compare_models(
     model_summaries = []
     for model_name in models:
         print(f"Model: {model_name}", flush=True)
+        ollama_client = create_client(settings.ollama_host, settings.ollama_timeout)
         model_started_at = time.monotonic()
         model_items = []
         for index, entry in enumerate(retrieval_entries, start=1):
@@ -1089,6 +1156,8 @@ def qa_bench_compare_models(
                         host=settings.ollama_host,
                         timeout=settings.ollama_timeout,
                         num_predict=num_predict,
+                        num_ctx=num_ctx,
+                        client=ollama_client,
                     )
                     answer_elapsed = time.monotonic() - answer_started_at
                     print(
@@ -1541,6 +1610,7 @@ def _maybe_write_answer_trace(
     retrieval,
     model_name: str,
     num_predict: int,
+    num_ctx: int,
     answer_text: str,
     elapsed_seconds: float,
     context_found: bool,
@@ -1575,6 +1645,7 @@ def _maybe_write_answer_trace(
         "selected_chunks": [_trace_chunk(row) for row in retrieval.rows],
         "model": model_name,
         "num_predict": num_predict,
+        "num_ctx": num_ctx,
         "answer_text": answer_text,
         "elapsed_seconds": elapsed_seconds,
         "context_found": context_found,

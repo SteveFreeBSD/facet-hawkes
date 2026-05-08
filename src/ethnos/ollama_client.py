@@ -16,8 +16,8 @@ class OllamaDebugInfo:
     prompt_char_length: int
     schema_top_level_keys: list[str]
     format_kind: str
-    think: bool
     num_predict: int
+    num_ctx: int
     response_summary: dict | None = None
 
 
@@ -57,24 +57,27 @@ def extract_chunk(
     host: str,
     timeout: float,
     num_predict: int,
+    num_ctx: int,
     retries: int = 1,
     debug_ollama: bool = False,
+    client: object | None = None,
 ) -> StructuredCallResult:
     prompt = load_prompt(prompt_path, chunk)
     schema = ExtractionResult.model_json_schema()
     last: StructuredCallResult | None = None
+    client = client if client is not None else create_client(host, timeout)
 
     for attempt in range(retries + 1):
         attempt_prompt = prompt if attempt == 0 else _repair_prompt(prompt)
-        debug_info = _debug_info(attempt_prompt, schema, num_predict)
+        debug_info = _debug_info(attempt_prompt, schema, num_predict, num_ctx)
         try:
             chat_result = _chat(
+                client=client,
                 prompt=attempt_prompt,
                 schema=schema,
                 model_name=model_name,
-                host=host,
-                timeout=timeout,
                 num_predict=num_predict,
+                num_ctx=num_ctx,
             )
             raw_response = chat_result.content
         except Exception as exc:  # Ollama/httpx exceptions vary by version.
@@ -96,8 +99,8 @@ def extract_chunk(
                 prompt_char_length=debug_info.prompt_char_length,
                 schema_top_level_keys=debug_info.schema_top_level_keys,
                 format_kind=debug_info.format_kind,
-                think=debug_info.think,
                 num_predict=debug_info.num_predict,
+                num_ctx=debug_info.num_ctx,
                 response_summary=chat_result.response_summary,
             ),
         )
@@ -116,25 +119,25 @@ def answer_question(
     host: str,
     timeout: float,
     num_predict: int,
-    debug_ollama: bool = False,
+    num_ctx: int,
+    client: object | None = None,
 ) -> AnswerCallResult:
+    client = client if client is not None else create_client(host, timeout)
     chat_result = _chat_plain(
+        client=client,
         prompt=prompt,
         model_name=model_name,
-        host=host,
-        timeout=timeout,
         num_predict=num_predict,
+        num_ctx=num_ctx,
     )
-    debug_info = None
-    if debug_ollama:
-        debug_info = OllamaDebugInfo(
-            prompt_char_length=len(prompt),
-            schema_top_level_keys=[],
-            format_kind="plain_text",
-            think=False,
-            num_predict=num_predict,
-            response_summary=chat_result.response_summary,
-        )
+    debug_info = OllamaDebugInfo(
+        prompt_char_length=len(prompt),
+        schema_top_level_keys=[],
+        format_kind="plain_text",
+        num_predict=num_predict,
+        num_ctx=num_ctx,
+        response_summary=chat_result.response_summary,
+    )
     return AnswerCallResult(
         raw_prompt=prompt,
         raw_response=chat_result.content,
@@ -142,50 +145,46 @@ def answer_question(
     )
 
 
-def _chat(
-    prompt: str,
-    schema: dict,
-    model_name: str,
-    host: str,
-    timeout: float,
-    num_predict: int,
-) -> OllamaChatResult:
+def create_client(host: str, timeout: float) -> object:
     try:
         from ollama import Client
     except ImportError as exc:
         raise RuntimeError("The ollama Python package is required. Install with `uv sync`.") from exc
 
-    client = Client(host=host, timeout=timeout)
-    response = client.chat(
-        **_chat_request_kwargs(model_name, prompt, schema, num_predict),
-    )
-    message = response.get("message", {})
-    content = message.get("content", "")
-    if not isinstance(content, str):
-        raise RuntimeError("Ollama response did not include string message content")
-    return OllamaChatResult(
-        content=content,
-        response_summary=_response_summary(response),
+    return Client(host=host, timeout=timeout)
+
+
+def _chat(
+    client: object,
+    prompt: str,
+    schema: dict,
+    model_name: str,
+    num_predict: int,
+    num_ctx: int,
+) -> OllamaChatResult:
+    return _do_chat(
+        client,
+        _chat_request_kwargs(model_name, prompt, schema, num_predict, num_ctx),
     )
 
 
 def _chat_plain(
+    client: object,
     prompt: str,
     model_name: str,
-    host: str,
-    timeout: float,
     num_predict: int,
+    num_ctx: int,
 ) -> OllamaChatResult:
-    try:
-        from ollama import Client
-    except ImportError as exc:
-        raise RuntimeError("The ollama Python package is required. Install with `uv sync`.") from exc
-
-    client = Client(host=host, timeout=timeout)
-    response = client.chat(
-        **_answer_chat_request_kwargs(model_name, prompt, num_predict),
+    return _do_chat(
+        client,
+        _answer_chat_request_kwargs(model_name, prompt, num_predict, num_ctx),
     )
-    message = response.get("message", {})
+
+
+def _do_chat(client: object, request_kwargs: dict) -> OllamaChatResult:
+    response = client.chat(**request_kwargs)
+    envelope = _plain_response(response)
+    message = _plain_message(envelope.get("message") or {})
     content = message.get("content", "")
     if not isinstance(content, str):
         raise RuntimeError("Ollama response did not include string message content")
@@ -195,7 +194,9 @@ def _chat_plain(
     )
 
 
-def _chat_request_kwargs(model_name: str, prompt: str, schema: dict, num_predict: int) -> dict:
+def _chat_request_kwargs(
+    model_name: str, prompt: str, schema: dict, num_predict: int, num_ctx: int
+) -> dict:
     return {
         "model": model_name,
         "messages": [
@@ -206,12 +207,13 @@ def _chat_request_kwargs(model_name: str, prompt: str, schema: dict, num_predict
             {"role": "user", "content": prompt},
         ],
         "format": schema,
-        "options": {"temperature": 0, "num_predict": num_predict},
-        "think": False,
+        "options": {"temperature": 0, "num_predict": num_predict, "num_ctx": num_ctx},
     }
 
 
-def _answer_chat_request_kwargs(model_name: str, prompt: str, num_predict: int) -> dict:
+def _answer_chat_request_kwargs(
+    model_name: str, prompt: str, num_predict: int, num_ctx: int
+) -> dict:
     return {
         "model": model_name,
         "messages": [
@@ -224,8 +226,7 @@ def _answer_chat_request_kwargs(model_name: str, prompt: str, num_predict: int) 
             },
             {"role": "user", "content": prompt},
         ],
-        "options": {"temperature": 0, "num_predict": num_predict},
-        "think": False,
+        "options": {"temperature": 0, "num_predict": num_predict, "num_ctx": num_ctx},
     }
 
 
@@ -276,19 +277,19 @@ def _validate_response(prompt: str, raw_response: str) -> StructuredCallResult:
 
 def _repair_prompt(original_prompt: str) -> str:
     return (
-        "The previous response was not valid JSON for the required schema. "
-        "Return only valid JSON, with no Markdown fences or commentary.\n\n"
-        + original_prompt
+        original_prompt
+        + "\n\nIMPORTANT: Your previous response was not valid JSON. "
+        "Return ONLY valid JSON matching the schema. No Markdown fences, no commentary."
     )
 
 
-def _debug_info(prompt: str, schema: dict, num_predict: int) -> OllamaDebugInfo:
+def _debug_info(prompt: str, schema: dict, num_predict: int, num_ctx: int) -> OllamaDebugInfo:
     return OllamaDebugInfo(
         prompt_char_length=len(prompt),
         schema_top_level_keys=sorted(schema.keys()),
         format_kind="json_schema",
-        think=False,
         num_predict=num_predict,
+        num_ctx=num_ctx,
     )
 
 

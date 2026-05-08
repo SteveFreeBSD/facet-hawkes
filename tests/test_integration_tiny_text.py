@@ -239,6 +239,7 @@ def test_inspect_chunk_helper_and_cli_output(tmp_path, capsys):
     records = chunk_records(conn, chunks[0].id)
 
     assert inspection["chunk"]["section_label"] == "chapter_content"
+    assert inspection["counts"]["chunk_summaries"] == 1
     assert inspection["counts"]["key_terms"] == 1
     assert inspection["counts"]["questions"] == 1
     assert db_info(conn)["chunk_summaries"] == 3
@@ -252,6 +253,7 @@ def test_inspect_chunk_helper_and_cli_output(tmp_path, capsys):
     assert "Document: labeled.pdf" in output
     assert f"Chunk id: {chunks[0].id}" in output
     assert "Section: chapter_content" in output
+    assert "chunk_summaries: 1" in output
     assert "chunk_summaries:" in output
     assert "[chunk_summary] chunk" in output
     assert "summary: Core discussion." in output
@@ -929,7 +931,8 @@ def test_ask_cli_writes_trace_when_requested(tmp_path, capsys, monkeypatch):
     assert trace["document_id"] == document_id
     assert trace["question"] == "What is evolutionary ethics?"
     assert trace["model"] == "custom-model"
-    assert trace["num_predict"] == 8192
+    assert trace["num_predict"] == 1536
+    assert trace["num_ctx"] == 8192
     assert trace["context_found"] is True
     assert trace["command_mode"] == "ask"
     assert trace["selected_chunks"][0]["chunk_id"] == chunks[0].id
@@ -1469,7 +1472,17 @@ def test_qa_bench_model_compare_writes_json_report(tmp_path, capsys, monkeypatch
         encoding="utf-8",
     )
 
+    created_clients = []
+
+    def fake_create_client(host, timeout):
+        client = {"host": host, "timeout": timeout, "index": len(created_clients)}
+        created_clients.append(client)
+        return client
+
+    seen_clients_by_model = {}
+
     def fake_answer_question(**kwargs):
+        seen_clients_by_model[kwargs["model_name"]] = kwargs["client"]
         if kwargs["model_name"] == "missing-model":
             raise RuntimeError("model not found")
         return AnswerCallResult(
@@ -1481,6 +1494,7 @@ def test_qa_bench_model_compare_writes_json_report(tmp_path, capsys, monkeypatch
         )
 
     monkeypatch.setattr("ethnos.cli.answer_question", fake_answer_question)
+    monkeypatch.setattr("ethnos.cli.create_client", fake_create_client)
 
     exit_code = main(
         [
@@ -1508,6 +1522,9 @@ def test_qa_bench_model_compare_writes_json_report(tmp_path, capsys, monkeypatch
     assert report["model_summaries"][0]["answer_pass"] == 1
     assert report["model_summaries"][1]["model_error"] == 1
     assert report["models_report"][1]["items"][0]["answer_evaluation"]["status"] == "model_error"
+    assert len(created_clients) == 2
+    assert seen_clients_by_model["model-a"] is created_clients[0]
+    assert seen_clients_by_model["missing-model"] is created_clients[1]
 
 
 def test_select_chunks_for_structure_supports_limit_and_skips_valid_outputs(tmp_path):

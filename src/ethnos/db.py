@@ -774,7 +774,7 @@ def inspect_chunk(
     if row is None:
         raise ValueError(f"No chunk {chunk_id} found for document {document_id}")
     counts = {}
-    for table in ["key_terms", "questions", "topics", "examples"]:
+    for table in ["chunk_summaries", "key_terms", "questions", "topics", "examples"]:
         counts[table] = conn.execute(
             f"SELECT COUNT(*) AS count FROM {table} WHERE chunk_id = ?", (chunk_id,)
         ).fetchone()["count"]
@@ -1049,6 +1049,7 @@ def _next_context_chunk(
 def quality_report(conn: sqlite3.Connection, document_id: int) -> dict[str, Any]:
     status = section_label_status(conn, document_id)
     latest_rows = list_structure_chunk_status(conn, document_id)
+    record_counts = _normalized_record_counts(conn, document_id)
     return {
         "document_id": document_id,
         "sections": status,
@@ -1059,8 +1060,8 @@ def quality_report(conn: sqlite3.Connection, document_id: int) -> dict[str, Any]
         "top_repeated_key_terms": _top_repeated_key_terms(conn, document_id),
         "chunks_with_no_terms_or_questions": _chunks_with_no_terms_or_questions(conn, document_id),
         "non_core_chunks_with_records": _non_core_chunks_with_records(conn, document_id),
-        "topics": _normalized_record_counts(conn, document_id)["topics"],
-        "examples": _normalized_record_counts(conn, document_id)["examples"],
+        "topics": record_counts["topics"],
+        "examples": record_counts["examples"],
     }
 
 
