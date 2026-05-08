@@ -24,6 +24,7 @@ from .db import (
     finish_extraction_run,
     get_document,
     inspect_chunk,
+    inspect_page,
     init_db,
     list_structured_records,
     list_chunks,
@@ -130,6 +131,14 @@ def build_parser() -> argparse.ArgumentParser:
     inspect_parser.add_argument("chunk_id", type=int)
     inspect_parser.add_argument("--full-text", action="store_true")
     inspect_parser.add_argument("--records", action="store_true")
+
+    page_parser = _command(
+        subcommands, "inspect-page", "Inspect one stored source page.", inspect_page_cmd
+    )
+    page_parser.add_argument("document_id", type=int)
+    page_parser.add_argument("page_number", type=int)
+    page_parser.add_argument("--raw", action="store_true")
+    page_parser.add_argument("--limit", type=int, default=2000)
 
     search_parser = _command(subcommands, "search", "Search chunks with SQLite FTS5.", search)
     search_parser.add_argument("query")
@@ -525,6 +534,26 @@ def inspect_chunk_cmd(args: argparse.Namespace) -> int:
     if args.records:
         print()
         _print_chunk_records(chunk_records(conn, args.chunk_id))
+    return 0
+
+
+def inspect_page_cmd(args: argparse.Namespace) -> int:
+    if args.limit < 1:
+        raise SystemExit("--limit must be 1 or greater.")
+    _, conn = open_db(args)
+    page = inspect_page(conn, args.document_id, args.page_number)
+    text_key = "raw_text" if args.raw else "cleaned_text"
+    text_label = "Raw text" if args.raw else "Cleaned text"
+    print(f"Document: {page['filename']}")
+    print(f"Page: {page['page_number']}")
+    print(f"Page id: {page['id']}")
+    print(f"Extraction method: {page['extraction_method']}")
+    print(f"Chars: {page['char_count']}")
+    print(f"Section: {page['section_label'] or 'unlabeled'}")
+    print(f"Role: {page['content_role'] or 'unlabeled'}")
+    print()
+    print(f"{text_label}:")
+    print(limit_display_text(page[text_key], args.limit))
     return 0
 
 
@@ -1583,6 +1612,12 @@ def preview_text(text: str, max_chars: int) -> str:
     if len(compact) <= max_chars:
         return compact
     return compact[: max_chars - 3].rstrip() + "..."
+
+
+def limit_display_text(text: str, max_chars: int) -> str:
+    if len(text) <= max_chars:
+        return text
+    return text[:max_chars].rstrip() + "\n... [truncated]"
 
 
 def format_page_range(page_start: int, page_end: int) -> str:

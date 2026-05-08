@@ -737,6 +737,25 @@ def clear_document_outputs(conn: sqlite3.Connection, document_id: int) -> None:
     conn.execute("DELETE FROM extraction_runs WHERE document_id = ?", (document_id,))
 
 
+def inspect_page(
+    conn: sqlite3.Connection, document_id: int, page_number: int
+) -> dict[str, Any]:
+    row = conn.execute(
+        """
+        SELECT
+            d.filename,
+            p.*
+        FROM pages p
+        JOIN documents d ON d.id = p.document_id
+        WHERE p.document_id = ? AND p.page_number = ?
+        """,
+        (document_id, page_number),
+    ).fetchone()
+    if row is None:
+        raise ValueError(f"No page {page_number} found for document {document_id}")
+    return dict(row)
+
+
 def inspect_chunk(
     conn: sqlite3.Connection, document_id: int, chunk_id: int
 ) -> dict[str, Any]:

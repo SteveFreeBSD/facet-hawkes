@@ -20,6 +20,7 @@ from ethnos.db import (
     chunk_records,
     context_chunks,
     inspect_chunk,
+    inspect_page,
     list_structured_records,
     quality_report,
     search_chunks,
@@ -250,6 +251,58 @@ def test_inspect_chunk_helper_and_cli_output(tmp_path, capsys):
     assert "Section: chapter_content" in output
     assert "term: Evolutionary ethics" in output
     assert "question: What does evolutionary ethics study?" in output
+
+
+def test_inspect_page_helper_returns_source_page_with_document_metadata(tmp_path):
+    conn = connect(tmp_path / "ethnos.sqlite")
+    init_db(conn)
+    document_id = _stored_page_inspection_document(conn)
+
+    page = inspect_page(conn, document_id, 1)
+
+    assert page["filename"] == "page-inspect.pdf"
+    assert page["page_number"] == 1
+    assert page["raw_text"] == "Title\n\nRaw   line"
+    assert page["cleaned_text"] == "Title\nCleaned line"
+    assert page["char_count"] == 18
+    assert page["extraction_method"] == "test:extract"
+    assert page["id"] is not None
+
+
+def test_inspect_page_cli_shows_cleaned_text_by_default(tmp_path, capsys):
+    db_path = tmp_path / "ethnos.sqlite"
+    conn = connect(db_path)
+    init_db(conn)
+    document_id = _stored_page_inspection_document(conn)
+
+    exit_code = main(["--db", str(db_path), "inspect-page", str(document_id), "1"])
+    output = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert "Document: page-inspect.pdf" in output
+    assert "Page: 1" in output
+    assert "Extraction method: test:extract" in output
+    assert "Cleaned text:" in output
+    assert "Title\nCleaned line" in output
+    assert "Raw   line" not in output
+
+
+def test_inspect_page_cli_raw_text_with_limit_preserves_whitespace(tmp_path, capsys):
+    db_path = tmp_path / "ethnos.sqlite"
+    conn = connect(db_path)
+    init_db(conn)
+    document_id = _stored_page_inspection_document(conn)
+
+    exit_code = main(
+        ["--db", str(db_path), "inspect-page", str(document_id), "1", "--raw", "--limit", "12"]
+    )
+    output = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert "Raw text:" in output
+    assert "Title\n\nRaw" in output
+    assert "... [truncated]" in output
+    assert "Raw   line" not in output
 
 
 def test_search_chunks_filters_by_role_and_section(tmp_path):
@@ -2315,6 +2368,27 @@ def _stored_three_page_document(conn) -> int:
         ],
     )
     return document_id
+
+
+def _stored_page_inspection_document(conn) -> int:
+    document = DocumentRecord(
+        source_path="/tmp/page-inspect.pdf",
+        filename="page-inspect.pdf",
+        sha256="page-inspect-fixture",
+        title="Page Inspect",
+        page_count=1,
+    )
+    pages = [
+        PageRecord(
+            document_id=0,
+            page_number=1,
+            raw_text="Title\n\nRaw   line",
+            cleaned_text="Title\nCleaned line",
+            char_count=18,
+            extraction_method="test:extract",
+        )
+    ]
+    return save_document_pages(conn, document, pages)
 
 
 def _stored_chunk(conn, page_start: int, page_end: int) -> int:
