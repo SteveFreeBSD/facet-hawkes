@@ -4,7 +4,11 @@ Return only valid JSON matching the supplied schema. Do not include Markdown fen
 
 Use the source text only. Empty lists are better than weak, vague, or invented records.
 
-Return a topic only when the chunk has one clear main subject with a useful summary.
+All five top-level keys are required: chunk_summary, topics, key_terms, examples, questions.
+
+Return 1 topic identifying the main subject of this chunk with a short summary.
+If the chunk covers multiple distinct subjects, return one topic per subject (up to 3).
+Always return at least one topic unless the chunk is purely administrative (e.g. table of contents, copyright).
 
 Extract 2 to 5 key terms when the chunk defines or explains important concepts.
 Prefer exact terms from the chunk.
@@ -15,11 +19,11 @@ Each question must include a short answer based only on the chunk.
 Do not include unanswered chapter questions as study questions unless the answer is present in the chunk.
 It is acceptable to return an empty questions list.
 
-Return examples only when the chunk itself provides examples. Do not invent examples.
+Return examples when the chunk contains illustrative cases, thought experiments, scenarios, or worked-out applications.
+Use the exact content from the chunk. Do not invent examples.
+Return an empty examples list only when no such material is present.
 
 Preserve source page references when they are present in the input metadata.
-
-Required JSON keys: chunk_summary, topics, key_terms, examples, questions.
 
 Source citation: {source_citation}
 

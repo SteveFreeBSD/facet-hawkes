@@ -88,7 +88,7 @@ class ExtractionResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     chunk_summary: str
-    topics: list[TopicExtraction] = Field(default_factory=list)
-    key_terms: list[KeyTerm] = Field(default_factory=list)
-    examples: list[Example] = Field(default_factory=list)
-    questions: list[StudyQuestion] = Field(default_factory=list)
+    topics: list[TopicExtraction]
+    key_terms: list[KeyTerm]
+    examples: list[Example]
+    questions: list[StudyQuestion]
