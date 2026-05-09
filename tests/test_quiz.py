@@ -175,10 +175,33 @@ def test_source_page_parsing_and_external_quiz_normalization(tmp_path):
     assert normalize_quiz({"questions": quiz["questions"]})["generated_count"] == 1
 
 
+def test_external_quiz_normalization_allows_true_false_and_five_options():
+    quiz = normalize_quiz(
+        {
+            "questions": [
+                {
+                    "question": "True or false?",
+                    "options": ["True", "False"],
+                    "correct": "B",
+                },
+                {
+                    "question": "Pick all of the above",
+                    "options": ["One", "Two", "Three", "Four", "All of the above"],
+                    "correct": "E",
+                },
+            ]
+        }
+    )
+
+    assert quiz["questions"][0]["options"] == {"A": "True", "B": "False"}
+    assert quiz["questions"][1]["options"]["E"] == "All of the above"
+    assert quiz["questions"][1]["correct"] == "E"
+
+
 def test_mc_prompt_formats_context_options_and_json_instruction(tmp_path):
     prompt_path = tmp_path / "mc.md"
     prompt_path.write_text(
-        "Q: {question}\nOptions:\n{options}\nContext:\n{context}\nJSON only",
+        "Q: {question}\nLabels: {option_labels}\nOptions:\n{options}\nContext:\n{context}\nJSON only",
         encoding="utf-8",
     )
     item = {
@@ -199,6 +222,7 @@ def test_mc_prompt_formats_context_options_and_json_instruction(tmp_path):
     prompt = build_mc_prompt(item, rows, max_chars=80, prompt_path=prompt_path)
 
     assert "Q: What does virtue ethics emphasize?" in prompt
+    assert "Labels: A, B, C, D" in prompt
     assert "virtue ethics" in prompt
     assert "B. Character" in prompt
     assert "source_citation: quiz.pdf p. 1, chunk 1" in prompt
@@ -404,6 +428,59 @@ def test_mc_bench_skips_no_context_and_can_retry_with_options(tmp_path, monkeypa
     assert len(calls) == 1
     assert retried["scored_total"] == 1
     assert retried["items"][0]["retrieval_questions"][1].startswith("What is it? Virtue ethics")
+
+
+def test_mc_bench_uses_external_retrieval_queries(tmp_path, monkeypatch):
+    db_path = tmp_path / "ethnos.sqlite"
+    quiz_path = tmp_path / "quiz.json"
+    report_path = tmp_path / "report.json"
+    conn = connect(db_path)
+    init_db(conn)
+    document_id = _stored_quiz_document(conn)
+    quiz = {
+        "questions": [
+            {
+                "id": "q1",
+                "question": "What is it?",
+                "retrieval_queries": ["virtue ethics"],
+                "options": {"A": "True", "B": "False"},
+                "correct": "A",
+            }
+        ]
+    }
+    quiz_path.write_text(json.dumps(quiz), encoding="utf-8")
+
+    monkeypatch.setattr("ethnos.cli.create_client", lambda host, timeout: object())
+    monkeypatch.setattr(
+        "ethnos.cli.answer_mc_question",
+        lambda **kwargs: MCAnswerResult(
+            raw_prompt=kwargs["prompt"],
+            raw_response='{"selected_option":"A"}',
+            selected_option="A",
+            validation_status="valid",
+            validation_error=None,
+        ),
+    )
+
+    assert (
+        main(
+            [
+                "--db",
+                str(db_path),
+                "mc-bench",
+                str(document_id),
+                "--quiz",
+                str(quiz_path),
+                "--output",
+                str(report_path),
+            ]
+        )
+        == 0
+    )
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+
+    assert report["no_context_count"] == 0
+    assert report["items"][0]["retrieval_questions"] == ["What is it?", "virtue ethics"]
 
 
 def _stored_quiz_document(conn) -> int:

@@ -1498,6 +1498,19 @@ def mc_bench_cmd(args: argparse.Namespace) -> int:
             section=args.section,
         )
         retrieval_questions = [item["question"]]
+        if not retrieval.rows:
+            for hinted_query in item.get("retrieval_queries", []):
+                retrieval_questions.append(str(hinted_query))
+                retrieval = _retrieve_mc_context(
+                    conn,
+                    document_id=args.document_id,
+                    question=str(hinted_query),
+                    limit=args.limit,
+                    role=selected_role,
+                    section=args.section,
+                )
+                if retrieval.rows:
+                    break
         if not retrieval.rows and args.options_retrieval:
             option_query = compact_question_with_options(item)
             retrieval_questions.append(option_query)
@@ -1548,6 +1561,7 @@ def mc_bench_cmd(args: argparse.Namespace) -> int:
                 timeout=settings.ollama_timeout,
                 num_predict=num_predict,
                 num_ctx=num_ctx,
+                allowed_options=tuple(item["options"].keys()),
                 client=ollama_client,
             )
             answer_elapsed = time.monotonic() - answer_started_at

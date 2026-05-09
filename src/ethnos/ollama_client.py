@@ -173,9 +173,11 @@ def answer_mc_question(
     timeout: float,
     num_predict: int,
     num_ctx: int,
+    allowed_options: list[str] | tuple[str, ...] | None = None,
     client: object | None = None,
 ) -> MCAnswerResult:
-    schema = _ollama_schema(MCSelection.model_json_schema())
+    allowed_options = _normalize_allowed_options(allowed_options)
+    schema = _mc_selection_schema(allowed_options)
     debug_info = _debug_info(prompt, schema, num_predict, num_ctx)
     client = client if client is not None else create_client(host, timeout)
     try:
@@ -204,7 +206,9 @@ def answer_mc_question(
         num_ctx=debug_info.num_ctx,
         response_summary=chat_result.response_summary,
     )
-    return _validate_mc_response(prompt, chat_result.content, debug_info)
+    return _validate_mc_response(
+        prompt, chat_result.content, debug_info, allowed_options=allowed_options
+    )
 
 
 def create_client(host: str, timeout: float) -> object:
@@ -393,8 +397,13 @@ def _validate_response(prompt: str, raw_response: str) -> StructuredCallResult:
 
 
 def _validate_mc_response(
-    prompt: str, raw_response: str, debug_info: OllamaDebugInfo | None = None
+    prompt: str,
+    raw_response: str,
+    debug_info: OllamaDebugInfo | None = None,
+    *,
+    allowed_options: list[str] | tuple[str, ...] | None = None,
 ) -> MCAnswerResult:
+    allowed_options = _normalize_allowed_options(allowed_options)
     if not raw_response.strip():
         return MCAnswerResult(
             raw_prompt=prompt,
@@ -417,14 +426,21 @@ def _validate_mc_response(
             debug_info=debug_info,
         )
 
-    try:
-        selection = MCSelection.model_validate(parsed)
-    except ValidationError as exc:
-        selected_option = parsed.get("selected_option") if isinstance(parsed, dict) else None
+    selected_option = parsed.get("selected_option") if isinstance(parsed, dict) else None
+    if not isinstance(selected_option, str):
+        return MCAnswerResult(
+            raw_prompt=prompt,
+            raw_response=raw_response,
+            selected_option=None,
+            validation_status="validation_error",
+            validation_error="MC response must include string selected_option",
+            debug_info=debug_info,
+        )
+    selected_option = selected_option.strip().upper()
+    if selected_option not in allowed_options:
         validation_status = (
             "invalid_option"
-            if isinstance(selected_option, str)
-            and selected_option.strip().upper() not in {"A", "B", "C", "D"}
+            if selected_option
             else "validation_error"
         )
         return MCAnswerResult(
@@ -432,18 +448,49 @@ def _validate_mc_response(
             raw_response=raw_response,
             selected_option=None,
             validation_status=validation_status,
-            validation_error=str(exc),
+            validation_error=(
+                f"selected_option must be one of {', '.join(allowed_options)}"
+            ),
             debug_info=debug_info,
         )
 
     return MCAnswerResult(
         raw_prompt=prompt,
         raw_response=raw_response,
-        selected_option=selection.selected_option,
+        selected_option=selected_option,
         validation_status="valid",
         validation_error=None,
         debug_info=debug_info,
     )
+
+
+def _normalize_allowed_options(
+    allowed_options: list[str] | tuple[str, ...] | None,
+) -> list[str]:
+    if allowed_options is None:
+        return ["A", "B", "C", "D"]
+    normalized = []
+    for option in allowed_options:
+        label = str(option).strip().upper()
+        if label and label not in normalized:
+            normalized.append(label)
+    if not normalized:
+        raise ValueError("allowed_options must include at least one label")
+    return normalized
+
+
+def _mc_selection_schema(allowed_options: list[str]) -> dict:
+    return {
+        "type": "object",
+        "properties": {
+            "selected_option": {
+                "type": "string",
+                "enum": allowed_options,
+            }
+        },
+        "required": ["selected_option"],
+        "additionalProperties": False,
+    }
 
 
 def _repair_prompt(original_prompt: str) -> str:

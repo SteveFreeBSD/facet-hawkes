@@ -248,11 +248,15 @@ def test_validate_mc_response_rejects_invalid_json_and_option():
     invalid_json = _validate_mc_response("prompt", "not json")
     invalid_option = _validate_mc_response("prompt", '{"selected_option":"E"}')
     empty = _validate_mc_response("prompt", "")
+    invalid_for_true_false = _validate_mc_response(
+        "prompt", '{"selected_option":"C"}', allowed_options=["A", "B"]
+    )
 
     assert invalid_json.validation_status == "invalid_json"
     assert invalid_json.selected_option is None
     assert invalid_option.validation_status == "invalid_option"
     assert invalid_option.selected_option is None
+    assert invalid_for_true_false.validation_status == "invalid_option"
     assert empty.validation_status == "empty_response"
 
 
@@ -271,12 +275,14 @@ def test_answer_mc_question_uses_client_and_validates_response():
         timeout=30,
         num_predict=32,
         num_ctx=8192,
+        allowed_options=["A", "B"],
         client=client,
     )
 
     assert result.selected_option == "B"
     assert result.validation_status == "valid"
     assert client.kwargs["think"] is False
+    assert client.kwargs["format"]["properties"]["selected_option"]["enum"] == ["A", "B"]
     assert client.kwargs["options"]["num_predict"] == 32
     assert result.debug_info.response_summary["done"] is True
 

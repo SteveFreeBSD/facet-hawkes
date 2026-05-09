@@ -13,7 +13,8 @@ from typing import Any
 
 DEFAULT_MC_PROMPT = Path(__file__).resolve().parents[2] / "prompts" / "mc_answer.md"
 QUIZ_VERSION = "mc-quiz-v1"
-OPTION_LABELS = ("A", "B", "C", "D")
+OPTION_LABELS = ("A", "B", "C", "D", "E", "F")
+GENERATED_OPTION_LABELS = OPTION_LABELS[:4]
 
 
 @dataclass(frozen=True)
@@ -123,20 +124,20 @@ def build_quiz_item(
         options.append(distractor.correct_answer)
         seen_raw.add(raw_norm)
         seen_display.add(display_norm)
-        if len(options) == len(OPTION_LABELS):
+        if len(options) == len(GENERATED_OPTION_LABELS):
             break
-    if len(options) < len(OPTION_LABELS):
+    if len(options) < len(GENERATED_OPTION_LABELS):
         return None
 
     labeled_options = [
         {"label": label, "text": limit_option_text(text, max_option_chars)}
-        for label, text in zip(OPTION_LABELS, options)
+        for label, text in zip(GENERATED_OPTION_LABELS, options)
     ]
-    correct_label = OPTION_LABELS[0]
+    correct_label = GENERATED_OPTION_LABELS[0]
     rng.shuffle(labeled_options)
     relabeled_options = {}
     new_correct = None
-    for label, option in zip(OPTION_LABELS, labeled_options):
+    for label, option in zip(GENERATED_OPTION_LABELS, labeled_options):
         relabeled_options[label] = option["text"]
         if option["label"] == correct_label:
             new_correct = label
@@ -223,11 +224,15 @@ def normalize_options(options: Any) -> dict[str, str]:
                 normalized[label] = text
     else:
         raise ValueError("Quiz item options must be an object or list")
-    if set(normalized) != set(OPTION_LABELS):
-        raise ValueError("Quiz item options must include exactly A, B, C, and D")
+    labels = tuple(normalized)
+    if not 2 <= len(labels) <= len(OPTION_LABELS):
+        raise ValueError("Quiz item options must include 2 to 6 options")
+    expected_labels = OPTION_LABELS[: len(labels)]
+    if labels != expected_labels:
+        raise ValueError("Quiz item options must use contiguous labels starting at A")
     if any(not text for text in normalized.values()):
         raise ValueError("Quiz item options must be non-empty")
-    return {label: normalized[label] for label in OPTION_LABELS}
+    return {label: normalized[label] for label in expected_labels}
 
 
 def build_mc_prompt(
@@ -241,6 +246,7 @@ def build_mc_prompt(
     options = "\n".join(
         f"{label}. {text}" for label, text in normalize_options(item["options"]).items()
     )
+    option_labels = ", ".join(normalize_options(item["options"]))
     target = item.get("target") or ""
     source_citation = item.get("source_citation") or ""
     context = build_mc_context(
@@ -252,6 +258,7 @@ def build_mc_prompt(
         question=item["question"],
         target=target,
         source_citation=source_citation,
+        option_labels=option_labels,
         options=options,
         context=context,
     )

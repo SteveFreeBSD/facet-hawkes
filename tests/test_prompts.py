@@ -26,4 +26,4 @@ def test_mc_answer_prompt_requires_context_grounded_json_selection():
     assert "first locate that exact target term" in prompt
     assert "related variant" in prompt
     assert "different named theory" in prompt
-    assert "A, B, C, or D" in prompt
+    assert "{option_labels}" in prompt

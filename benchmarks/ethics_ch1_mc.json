@@ -1,0 +1,126 @@
+{
+  "version": "external-mc-v1",
+  "document_id": 1,
+  "source": "external",
+  "title": "Quiz CH 1",
+  "answer_key_notes": "Converted from user-provided course quiz text. q007 is intentionally unkeyed because the source text supplied is ambiguous.",
+  "questions": [
+    {
+      "id": "ch1-q001",
+      "question": "What is a fallacy?",
+      "options": {
+        "A": "a truth",
+        "B": "a failure in reasoning which renders an argument invalid",
+        "C": "an argument",
+        "D": "none of the above"
+      },
+      "correct": "B"
+    },
+    {
+      "id": "ch1-q002",
+      "question": "What is metaethics?",
+      "options": {
+        "A": "A branch of Ethics that deals with the nature of reality",
+        "B": "A branch of Ethics that deals with reason",
+        "C": "A branch of Ethics that deals with God",
+        "D": "None of the above"
+      },
+      "correct": "D"
+    },
+    {
+      "id": "ch1-q003",
+      "question": "Moral Realism",
+      "options": {
+        "A": "Totally real dude",
+        "B": "Morality is relative to culture",
+        "C": "Moral anti-realism is simply the negation of realism",
+        "D": "Realists maintain that those moral facts exist independently of our opinions and judgements"
+      },
+      "correct": "D"
+    },
+    {
+      "id": "ch1-q004",
+      "question": "Anti-Realism",
+      "options": {
+        "A": "moral anti-realism is simply the rejection of realism",
+        "B": "Morality is dependent on the individual or culture to whom you are talking",
+        "C": "Morality is relative to culture",
+        "D": "All of the above"
+      },
+      "correct": "D"
+    },
+    {
+      "id": "ch1-q005",
+      "question": "According to descriptive relativism: What are radically different across cultures?",
+      "options": {
+        "A": "Ethics",
+        "B": "Moralities and Ethics",
+        "C": "People",
+        "D": "None of the above"
+      },
+      "correct": "B"
+    },
+    {
+      "id": "ch1-q006",
+      "question": "Who said \"culture is king?\"",
+      "options": {
+        "A": "Aristotle",
+        "B": "Plato",
+        "C": "Socrates",
+        "D": "Herodotus"
+      },
+      "correct": "D"
+    },
+    {
+      "id": "ch1-q007",
+      "question": "Which of the following fallacies can be created by Normative Relativism?",
+      "retrieval_queries": [
+        "normative relativism",
+        "reductio ad absurdum relativism"
+      ],
+      "options": {
+        "A": "Taliban",
+        "B": "ISIS",
+        "C": "Khmer Rouge",
+        "D": "Neapolitan Ice Cream",
+        "E": "All of the above"
+      }
+    },
+    {
+      "id": "ch1-q008",
+      "question": "What does 'reductio ad absurdum' mean?",
+      "options": {
+        "A": "Reduction to absurdity",
+        "B": "Reduction of abs",
+        "C": "Reduce to silly",
+        "D": "Reproduce to absurdity"
+      },
+      "correct": "A"
+    },
+    {
+      "id": "ch1-q009",
+      "question": "Under relativism would Hitler be acceptable?",
+      "retrieval_queries": [
+        "normative relativism",
+        "relativism acceptable culture"
+      ],
+      "options": {
+        "A": "True",
+        "B": "False"
+      },
+      "correct": "A"
+    },
+    {
+      "id": "ch1-q010",
+      "question": "Is moral progress possible under relativism?",
+      "retrieval_queries": [
+        "moral progress relativism"
+      ],
+      "options": {
+        "A": "True",
+        "B": "False"
+      },
+      "correct": "B"
+    }
+  ]
+}
