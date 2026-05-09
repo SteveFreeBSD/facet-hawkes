@@ -30,8 +30,9 @@ default. Current defaults are:
 - `ETHNOS_OLLAMA_NUM_CTX=8192`
 - `ETHNOS_OLLAMA_THINK=false`
 
-The local Ollama service has `OLLAMA_FLASH_ATTENTION=1` enabled. A one-chunk
-smoke comparison showed a modest improvement, with normal run-to-run variance.
+The local Ollama service has `OLLAMA_FLASH_ATTENTION=1` and `OLLAMA_MLOCK=1`
+enabled, with `LimitMEMLOCK=infinity`. A one-chunk smoke comparison showed a
+modest flash-attention improvement, with normal run-to-run variance.
 Per-request `use_mlock` was rejected by this Ollama build, and forcing
 `num_thread=16` was slower on the Ryzen 7 PRO 5850U CPU path.
 

@@ -6,6 +6,16 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
+def test_topic_extraction_prompt_keeps_gemma_critical_constraints():
+    prompt = (PROJECT_ROOT / "prompts" / "topic_extraction.md").read_text(encoding="utf-8")
+
+    assert "Return only schema-valid JSON" in prompt
+    assert "extra keys" in prompt
+    assert "topics: at least 1 main subject for study chunks" in prompt
+    assert "every example object has title and body" in prompt
+    assert "Do not use [] for topics on study chunks." in prompt
+
+
 def test_mc_answer_prompt_requires_context_grounded_json_selection():
     prompt = (PROJECT_ROOT / "prompts" / "mc_answer.md").read_text(encoding="utf-8")
 
