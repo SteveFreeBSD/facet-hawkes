@@ -23,7 +23,9 @@ def test_mc_answer_prompt_requires_context_grounded_json_selection():
     assert "Return only JSON" in prompt
     assert '"selected_option"' in prompt
     assert "target term" in prompt.lower()
-    assert "first locate that exact target term" in prompt
+    assert "first locate that exact target" in prompt
+    assert "apply that theory's stated rule" in prompt
+    assert "ordinary moral judgment" in prompt
     assert "related variant" in prompt
     assert "different named theory" in prompt
     assert "{option_labels}" in prompt
