@@ -64,7 +64,7 @@ def extract_chunk(
     client: object | None = None,
 ) -> StructuredCallResult:
     prompt = load_prompt(prompt_path, chunk)
-    schema = ExtractionResult.model_json_schema()
+    schema = _ollama_schema(ExtractionResult.model_json_schema())
     last: StructuredCallResult | None = None
     client = client if client is not None else create_client(host, timeout)
 
@@ -216,6 +216,22 @@ def _chat_request_kwargs(
         "options": {"temperature": 0, "num_predict": num_predict, "num_ctx": num_ctx},
         "think": think,
     }
+
+
+def _ollama_schema(schema: dict) -> dict:
+    return _compact_json_schema(schema)
+
+
+def _compact_json_schema(value):
+    if isinstance(value, dict):
+        return {
+            key: _compact_json_schema(child)
+            for key, child in value.items()
+            if key != "default"
+        }
+    if isinstance(value, list):
+        return [_compact_json_schema(child) for child in value]
+    return value
 
 
 def _answer_chat_request_kwargs(

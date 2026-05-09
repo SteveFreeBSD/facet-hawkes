@@ -16,6 +16,7 @@ from ethnos.ollama_client import (
     _chat,
     _answer_chat_request_kwargs,
     _chat_request_kwargs,
+    _ollama_schema,
     _repair_prompt,
     _response_summary,
 )
@@ -129,6 +130,48 @@ def test_structured_chat_request_sets_context_without_thinking():
     assert kwargs["options"] == {"temperature": 0, "num_predict": 4096, "num_ctx": 8192}
     assert kwargs["think"] is False
     assert "stream" not in kwargs
+
+
+def test_ollama_schema_strips_schema_defaults_but_keeps_titles():
+    schema = {
+        "title": "ExtractionResult",
+        "type": "object",
+        "properties": {
+            "chunk_summary": {
+                "title": "Chunk Summary",
+                "default": "",
+                "type": "string",
+            },
+            "topics": {
+                "type": "array",
+                "items": {
+                    "title": "TopicExtraction",
+                    "type": "object",
+                    "properties": {"name": {"title": "Name", "type": "string"}},
+                },
+            },
+        },
+        "required": ["chunk_summary", "topics"],
+    }
+
+    compact = _ollama_schema(schema)
+
+    assert compact == {
+        "title": "ExtractionResult",
+        "type": "object",
+        "properties": {
+            "chunk_summary": {"title": "Chunk Summary", "type": "string"},
+            "topics": {
+                "type": "array",
+                "items": {
+                    "title": "TopicExtraction",
+                    "type": "object",
+                    "properties": {"name": {"title": "Name", "type": "string"}},
+                },
+            },
+        },
+        "required": ["chunk_summary", "topics"],
+    }
 
 
 def test_answer_chat_request_uses_plain_text_and_context_without_thinking():

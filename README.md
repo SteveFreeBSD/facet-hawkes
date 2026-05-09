@@ -201,5 +201,5 @@ thread tuning as benchmarked local configuration, not portable project
 defaults.
 
 The current local `ethics.pdf` database baseline has 100/100 chunks with valid
-latest structured output, 100 chunk summaries, 251 key terms, 187 questions, and
-zero non-core key terms/questions.
+latest structured output, 100 chunk summaries, 251 key terms, 74 examples, 186
+questions, and zero non-core key terms/questions.

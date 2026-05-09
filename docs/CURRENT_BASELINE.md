@@ -11,7 +11,7 @@ This is the known-good local baseline for `ethnos`.
 - Structured extraction is complete for the current local database: 100/100
   chunks have a valid latest model output.
 - Normalized records are populated: 100 chunk summaries, 112 topics, 251 key
-  terms, 73 examples, and 187 questions.
+  terms, 74 examples, and 186 questions.
 - Non-core chunks have zero persisted key terms/questions; admin/support
   material is summary-only.
 - `ask` works with local Ollama retrieval context.
@@ -34,6 +34,9 @@ The local Ollama service has `OLLAMA_FLASH_ATTENTION=1` enabled. A one-chunk
 smoke comparison showed a modest improvement, with normal run-to-run variance.
 Per-request `use_mlock` was rejected by this Ollama build, and forcing
 `num_thread=16` was slower on the Ryzen 7 PRO 5850U CPU path.
+
+The structure prompt is intentionally compact. Schema `title` metadata is kept
+because removing it caused Gemma to omit required example fields in smoke tests.
 
 ## Smoke Checks
 
