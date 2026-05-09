@@ -156,6 +156,65 @@ Run the local retrieval-only benchmark without calling Ollama:
 uv run ethnos qa-bench 1 --benchmark benchmarks/ethics_qa.json --no-ask
 ```
 
+Generate a local multiple-choice quiz from extracted records:
+
+```bash
+uv run ethnos generate-quiz 1 \
+  --source terms \
+  --difficulty easy \
+  --output data/runs/mc-quiz-terms-easy.json \
+  --limit 20 \
+  --seed 42
+```
+
+`--difficulty` controls distractor selection. `easy` uses farther, lower-overlap
+distractors and skips broad ambiguous terms when a more specific sibling term is
+present in the same chunk. `medium` is balanced, and `hard` prefers closer
+shared-topic distractors.
+
+Run a multiple-choice benchmark with local Ollama:
+
+```bash
+uv run ethnos mc-bench 1 \
+  --quiz data/runs/mc-quiz-terms-easy.json \
+  --output data/runs/mc-bench-terms-easy.json \
+  --debug-retrieval
+```
+
+External quiz files can also be used. They are JSON objects with a `questions`
+list; each item needs `id`, `question`, and 2 to 6 labeled options starting at
+`A`. Include `correct` when an answer key is available. Sparse real-world quiz
+questions can include `retrieval_queries` to point retrieval at the relevant PDF
+language.
+
+```json
+{
+  "version": "external-mc-v1",
+  "questions": [
+    {
+      "id": "q001",
+      "question": "What does 'reductio ad absurdum' mean?",
+      "options": {
+        "A": "Reduction to absurdity",
+        "B": "Reduction of abs",
+        "C": "Reduce to silly",
+        "D": "Reproduce to absurdity"
+      },
+      "correct": "A"
+    }
+  ]
+}
+```
+
+Run the included chapter-one quiz benchmark:
+
+```bash
+uv run ethnos mc-bench 1 \
+  --quiz benchmarks/ethics_ch1_mc.json \
+  --output data/runs/mc-bench-ethics-ch1.json \
+  --debug-retrieval
+```
+
 Refresh normalized records from existing valid model outputs after changing
 storage policy, without calling Ollama:
 
