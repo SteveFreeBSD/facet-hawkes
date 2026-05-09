@@ -248,6 +248,17 @@ def test_imported_chapter_one_fixture_matches_checked_in_quiz_without_retrieval_
     )
 
 
+def test_checked_in_chapter_one_quiz_has_source_anchors():
+    quiz = load_quiz(Path("benchmarks/ethics_ch1_mc.json"))
+
+    assert quiz["generated_count"] == 10
+    for item in quiz["questions"]:
+        assert item.get("target"), item["id"]
+        assert item.get("source_chunks"), item["id"]
+        assert item.get("source_pages"), item["id"]
+        assert item.get("source_citation"), item["id"]
+
+
 def test_import_lms_mc_quiz_accepts_numbered_label_answer_key():
     raw_text = """
 Quiz

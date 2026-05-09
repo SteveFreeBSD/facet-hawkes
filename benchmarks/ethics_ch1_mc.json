@@ -8,6 +8,14 @@
     {
       "id": "ch1-q001",
       "question": "What is a fallacy?",
+      "target": "fallacy",
+      "source_chunks": [
+        25
+      ],
+      "source_pages": [
+        37
+      ],
+      "source_citation": "ethics.pdf p. 37, chunk 25",
       "options": {
         "A": "a truth",
         "B": "a failure in reasoning which renders an argument invalid",
@@ -38,6 +46,14 @@
     {
       "id": "ch1-q003",
       "question": "Moral Realism",
+      "target": "moral facts",
+      "source_chunks": [
+        14
+      ],
+      "source_pages": [
+        25
+      ],
+      "source_citation": "ethics.pdf p. 25, chunk 14",
       "options": {
         "A": "Totally real dude",
         "B": "Morality is relative to culture",
@@ -49,6 +65,14 @@
     {
       "id": "ch1-q004",
       "question": "Anti-Realism",
+      "target": "Moral anti-realism",
+      "source_chunks": [
+        14
+      ],
+      "source_pages": [
+        25
+      ],
+      "source_citation": "ethics.pdf p. 25, chunk 14",
       "options": {
         "A": "moral anti-realism is simply the rejection of realism",
         "B": "Morality is dependent on the individual or culture to whom you are talking",
@@ -60,6 +84,14 @@
     {
       "id": "ch1-q005",
       "question": "According to descriptive relativism: What are radically different across cultures?",
+      "target": "descriptive relativism",
+      "source_chunks": [
+        14
+      ],
+      "source_pages": [
+        25
+      ],
+      "source_citation": "ethics.pdf p. 25, chunk 14",
       "options": {
         "A": "Ethics",
         "B": "Moralities and Ethics",
@@ -71,6 +103,14 @@
     {
       "id": "ch1-q006",
       "question": "Who said \"culture is king?\"",
+      "target": "Culture is king",
+      "source_chunks": [
+        14
+      ],
+      "source_pages": [
+        25
+      ],
+      "source_citation": "ethics.pdf p. 25, chunk 14",
       "options": {
         "A": "Aristotle",
         "B": "Plato",
@@ -82,6 +122,14 @@
     {
       "id": "ch1-q007",
       "question": "Which of the following fallacies can be created by Normative Relativism?",
+      "target": "normative relativism",
+      "source_chunks": [
+        15
+      ],
+      "source_pages": [
+        26
+      ],
+      "source_citation": "ethics.pdf p. 26, chunk 15",
       "retrieval_queries": [
         "normative relativism",
         "reductio ad absurdum relativism"
@@ -98,6 +146,14 @@
     {
       "id": "ch1-q008",
       "question": "What does 'reductio ad absurdum' mean?",
+      "target": "reductio ad absurdum",
+      "source_chunks": [
+        17
+      ],
+      "source_pages": [
+        28
+      ],
+      "source_citation": "ethics.pdf p. 28, chunk 17",
       "options": {
         "A": "Reduction to absurdity",
         "B": "Reduction of abs",
@@ -109,6 +165,14 @@
     {
       "id": "ch1-q009",
       "question": "Under relativism would Hitler be acceptable?",
+      "target": "normative relativism",
+      "source_chunks": [
+        15
+      ],
+      "source_pages": [
+        26
+      ],
+      "source_citation": "ethics.pdf p. 26, chunk 15",
       "retrieval_queries": [
         "normative relativism",
         "relativism acceptable culture"
@@ -122,6 +186,14 @@
     {
       "id": "ch1-q010",
       "question": "Is moral progress possible under relativism?",
+      "target": "moral progress",
+      "source_chunks": [
+        19
+      ],
+      "source_pages": [
+        30
+      ],
+      "source_citation": "ethics.pdf p. 30, chunk 19",
       "retrieval_queries": [
         "moral progress relativism"
       ],
