@@ -19,6 +19,14 @@
     {
       "id": "ch1-q002",
       "question": "What is metaethics?",
+      "target": "Metaethics",
+      "source_chunks": [
+        13
+      ],
+      "source_pages": [
+        24
+      ],
+      "source_citation": "ethics.pdf p. 24, chunk 13",
       "options": {
         "A": "A branch of Ethics that deals with the nature of reality",
         "B": "A branch of Ethics that deals with reason",

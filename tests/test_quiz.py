@@ -814,7 +814,14 @@ def _quiz_without_manual_review_fields(quiz):
             {
                 key: value
                 for key, value in item.items()
-                if key not in {"retrieval_queries", "source_chunks", "source_pages"}
+                if key
+                not in {
+                    "retrieval_queries",
+                    "source_chunks",
+                    "source_pages",
+                    "source_citation",
+                    "target",
+                }
             }
         )
     return cleaned
