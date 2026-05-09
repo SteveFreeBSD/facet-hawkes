@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from random import Random
 
 from ethnos.cli import _add_quiz_source_context, main
@@ -12,6 +13,7 @@ from ethnos.quiz import (
     build_quiz_item,
     _filter_ambiguous_broad_terms,
     generate_quiz,
+    import_lms_mc_quiz,
     load_quiz,
     normalize_quiz,
     parse_source_pages,
@@ -196,6 +198,84 @@ def test_external_quiz_normalization_allows_true_false_and_five_options():
     assert quiz["questions"][0]["options"] == {"A": "True", "B": "False"}
     assert quiz["questions"][1]["options"]["E"] == "All of the above"
     assert quiz["questions"][1]["correct"] == "E"
+
+
+def test_import_lms_mc_quiz_parses_chapter_one_fixture():
+    raw_text = Path("benchmarks/ethics_ch1_mc_raw.txt").read_text(encoding="utf-8")
+    answer_key_text = Path("benchmarks/ethics_ch1_mc_answer_key.txt").read_text(
+        encoding="utf-8"
+    )
+
+    quiz = import_lms_mc_quiz(
+        raw_text,
+        document_id=1,
+        answer_key_text=answer_key_text,
+        id_prefix="ch1-q",
+    )
+
+    assert quiz["version"] == "external-mc-v1"
+    assert quiz["document_id"] == 1
+    assert quiz["title"] == "Quiz CH 1"
+    assert quiz["generated_count"] == 10
+    assert quiz["questions"][0]["id"] == "ch1-q001"
+    assert quiz["questions"][0]["question"] == "What is a fallacy?"
+    assert quiz["questions"][0]["options"]["B"] == (
+        "a failure in reasoning which renders an argument invalid"
+    )
+    assert quiz["questions"][0]["correct"] == "B"
+    assert quiz["questions"][6]["options"]["E"] == "All of the above"
+    assert quiz["questions"][6]["correct"] == "E"
+    assert quiz["questions"][8]["options"] == {"A": "True", "B": "False"}
+    assert quiz["questions"][9]["correct"] == "B"
+
+
+def test_import_lms_mc_quiz_accepts_numbered_label_answer_key():
+    raw_text = """
+Quiz
+Question at position 1
+Question at position 1
+Pick one?
+One
+Two
+Question at position 2
+Question at position 2
+Pick truth?
+True
+False
+"""
+
+    quiz = import_lms_mc_quiz(raw_text, answer_key_text="1 B\n2 A\n")
+
+    assert quiz["questions"][0]["correct"] == "B"
+    assert quiz["questions"][1]["correct"] == "A"
+
+
+def test_import_mc_quiz_cli_writes_external_json(tmp_path, capsys):
+    output = tmp_path / "nested" / "quiz.json"
+
+    exit_code = main(
+        [
+            "import-mc-quiz",
+            "benchmarks/ethics_ch1_mc_raw.txt",
+            "--answer-key",
+            "benchmarks/ethics_ch1_mc_answer_key.txt",
+            "--output",
+            str(output),
+            "--document-id",
+            "1",
+            "--id-prefix",
+            "ch1-q",
+        ]
+    )
+    text = capsys.readouterr().out
+    quiz = json.loads(output.read_text(encoding="utf-8"))
+
+    assert exit_code == 0
+    assert output.exists()
+    assert quiz["generated_count"] == 10
+    assert quiz["questions"][6]["correct"] == "E"
+    assert "Imported MC quiz" in text
+    assert "keyed: 10" in text
 
 
 def test_mc_prompt_formats_context_options_and_json_instruction(tmp_path):

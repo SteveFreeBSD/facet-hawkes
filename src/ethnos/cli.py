@@ -61,6 +61,7 @@ from .quiz import (
     build_mc_prompt,
     compact_question_with_options,
     generate_quiz,
+    import_lms_mc_quiz,
     load_quiz,
 )
 from .section_presets import CONTENT_ROLES, PRESETS, SECTION_LABELS, get_section_preset
@@ -374,6 +375,23 @@ def build_parser() -> argparse.ArgumentParser:
         "--num-ctx",
         type=int,
         help="Ollama context window token budget.",
+    )
+
+    import_mc_parser = _command(
+        subcommands,
+        "import-mc-quiz",
+        "Convert copied LMS quiz text into external multiple-choice quiz JSON.",
+        import_mc_quiz_cmd,
+    )
+    import_mc_parser.add_argument("input", type=Path)
+    import_mc_parser.add_argument("--output", type=Path, required=True)
+    import_mc_parser.add_argument("--document-id", type=int)
+    import_mc_parser.add_argument("--title")
+    import_mc_parser.add_argument("--answer-key", type=Path)
+    import_mc_parser.add_argument(
+        "--id-prefix",
+        default="q",
+        help="Question id prefix before the zero-padded number, e.g. ch1-q.",
     )
 
     json_parser = _command(subcommands, "export-json", "Export document data as JSON.", export_json_cmd)
@@ -1451,6 +1469,32 @@ def generate_quiz_cmd(args: argparse.Namespace) -> int:
     print(f"  available questions: {counts['available_questions']}")
     print(f"  generated terms: {counts['generated_terms']}")
     print(f"  generated questions: {counts['generated_questions']}")
+    return 0
+
+
+def import_mc_quiz_cmd(args: argparse.Namespace) -> int:
+    raw_text = args.input.read_text(encoding="utf-8")
+    answer_key_text = (
+        args.answer_key.read_text(encoding="utf-8") if args.answer_key is not None else None
+    )
+    try:
+        quiz = import_lms_mc_quiz(
+            raw_text,
+            document_id=args.document_id,
+            title=args.title,
+            answer_key_text=answer_key_text,
+            id_prefix=args.id_prefix,
+        )
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(json.dumps(quiz, indent=2, sort_keys=True), encoding="utf-8")
+    keyed_count = sum(1 for item in quiz["questions"] if "correct" in item)
+    print(f"Imported MC quiz: {args.output}")
+    print(f"  source: {args.input}")
+    print(f"  title: {quiz.get('title') or 'Imported MC Quiz'}")
+    print(f"  questions: {len(quiz['questions'])}")
+    print(f"  keyed: {keyed_count}")
     return 0
 
 

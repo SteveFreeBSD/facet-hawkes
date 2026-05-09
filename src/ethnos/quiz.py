@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import random
+import re
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -13,8 +14,11 @@ from typing import Any
 
 DEFAULT_MC_PROMPT = Path(__file__).resolve().parents[2] / "prompts" / "mc_answer.md"
 QUIZ_VERSION = "mc-quiz-v1"
+EXTERNAL_QUIZ_VERSION = "external-mc-v1"
 OPTION_LABELS = ("A", "B", "C", "D", "E", "F")
 GENERATED_OPTION_LABELS = OPTION_LABELS[:4]
+POSITION_HEADER_RE = re.compile(r"^Question at position\s+(\d+)\s*$", re.IGNORECASE)
+LABEL_ANSWER_RE = re.compile(r"^(?:q)?0*(\d+)[\s:.)-]+([A-F])\s*$", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -233,6 +237,133 @@ def normalize_options(options: Any) -> dict[str, str]:
     if any(not text for text in normalized.values()):
         raise ValueError("Quiz item options must be non-empty")
     return {label: normalized[label] for label in expected_labels}
+
+
+def import_lms_mc_quiz(
+    raw_text: str,
+    *,
+    document_id: int | None = None,
+    title: str | None = None,
+    answer_key_text: str | None = None,
+    id_prefix: str = "q",
+) -> dict[str, Any]:
+    """Convert copied LMS multiple-choice quiz text into normalized quiz JSON."""
+    lines = [line.strip() for line in raw_text.splitlines()]
+    matches = [
+        (index, int(match.group(1)))
+        for index, line in enumerate(lines)
+        if (match := POSITION_HEADER_RE.match(line))
+    ]
+    if not matches:
+        raise ValueError("Could not find any 'Question at position N' markers")
+
+    quiz_title = title or _infer_lms_quiz_title(lines, matches[0][0])
+    questions = []
+    group_index = 0
+    while group_index < len(matches):
+        question_number = matches[group_index][1]
+        group_end = group_index + 1
+        while group_end < len(matches) and matches[group_end][1] == question_number:
+            group_end += 1
+        start = matches[group_end - 1][0] + 1
+        end = matches[group_end][0] if group_end < len(matches) else len(lines)
+        content = [
+            line
+            for line in lines[start:end]
+            if line and not _is_lms_quiz_boilerplate(line)
+        ]
+        if len(content) < 3:
+            raise ValueError(
+                f"Question {question_number} must include a question and at least 2 options"
+            )
+        question = content[0]
+        options = normalize_options(content[1:])
+        questions.append(
+            {
+                "id": f"{id_prefix}{question_number:03d}",
+                "question": question,
+                "options": options,
+            }
+        )
+        group_index = group_end
+
+    if answer_key_text:
+        _apply_answer_key(questions, answer_key_text)
+
+    quiz: dict[str, Any] = {
+        "version": EXTERNAL_QUIZ_VERSION,
+        "source": "external",
+        "title": quiz_title,
+        "answer_key_notes": "Converted from copied quiz text.",
+        "questions": questions,
+    }
+    if document_id is not None:
+        quiz["document_id"] = document_id
+    return normalize_quiz(quiz)
+
+
+def _infer_lms_quiz_title(lines: list[str], first_marker_index: int) -> str:
+    for line in lines[:first_marker_index]:
+        if line and not _is_lms_quiz_boilerplate(line):
+            return line
+    return "Imported MC Quiz"
+
+
+def _is_lms_quiz_boilerplate(line: str) -> bool:
+    normalized = _normalize_option(line)
+    if POSITION_HEADER_RE.match(line):
+        return True
+    if normalized in {
+        "multiple choice",
+        "true or false",
+        "1 point",
+    }:
+        return True
+    if re.fullmatch(r"\d+", normalized):
+        return True
+    return normalized.startswith("take the quiz.")
+
+
+def _apply_answer_key(questions: list[dict[str, Any]], answer_key_text: str) -> None:
+    raw_entries = [line.strip() for line in answer_key_text.splitlines() if line.strip()]
+    if not raw_entries:
+        return
+    keyed_by_number: dict[int, str] = {}
+    positional_entries = []
+    for entry in raw_entries:
+        if match := LABEL_ANSWER_RE.match(entry):
+            keyed_by_number[int(match.group(1))] = match.group(2).upper()
+        else:
+            positional_entries.append(entry)
+    if keyed_by_number and positional_entries:
+        raise ValueError(
+            "Answer key must use either numbered labels or one answer text per line"
+        )
+    if keyed_by_number:
+        for index, question in enumerate(questions, start=1):
+            label = keyed_by_number.get(index)
+            if label is None:
+                continue
+            if label not in question["options"]:
+                raise ValueError(f"Answer key for question {index} uses invalid option {label}")
+            question["correct"] = label
+        return
+    if len(positional_entries) != len(questions):
+        raise ValueError("Answer key text line count must match the imported question count")
+    for index, (question, answer_text) in enumerate(
+        zip(questions, positional_entries), start=1
+    ):
+        answer_norm = _normalize_option(answer_text)
+        matches = [
+            label
+            for label, text in question["options"].items()
+            if _normalize_option(text) == answer_norm
+        ]
+        if len(matches) != 1:
+            raise ValueError(
+                f"Answer key text for question {index} did not match exactly one option"
+            )
+        question["correct"] = matches[0]
 
 
 def build_mc_prompt(
