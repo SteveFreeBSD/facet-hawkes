@@ -351,6 +351,74 @@ def test_review_mc_quiz_cli_marks_keyed_options(capsys):
     assert "A. A branch of Ethics that deals with the nature of reality  <-- keyed" in text
 
 
+def test_validate_mc_quiz_cli_accepts_generated_anchored_quiz(tmp_path, capsys):
+    db_path = tmp_path / "ethnos.sqlite"
+    quiz_path = tmp_path / "quiz.json"
+    conn = connect(db_path)
+    init_db(conn)
+    document_id = _stored_quiz_document(conn)
+    quiz = generate_quiz(conn, document_id, source="terms", limit=1, seed=5)
+    quiz_path.write_text(json.dumps(quiz), encoding="utf-8")
+
+    exit_code = main(
+        [
+            "--db",
+            str(db_path),
+            "validate-mc-quiz",
+            str(document_id),
+            "--quiz",
+            str(quiz_path),
+            "--require-anchors",
+        ]
+    )
+    text = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert "Validation passed" in text
+    assert "q0001: ok" in text
+
+
+def test_validate_mc_quiz_cli_fails_missing_required_anchor(tmp_path, capsys):
+    db_path = tmp_path / "ethnos.sqlite"
+    quiz_path = tmp_path / "quiz.json"
+    conn = connect(db_path)
+    init_db(conn)
+    document_id = _stored_quiz_document(conn)
+    quiz_path.write_text(
+        json.dumps(
+            {
+                "questions": [
+                    {
+                        "id": "q1",
+                        "question": "Pick one",
+                        "options": {"A": "One", "B": "Two"},
+                        "correct": "A",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    exit_code = main(
+        [
+            "--db",
+            str(db_path),
+            "validate-mc-quiz",
+            str(document_id),
+            "--quiz",
+            str(quiz_path),
+            "--require-anchors",
+        ]
+    )
+    text = capsys.readouterr().out
+
+    assert exit_code == 1
+    assert "Validation failed" in text
+    assert "missing target" in text
+    assert "missing source_chunks" in text
+
+
 def test_mc_prompt_formats_context_options_and_json_instruction(tmp_path):
     prompt_path = tmp_path / "mc.md"
     prompt_path.write_text(

@@ -209,6 +209,14 @@ For a quick key audit before spending any Ollama time:
 uv run ethnos review-mc-quiz benchmarks/ethics_ch1_mc.json --max-questions 10
 ```
 
+Validate keys and source anchors before benchmarking:
+
+```bash
+uv run ethnos validate-mc-quiz 1 \
+  --quiz benchmarks/ethics_ch1_mc.json \
+  --require-anchors
+```
+
 ```json
 {
   "version": "external-mc-v1",

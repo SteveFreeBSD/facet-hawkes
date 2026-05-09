@@ -408,6 +408,21 @@ def build_parser() -> argparse.ArgumentParser:
     review_mc_parser.add_argument("quiz", type=Path)
     review_mc_parser.add_argument("--max-questions", type=int)
 
+    validate_mc_parser = _command(
+        subcommands,
+        "validate-mc-quiz",
+        "Validate multiple-choice quiz keys and source anchors without calling Ollama.",
+        validate_mc_quiz_cmd,
+    )
+    validate_mc_parser.add_argument("document_id", type=int)
+    validate_mc_parser.add_argument("--quiz", type=Path, required=True)
+    validate_mc_parser.add_argument("--max-questions", type=int)
+    validate_mc_parser.add_argument(
+        "--require-anchors",
+        action="store_true",
+        help="Require target, source_chunks, source_pages, and source_citation on every item.",
+    )
+
     json_parser = _command(subcommands, "export-json", "Export document data as JSON.", export_json_cmd)
     json_parser.add_argument("document_id", type=int)
     json_parser.add_argument("--output", type=Path)
@@ -1529,6 +1544,94 @@ def review_mc_quiz_cmd(args: argparse.Namespace) -> int:
     print()
     _print_mc_key_preview(items, include_options=True)
     return 0
+
+
+def validate_mc_quiz_cmd(args: argparse.Namespace) -> int:
+    _, conn = open_db(args)
+    if args.max_questions is not None and args.max_questions < 1:
+        raise SystemExit("--max-questions must be 1 or greater.")
+    quiz = load_quiz(args.quiz)
+    items = limit_benchmark_items(quiz["questions"], args.max_questions)
+    error_count = 0
+
+    print("MC quiz validation")
+    print(f"  document id: {args.document_id}")
+    print(f"  quiz: {args.quiz}")
+    print(f"  questions: {len(items)}")
+    print(f"  require anchors: {'yes' if args.require_anchors else 'no'}")
+    print()
+
+    for item in items:
+        item_errors = _validate_mc_quiz_item(
+            conn,
+            args.document_id,
+            item,
+            require_anchors=args.require_anchors,
+        )
+        if item_errors:
+            error_count += len(item_errors)
+            print(f"{item['id']}: error")
+            for error in item_errors:
+                print(f"  - {error}")
+        else:
+            print(f"{item['id']}: ok")
+
+    print()
+    print(f"Validation {'failed' if error_count else 'passed'}")
+    print(f"  errors: {error_count}")
+    return 1 if error_count else 0
+
+
+def _validate_mc_quiz_item(
+    conn,
+    document_id: int,
+    item: dict[str, object],
+    *,
+    require_anchors: bool,
+) -> list[str]:
+    errors = []
+    if "correct" not in item:
+        errors.append("missing correct answer")
+    anchor_fields = ("target", "source_chunks", "source_pages", "source_citation")
+    if require_anchors:
+        for field in anchor_fields:
+            if not item.get(field):
+                errors.append(f"missing {field}")
+
+    chunk_ids = item.get("source_chunks") or []
+    if not isinstance(chunk_ids, list):
+        errors.append("source_chunks must be a list")
+        chunk_ids = []
+    chunk_rows = []
+    for chunk_id in chunk_ids:
+        row = conn.execute(
+            """
+            SELECT id, source_citation, text
+            FROM chunks
+            WHERE id = ? AND document_id = ?
+            """,
+            (chunk_id, document_id),
+        ).fetchone()
+        if row is None:
+            errors.append(f"source chunk {chunk_id} not found for document {document_id}")
+        else:
+            chunk_rows.append(row)
+
+    target = str(item.get("target") or "").strip()
+    if target and chunk_rows:
+        source_text = _normalize_review_text(" ".join(row["text"] for row in chunk_rows))
+        if _normalize_review_text(target) not in source_text:
+            errors.append("target phrase not found in source_chunks text")
+    source_citation = str(item.get("source_citation") or "").strip()
+    if source_citation and chunk_rows:
+        citations = {str(row["source_citation"]) for row in chunk_rows}
+        if source_citation not in citations:
+            errors.append("source_citation does not match any source_chunks citation")
+    return errors
+
+
+def _normalize_review_text(value: str) -> str:
+    return " ".join(value.lower().replace("-", " ").split())
 
 
 def _print_mc_key_preview(
