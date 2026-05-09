@@ -223,6 +223,7 @@ def test_import_lms_mc_quiz_parses_chapter_one_fixture():
         "a failure in reasoning which renders an argument invalid"
     )
     assert quiz["questions"][0]["correct"] == "B"
+    assert quiz["questions"][1]["correct"] == "A"
     assert quiz["questions"][6]["options"]["E"] == "All of the above"
     assert quiz["questions"][6]["correct"] == "E"
     assert quiz["questions"][8]["options"] == {"A": "True", "B": "False"}
