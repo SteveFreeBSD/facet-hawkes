@@ -194,13 +194,20 @@ uv run ethnos import-mc-quiz benchmarks/ethics_ch1_mc_raw.txt \
   --answer-key benchmarks/ethics_ch1_mc_answer_key.txt \
   --output data/runs/ethics_ch1_mc_imported.json \
   --document-id 1 \
-  --id-prefix ch1-q
+  --id-prefix ch1-q \
+  --with-key-preview
 ```
 
 Answer keys can be one exact answer text per line, or numbered labels such as
 `1 B`. Review the imported JSON before benchmarking; add `retrieval_queries`
 manually for sparse questions when the quiz wording does not contain enough PDF
 search language.
+
+For a quick key audit before spending any Ollama time:
+
+```bash
+uv run ethnos review-mc-quiz benchmarks/ethics_ch1_mc.json --max-questions 10
+```
 
 ```json
 {

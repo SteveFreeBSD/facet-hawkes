@@ -230,6 +230,24 @@ def test_import_lms_mc_quiz_parses_chapter_one_fixture():
     assert quiz["questions"][9]["correct"] == "B"
 
 
+def test_imported_chapter_one_fixture_matches_checked_in_quiz_without_retrieval_hints():
+    raw_text = Path("benchmarks/ethics_ch1_mc_raw.txt").read_text(encoding="utf-8")
+    answer_key_text = Path("benchmarks/ethics_ch1_mc_answer_key.txt").read_text(
+        encoding="utf-8"
+    )
+    imported = import_lms_mc_quiz(
+        raw_text,
+        document_id=1,
+        answer_key_text=answer_key_text,
+        id_prefix="ch1-q",
+    )
+    checked_in = load_quiz(Path("benchmarks/ethics_ch1_mc.json"))
+
+    assert _quiz_without_manual_review_fields(imported) == _quiz_without_manual_review_fields(
+        checked_in
+    )
+
+
 def test_import_lms_mc_quiz_accepts_numbered_label_answer_key():
     raw_text = """
 Quiz
@@ -277,6 +295,49 @@ def test_import_mc_quiz_cli_writes_external_json(tmp_path, capsys):
     assert quiz["questions"][6]["correct"] == "E"
     assert "Imported MC quiz" in text
     assert "keyed: 10" in text
+
+
+def test_import_mc_quiz_cli_can_print_key_preview(tmp_path, capsys):
+    output = tmp_path / "quiz.json"
+
+    exit_code = main(
+        [
+            "import-mc-quiz",
+            "benchmarks/ethics_ch1_mc_raw.txt",
+            "--answer-key",
+            "benchmarks/ethics_ch1_mc_answer_key.txt",
+            "--output",
+            str(output),
+            "--document-id",
+            "1",
+            "--id-prefix",
+            "ch1-q",
+            "--with-key-preview",
+        ]
+    )
+    text = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert "ch1-q002: What is metaethics?" in text
+    assert "keyed: A - A branch of Ethics that deals with the nature of reality" in text
+
+
+def test_review_mc_quiz_cli_marks_keyed_options(capsys):
+    exit_code = main(
+        [
+            "review-mc-quiz",
+            "benchmarks/ethics_ch1_mc.json",
+            "--max-questions",
+            "2",
+        ]
+    )
+    text = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert "MC quiz review" in text
+    assert "questions: 2" in text
+    assert "ch1-q002: What is metaethics?" in text
+    assert "A. A branch of Ethics that deals with the nature of reality  <-- keyed" in text
 
 
 def test_mc_prompt_formats_context_options_and_json_instruction(tmp_path):
@@ -739,3 +800,21 @@ def _record(record_id: int, chunk_index: int, answer: str, target: str | None = 
         target=target,
         difficulty="medium",
     )
+
+
+def _quiz_without_manual_review_fields(quiz):
+    cleaned = {
+        key: value
+        for key, value in quiz.items()
+        if key not in {"answer_key_notes"}
+    }
+    cleaned["questions"] = []
+    for item in quiz["questions"]:
+        cleaned["questions"].append(
+            {
+                key: value
+                for key, value in item.items()
+                if key not in {"retrieval_queries", "source_chunks", "source_pages"}
+            }
+        )
+    return cleaned

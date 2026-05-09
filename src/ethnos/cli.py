@@ -393,6 +393,20 @@ def build_parser() -> argparse.ArgumentParser:
         default="q",
         help="Question id prefix before the zero-padded number, e.g. ch1-q.",
     )
+    import_mc_parser.add_argument(
+        "--with-key-preview",
+        action="store_true",
+        help="Print each keyed answer after writing the imported quiz.",
+    )
+
+    review_mc_parser = _command(
+        subcommands,
+        "review-mc-quiz",
+        "Print a multiple-choice quiz with keyed answers marked for review.",
+        review_mc_quiz_cmd,
+    )
+    review_mc_parser.add_argument("quiz", type=Path)
+    review_mc_parser.add_argument("--max-questions", type=int)
 
     json_parser = _command(subcommands, "export-json", "Export document data as JSON.", export_json_cmd)
     json_parser.add_argument("document_id", type=int)
@@ -1495,7 +1509,47 @@ def import_mc_quiz_cmd(args: argparse.Namespace) -> int:
     print(f"  title: {quiz.get('title') or 'Imported MC Quiz'}")
     print(f"  questions: {len(quiz['questions'])}")
     print(f"  keyed: {keyed_count}")
+    if args.with_key_preview:
+        print()
+        _print_mc_key_preview(quiz["questions"])
     return 0
+
+
+def review_mc_quiz_cmd(args: argparse.Namespace) -> int:
+    if args.max_questions is not None and args.max_questions < 1:
+        raise SystemExit("--max-questions must be 1 or greater.")
+    quiz = load_quiz(args.quiz)
+    items = limit_benchmark_items(quiz["questions"], args.max_questions)
+    keyed_count = sum(1 for item in items if "correct" in item)
+    print("MC quiz review")
+    print(f"  quiz: {args.quiz}")
+    print(f"  title: {quiz.get('title') or 'n/a'}")
+    print(f"  questions: {len(items)}")
+    print(f"  keyed: {keyed_count}")
+    print()
+    _print_mc_key_preview(items, include_options=True)
+    return 0
+
+
+def _print_mc_key_preview(
+    items: list[dict[str, object]], *, include_options: bool = False
+) -> None:
+    for item in items:
+        options = item["options"]
+        if not isinstance(options, dict):
+            options = {}
+        correct = item.get("correct")
+        correct_text = options.get(correct) if isinstance(correct, str) else None
+        print(f"{item['id']}: {item['question']}")
+        if correct:
+            print(f"  keyed: {correct} - {correct_text or 'n/a'}")
+        else:
+            print("  keyed: unkeyed")
+        if include_options:
+            for label, text in options.items():
+                marker = "  <-- keyed" if label == correct else ""
+                print(f"  {label}. {text}{marker}")
+        print()
 
 
 def mc_bench_cmd(args: argparse.Namespace) -> int:
