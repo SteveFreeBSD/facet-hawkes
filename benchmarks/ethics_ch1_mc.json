@@ -84,7 +84,8 @@
         "C": "Khmer Rouge",
         "D": "Neapolitan Ice Cream",
         "E": "All of the above"
-      }
+      },
+      "correct": "E"
     },
     {
       "id": "ch1-q008",
