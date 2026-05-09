@@ -43,7 +43,7 @@ from .db import (
     structure_status,
 )
 from .export import export_json, export_markdown, export_study
-from .ollama_client import answer_question, create_client, extract_chunk
+from .ollama_client import answer_mc_question, answer_question, create_client, extract_chunk
 from .pdf_extract import extract_pdf
 from .qa import (
     benchmark_hit,
@@ -56,6 +56,12 @@ from .qa import (
     rank_model_summaries,
     retrieve_with_fallbacks,
     summarize_answer_items,
+)
+from .quiz import (
+    build_mc_prompt,
+    compact_question_with_options,
+    generate_quiz,
+    load_quiz,
 )
 from .section_presets import CONTENT_ROLES, PRESETS, SECTION_LABELS, get_section_preset
 
@@ -310,6 +316,65 @@ def build_parser() -> argparse.ArgumentParser:
         help="Ollama context window token budget for --ask answers.",
     )
     bench_parser.add_argument("--output", type=Path)
+
+    generate_quiz_parser = _command(
+        subcommands,
+        "generate-quiz",
+        "Generate a local multiple-choice quiz from structured records.",
+        generate_quiz_cmd,
+    )
+    generate_quiz_parser.add_argument("document_id", type=int)
+    generate_quiz_parser.add_argument("--output", type=Path, required=True)
+    generate_quiz_parser.add_argument(
+        "--source",
+        choices=["terms", "questions", "both"],
+        default="terms",
+    )
+    generate_quiz_parser.add_argument("--limit", type=int)
+    generate_quiz_parser.add_argument("--seed", type=int)
+    generate_quiz_parser.add_argument("--max-option-chars", type=int, default=120)
+    generate_quiz_parser.add_argument(
+        "--difficulty",
+        choices=["easy", "medium", "hard"],
+        default="medium",
+        help="Distractor difficulty: easy uses farther distractors, hard uses closer/shared-topic distractors.",
+    )
+    generate_quiz_parser.add_argument("--role", choices=ASK_ROLES, default="core")
+    generate_quiz_parser.add_argument("--section", choices=sorted(SECTION_LABELS))
+
+    mc_bench_parser = _command(
+        subcommands,
+        "mc-bench",
+        "Run a multiple-choice benchmark using retrieved local PDF context.",
+        mc_bench_cmd,
+    )
+    mc_bench_parser.add_argument("document_id", type=int)
+    mc_bench_parser.add_argument("--quiz", type=Path, required=True)
+    mc_bench_parser.add_argument("--max-questions", type=int)
+    mc_bench_parser.add_argument(
+        "--limit",
+        type=int,
+        default=3,
+        help="Retrieved context chunks per quiz question.",
+    )
+    mc_bench_parser.add_argument("--chars", type=int, default=900)
+    mc_bench_parser.add_argument("--output", type=Path)
+    mc_bench_parser.add_argument("--role", choices=ASK_ROLES, default="core")
+    mc_bench_parser.add_argument("--section", choices=sorted(SECTION_LABELS))
+    mc_bench_parser.add_argument("--options-retrieval", action="store_true")
+    mc_bench_parser.add_argument("--debug-ollama", action="store_true")
+    mc_bench_parser.add_argument("--debug-retrieval", action="store_true")
+    mc_bench_parser.add_argument("--model", help="Ollama model name.")
+    mc_bench_parser.add_argument(
+        "--num-predict",
+        type=int,
+        help="Ollama output token budget for the MC JSON answer.",
+    )
+    mc_bench_parser.add_argument(
+        "--num-ctx",
+        type=int,
+        help="Ollama context window token budget.",
+    )
 
     json_parser = _command(subcommands, "export-json", "Export document data as JSON.", export_json_cmd)
     json_parser.add_argument("document_id", type=int)
@@ -1355,6 +1420,224 @@ def qa_bench_compare_models(
     return 0
 
 
+def generate_quiz_cmd(args: argparse.Namespace) -> int:
+    _, conn = open_db(args)
+    if args.limit is not None and args.limit < 1:
+        raise SystemExit("--limit must be 1 or greater.")
+    if args.max_option_chars < 4:
+        raise SystemExit("--max-option-chars must be 4 or greater.")
+    selected_role = normalize_answer_role(args.role)
+    quiz = generate_quiz(
+        conn,
+        args.document_id,
+        source=args.source,
+        limit=args.limit,
+        seed=args.seed,
+        max_option_chars=args.max_option_chars,
+        role=selected_role,
+        section=args.section,
+        difficulty=args.difficulty,
+    )
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(json.dumps(quiz, indent=2, sort_keys=True), encoding="utf-8")
+    counts = quiz["record_counts"]
+    print(f"Generated quiz for document {args.document_id}: {args.output}")
+    print(f"  source: {args.source}")
+    print(f"  difficulty: {args.difficulty}")
+    print(f"  role: {args.role}")
+    print(f"  section: {args.section or 'all'}")
+    print(f"  generated: {quiz['generated_count']}")
+    print(f"  available terms: {counts['available_terms']}")
+    print(f"  available questions: {counts['available_questions']}")
+    print(f"  generated terms: {counts['generated_terms']}")
+    print(f"  generated questions: {counts['generated_questions']}")
+    return 0
+
+
+def mc_bench_cmd(args: argparse.Namespace) -> int:
+    settings, conn = open_db(args)
+    if args.limit < 1:
+        raise SystemExit("--limit must be 1 or greater.")
+    if args.chars < 1:
+        raise SystemExit("--chars must be 1 or greater.")
+    if args.max_questions is not None and args.max_questions < 1:
+        raise SystemExit("--max-questions must be 1 or greater.")
+    num_predict = args.num_predict if args.num_predict is not None else 32
+    num_ctx = ollama_num_ctx(args, settings)
+    if num_predict < 1:
+        raise SystemExit("--num-predict must be 1 or greater.")
+    if num_ctx < 1:
+        raise SystemExit("--num-ctx must be 1 or greater.")
+
+    quiz = load_quiz(args.quiz)
+    items = limit_benchmark_items(quiz["questions"], args.max_questions)
+    selected_role = normalize_answer_role(args.role)
+    model_name = args.model or settings.ollama_model
+    started_at = time.monotonic()
+    ollama_client = None
+    report_items = []
+    keyed_total = correct_count = scored_total = no_context_count = invalid_count = 0
+
+    print("MC benchmark")
+    print(f"  document id: {args.document_id}")
+    print(f"  quiz: {args.quiz}")
+    print(f"  model: {model_name}")
+    print(f"  questions: {len(items)}")
+    print()
+
+    for index, item in enumerate(items, start=1):
+        item_started_at = time.monotonic()
+        keyed = "correct" in item
+        keyed_total += int(keyed)
+        retrieval = _retrieve_mc_context(
+            conn,
+            document_id=args.document_id,
+            question=item["question"],
+            limit=args.limit,
+            role=selected_role,
+            section=args.section,
+        )
+        retrieval_questions = [item["question"]]
+        if not retrieval.rows and args.options_retrieval:
+            option_query = compact_question_with_options(item)
+            retrieval_questions.append(option_query)
+            retrieval = _retrieve_mc_context(
+                conn,
+                document_id=args.document_id,
+                question=option_query,
+                limit=args.limit,
+                role=selected_role,
+                section=args.section,
+            )
+        context_rows = _add_quiz_source_context(
+            conn,
+            args.document_id,
+            retrieval.rows,
+            item,
+            role=selected_role,
+            section=args.section,
+        )
+
+        selected_chunks = [row["id"] for row in context_rows]
+        selected_citations = [row["source_citation"] for row in context_rows]
+        selected_option = None
+        validation_status = None
+        validation_error = None
+        raw_response = ""
+        answer_elapsed = None
+
+        print(f"{item['id']}: {item['question']}")
+        if args.debug_retrieval:
+            _print_retrieval_debug(retrieval)
+        print(f"  selected chunks: {', '.join(str(chunk) for chunk in selected_chunks) or 'none'}")
+
+        if not context_rows:
+            status = "no_context"
+            no_context_count += 1
+            print("  status: no_context")
+        else:
+            prompt = build_mc_prompt(item, context_rows, max_chars=args.chars)
+            answer_started_at = time.monotonic()
+            print(progress_line(model_name, index, len(items), item["id"]), flush=True)
+            if ollama_client is None:
+                ollama_client = create_client(settings.ollama_host, settings.ollama_timeout)
+            result = answer_mc_question(
+                prompt=prompt,
+                model_name=model_name,
+                host=settings.ollama_host,
+                timeout=settings.ollama_timeout,
+                num_predict=num_predict,
+                num_ctx=num_ctx,
+                client=ollama_client,
+            )
+            answer_elapsed = time.monotonic() - answer_started_at
+            selected_option = result.selected_option
+            validation_status = result.validation_status
+            validation_error = result.validation_error
+            raw_response = result.raw_response
+            if args.debug_ollama:
+                _print_ollama_debug(None, result.debug_info)
+            if result.validation_status != "valid":
+                status = "invalid_response"
+                invalid_count += 1
+            elif keyed:
+                scored_total += 1
+                is_correct = result.selected_option == item["correct"]
+                correct_count += int(is_correct)
+                status = "correct" if is_correct else "incorrect"
+            else:
+                status = "unkeyed"
+            print(f"  selected option: {selected_option or 'none'}")
+            if keyed:
+                print(f"  correct option: {item['correct']}")
+            print(f"  validation: {validation_status}")
+            print(f"  status: {status}")
+        print()
+
+        item_elapsed = time.monotonic() - item_started_at
+        report_item = {
+            "id": item["id"],
+            "question": item["question"],
+            "options": item["options"],
+            "source_record_type": item.get("source_record_type"),
+            "source_record_id": item.get("source_record_id"),
+            "target": item.get("target"),
+            "selected_option": selected_option,
+            "selected_option_text": (
+                item["options"].get(selected_option) if selected_option else None
+            ),
+            "validation_status": validation_status,
+            "validation_error": validation_error,
+            "selected_chunks": selected_chunks,
+            "selected_source_citations": selected_citations,
+            "queries_tried": retrieval.queries_tried,
+            "retrieval_questions": retrieval_questions,
+            "raw_response": raw_response,
+            "timings": {
+                "item_seconds": item_elapsed,
+                "answer_seconds": answer_elapsed,
+            },
+            "status": status,
+        }
+        if keyed:
+            report_item["correct"] = item["correct"]
+            report_item["correct_option_text"] = item["options"].get(item["correct"])
+            report_item["is_correct"] = status == "correct"
+        report_items.append(report_item)
+
+    elapsed = time.monotonic() - started_at
+    accuracy = correct_count / scored_total if scored_total else None
+    print("MC benchmark summary:")
+    print(f"  total: {len(items)}")
+    print(f"  keyed total: {keyed_total}")
+    print(f"  scored total: {scored_total}")
+    print(f"  correct: {correct_count}")
+    print(f"  accuracy: {accuracy:.1%}" if accuracy is not None else "  accuracy: n/a")
+    print(f"  no-context cases: {no_context_count}")
+    print(f"  invalid responses: {invalid_count}")
+    print(f"  elapsed: {format_elapsed(elapsed)}")
+
+    if args.output:
+        report = {
+            "document_id": args.document_id,
+            "quiz": str(args.quiz),
+            "model": model_name,
+            "total": len(items),
+            "keyed_total": keyed_total,
+            "scored_total": scored_total,
+            "correct_count": correct_count,
+            "accuracy": accuracy,
+            "no_context_count": no_context_count,
+            "invalid_response_count": invalid_count,
+            "elapsed_seconds": elapsed,
+            "items": report_items,
+        }
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
+        print(f"  wrote report: {args.output}")
+    return 0
+
+
 def export_json_cmd(args: argparse.Namespace) -> int:
     _, conn = open_db(args)
     text = export_json(conn, args.document_id)
@@ -1625,6 +1908,85 @@ def _retrieve_answer_context(
         role=role,
         section=section,
     )
+
+
+def _retrieve_mc_context(
+    conn,
+    *,
+    document_id: int,
+    question: str,
+    limit: int,
+    role: str | None,
+    section: str | None,
+):
+    return retrieve_with_fallbacks(
+        search_func=lambda doc_id, query, limit, role, section: context_chunks(
+            conn,
+            doc_id,
+            query,
+            limit=limit,
+            role=role,
+            section=section,
+        ),
+        document_id=document_id,
+        question=question,
+        limit=limit,
+        role=role,
+        section=section,
+    )
+
+
+def _add_quiz_source_context(
+    conn,
+    document_id: int,
+    rows: list[dict],
+    item: dict,
+    *,
+    role: str | None,
+    section: str | None,
+) -> list[dict]:
+    source_chunks = []
+    for chunk_id in item.get("source_chunks", []):
+        try:
+            source_chunks.append(int(chunk_id))
+        except (TypeError, ValueError):
+            continue
+    if not source_chunks:
+        return rows
+    seen = {int(row["id"]) for row in rows}
+    missing = [chunk_id for chunk_id in source_chunks if chunk_id not in seen]
+    if not missing:
+        return rows
+    filters = ["id IN (" + ", ".join("?" for _ in missing) + ")", "document_id = ?"]
+    params: list[object] = [*missing, document_id]
+    if role is not None:
+        filters.append("content_role = ?")
+        params.append(role)
+    if section is not None:
+        filters.append("section_label = ?")
+        params.append(section)
+    source_rows = conn.execute(
+        f"""
+        SELECT
+            id,
+            document_id,
+            chunk_index,
+            page_start,
+            page_end,
+            source_citation,
+            section_label,
+            content_role,
+            '' AS snippet,
+            0.0 AS score,
+            text
+        FROM chunks
+        WHERE {" AND ".join(filters)}
+        """,
+        params,
+    ).fetchall()
+    by_id = {int(row["id"]): dict(row) for row in source_rows}
+    prioritized = [by_id[chunk_id] for chunk_id in missing if chunk_id in by_id]
+    return prioritized + rows
 
 
 def _print_followup_debug(followup) -> None:

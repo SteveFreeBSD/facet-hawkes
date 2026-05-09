@@ -5,8 +5,9 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
-from pydantic import ValidationError
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from .models import ChunkRecord, ExtractionResult
 
@@ -43,6 +44,22 @@ class AnswerCallResult:
     raw_prompt: str
     raw_response: str
     debug_info: OllamaDebugInfo | None = None
+
+
+@dataclass(frozen=True)
+class MCAnswerResult:
+    raw_prompt: str
+    raw_response: str
+    selected_option: str | None
+    validation_status: str
+    validation_error: str | None
+    debug_info: OllamaDebugInfo | None = None
+
+
+class MCSelection(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    selected_option: Literal["A", "B", "C", "D"]
 
 
 def load_prompt(prompt_path: Path, chunk: ChunkRecord) -> str:
@@ -149,6 +166,47 @@ def answer_question(
     )
 
 
+def answer_mc_question(
+    prompt: str,
+    model_name: str,
+    host: str,
+    timeout: float,
+    num_predict: int,
+    num_ctx: int,
+    client: object | None = None,
+) -> MCAnswerResult:
+    schema = _ollama_schema(MCSelection.model_json_schema())
+    debug_info = _debug_info(prompt, schema, num_predict, num_ctx)
+    client = client if client is not None else create_client(host, timeout)
+    try:
+        chat_result = _chat_mc(
+            client=client,
+            prompt=prompt,
+            schema=schema,
+            model_name=model_name,
+            num_predict=num_predict,
+            num_ctx=num_ctx,
+        )
+    except Exception as exc:  # Ollama/httpx exceptions vary by version.
+        return MCAnswerResult(
+            raw_prompt=prompt,
+            raw_response="",
+            selected_option=None,
+            validation_status="request_failed",
+            validation_error=str(exc),
+            debug_info=debug_info,
+        )
+    debug_info = OllamaDebugInfo(
+        prompt_char_length=debug_info.prompt_char_length,
+        schema_top_level_keys=debug_info.schema_top_level_keys,
+        format_kind=debug_info.format_kind,
+        num_predict=debug_info.num_predict,
+        num_ctx=debug_info.num_ctx,
+        response_summary=chat_result.response_summary,
+    )
+    return _validate_mc_response(prompt, chat_result.content, debug_info)
+
+
 def create_client(host: str, timeout: float) -> object:
     try:
         from ollama import Client
@@ -184,6 +242,20 @@ def _chat_plain(
     return _do_chat(
         client,
         _answer_chat_request_kwargs(model_name, prompt, num_predict, num_ctx, think),
+    )
+
+
+def _chat_mc(
+    client: object,
+    prompt: str,
+    schema: dict,
+    model_name: str,
+    num_predict: int,
+    num_ctx: int,
+) -> OllamaChatResult:
+    return _do_chat(
+        client,
+        _mc_chat_request_kwargs(model_name, prompt, schema, num_predict, num_ctx),
     )
 
 
@@ -254,6 +326,27 @@ def _answer_chat_request_kwargs(
     }
 
 
+def _mc_chat_request_kwargs(
+    model_name: str, prompt: str, schema: dict, num_predict: int, num_ctx: int
+) -> dict:
+    return {
+        "model": model_name,
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "You answer multiple-choice questions from provided local PDF context. "
+                    "Use only the supplied context and return only schema-valid JSON."
+                ),
+            },
+            {"role": "user", "content": prompt},
+        ],
+        "format": schema,
+        "options": {"temperature": 0, "num_predict": num_predict, "num_ctx": num_ctx},
+        "think": False,
+    }
+
+
 def _validate_response(prompt: str, raw_response: str) -> StructuredCallResult:
     if not raw_response.strip():
         return StructuredCallResult(
@@ -296,6 +389,60 @@ def _validate_response(prompt: str, raw_response: str) -> StructuredCallResult:
         parsed_json=parsed,
         validation_status="valid",
         validation_error=None,
+    )
+
+
+def _validate_mc_response(
+    prompt: str, raw_response: str, debug_info: OllamaDebugInfo | None = None
+) -> MCAnswerResult:
+    if not raw_response.strip():
+        return MCAnswerResult(
+            raw_prompt=prompt,
+            raw_response=raw_response,
+            selected_option=None,
+            validation_status="empty_response",
+            validation_error="Ollama returned an empty response body/content",
+            debug_info=debug_info,
+        )
+
+    try:
+        parsed = json.loads(raw_response)
+    except json.JSONDecodeError as exc:
+        return MCAnswerResult(
+            raw_prompt=prompt,
+            raw_response=raw_response,
+            selected_option=None,
+            validation_status="invalid_json",
+            validation_error=str(exc),
+            debug_info=debug_info,
+        )
+
+    try:
+        selection = MCSelection.model_validate(parsed)
+    except ValidationError as exc:
+        selected_option = parsed.get("selected_option") if isinstance(parsed, dict) else None
+        validation_status = (
+            "invalid_option"
+            if isinstance(selected_option, str)
+            and selected_option.strip().upper() not in {"A", "B", "C", "D"}
+            else "validation_error"
+        )
+        return MCAnswerResult(
+            raw_prompt=prompt,
+            raw_response=raw_response,
+            selected_option=None,
+            validation_status=validation_status,
+            validation_error=str(exc),
+            debug_info=debug_info,
+        )
+
+    return MCAnswerResult(
+        raw_prompt=prompt,
+        raw_response=raw_response,
+        selected_option=selection.selected_option,
+        validation_status="valid",
+        validation_error=None,
+        debug_info=debug_info,
     )
 
 

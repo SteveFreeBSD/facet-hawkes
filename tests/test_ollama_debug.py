@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from argparse import Namespace
 
 from ethnos.cli import (
@@ -11,15 +12,20 @@ from ethnos.cli import (
 )
 from ethnos.config import load_settings
 from ethnos.ollama_client import (
+    MCAnswerResult,
     OllamaDebugInfo,
     StructuredCallResult,
+    answer_mc_question,
     _chat,
     _answer_chat_request_kwargs,
     _chat_request_kwargs,
+    _mc_chat_request_kwargs,
     _ollama_schema,
     _repair_prompt,
     _response_summary,
+    _validate_mc_response,
 )
+from ethnos.models import ExtractionResult
 
 
 def test_structure_parser_accepts_debug_ollama_flag():
@@ -174,6 +180,27 @@ def test_ollama_schema_strips_schema_defaults_but_keeps_titles():
     }
 
 
+def test_ollama_schema_compacts_real_extraction_schema_safely():
+    compact = _ollama_schema(ExtractionResult.model_json_schema())
+    serialized = json.dumps(compact)
+
+    assert '"default"' not in serialized
+    assert compact["title"] == "ExtractionResult"
+    assert compact["required"] == [
+        "chunk_summary",
+        "topics",
+        "key_terms",
+        "examples",
+        "questions",
+    ]
+    assert compact["$defs"]["Example"]["required"] == ["title", "body"]
+    assert compact["$defs"]["TopicExtraction"]["required"] == [
+        "name",
+        "summary",
+        "confidence",
+    ]
+
+
 def test_answer_chat_request_uses_plain_text_and_context_without_thinking():
     kwargs = _answer_chat_request_kwargs(
         "gemma-python", "answer prompt", num_predict=1024, num_ctx=8192
@@ -186,6 +213,92 @@ def test_answer_chat_request_uses_plain_text_and_context_without_thinking():
     assert kwargs["options"] == {"temperature": 0, "num_predict": 1024, "num_ctx": 8192}
     assert kwargs["think"] is False
     assert "stream" not in kwargs
+
+
+def test_mc_chat_request_uses_json_schema_and_forces_think_false():
+    schema = {"type": "object", "properties": {"selected_option": {"enum": ["A", "B"]}}}
+
+    kwargs = _mc_chat_request_kwargs(
+        "gemma-python", "mc prompt", schema, num_predict=32, num_ctx=8192
+    )
+
+    assert kwargs["model"] == "gemma-python"
+    assert kwargs["messages"][0]["role"] == "system"
+    assert "multiple-choice" in kwargs["messages"][0]["content"]
+    assert kwargs["messages"][1] == {"role": "user", "content": "mc prompt"}
+    assert kwargs["format"] == schema
+    assert kwargs["options"] == {"temperature": 0, "num_predict": 32, "num_ctx": 8192}
+    assert kwargs["think"] is False
+    assert "stream" not in kwargs
+
+
+def test_validate_mc_response_accepts_valid_json():
+    result = _validate_mc_response("prompt", '{"selected_option":"C"}')
+
+    assert result == MCAnswerResult(
+        raw_prompt="prompt",
+        raw_response='{"selected_option":"C"}',
+        selected_option="C",
+        validation_status="valid",
+        validation_error=None,
+    )
+
+
+def test_validate_mc_response_rejects_invalid_json_and_option():
+    invalid_json = _validate_mc_response("prompt", "not json")
+    invalid_option = _validate_mc_response("prompt", '{"selected_option":"E"}')
+    empty = _validate_mc_response("prompt", "")
+
+    assert invalid_json.validation_status == "invalid_json"
+    assert invalid_json.selected_option is None
+    assert invalid_option.validation_status == "invalid_option"
+    assert invalid_option.selected_option is None
+    assert empty.validation_status == "empty_response"
+
+
+def test_answer_mc_question_uses_client_and_validates_response():
+    class FakeClient:
+        def chat(self, **kwargs):
+            self.kwargs = kwargs
+            return {"message": {"content": '{"selected_option":"B"}'}, "done": True}
+
+    client = FakeClient()
+
+    result = answer_mc_question(
+        prompt="prompt",
+        model_name="gemma-python",
+        host="http://localhost:11434",
+        timeout=30,
+        num_predict=32,
+        num_ctx=8192,
+        client=client,
+    )
+
+    assert result.selected_option == "B"
+    assert result.validation_status == "valid"
+    assert client.kwargs["think"] is False
+    assert client.kwargs["options"]["num_predict"] == 32
+    assert result.debug_info.response_summary["done"] is True
+
+
+def test_answer_mc_question_reports_request_failure():
+    class FailingClient:
+        def chat(self, **kwargs):
+            raise RuntimeError("no model")
+
+    result = answer_mc_question(
+        prompt="prompt",
+        model_name="gemma-python",
+        host="http://localhost:11434",
+        timeout=30,
+        num_predict=32,
+        num_ctx=8192,
+        client=FailingClient(),
+    )
+
+    assert result.validation_status == "request_failed"
+    assert result.selected_option is None
+    assert "no model" in result.validation_error
 
 
 def test_default_ollama_think_is_false(monkeypatch):
