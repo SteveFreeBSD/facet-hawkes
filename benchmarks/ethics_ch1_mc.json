@@ -165,6 +165,7 @@
     {
       "id": "ch1-q009",
       "question": "Under relativism would Hitler be acceptable?",
+      "question_type": "true_false",
       "target": "no person or culture ought to judge the ethical codes of other cultures as being inferior",
       "source_chunks": [
         15
@@ -186,6 +187,7 @@
     {
       "id": "ch1-q010",
       "question": "Is moral progress possible under relativism?",
+      "question_type": "true_false",
       "target": "moral progress",
       "source_chunks": [
         19

@@ -17,6 +17,8 @@ QUIZ_VERSION = "mc-quiz-v1"
 EXTERNAL_QUIZ_VERSION = "external-mc-v1"
 OPTION_LABELS = ("A", "B", "C", "D", "E", "F")
 GENERATED_OPTION_LABELS = OPTION_LABELS[:4]
+QUESTION_TYPES = ("multiple_choice", "true_false")
+TRUE_FALSE_OPTIONS = {"A": "True", "B": "False"}
 POSITION_HEADER_RE = re.compile(r"^Question at position\s+(\d+)\s*$", re.IGNORECASE)
 LABEL_ANSWER_RE = re.compile(r"^(?:q)?0*(\d+)[\s:.)-]+([A-F])\s*$", re.IGNORECASE)
 
@@ -150,6 +152,7 @@ def build_quiz_item(
 
     item = {
         "question": record.question,
+        "question_type": "multiple_choice",
         "options": relabeled_options,
         "correct": new_correct,
         "source_record_type": record.source_record_type,
@@ -193,10 +196,12 @@ def normalize_quiz_item(item: Any, index: int) -> dict[str, Any]:
     if not question:
         raise ValueError("Each quiz item must include a non-empty question")
     options = normalize_options(item.get("options"))
+    question_type = normalize_question_type(item.get("question_type"), options)
     normalized = {
         **item,
         "id": str(item.get("id") or f"q{index:04d}"),
         "question": question,
+        "question_type": question_type,
         "options": options,
         "source_chunks": _normalize_int_list(item.get("source_chunks")),
         "source_pages": _normalize_int_list(item.get("source_pages")),
@@ -210,6 +215,27 @@ def normalize_quiz_item(item: Any, index: int) -> dict[str, Any]:
     else:
         normalized.pop("correct", None)
     return normalized
+
+
+def normalize_question_type(raw_type: Any, options: dict[str, str]) -> str:
+    if raw_type is None or str(raw_type).strip() == "":
+        return "true_false" if is_true_false_options(options) else "multiple_choice"
+    question_type = str(raw_type).strip().lower().replace("-", "_")
+    if question_type not in QUESTION_TYPES:
+        raise ValueError(
+            f"Quiz item question_type must be one of: {', '.join(QUESTION_TYPES)}"
+        )
+    if question_type == "true_false" and not is_true_false_options(options):
+        raise ValueError("true_false quiz items must use options A=True and B=False")
+    return question_type
+
+
+def is_true_false_options(options: dict[str, str]) -> bool:
+    return (
+        tuple(options) == tuple(TRUE_FALSE_OPTIONS)
+        and _normalize_option(options["A"]) == _normalize_option(TRUE_FALSE_OPTIONS["A"])
+        and _normalize_option(options["B"]) == _normalize_option(TRUE_FALSE_OPTIONS["B"])
+    )
 
 
 def normalize_options(options: Any) -> dict[str, str]:
@@ -282,6 +308,7 @@ def import_lms_mc_quiz(
             {
                 "id": f"{id_prefix}{question_number:03d}",
                 "question": question,
+                "question_type": normalize_question_type(None, options),
                 "options": options,
             }
         )
@@ -387,6 +414,7 @@ def build_mc_prompt(
     )
     return template.format(
         question=item["question"],
+        question_type=item.get("question_type") or "multiple_choice",
         target=target,
         source_citation=source_citation,
         option_labels=option_labels,

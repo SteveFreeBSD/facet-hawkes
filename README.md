@@ -183,9 +183,10 @@ uv run ethnos mc-bench 1 \
 
 External quiz files can also be used. They are JSON objects with a `questions`
 list; each item needs `id`, `question`, and 2 to 6 labeled options starting at
-`A`. Include `correct` when an answer key is available. Sparse real-world quiz
-questions can include `retrieval_queries` to point retrieval at the relevant PDF
-language.
+`A`. Include `correct` when an answer key is available. `question_type` is
+normalized as `multiple_choice` by default; options `A=True` and `B=False` are
+auto-detected as `true_false`. Sparse real-world quiz questions can include
+`retrieval_queries` to point retrieval at the relevant PDF language.
 
 Copied LMS quiz text can be converted into that JSON shape:
 
@@ -224,6 +225,7 @@ uv run ethnos validate-mc-quiz 1 \
     {
       "id": "q001",
       "question": "What does 'reductio ad absurdum' mean?",
+      "question_type": "multiple_choice",
       "options": {
         "A": "Reduction to absurdity",
         "B": "Reduction of abs",
@@ -233,6 +235,21 @@ uv run ethnos validate-mc-quiz 1 \
       "correct": "A"
     }
   ]
+}
+```
+
+True/false items use the same external quiz shape with a stricter option set:
+
+```json
+{
+  "id": "q002",
+  "question": "Is moral progress possible under relativism?",
+  "question_type": "true_false",
+  "options": {
+    "A": "True",
+    "B": "False"
+  },
+  "correct": "B"
 }
 ```
 

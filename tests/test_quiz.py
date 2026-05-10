@@ -196,8 +196,29 @@ def test_external_quiz_normalization_allows_true_false_and_five_options():
     )
 
     assert quiz["questions"][0]["options"] == {"A": "True", "B": "False"}
+    assert quiz["questions"][0]["question_type"] == "true_false"
+    assert quiz["questions"][1]["question_type"] == "multiple_choice"
     assert quiz["questions"][1]["options"]["E"] == "All of the above"
     assert quiz["questions"][1]["correct"] == "E"
+
+
+def test_true_false_question_type_requires_true_false_options():
+    try:
+        normalize_quiz(
+            {
+                "questions": [
+                    {
+                        "question": "Bad true false",
+                        "question_type": "true_false",
+                        "options": ["Yes", "No"],
+                    }
+                ]
+            }
+        )
+    except ValueError as exc:
+        assert "true_false quiz items" in str(exc)
+    else:
+        raise AssertionError("expected invalid true_false options")
 
 
 def test_import_lms_mc_quiz_parses_chapter_one_fixture():
@@ -227,6 +248,8 @@ def test_import_lms_mc_quiz_parses_chapter_one_fixture():
     assert quiz["questions"][6]["options"]["E"] == "All of the above"
     assert quiz["questions"][6]["correct"] == "E"
     assert quiz["questions"][8]["options"] == {"A": "True", "B": "False"}
+    assert quiz["questions"][8]["question_type"] == "true_false"
+    assert quiz["questions"][9]["question_type"] == "true_false"
     assert quiz["questions"][9]["correct"] == "B"
 
 
@@ -306,6 +329,7 @@ def test_import_mc_quiz_cli_writes_external_json(tmp_path, capsys):
     assert quiz["questions"][6]["correct"] == "E"
     assert "Imported MC quiz" in text
     assert "keyed: 10" in text
+    assert quiz["questions"][8]["question_type"] == "true_false"
 
 
 def test_import_mc_quiz_cli_can_print_key_preview(tmp_path, capsys):
@@ -348,6 +372,7 @@ def test_review_mc_quiz_cli_marks_keyed_options(capsys):
     assert "MC quiz review" in text
     assert "questions: 2" in text
     assert "ch1-q002: What is metaethics?" in text
+    assert "type: multiple_choice" in text
     assert "A. A branch of Ethics that deals with the nature of reality  <-- keyed" in text
 
 
@@ -419,14 +444,55 @@ def test_validate_mc_quiz_cli_fails_missing_required_anchor(tmp_path, capsys):
     assert "missing source_chunks" in text
 
 
+def test_validate_mc_quiz_cli_rejects_bad_true_false_shape(tmp_path, capsys):
+    db_path = tmp_path / "ethnos.sqlite"
+    quiz_path = tmp_path / "quiz.json"
+    conn = connect(db_path)
+    init_db(conn)
+    document_id = _stored_quiz_document(conn)
+    quiz_path.write_text(
+        json.dumps(
+            {
+                "questions": [
+                    {
+                        "id": "q1",
+                        "question": "Bad true false",
+                        "question_type": "true_false",
+                        "options": {"A": "Yes", "B": "No"},
+                        "correct": "A",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    exit_code = main(
+        [
+            "--db",
+            str(db_path),
+            "validate-mc-quiz",
+            str(document_id),
+            "--quiz",
+            str(quiz_path),
+        ]
+    )
+    text = capsys.readouterr().out
+
+    assert exit_code == 1
+    assert "Validation failed" in text
+    assert "true_false quiz items" in text
+
+
 def test_mc_prompt_formats_context_options_and_json_instruction(tmp_path):
     prompt_path = tmp_path / "mc.md"
     prompt_path.write_text(
-        "Q: {question}\nLabels: {option_labels}\nOptions:\n{options}\nContext:\n{context}\nJSON only",
+        "Q: {question}\nType: {question_type}\nLabels: {option_labels}\nOptions:\n{options}\nContext:\n{context}\nJSON only",
         encoding="utf-8",
     )
     item = {
         "question": "What does virtue ethics emphasize?",
+        "question_type": "multiple_choice",
         "target": "virtue ethics",
         "options": {"A": "Rules", "B": "Character", "C": "Utility", "D": "Contracts"},
     }
@@ -443,6 +509,7 @@ def test_mc_prompt_formats_context_options_and_json_instruction(tmp_path):
     prompt = build_mc_prompt(item, rows, max_chars=80, prompt_path=prompt_path)
 
     assert "Q: What does virtue ethics emphasize?" in prompt
+    assert "Type: multiple_choice" in prompt
     assert "Labels: A, B, C, D" in prompt
     assert "virtue ethics" in prompt
     assert "B. Character" in prompt
@@ -479,6 +546,7 @@ def test_generate_quiz_cli_writes_versioned_json(tmp_path, capsys):
     assert generated["version"] == "mc-quiz-v1"
     assert generated["difficulty"] == "medium"
     assert generated["generated_count"] == 1
+    assert generated["questions"][0]["question_type"] == "multiple_choice"
     assert "correct" in generated["questions"][0]
     assert "Generated quiz" in text
 
@@ -535,6 +603,7 @@ def test_mc_bench_cli_scores_keyed_and_unkeyed_items(tmp_path, capsys, monkeypat
     assert report["scored_total"] == 1
     assert report["correct_count"] == 1
     assert report["accuracy"] == 1.0
+    assert report["items"][0]["question_type"] == "multiple_choice"
     assert report["items"][0]["options"] == quiz["questions"][0]["options"]
     assert report["items"][0]["source_record_type"] == quiz["questions"][0]["source_record_type"]
     assert report["items"][0]["source_record_id"] == quiz["questions"][0]["source_record_id"]

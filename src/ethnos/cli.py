@@ -1550,7 +1550,17 @@ def validate_mc_quiz_cmd(args: argparse.Namespace) -> int:
     _, conn = open_db(args)
     if args.max_questions is not None and args.max_questions < 1:
         raise SystemExit("--max-questions must be 1 or greater.")
-    quiz = load_quiz(args.quiz)
+    try:
+        quiz = load_quiz(args.quiz)
+    except ValueError as exc:
+        print("MC quiz validation")
+        print(f"  document id: {args.document_id}")
+        print(f"  quiz: {args.quiz}")
+        print()
+        print("Validation failed")
+        print("  errors: 1")
+        print(f"  - {exc}")
+        return 1
     items = limit_benchmark_items(quiz["questions"], args.max_questions)
     error_count = 0
 
@@ -1592,6 +1602,13 @@ def _validate_mc_quiz_item(
     errors = []
     if "correct" not in item:
         errors.append("missing correct answer")
+    question_type = str(item.get("question_type") or "multiple_choice")
+    if question_type not in {"multiple_choice", "true_false"}:
+        errors.append("question_type must be multiple_choice or true_false")
+    if question_type == "true_false":
+        options = item.get("options")
+        if not _is_true_false_item_options(options):
+            errors.append("true_false items must use exactly A=True and B=False")
     anchor_fields = ("target", "source_chunks", "source_pages", "source_citation")
     if require_anchors:
         for field in anchor_fields:
@@ -1634,6 +1651,15 @@ def _normalize_review_text(value: str) -> str:
     return " ".join(value.lower().replace("-", " ").split())
 
 
+def _is_true_false_item_options(options: object) -> bool:
+    return (
+        isinstance(options, dict)
+        and tuple(options) == ("A", "B")
+        and _normalize_review_text(str(options["A"])) == "true"
+        and _normalize_review_text(str(options["B"])) == "false"
+    )
+
+
 def _print_mc_key_preview(
     items: list[dict[str, object]], *, include_options: bool = False
 ) -> None:
@@ -1644,6 +1670,7 @@ def _print_mc_key_preview(
         correct = item.get("correct")
         correct_text = options.get(correct) if isinstance(correct, str) else None
         print(f"{item['id']}: {item['question']}")
+        print(f"  type: {item.get('question_type') or 'multiple_choice'}")
         if correct:
             print(f"  keyed: {correct} - {correct_text or 'n/a'}")
         else:
@@ -1793,6 +1820,7 @@ def mc_bench_cmd(args: argparse.Namespace) -> int:
         report_item = {
             "id": item["id"],
             "question": item["question"],
+            "question_type": item.get("question_type") or "multiple_choice",
             "options": item["options"],
             "source_record_type": item.get("source_record_type"),
             "source_record_id": item.get("source_record_id"),
