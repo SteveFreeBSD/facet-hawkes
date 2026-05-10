@@ -423,6 +423,21 @@ def build_parser() -> argparse.ArgumentParser:
         help="Require target, source_chunks, source_pages, and source_citation on every item.",
     )
 
+    suggest_mc_parser = _command(
+        subcommands,
+        "suggest-mc-anchors",
+        "Suggest source chunks for anchoring a multiple-choice quiz without calling Ollama.",
+        suggest_mc_anchors_cmd,
+    )
+    suggest_mc_parser.add_argument("document_id", type=int)
+    suggest_mc_parser.add_argument("--quiz", type=Path, required=True)
+    suggest_mc_parser.add_argument("--max-questions", type=int)
+    suggest_mc_parser.add_argument("--limit", type=int, default=3)
+    suggest_mc_parser.add_argument("--chars", type=int, default=360)
+    suggest_mc_parser.add_argument("--role", choices=ASK_ROLES, default="core")
+    suggest_mc_parser.add_argument("--section", choices=sorted(SECTION_LABELS))
+    suggest_mc_parser.add_argument("--output", type=Path)
+
     json_parser = _command(subcommands, "export-json", "Export document data as JSON.", export_json_cmd)
     json_parser.add_argument("document_id", type=int)
     json_parser.add_argument("--output", type=Path)
@@ -1590,6 +1605,162 @@ def validate_mc_quiz_cmd(args: argparse.Namespace) -> int:
     print(f"Validation {'failed' if error_count else 'passed'}")
     print(f"  errors: {error_count}")
     return 1 if error_count else 0
+
+
+def suggest_mc_anchors_cmd(args: argparse.Namespace) -> int:
+    _, conn = open_db(args)
+    if args.max_questions is not None and args.max_questions < 1:
+        raise SystemExit("--max-questions must be 1 or greater.")
+    if args.limit < 1:
+        raise SystemExit("--limit must be 1 or greater.")
+    if args.chars < 1:
+        raise SystemExit("--chars must be 1 or greater.")
+    quiz = load_quiz(args.quiz)
+    items = limit_benchmark_items(quiz["questions"], args.max_questions)
+    selected_role = normalize_answer_role(args.role)
+
+    report_items = []
+    print("MC anchor suggestions")
+    print(f"  document id: {args.document_id}")
+    print(f"  quiz: {args.quiz}")
+    print(f"  questions: {len(items)}")
+    print(f"  candidate chunks per query: {args.limit}")
+    print()
+
+    for item in items:
+        suggestions = _mc_anchor_suggestions_for_item(
+            conn,
+            args.document_id,
+            item,
+            limit=args.limit,
+            chars=args.chars,
+            role=selected_role,
+            section=args.section,
+        )
+        report_items.append(suggestions)
+        print(f"{item['id']}: {item['question']}")
+        print(f"  type: {item.get('question_type') or 'multiple_choice'}")
+        print(f"  current target: {item.get('target') or 'none'}")
+        print(
+            "  current source chunks: "
+            + (
+                ", ".join(str(chunk_id) for chunk_id in item.get("source_chunks", []))
+                or "none"
+            )
+        )
+        for query_entry in suggestions["queries"]:
+            print(f"  query: {query_entry['query']}")
+            if not query_entry["candidates"]:
+                print("    no candidates")
+                continue
+            for candidate in query_entry["candidates"]:
+                print(f"    chunk {candidate['chunk_id']}: {candidate['source_citation']}")
+                print(f"      {candidate['snippet']}")
+        print()
+
+    if args.output:
+        report = {
+            "document_id": args.document_id,
+            "quiz": str(args.quiz),
+            "limit": args.limit,
+            "chars": args.chars,
+            "items": report_items,
+        }
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
+        print(f"wrote suggestions: {args.output}")
+    return 0
+
+
+def _mc_anchor_suggestions_for_item(
+    conn,
+    document_id: int,
+    item: dict[str, object],
+    *,
+    limit: int,
+    chars: int,
+    role: str | None,
+    section: str | None,
+) -> dict[str, object]:
+    query_entries = []
+    for query in _mc_anchor_query_candidates(item):
+        retrieval = _retrieve_mc_context(
+            conn,
+            document_id=document_id,
+            question=query,
+            limit=limit,
+            role=role,
+            section=section,
+        )
+        candidates = []
+        for row in retrieval.rows:
+            candidates.append(
+                {
+                    "chunk_id": row["id"],
+                    "chunk_index": row["chunk_index"],
+                    "source_citation": row["source_citation"],
+                    "section_label": row.get("section_label"),
+                    "content_role": row.get("content_role"),
+                    "selected_query": retrieval.selected_query,
+                    "queries_tried": retrieval.queries_tried,
+                    "snippet": _anchor_snippet(
+                        str(row.get("text", "")),
+                        str(item.get("target") or retrieval.selected_query or query),
+                        chars,
+                    ),
+                }
+            )
+        query_entries.append({"query": query, "candidates": candidates})
+    return {
+        "id": item["id"],
+        "question": item["question"],
+        "question_type": item.get("question_type") or "multiple_choice",
+        "current_target": item.get("target"),
+        "current_source_chunks": item.get("source_chunks", []),
+        "queries": query_entries,
+    }
+
+
+def _mc_anchor_query_candidates(item: dict[str, object]) -> list[str]:
+    options = item.get("options") if isinstance(item.get("options"), dict) else {}
+    correct = str(item.get("correct") or "")
+    correct_option_text = str(options.get(correct) or "") if isinstance(options, dict) else ""
+    candidates = [
+        str(item.get("target") or ""),
+        *[str(query) for query in item.get("retrieval_queries", [])],
+        str(item["question"]),
+        correct_option_text,
+        compact_question_with_options(item),
+    ]
+    queries = []
+    seen = set()
+    for candidate in candidates:
+        query = " ".join(candidate.split())
+        key = _normalize_review_text(query)
+        if query and key not in seen:
+            seen.add(key)
+            queries.append(query)
+    return queries
+
+
+def _anchor_snippet(text: str, target: str, max_chars: int) -> str:
+    compact = " ".join(text.split())
+    if len(compact) <= max_chars:
+        return compact
+    target = target.strip()
+    index = compact.lower().find(target.lower()) if target else -1
+    if index < 0:
+        return compact[: max_chars - 3].rstrip() + "..."
+    half_window = max((max_chars - len(target)) // 2, 0)
+    start = max(index - half_window, 0)
+    end = min(start + max_chars, len(compact))
+    start = max(end - max_chars, 0)
+    snippet = compact[start:end].strip()
+    if start > 0:
+        snippet = "..." + snippet
+    if end < len(compact):
+        snippet = snippet.rstrip() + "..."
+    return snippet
 
 
 def _validate_mc_quiz_item(

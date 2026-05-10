@@ -218,6 +218,15 @@ uv run ethnos validate-mc-quiz 1 \
   --require-anchors
 ```
 
+For a newly imported quiz, get no-Ollama source-anchor suggestions before editing
+the quiz JSON:
+
+```bash
+uv run ethnos suggest-mc-anchors 1 \
+  --quiz data/runs/ethics_ch1_mc_imported.json \
+  --output data/runs/ethics_ch1_anchor_suggestions.json
+```
+
 ```json
 {
   "version": "external-mc-v1",

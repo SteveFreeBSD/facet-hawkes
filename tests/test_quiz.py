@@ -484,6 +484,69 @@ def test_validate_mc_quiz_cli_rejects_bad_true_false_shape(tmp_path, capsys):
     assert "true_false quiz items" in text
 
 
+def test_suggest_mc_anchors_cli_prints_and_writes_candidates(tmp_path, capsys):
+    db_path = tmp_path / "ethnos.sqlite"
+    quiz_path = tmp_path / "quiz.json"
+    output_path = tmp_path / "suggestions.json"
+    conn = connect(db_path)
+    init_db(conn)
+    document_id = _stored_quiz_document(conn)
+    quiz_path.write_text(
+        json.dumps(
+            {
+                "questions": [
+                    {
+                        "id": "q1",
+                        "question": "What does virtue ethics emphasize?",
+                        "options": {
+                            "A": "Rules",
+                            "B": "Character",
+                            "C": "Utility",
+                            "D": "Contracts",
+                        },
+                        "correct": "B",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    exit_code = main(
+        [
+            "--db",
+            str(db_path),
+            "suggest-mc-anchors",
+            str(document_id),
+            "--quiz",
+            str(quiz_path),
+            "--limit",
+            "2",
+            "--output",
+            str(output_path),
+        ]
+    )
+    text = capsys.readouterr().out
+    report = json.loads(output_path.read_text(encoding="utf-8"))
+
+    assert exit_code == 0
+    assert "MC anchor suggestions" in text
+    assert "q1: What does virtue ethics emphasize?" in text
+    assert "chunk" in text
+    assert report["items"][0]["id"] == "q1"
+    assert report["items"][0]["queries"]
+    candidates = [
+        candidate
+        for query in report["items"][0]["queries"]
+        for candidate in query["candidates"]
+    ]
+    assert candidates
+    assert any(
+        "Virtue ethics emphasizes character" in candidate["snippet"]
+        for candidate in candidates
+    )
+
+
 def test_mc_prompt_formats_context_options_and_json_instruction(tmp_path):
     prompt_path = tmp_path / "mc.md"
     prompt_path.write_text(
