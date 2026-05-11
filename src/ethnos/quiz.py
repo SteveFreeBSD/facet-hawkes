@@ -133,7 +133,12 @@ def build_quiz_item(
     diagnostics: QuizGenerationDiagnostics | None = None,
 ) -> dict[str, Any] | None:
     distractors = _ranked_distractors(record, pool, topics_by_chunk, rng, difficulty)
-    options = [record.correct_answer]
+    options = [
+        {
+            "text": record.correct_answer,
+            "source": _option_source_metadata(record, role="correct"),
+        }
+    ]
     selected_distractors = []
     seen_raw = {_normalize_option(record.correct_answer)}
     seen_display = {
@@ -152,7 +157,12 @@ def build_quiz_item(
         if display_norm in seen_display:
             display_collisions += 1
             continue
-        options.append(distractor.correct_answer)
+        options.append(
+            {
+                "text": distractor.correct_answer,
+                "source": _option_source_metadata(distractor, role="distractor"),
+            }
+        )
         selected_distractors.append(distractor)
         seen_display.add(display_norm)
         if len(options) == len(GENERATED_OPTION_LABELS):
@@ -169,8 +179,12 @@ def build_quiz_item(
         return None
 
     labeled_options = [
-        {"label": label, "text": limit_option_text(text, max_option_chars)}
-        for label, text in zip(GENERATED_OPTION_LABELS, options)
+        {
+            "label": label,
+            "text": limit_option_text(option["text"], max_option_chars),
+            "source": option["source"],
+        }
+        for label, option in zip(GENERATED_OPTION_LABELS, options)
     ]
     if diagnostics is not None:
         diagnostics.option_lengths.extend(
@@ -182,9 +196,11 @@ def build_quiz_item(
     correct_label = GENERATED_OPTION_LABELS[0]
     rng.shuffle(labeled_options)
     relabeled_options = {}
+    option_sources = {}
     new_correct = None
     for label, option in zip(GENERATED_OPTION_LABELS, labeled_options):
         relabeled_options[label] = option["text"]
+        option_sources[label] = option["source"]
         if option["label"] == correct_label:
             new_correct = label
     if new_correct is None:
@@ -194,6 +210,7 @@ def build_quiz_item(
         "question": record.question,
         "question_type": "multiple_choice",
         "options": relabeled_options,
+        "option_sources": option_sources,
         "correct": new_correct,
         "source_record_type": record.source_record_type,
         "source_record_id": record.source_record_id,
@@ -915,6 +932,18 @@ def _generation_quality_stats(
 
 def _record_key(record: QuizSourceRecord) -> tuple[str, int]:
     return (record.source_record_type, record.source_record_id)
+
+
+def _option_source_metadata(record: QuizSourceRecord, *, role: str) -> dict[str, Any]:
+    return {
+        "role": role,
+        "source_record_type": record.source_record_type,
+        "source_record_id": record.source_record_id,
+        "target": record.target,
+        "source_chunks": [record.chunk_id],
+        "source_pages": record.source_pages,
+        "source_citation": record.source_citation,
+    }
 
 
 def _topics_for_chunks(

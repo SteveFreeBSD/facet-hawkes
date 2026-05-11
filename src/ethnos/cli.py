@@ -1885,6 +1885,34 @@ def _is_true_false_item_options(options: object) -> bool:
     )
 
 
+def _add_selected_option_provenance(
+    report_item: dict[str, object],
+    item: dict[str, object],
+    selected_option: str | None,
+) -> None:
+    option_sources = item.get("option_sources")
+    if not selected_option or not isinstance(option_sources, dict):
+        return
+    source = option_sources.get(selected_option)
+    if not isinstance(source, dict):
+        return
+    report_item["selected_option_source"] = source
+    report_item["selected_option_source_record_type"] = source.get("source_record_type")
+    report_item["selected_option_source_record_id"] = source.get("source_record_id")
+    report_item["selected_option_source_target"] = source.get("target")
+    if selected_option == item.get("correct") or source.get("role") != "distractor":
+        return
+    report_item["selected_distractor_source"] = source
+    report_item["selected_distractor_source_record_type"] = source.get(
+        "source_record_type"
+    )
+    report_item["selected_distractor_source_record_id"] = source.get(
+        "source_record_id"
+    )
+    report_item["selected_distractor_target"] = source.get("target")
+    report_item["selected_distractor_source_citation"] = source.get("source_citation")
+
+
 def _print_mc_key_preview(
     items: list[dict[str, object]], *, include_options: bool = False
 ) -> None:
@@ -2047,6 +2075,7 @@ def mc_bench_cmd(args: argparse.Namespace) -> int:
             "question": item["question"],
             "question_type": item.get("question_type") or "multiple_choice",
             "options": item["options"],
+            "option_sources": item.get("option_sources", {}),
             "source_record_type": item.get("source_record_type"),
             "source_record_id": item.get("source_record_id"),
             "target": item.get("target"),
@@ -2071,6 +2100,7 @@ def mc_bench_cmd(args: argparse.Namespace) -> int:
             report_item["correct"] = item["correct"]
             report_item["correct_option_text"] = item["options"].get(item["correct"])
             report_item["is_correct"] = status == "correct"
+            _add_selected_option_provenance(report_item, item, selected_option)
         report_items.append(report_item)
 
     elapsed = time.monotonic() - started_at

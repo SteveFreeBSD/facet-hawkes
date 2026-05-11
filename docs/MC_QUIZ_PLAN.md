@@ -38,6 +38,9 @@ own item difficulty metadata, and external quizzes may omit difficulty entirely.
 - Generated term prompts use `Which definition best matches {term} in this
   text?`; term items include `target`, `source_record_type`,
   `source_record_id`, `source_chunks`, `source_pages`, and `source_citation`.
+- Generated items also include `option_sources`, keyed by option label, so each
+  correct answer and distractor can be traced back to its source record, target,
+  chunk, pages, and citation.
 - Generation uses one `random.Random(seed)` per run so distractor selection and
   option shuffling are reproducible.
 - Distractor ranking supports `easy`, `medium`, and `hard`. Easy mode prefers
@@ -138,7 +141,12 @@ uv run ethnos mc-bench 1 \
   `source_record_type`, `source_record_id`, `selected_option`,
   `selected_option_text`, optional `correct`, optional `correct_option_text`,
   optional `is_correct`, `validation_status`, selected chunks/citations,
-  retrieval queries tried, raw response, and timing.
+  retrieval queries tried, raw response, timing, and selected-option source
+  provenance when the quiz provides `option_sources`.
+- Wrong keyed answers from generated quizzes include `selected_distractor_source`
+  plus flat `selected_distractor_source_record_type`,
+  `selected_distractor_source_record_id`, `selected_distractor_target`, and
+  `selected_distractor_source_citation` fields for confusion-matrix analysis.
 - `accuracy` denominator is keyed items that had retrieved context and a valid
   model response. No-context and invalid-response counts are reported separately
   so accuracy cannot hide coverage failures.
@@ -156,9 +164,6 @@ uv run ethnos mc-bench 1 \
 
 ## Backlog
 
-- Add selected distractor provenance to wrong MC results, such as
-  `selected_distractor_source_record_id`, so repeated runs can build a concept
-  confusion matrix.
 - Add `mc-bench --models model_a,model_b` to match `qa-bench` model comparison
   and report side-by-side accuracy, agreement, and speed.
 - Add quiz diff tooling for regression testing extraction changes with a fixed

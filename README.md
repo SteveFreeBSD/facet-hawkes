@@ -174,7 +174,9 @@ shared-topic distractors.
 
 `generate-quiz` writes `quality_stats` metadata and prints the same summary:
 skipped item counts, distractor-pool utilization, option length average/max,
-topic coverage, section coverage, and source-chunk coverage.
+topic coverage, section coverage, and source-chunk coverage. Generated items
+also include `option_sources` so benchmark reports can trace wrong distractor
+choices back to their source term/question, target, and citation.
 
 Run a multiple-choice benchmark with local Ollama:
 

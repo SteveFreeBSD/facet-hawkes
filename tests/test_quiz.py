@@ -61,6 +61,18 @@ def test_generate_quiz_uses_terms_by_default_and_is_reproducible(tmp_path):
     assert first["questions"][0]["source_record_type"] == "key_terms"
     assert set(first["questions"][0]["options"]) == {"A", "B", "C", "D"}
     assert first["questions"][0]["correct"] in {"A", "B", "C", "D"}
+    assert set(first["questions"][0]["option_sources"]) == {"A", "B", "C", "D"}
+    correct_source = first["questions"][0]["option_sources"][
+        first["questions"][0]["correct"]
+    ]
+    assert correct_source["role"] == "correct"
+    assert correct_source["source_record_type"] == "key_terms"
+    assert correct_source["source_record_id"] == first["questions"][0]["source_record_id"]
+    assert any(
+        source["role"] == "distractor"
+        for label, source in first["questions"][0]["option_sources"].items()
+        if label != first["questions"][0]["correct"]
+    )
     assert first["questions"][0]["source_pages"] == [1]
     assert first["questions"][0]["source_chunks"]
 
@@ -731,6 +743,72 @@ def test_mc_bench_cli_scores_keyed_and_unkeyed_items(tmp_path, capsys, monkeypat
     assert "accuracy: 100.0%" in output
     assert "status: correct" in output
     assert "status: unkeyed" in output
+
+
+def test_mc_bench_reports_selected_distractor_provenance(tmp_path, monkeypatch):
+    db_path = tmp_path / "ethnos.sqlite"
+    quiz_path = tmp_path / "quiz.json"
+    report_path = tmp_path / "report.json"
+    conn = connect(db_path)
+    init_db(conn)
+    document_id = _stored_quiz_document(conn)
+    quiz = generate_quiz(conn, document_id, source="terms", limit=1, seed=5)
+    item = quiz["questions"][0]
+    selected_distractor = next(
+        label
+        for label, source in item["option_sources"].items()
+        if source["role"] == "distractor"
+    )
+    selected_source = item["option_sources"][selected_distractor]
+    quiz_path.write_text(json.dumps(quiz), encoding="utf-8")
+
+    monkeypatch.setattr("ethnos.cli.create_client", lambda host, timeout: object())
+    monkeypatch.setattr(
+        "ethnos.cli.answer_mc_question",
+        lambda **kwargs: MCAnswerResult(
+            raw_prompt=kwargs["prompt"],
+            raw_response='{"selected_option":"%s"}' % selected_distractor,
+            selected_option=selected_distractor,
+            validation_status="valid",
+            validation_error=None,
+        ),
+    )
+
+    exit_code = main(
+        [
+            "--db",
+            str(db_path),
+            "mc-bench",
+            str(document_id),
+            "--quiz",
+            str(quiz_path),
+            "--output",
+            str(report_path),
+        ]
+    )
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    report_item = report["items"][0]
+
+    assert exit_code == 0
+    assert report_item["status"] == "incorrect"
+    assert report_item["selected_option_source"] == selected_source
+    assert report_item["selected_option_source_record_type"] == selected_source[
+        "source_record_type"
+    ]
+    assert report_item["selected_option_source_record_id"] == selected_source[
+        "source_record_id"
+    ]
+    assert report_item["selected_distractor_source"] == selected_source
+    assert report_item["selected_distractor_source_record_type"] == selected_source[
+        "source_record_type"
+    ]
+    assert report_item["selected_distractor_source_record_id"] == selected_source[
+        "source_record_id"
+    ]
+    assert report_item["selected_distractor_target"] == selected_source["target"]
+    assert report_item["selected_distractor_source_citation"] == selected_source[
+        "source_citation"
+    ]
 
 
 def test_mc_context_adds_missing_generated_source_chunk(tmp_path):
