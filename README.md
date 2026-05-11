@@ -186,7 +186,8 @@ list; each item needs `id`, `question`, and 2 to 6 labeled options starting at
 `A`. Include `correct` when an answer key is available. `question_type` is
 normalized as `multiple_choice` by default; options `A=True` and `B=False` are
 auto-detected as `true_false`. Sparse real-world quiz questions can include
-`retrieval_queries` to point retrieval at the relevant PDF language.
+`retrieval_questions` to point retrieval at the relevant PDF language; the older
+`retrieval_queries` name is still accepted.
 
 Copied LMS quiz text can be converted into that JSON shape:
 
@@ -200,7 +201,7 @@ uv run ethnos import-mc-quiz benchmarks/ethics_ch1_mc_raw.txt \
 ```
 
 Answer keys can be one exact answer text per line, or numbered labels such as
-`1 B`. Review the imported JSON before benchmarking; add `retrieval_queries`
+`1 B`. Review the imported JSON before benchmarking; add `retrieval_questions`
 manually for sparse questions when the quiz wording does not contain enough PDF
 search language.
 
@@ -269,6 +270,15 @@ uv run ethnos mc-bench 1 \
   --quiz benchmarks/ethics_ch1_mc.json \
   --output data/runs/mc-bench-ethics-ch1.json \
   --debug-retrieval
+```
+
+Compare two multiple-choice benchmark runs:
+
+```bash
+uv run ethnos mc-compare \
+  data/runs/mc-bench-terms-easy.json \
+  data/runs/mc-bench-ethics-ch1.json \
+  --output data/runs/mc-compare.json
 ```
 
 Refresh normalized records from existing valid model outputs after changing

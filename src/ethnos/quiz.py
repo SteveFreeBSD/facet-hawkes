@@ -72,6 +72,10 @@ def generate_quiz(
     )
     selected_records = _selected_generation_records(records_by_type, source)
     questions = []
+    skipped_counts = {
+        "skipped_insufficient_distractors": 0,
+        "skipped_display_collision": 0,
+    }
 
     for record in selected_records:
         pool = records_by_type[record.source_record_type]
@@ -82,6 +86,7 @@ def generate_quiz(
             rng=rng,
             max_option_chars=max_option_chars,
             difficulty=difficulty,
+            skipped_counts=skipped_counts,
         )
         if item is None:
             continue
@@ -102,6 +107,7 @@ def generate_quiz(
         "difficulty": difficulty,
         "record_counts": _record_counts(records_by_type, questions),
         "generated_count": len(questions),
+        **skipped_counts,
         "questions": questions,
     }
 
@@ -114,25 +120,40 @@ def build_quiz_item(
     rng: random.Random,
     max_option_chars: int,
     difficulty: str = "medium",
+    skipped_counts: dict[str, int] | None = None,
 ) -> dict[str, Any] | None:
     distractors = _ranked_distractors(record, pool, topics_by_chunk, rng, difficulty)
     options = [record.correct_answer]
     seen_raw = {_normalize_option(record.correct_answer)}
-    seen_display = {_normalize_option(limit_option_text(record.correct_answer, max_option_chars))}
+    seen_display = {
+        _normalize_option(limit_option_text(record.correct_answer, max_option_chars))
+    }
+    unique_raw_distractors = 0
+    display_collisions = 0
     for distractor in distractors:
         raw_norm = _normalize_option(distractor.correct_answer)
         if raw_norm in seen_raw:
             continue
+        unique_raw_distractors += 1
+        seen_raw.add(raw_norm)
         display = limit_option_text(distractor.correct_answer, max_option_chars)
         display_norm = _normalize_option(display)
         if display_norm in seen_display:
+            display_collisions += 1
             continue
         options.append(distractor.correct_answer)
-        seen_raw.add(raw_norm)
         seen_display.add(display_norm)
         if len(options) == len(GENERATED_OPTION_LABELS):
             break
     if len(options) < len(GENERATED_OPTION_LABELS):
+        if skipped_counts is not None:
+            if (
+                unique_raw_distractors >= len(GENERATED_OPTION_LABELS) - 1
+                and display_collisions
+            ):
+                skipped_counts["skipped_display_collision"] += 1
+            else:
+                skipped_counts["skipped_insufficient_distractors"] += 1
         return None
 
     labeled_options = [

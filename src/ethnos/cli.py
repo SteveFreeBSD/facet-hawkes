@@ -28,7 +28,6 @@ from .db import (
     inspect_page,
     init_db,
     list_structured_records,
-    list_chunks,
     list_documents,
     list_pages,
     quality_report,
@@ -52,7 +51,6 @@ from .qa import (
     evaluate_answer_quality,
     load_qa_benchmark,
     normalize_answer_role,
-    question_to_fts_query,
     rank_model_summaries,
     retrieve_with_fallbacks,
     summarize_answer_items,
@@ -376,6 +374,16 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         help="Ollama context window token budget.",
     )
+
+    mc_compare_parser = _command(
+        subcommands,
+        "mc-compare",
+        "Compare two multiple-choice benchmark JSON reports.",
+        mc_compare_cmd,
+    )
+    mc_compare_parser.add_argument("baseline", type=Path)
+    mc_compare_parser.add_argument("candidate", type=Path)
+    mc_compare_parser.add_argument("--output", type=Path)
 
     import_mc_parser = _command(
         subcommands,
@@ -1074,7 +1082,7 @@ def _answer_once(
         _print_ollama_debug(None, result.debug_info)
     if _ollama_done_reason(result) == "length":
         print(
-            f"Warning: answer hit Ollama output length limit; "
+            "Warning: answer hit Ollama output length limit; "
             "consider increasing --num-predict.",
             flush=True,
         )
@@ -1513,6 +1521,10 @@ def generate_quiz_cmd(args: argparse.Namespace) -> int:
     print(f"  available questions: {counts['available_questions']}")
     print(f"  generated terms: {counts['generated_terms']}")
     print(f"  generated questions: {counts['generated_questions']}")
+    print(
+        f"  skipped insufficient distractors: {quiz['skipped_insufficient_distractors']}"
+    )
+    print(f"  skipped display collisions: {quiz['skipped_display_collision']}")
     return 0
 
 
@@ -1727,7 +1739,7 @@ def _mc_anchor_query_candidates(item: dict[str, object]) -> list[str]:
     correct_option_text = str(options.get(correct) or "") if isinstance(options, dict) else ""
     candidates = [
         str(item.get("target") or ""),
-        *[str(query) for query in item.get("retrieval_queries", [])],
+        *[str(query) for query in _mc_retrieval_query_hints(item)],
         str(item["question"]),
         correct_option_text,
         compact_question_with_options(item),
@@ -1741,6 +1753,17 @@ def _mc_anchor_query_candidates(item: dict[str, object]) -> list[str]:
             seen.add(key)
             queries.append(query)
     return queries
+
+
+def _mc_retrieval_query_hints(item: dict[str, object]) -> list[object]:
+    queries = item.get("retrieval_queries", [])
+    questions = item.get("retrieval_questions", [])
+    hints = []
+    if isinstance(queries, list):
+        hints.extend(queries)
+    if isinstance(questions, list):
+        hints.extend(questions)
+    return hints
 
 
 def _anchor_snippet(text: str, target: str, max_chars: int) -> str:
@@ -1898,7 +1921,7 @@ def mc_bench_cmd(args: argparse.Namespace) -> int:
         )
         retrieval_questions = [item["question"]]
         if not retrieval.rows:
-            for hinted_query in item.get("retrieval_queries", []):
+            for hinted_query in _mc_retrieval_query_hints(item):
                 retrieval_questions.append(str(hinted_query))
                 retrieval = _retrieve_mc_context(
                     conn,
@@ -2050,6 +2073,178 @@ def mc_bench_cmd(args: argparse.Namespace) -> int:
         args.output.write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
         print(f"  wrote report: {args.output}")
     return 0
+
+
+def mc_compare_cmd(args: argparse.Namespace) -> int:
+    baseline = _load_mc_bench_report(args.baseline, "baseline")
+    candidate = _load_mc_bench_report(args.candidate, "candidate")
+    comparison = compare_mc_bench_reports(baseline, candidate)
+
+    print("MC benchmark comparison")
+    print(f"  baseline: {args.baseline}")
+    print(f"  candidate: {args.candidate}")
+    print(f"  baseline model: {baseline.get('model') or 'n/a'}")
+    print(f"  candidate model: {candidate.get('model') or 'n/a'}")
+    print(f"  baseline accuracy: {_format_accuracy(comparison['baseline_accuracy'])}")
+    print(f"  candidate accuracy: {_format_accuracy(comparison['candidate_accuracy'])}")
+    print(f"  accuracy delta: {_format_accuracy_delta(comparison['accuracy_delta'])}")
+    print(f"  common questions: {comparison['common_count']}")
+    print(f"  added questions: {len(comparison['added_item_ids'])}")
+    print(f"  removed questions: {len(comparison['removed_item_ids'])}")
+    print(f"  correct -> incorrect: {len(comparison['correct_to_incorrect'])}")
+    print(f"  incorrect -> correct: {len(comparison['incorrect_to_correct'])}")
+    print(f"  answer changes: {len(comparison['answer_changes'])}")
+    print(f"  retrieval changes: {len(comparison['retrieval_changes'])}")
+
+    _print_mc_compare_section("correct -> incorrect", comparison["correct_to_incorrect"])
+    _print_mc_compare_section("incorrect -> correct", comparison["incorrect_to_correct"])
+    _print_mc_compare_section("answer changes", comparison["answer_changes"])
+    _print_mc_compare_section("retrieval changes", comparison["retrieval_changes"])
+
+    if args.output:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(
+            json.dumps(comparison, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+        print(f"  wrote comparison: {args.output}")
+    return 0
+
+
+def _load_mc_bench_report(path: Path, label: str) -> dict[str, object]:
+    try:
+        report = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise SystemExit(f"{label} report is not valid JSON: {path}") from exc
+    if not isinstance(report, dict) or not isinstance(report.get("items"), list):
+        raise SystemExit(f"{label} report must be an mc-bench JSON object with items")
+    return report
+
+
+def compare_mc_bench_reports(
+    baseline: dict[str, object], candidate: dict[str, object]
+) -> dict[str, object]:
+    baseline_items = _mc_report_items_by_id(baseline)
+    candidate_items = _mc_report_items_by_id(candidate)
+    common_ids = sorted(set(baseline_items) & set(candidate_items))
+    added_ids = sorted(set(candidate_items) - set(baseline_items))
+    removed_ids = sorted(set(baseline_items) - set(candidate_items))
+
+    correct_to_incorrect = []
+    incorrect_to_correct = []
+    answer_changes = []
+    retrieval_changes = []
+    for item_id in common_ids:
+        before = baseline_items[item_id]
+        after = candidate_items[item_id]
+        before_correct = _mc_item_correctness(before)
+        after_correct = _mc_item_correctness(after)
+        change = _mc_item_change(item_id, before, after)
+        if before_correct is True and after_correct is False:
+            correct_to_incorrect.append(change)
+        elif before_correct is False and after_correct is True:
+            incorrect_to_correct.append(change)
+        if before.get("selected_option") != after.get("selected_option"):
+            answer_changes.append(change)
+        if _mc_retrieval_signature(before) != _mc_retrieval_signature(after):
+            retrieval_changes.append(change)
+
+    baseline_accuracy = _optional_float(baseline.get("accuracy"))
+    candidate_accuracy = _optional_float(candidate.get("accuracy"))
+    accuracy_delta = (
+        candidate_accuracy - baseline_accuracy
+        if baseline_accuracy is not None and candidate_accuracy is not None
+        else None
+    )
+    return {
+        "baseline_model": baseline.get("model"),
+        "candidate_model": candidate.get("model"),
+        "baseline_accuracy": baseline_accuracy,
+        "candidate_accuracy": candidate_accuracy,
+        "accuracy_delta": accuracy_delta,
+        "baseline_total": baseline.get("total"),
+        "candidate_total": candidate.get("total"),
+        "common_count": len(common_ids),
+        "added_item_ids": added_ids,
+        "removed_item_ids": removed_ids,
+        "correct_to_incorrect": correct_to_incorrect,
+        "incorrect_to_correct": incorrect_to_correct,
+        "answer_changes": answer_changes,
+        "retrieval_changes": retrieval_changes,
+    }
+
+
+def _mc_report_items_by_id(report: dict[str, object]) -> dict[str, dict[str, object]]:
+    items_by_id = {}
+    for item in report.get("items", []):
+        if isinstance(item, dict) and item.get("id") is not None:
+            items_by_id[str(item["id"])] = item
+    return items_by_id
+
+
+def _mc_item_correctness(item: dict[str, object]) -> bool | None:
+    value = item.get("is_correct")
+    return value if isinstance(value, bool) else None
+
+
+def _mc_item_change(
+    item_id: str, before: dict[str, object], after: dict[str, object]
+) -> dict[str, object]:
+    return {
+        "id": item_id,
+        "question": before.get("question") or after.get("question"),
+        "before_status": before.get("status"),
+        "after_status": after.get("status"),
+        "before_selected_option": before.get("selected_option"),
+        "after_selected_option": after.get("selected_option"),
+        "before_selected_option_text": before.get("selected_option_text"),
+        "after_selected_option_text": after.get("selected_option_text"),
+        "correct": before.get("correct") or after.get("correct"),
+        "before_chunks": before.get("selected_chunks", []),
+        "after_chunks": after.get("selected_chunks", []),
+        "before_queries": before.get("retrieval_questions")
+        or before.get("queries_tried", []),
+        "after_queries": after.get("retrieval_questions")
+        or after.get("queries_tried", []),
+    }
+
+
+def _mc_retrieval_signature(item: dict[str, object]) -> tuple[tuple[object, ...], tuple[object, ...]]:
+    chunks = item.get("selected_chunks", [])
+    queries = item.get("retrieval_questions") or item.get("queries_tried", [])
+    return (_tuple_list(chunks), _tuple_list(queries))
+
+
+def _tuple_list(value: object) -> tuple[object, ...]:
+    return tuple(value) if isinstance(value, list) else ()
+
+
+def _optional_float(value: object) -> float | None:
+    if isinstance(value, int | float):
+        return float(value)
+    return None
+
+
+def _format_accuracy(value: object) -> str:
+    return f"{value:.1%}" if isinstance(value, float) else "n/a"
+
+
+def _format_accuracy_delta(value: object) -> str:
+    if not isinstance(value, float):
+        return "n/a"
+    return f"{value:+.1%}"
+
+
+def _print_mc_compare_section(title: str, changes: list[dict[str, object]]) -> None:
+    if not changes:
+        return
+    print(f"  {title}:")
+    for change in changes[:10]:
+        before = change.get("before_selected_option") or "none"
+        after = change.get("after_selected_option") or "none"
+        print(f"    {change['id']}: {before} -> {after}")
+    if len(changes) > 10:
+        print(f"    ... {len(changes) - 10} more")
 
 
 def export_json_cmd(args: argparse.Namespace) -> int:

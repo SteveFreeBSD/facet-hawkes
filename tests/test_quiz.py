@@ -33,6 +33,8 @@ def test_generate_quiz_uses_terms_by_default_and_is_reproducible(tmp_path):
     assert first["generated_count"] == 2
     assert first["record_counts"]["available_terms"] == 4
     assert first["record_counts"]["available_questions"] == 0
+    assert first["skipped_insufficient_distractors"] == 0
+    assert first["skipped_display_collision"] == 0
     assert first["questions"] == second["questions"]
     assert first["difficulty"] == "medium"
     assert first["questions"][0]["question"] == "Which definition best matches Virtue ethics in this text?"
@@ -86,6 +88,34 @@ def test_build_quiz_item_rejects_display_collisions_after_truncation():
 
     assert item is not None
     assert len(set(item["options"].values())) == 4
+
+
+def test_build_quiz_item_counts_display_collision_skip():
+    records = [
+        _record(1, 1, "Alpha answer expands one way"),
+        _record(2, 2, "Bravo answer expands one way"),
+        _record(3, 3, "Bravo answer expands another way"),
+        _record(4, 4, "Bravo answer expands yet another way"),
+    ]
+    skipped_counts = {
+        "skipped_insufficient_distractors": 0,
+        "skipped_display_collision": 0,
+    }
+
+    item = build_quiz_item(
+        records[0],
+        records,
+        topics_by_chunk={},
+        rng=Random(1),
+        max_option_chars=15,
+        skipped_counts=skipped_counts,
+    )
+
+    assert item is None
+    assert skipped_counts == {
+        "skipped_insufficient_distractors": 0,
+        "skipped_display_collision": 1,
+    }
 
 
 def test_topic_and_proximity_distractor_preference_is_used_before_section_fallback():
@@ -833,7 +863,151 @@ def test_mc_bench_uses_external_retrieval_queries(tmp_path, monkeypatch):
     report = json.loads(report_path.read_text(encoding="utf-8"))
 
     assert report["no_context_count"] == 0
-    assert report["items"][0]["retrieval_questions"] == ["What is it?", "virtue ethics"]
+    assert report["items"][0]["retrieval_questions"] == [
+        "What is it?",
+        "virtue ethics",
+    ]
+
+
+def test_mc_bench_accepts_external_retrieval_questions_alias(tmp_path, monkeypatch):
+    db_path = tmp_path / "ethnos.sqlite"
+    quiz_path = tmp_path / "quiz.json"
+    report_path = tmp_path / "report.json"
+    conn = connect(db_path)
+    init_db(conn)
+    document_id = _stored_quiz_document(conn)
+    quiz = {
+        "questions": [
+            {
+                "id": "q1",
+                "question": "What is it?",
+                "retrieval_questions": ["virtue ethics"],
+                "options": {"A": "True", "B": "False"},
+                "correct": "A",
+            }
+        ]
+    }
+    quiz_path.write_text(json.dumps(quiz), encoding="utf-8")
+
+    monkeypatch.setattr("ethnos.cli.create_client", lambda host, timeout: object())
+    monkeypatch.setattr(
+        "ethnos.cli.answer_mc_question",
+        lambda **kwargs: MCAnswerResult(
+            raw_prompt=kwargs["prompt"],
+            raw_response='{"selected_option":"A"}',
+            selected_option="A",
+            validation_status="valid",
+            validation_error=None,
+        ),
+    )
+
+    assert (
+        main(
+            [
+                "--db",
+                str(db_path),
+                "mc-bench",
+                str(document_id),
+                "--quiz",
+                str(quiz_path),
+                "--output",
+                str(report_path),
+            ]
+        )
+        == 0
+    )
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+
+    assert report["no_context_count"] == 0
+    assert report["items"][0]["retrieval_questions"] == [
+        "What is it?",
+        "virtue ethics",
+    ]
+
+
+def test_mc_compare_reports_accuracy_flips_and_retrieval_changes(tmp_path, capsys):
+    baseline_path = tmp_path / "baseline.json"
+    candidate_path = tmp_path / "candidate.json"
+    output_path = tmp_path / "comparison.json"
+    baseline = {
+        "model": "slow",
+        "total": 2,
+        "accuracy": 0.5,
+        "items": [
+            {
+                "id": "q1",
+                "question": "Question one?",
+                "status": "correct",
+                "is_correct": True,
+                "selected_option": "A",
+                "selected_option_text": "Alpha",
+                "correct": "A",
+                "selected_chunks": [1],
+                "retrieval_questions": ["Question one?"],
+            },
+            {
+                "id": "q2",
+                "question": "Question two?",
+                "status": "incorrect",
+                "is_correct": False,
+                "selected_option": "B",
+                "selected_option_text": "Bravo",
+                "correct": "C",
+                "selected_chunks": [2],
+                "retrieval_questions": ["Question two?"],
+            },
+        ],
+    }
+    candidate = {
+        "model": "fast",
+        "total": 2,
+        "accuracy": 1.0,
+        "items": [
+            {
+                "id": "q1",
+                "question": "Question one?",
+                "status": "correct",
+                "is_correct": True,
+                "selected_option": "A",
+                "selected_option_text": "Alpha",
+                "correct": "A",
+                "selected_chunks": [1],
+                "retrieval_questions": ["Question one?"],
+            },
+            {
+                "id": "q2",
+                "question": "Question two?",
+                "status": "correct",
+                "is_correct": True,
+                "selected_option": "C",
+                "selected_option_text": "Charlie",
+                "correct": "C",
+                "selected_chunks": [3],
+                "retrieval_questions": ["better query"],
+            },
+        ],
+    }
+    baseline_path.write_text(json.dumps(baseline), encoding="utf-8")
+    candidate_path.write_text(json.dumps(candidate), encoding="utf-8")
+
+    exit_code = main(
+        [
+            "mc-compare",
+            str(baseline_path),
+            str(candidate_path),
+            "--output",
+            str(output_path),
+        ]
+    )
+    text = capsys.readouterr().out
+    comparison = json.loads(output_path.read_text(encoding="utf-8"))
+
+    assert exit_code == 0
+    assert "accuracy delta: +50.0%" in text
+    assert comparison["accuracy_delta"] == 0.5
+    assert [item["id"] for item in comparison["incorrect_to_correct"]] == ["q2"]
+    assert [item["id"] for item in comparison["answer_changes"]] == ["q2"]
+    assert [item["id"] for item in comparison["retrieval_changes"]] == ["q2"]
 
 
 def _stored_quiz_document(conn) -> int:
