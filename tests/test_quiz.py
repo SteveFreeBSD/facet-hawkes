@@ -17,6 +17,7 @@ from ethnos.quiz import (
     load_quiz,
     normalize_quiz,
     parse_source_pages,
+    QuizGenerationDiagnostics,
 )
 
 
@@ -33,8 +34,26 @@ def test_generate_quiz_uses_terms_by_default_and_is_reproducible(tmp_path):
     assert first["generated_count"] == 2
     assert first["record_counts"]["available_terms"] == 4
     assert first["record_counts"]["available_questions"] == 0
-    assert first["skipped_insufficient_distractors"] == 0
-    assert first["skipped_display_collision"] == 0
+    assert first["quality_stats"]["skipped_insufficient_distractors"] == 0
+    assert first["quality_stats"]["skipped_display_collision"] == 0
+    assert first["quality_stats"]["distractor_pool"] == {
+        "count": 4,
+        "total": 4,
+        "coverage": 1.0,
+    }
+    assert first["quality_stats"]["topic_coverage"] == {
+        "count": 1,
+        "total": 2,
+        "coverage": 0.5,
+        "represented": ["ethical theories"],
+        "available": ["ethical theories", "political ethics"],
+    }
+    assert first["quality_stats"]["chunk_coverage"] == {
+        "count": 2,
+        "total": 4,
+        "coverage": 0.5,
+    }
+    assert first["quality_stats"]["option_lengths"]["max"] <= 120
     assert first["questions"] == second["questions"]
     assert first["difficulty"] == "medium"
     assert first["questions"][0]["question"] == "Which definition best matches Virtue ethics in this text?"
@@ -97,10 +116,7 @@ def test_build_quiz_item_counts_display_collision_skip():
         _record(3, 3, "Bravo answer expands another way"),
         _record(4, 4, "Bravo answer expands yet another way"),
     ]
-    skipped_counts = {
-        "skipped_insufficient_distractors": 0,
-        "skipped_display_collision": 0,
-    }
+    diagnostics = QuizGenerationDiagnostics()
 
     item = build_quiz_item(
         records[0],
@@ -108,14 +124,14 @@ def test_build_quiz_item_counts_display_collision_skip():
         topics_by_chunk={},
         rng=Random(1),
         max_option_chars=15,
-        skipped_counts=skipped_counts,
+        diagnostics=diagnostics,
     )
 
     assert item is None
-    assert skipped_counts == {
-        "skipped_insufficient_distractors": 0,
-        "skipped_display_collision": 1,
-    }
+    assert diagnostics.skipped_insufficient_distractors == 0
+    assert diagnostics.skipped_display_collision == 1
+    assert diagnostics.used_distractor_records == set()
+    assert diagnostics.option_lengths == []
 
 
 def test_topic_and_proximity_distractor_preference_is_used_before_section_fallback():
@@ -640,8 +656,12 @@ def test_generate_quiz_cli_writes_versioned_json(tmp_path, capsys):
     assert generated["difficulty"] == "medium"
     assert generated["generated_count"] == 1
     assert generated["questions"][0]["question_type"] == "multiple_choice"
+    assert generated["quality_stats"]["distractor_pool"]["coverage"] == 0.75
+    assert generated["quality_stats"]["option_lengths"]["average"] is not None
     assert "correct" in generated["questions"][0]
     assert "Generated quiz" in text
+    assert "distractor pool: 3/4 (75.0%)" in text
+    assert "topic coverage: 1/2 (50.0%)" in text
 
 
 def test_mc_bench_cli_scores_keyed_and_unkeyed_items(tmp_path, capsys, monkeypatch):

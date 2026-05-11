@@ -1521,10 +1521,41 @@ def generate_quiz_cmd(args: argparse.Namespace) -> int:
     print(f"  available questions: {counts['available_questions']}")
     print(f"  generated terms: {counts['generated_terms']}")
     print(f"  generated questions: {counts['generated_questions']}")
+    quality = quiz["quality_stats"]
+    distractor_pool = quality["distractor_pool"]
+    option_lengths = quality["option_lengths"]
+    topic_coverage = quality["topic_coverage"]
+    section_coverage = quality["section_coverage"]
+    chunk_coverage = quality["chunk_coverage"]
     print(
-        f"  skipped insufficient distractors: {quiz['skipped_insufficient_distractors']}"
+        "  skipped insufficient distractors: "
+        f"{quality['skipped_insufficient_distractors']}"
     )
-    print(f"  skipped display collisions: {quiz['skipped_display_collision']}")
+    print(f"  skipped display collisions: {quality['skipped_display_collision']}")
+    print(
+        "  distractor pool: "
+        f"{distractor_pool['count']}/{distractor_pool['total']} "
+        f"({_format_optional_percent(distractor_pool['coverage'])})"
+    )
+    print(
+        "  option length avg/max: "
+        f"{option_lengths['average'] or 'n/a'}/{option_lengths['max']}"
+    )
+    print(
+        "  topic coverage: "
+        f"{topic_coverage['count']}/{topic_coverage['total']} "
+        f"({_format_optional_percent(topic_coverage['coverage'])})"
+    )
+    print(
+        "  section coverage: "
+        f"{section_coverage['count']}/{section_coverage['total']} "
+        f"({_format_optional_percent(section_coverage['coverage'])})"
+    )
+    print(
+        "  chunk coverage: "
+        f"{chunk_coverage['count']}/{chunk_coverage['total']} "
+        f"({_format_optional_percent(chunk_coverage['coverage'])})"
+    )
     return 0
 
 
@@ -2227,6 +2258,10 @@ def _optional_float(value: object) -> float | None:
 
 def _format_accuracy(value: object) -> str:
     return f"{value:.1%}" if isinstance(value, float) else "n/a"
+
+
+def _format_optional_percent(value: object) -> str:
+    return f"{value:.1%}" if isinstance(value, int | float) else "n/a"
 
 
 def _format_accuracy_delta(value: object) -> str:

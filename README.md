@@ -172,6 +172,10 @@ distractors and skips broad ambiguous terms when a more specific sibling term is
 present in the same chunk. `medium` is balanced, and `hard` prefers closer
 shared-topic distractors.
 
+`generate-quiz` writes `quality_stats` metadata and prints the same summary:
+skipped item counts, distractor-pool utilization, option length average/max,
+topic coverage, section coverage, and source-chunk coverage.
+
 Run a multiple-choice benchmark with local Ollama:
 
 ```bash

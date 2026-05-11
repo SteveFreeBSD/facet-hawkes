@@ -6,7 +6,7 @@ import json
 import random
 import re
 import sqlite3
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -37,6 +37,14 @@ class QuizSourceRecord:
     correct_answer: str
     target: str | None = None
     difficulty: str | None = None
+
+
+@dataclass
+class QuizGenerationDiagnostics:
+    skipped_insufficient_distractors: int = 0
+    skipped_display_collision: int = 0
+    used_distractor_records: set[tuple[str, int]] = field(default_factory=set)
+    option_lengths: list[int] = field(default_factory=list)
 
 
 def generate_quiz(
@@ -72,10 +80,7 @@ def generate_quiz(
     )
     selected_records = _selected_generation_records(records_by_type, source)
     questions = []
-    skipped_counts = {
-        "skipped_insufficient_distractors": 0,
-        "skipped_display_collision": 0,
-    }
+    diagnostics = QuizGenerationDiagnostics()
 
     for record in selected_records:
         pool = records_by_type[record.source_record_type]
@@ -86,7 +91,7 @@ def generate_quiz(
             rng=rng,
             max_option_chars=max_option_chars,
             difficulty=difficulty,
-            skipped_counts=skipped_counts,
+            diagnostics=diagnostics,
         )
         if item is None:
             continue
@@ -107,7 +112,12 @@ def generate_quiz(
         "difficulty": difficulty,
         "record_counts": _record_counts(records_by_type, questions),
         "generated_count": len(questions),
-        **skipped_counts,
+        "quality_stats": _generation_quality_stats(
+            records_by_type,
+            questions,
+            topics_by_chunk,
+            diagnostics,
+        ),
         "questions": questions,
     }
 
@@ -120,10 +130,11 @@ def build_quiz_item(
     rng: random.Random,
     max_option_chars: int,
     difficulty: str = "medium",
-    skipped_counts: dict[str, int] | None = None,
+    diagnostics: QuizGenerationDiagnostics | None = None,
 ) -> dict[str, Any] | None:
     distractors = _ranked_distractors(record, pool, topics_by_chunk, rng, difficulty)
     options = [record.correct_answer]
+    selected_distractors = []
     seen_raw = {_normalize_option(record.correct_answer)}
     seen_display = {
         _normalize_option(limit_option_text(record.correct_answer, max_option_chars))
@@ -142,24 +153,32 @@ def build_quiz_item(
             display_collisions += 1
             continue
         options.append(distractor.correct_answer)
+        selected_distractors.append(distractor)
         seen_display.add(display_norm)
         if len(options) == len(GENERATED_OPTION_LABELS):
             break
     if len(options) < len(GENERATED_OPTION_LABELS):
-        if skipped_counts is not None:
+        if diagnostics is not None:
             if (
                 unique_raw_distractors >= len(GENERATED_OPTION_LABELS) - 1
                 and display_collisions
             ):
-                skipped_counts["skipped_display_collision"] += 1
+                diagnostics.skipped_display_collision += 1
             else:
-                skipped_counts["skipped_insufficient_distractors"] += 1
+                diagnostics.skipped_insufficient_distractors += 1
         return None
 
     labeled_options = [
         {"label": label, "text": limit_option_text(text, max_option_chars)}
         for label, text in zip(GENERATED_OPTION_LABELS, options)
     ]
+    if diagnostics is not None:
+        diagnostics.option_lengths.extend(
+            len(option["text"]) for option in labeled_options
+        )
+        diagnostics.used_distractor_records.update(
+            _record_key(distractor) for distractor in selected_distractors
+        )
     correct_label = GENERATED_OPTION_LABELS[0]
     rng.shuffle(labeled_options)
     relabeled_options = {}
@@ -839,6 +858,94 @@ def _record_counts(
         "available_questions": len(records_by_type["questions"]),
         "generated_terms": generated_terms,
         "generated_questions": generated_questions,
+    }
+
+
+def _generation_quality_stats(
+    records_by_type: dict[str, list[QuizSourceRecord]],
+    questions: list[dict[str, Any]],
+    topics_by_chunk: dict[int, set[str]],
+    diagnostics: QuizGenerationDiagnostics,
+) -> dict[str, Any]:
+    available_records = [
+        record for records in records_by_type.values() for record in records
+    ]
+    available_record_keys = {_record_key(record) for record in available_records}
+    generated_record_keys = {
+        (str(item["source_record_type"]), int(item["source_record_id"]))
+        for item in questions
+        if item.get("source_record_type") is not None
+        and item.get("source_record_id") is not None
+    }
+    available_chunks = {record.chunk_id for record in available_records}
+    represented_chunks = {
+        record.chunk_id
+        for record in available_records
+        if _record_key(record) in generated_record_keys
+    }
+    available_sections = {
+        record.section_label for record in available_records if record.section_label
+    }
+    represented_sections = {
+        record.section_label
+        for record in available_records
+        if _record_key(record) in generated_record_keys and record.section_label
+    }
+    available_topics = _topics_for_chunks(available_chunks, topics_by_chunk)
+    represented_topics = _topics_for_chunks(represented_chunks, topics_by_chunk)
+    return {
+        "skipped_insufficient_distractors": diagnostics.skipped_insufficient_distractors,
+        "skipped_display_collision": diagnostics.skipped_display_collision,
+        "distractor_pool": _coverage_stats(
+            len(diagnostics.used_distractor_records),
+            len(available_record_keys),
+        ),
+        "option_lengths": _option_length_stats(diagnostics.option_lengths),
+        "topic_coverage": _named_coverage_stats(represented_topics, available_topics),
+        "section_coverage": _named_coverage_stats(
+            represented_sections,
+            available_sections,
+        ),
+        "chunk_coverage": _coverage_stats(
+            len(represented_chunks),
+            len(available_chunks),
+        ),
+    }
+
+
+def _record_key(record: QuizSourceRecord) -> tuple[str, int]:
+    return (record.source_record_type, record.source_record_id)
+
+
+def _topics_for_chunks(
+    chunk_ids: set[int], topics_by_chunk: dict[int, set[str]]
+) -> set[str]:
+    return {
+        topic
+        for chunk_id in chunk_ids
+        for topic in topics_by_chunk.get(chunk_id, set())
+    }
+
+
+def _coverage_stats(count: int, total: int) -> dict[str, Any]:
+    return {
+        "count": count,
+        "total": total,
+        "coverage": count / total if total else None,
+    }
+
+
+def _named_coverage_stats(represented: set[str], available: set[str]) -> dict[str, Any]:
+    stats = _coverage_stats(len(represented), len(available))
+    stats["represented"] = sorted(represented)
+    stats["available"] = sorted(available)
+    return stats
+
+
+def _option_length_stats(lengths: list[int]) -> dict[str, float | int | None]:
+    return {
+        "average": round(sum(lengths) / len(lengths), 2) if lengths else None,
+        "max": max(lengths) if lengths else 0,
     }
 
 

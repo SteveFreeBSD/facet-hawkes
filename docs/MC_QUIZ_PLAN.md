@@ -26,9 +26,12 @@ own item difficulty metadata, and external quizzes may omit difficulty entirely.
   commands.
 - Generated quizzes use root metadata: `version`, `document_id`,
   `generated_at`, `seed`, `source`, `role`, `section`, `max_option_chars`,
-  `difficulty`, `record_counts`, `generated_count`,
-  `skipped_insufficient_distractors`, `skipped_display_collision`, and
+  `difficulty`, `record_counts`, `generated_count`, `quality_stats`, and
   `questions`.
+- `quality_stats` reports skipped item counts, distractor-pool utilization,
+  average/max displayed option length, topic coverage, section coverage, and
+  source-chunk coverage. The CLI prints the same summary immediately after
+  generation so quiz quality issues are visible before benchmarking.
 - Term-based generation is the default because definitions map naturally to
   concise MC options. Question-based generation remains available via
   `--source questions` or `--source both`.
@@ -153,9 +156,6 @@ uv run ethnos mc-bench 1 \
 
 ## Backlog
 
-- Expand `generate-quiz` aggregate statistics beyond skip counts: distractor
-  pool utilization, average/max option length after truncation, and topic
-  coverage.
 - Add selected distractor provenance to wrong MC results, such as
   `selected_distractor_source_record_id`, so repeated runs can build a concept
   confusion matrix.
