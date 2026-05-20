@@ -19,6 +19,18 @@ Observed on 2026-05-20:
 | Required model | `gemma-python:latest` |
 | Installed models | Only `gemma-python:latest` |
 
+## Inventory (2026-05-20)
+
+- `ollama --version`: 0.24.0.
+- `ollama list`: `gemma-python:latest` (7.2 GB).
+- `ollama ps`: no active models resident.
+- `systemctl show`: active/running, `LimitMEMLOCK=infinity`, environment line
+	includes `OLLAMA_FLASH_ATTENTION` and `OLLAMA_MLOCK` (see service override).
+- `uname -r`: `7.0.9-1-cachyos`.
+- CPU governor: `schedutil`.
+- `swapon --show`: `/dev/zram0` 62.2 GiB, 1.1 MiB used.
+- `free -h`: 62 GiB total, 7.6 GiB used, 54 GiB available.
+
 ## Current Tuning Decision
 
 `caspian` produced the current MC benchmark default:

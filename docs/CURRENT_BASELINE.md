@@ -18,8 +18,8 @@ System migration steps live in [`MIGRATION.md`](MIGRATION.md).
 - Structured extraction is complete for both local documents: 257/257 chunks
   have valid latest model output.
 - Normalized records are populated across the database: 257 chunk summaries,
-  497 topics, 905 key terms, 406 examples, and 611 questions.
-- `ethics.pdf` has 100 chunk summaries, 112 topics, 251 key terms, 74 examples,
+  498 topics, 906 key terms, 406 examples, and 611 questions.
+- `ethics.pdf` has 100 chunk summaries, 113 topics, 252 key terms, 74 examples,
   and 186 questions. Non-core ethics chunks have zero persisted key
   terms/questions; admin/support material is summary-only.
 - `history.pdf` has 157 chunk summaries, 385 topics, 654 key terms, 332
@@ -60,8 +60,22 @@ rebuilt during migration:
 - `data/incoming/ethics.pdf`: about 1.9 MiB, SHA prefix `eac21ab05849`.
 - `data/incoming/history.pdf`: about 6.9 MiB, SHA prefix `81ad69f0b520`.
 
-There are 27 extraction runs in the current database. Every chunk's latest
+There are 28 extraction runs in the current database. Every chunk's latest
 output is valid.
+
+## Review Checklist
+
+Use this list when validating a host or reviewing a change set:
+
+- Confirm the host inventory snapshot is current (Ollama version, installed
+  models, service override, kernel, governor, swap).
+- Confirm service overrides include flash attention, mlock, and memlock
+  infinity, plus keep-alive on benchmark hosts.
+- Confirm the working model defaults match the baseline in
+  `docs/PERFORMANCE_TUNING.md`.
+- Run the baseline MC and mixed quiz benchmarks (`mc-bench --chars 300` and
+  `quiz-bench --chars 900`) and save reports under `data/runs/`.
+- Run the smoke checks below and compare against the expected outputs.
 
 ## Smoke Checks
 
@@ -69,16 +83,16 @@ These checks are safe to run inside Codex for baseline verification:
 
 ```bash
 python -m compileall -q src tests
-.venv/bin/python -m pytest -q
-.venv/bin/ethnos documents
-.venv/bin/ethnos db-info
-.venv/bin/ethnos section-status 1
-.venv/bin/ethnos structure-status 1
-.venv/bin/ethnos quality-report 1
-.venv/bin/ethnos section-status 2
-.venv/bin/ethnos structure-status 2
-.venv/bin/ethnos quality-report 2
-.venv/bin/ethnos qa-bench 1 --benchmark benchmarks/ethics_qa.json --no-ask
+uv run pytest -q
+uv run ethnos documents
+uv run ethnos db-info
+uv run ethnos section-status 1
+uv run ethnos structure-status 1
+uv run ethnos quality-report 1
+uv run ethnos section-status 2
+uv run ethnos structure-status 2
+uv run ethnos quality-report 2
+uv run ethnos qa-bench 1 --benchmark benchmarks/ethics_qa.json --no-ask
 git status --short
 ```
 
@@ -87,10 +101,10 @@ git status --short
 Do not run these during baseline stabilization unless explicitly requested:
 
 ```bash
-.venv/bin/ethnos qa-bench 1 --benchmark benchmarks/ethics_qa.json --ask
-.venv/bin/ethnos structure 1 --force
-.venv/bin/ethnos structure 1 --retry-failed
-.venv/bin/ethnos structure 1 --all-roles
+uv run ethnos qa-bench 1 --benchmark benchmarks/ethics_qa.json --ask
+uv run ethnos structure 1 --force
+uv run ethnos structure 1 --retry-failed
+uv run ethnos structure 1 --all-roles
 ```
 
 Also avoid long Ollama benchmarks, multi-model comparisons, PDF re-extraction,
@@ -108,10 +122,10 @@ To recover from a missing, corrupted, or intentionally replaced database,
 recreate `ethics.pdf` from the source PDF:
 
 ```bash
-.venv/bin/ethnos ingest-pdf data/incoming/ethics.pdf
-.venv/bin/ethnos chunk 1
-.venv/bin/ethnos label-sections 1 --preset ethics
-.venv/bin/ethnos structure 1
+uv run ethnos ingest-pdf data/incoming/ethics.pdf
+uv run ethnos chunk 1
+uv run ethnos label-sections 1 --preset ethics
+uv run ethnos structure 1
 ```
 
 The `structure` step is expensive because it calls Ollama. By default it
@@ -124,9 +138,9 @@ stabilization unless explicitly requested.
 preset or manual labeling before role-filtered retrieval is meaningful:
 
 ```bash
-.venv/bin/ethnos ingest-pdf data/incoming/history.pdf
-.venv/bin/ethnos chunk 2
-.venv/bin/ethnos structure 2
+uv run ethnos ingest-pdf data/incoming/history.pdf
+uv run ethnos chunk 2
+uv run ethnos structure 2
 ```
 
 To back up the current processed database manually, copy

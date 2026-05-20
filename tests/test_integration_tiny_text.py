@@ -83,6 +83,11 @@ def test_tiny_text_to_sqlite_and_fts(tmp_path):
 
     assert len(results) == 1
     assert results[0]["source_citation"] == "tiny.pdf p. 1, chunk 1"
+    assert "text" not in results[0]
+
+    results_with_text = search_chunks(conn, "energy", limit=5, include_text=True)
+
+    assert results_with_text[0]["text"] == "Ecology\nFood webs describe energy transfer."
 
 
 def test_list_documents_returns_beginner_visible_fields(tmp_path):

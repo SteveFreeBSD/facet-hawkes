@@ -73,6 +73,13 @@ Markdown export can write to a file to avoid flooding the terminal:
 uv run ethnos export-markdown 1 --output data/processed/ethics.md
 ```
 
+## Developer Notes
+
+The CLI is implemented as a package under `src/ethnos/cli/`. The entrypoint is
+`ethnos.cli:main`, and `build_parser()` lives alongside it in
+`cli/__init__.py`. Re-exports in `ethnos.cli` keep test imports and
+monkeypatch paths stable.
+
 ## Inspecting Assimilated Knowledge
 
 `section_label` names the kind of document section, such as `chapter_content`,

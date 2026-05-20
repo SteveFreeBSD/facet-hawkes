@@ -19,6 +19,7 @@ from ethnos.ollama_client import (
     _chat,
     _answer_chat_request_kwargs,
     _chat_request_kwargs,
+    _extraction_schema,
     _mc_chat_request_kwargs,
     _ollama_options,
     _ollama_schema,
@@ -217,6 +218,10 @@ def test_ollama_schema_compacts_real_extraction_schema_safely():
         "summary",
         "confidence",
     ]
+
+
+def test_extraction_schema_is_cached():
+    assert _extraction_schema() is _extraction_schema()
 
 
 def test_answer_chat_request_uses_plain_text_and_context_without_thinking():

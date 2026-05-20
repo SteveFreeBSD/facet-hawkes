@@ -188,6 +188,115 @@ shows SQLite time dominating Ollama time.
 - Extra models: do not install them on the migration host unless a benchmark or
   workflow explicitly requires them.
 
+## Optimization Plan (CachyOS + Ollama)
+
+This plan is the comprehensive, reviewable checklist for improving throughput
+on the CachyOS host while preserving answer quality. Treat the current repo
+baseline as the reference and change one variable at a time with A/B benchmarks.
+
+### Phase 0: Inventory (once per host)
+
+Capture the current state before any changes and record it in
+`docs/hosts/caspian.md`:
+
+- Ollama version and installed models (`ollama --version`, `ollama list`).
+- Service override settings (`systemctl show ollama -p Environment -p LimitMEMLOCK`).
+- Active model residency (`ollama ps`).
+- Kernel variant and CPU governor (CachyOS kernel flavor, scheduler notes).
+- Memory pressure (swap/zram usage, sustained swap activity).
+
+### Phase 1: Baseline (lock a reference)
+
+- Run `mc-bench --chars 300` and `quiz-bench --chars 900` using the current
+  defaults.
+- Save reports under `data/runs/` and note elapsed seconds, average answer
+  seconds, accuracy, and no-context count.
+- Record whether the model was already loaded in `ollama ps` at run start.
+
+### Phase 2: Ollama Upgrade Evaluation
+
+- Ollama 0.30.0 is a pre-release with a new llama.cpp architecture. Treat it
+  as experimental until it proves faster and stable under the same benchmarks.
+- Do not replace the current install in place. Prefer a side-by-side run or
+  temporary binary test, then compare results against the baseline.
+- Gate adoption on equal-or-better accuracy and reduced elapsed time.
+
+### Phase 3: Runtime Knobs (A/B only)
+
+Test one variable at a time, revert if accuracy regresses:
+
+- `ETHNOS_OLLAMA_NUM_CTX`: only increase if retrieval traces show truncation.
+- `ETHNOS_OLLAMA_STRUCTURE_NUM_PREDICT` and `ETHNOS_OLLAMA_ANSWER_NUM_PREDICT`:
+  reduce if responses remain valid and accuracy is unchanged.
+- `ETHNOS_OLLAMA_NUM_THREAD`: re-test on each Ollama version because scheduler
+  behavior can change between releases.
+- Keep `ETHNOS_OLLAMA_THINK=false` unless quality requirements change.
+
+### Phase 4: Service-Level Optimizations
+
+Verify the baseline service override remains effective:
+
+- `OLLAMA_FLASH_ATTENTION=1`
+- `OLLAMA_MLOCK=1`
+- `LimitMEMLOCK=infinity`
+- `OLLAMA_KEEP_ALIVE=30m` on hosts running repeated local benchmarks
+
+Confirm there are no mlock warnings and that model reloads are minimized.
+
+### Phase 5: CachyOS OS-Level Experiments (guarded)
+
+Only attempt these if profiling shows CPU scheduling or kernel behavior as the
+bottleneck:
+
+- Validate the kernel flavor (CachyOS default vs. `linux-cachyos-bore`) and
+  measure impact with identical benchmarks.
+- Consider sched-ext or BORE only with before/after measurements and a clear
+  rollback path.
+- Do not adjust swappiness, THP, or other VM knobs without data showing memory
+  pressure or paging as the limiting factor.
+
+### Phase 6: Selection and Roll-In
+
+- Choose the fastest configuration that preserves accuracy.
+- Update `.env.example`, `docs/PERFORMANCE_TUNING.md`, and
+  `docs/CURRENT_BASELINE.md` to reflect the chosen defaults.
+- Re-run the baseline smokes and verify no regressions.
+
+### Success Criteria
+
+- Accuracy unchanged vs. baseline for MC and mixed quizzes.
+- Elapsed time and average answer seconds improved.
+- No new failures, invalid responses, or Ollama timeouts.
+- Clear documentation of changes and rollback steps.
+
+### Code-Level Micro-Optimizations (Audit)
+
+These are low-risk candidates found during code review. Apply only after
+benchmarking because some changes trade CPU work for fewer I/O calls.
+
+- Applied: cache prompt templates to avoid disk reads in hot paths:
+  - `ethnos.qa.build_answer_prompt()` reads [prompts/answer.md](../prompts/answer.md)
+    on every call.
+  - `ethnos.ollama_client.load_prompt()` reads prompt files per extraction call.
+  - `ethnos.quiz` MC, choice, and essay prompt builders read prompt files during
+    quiz benchmarks.
+  - Implementation: prompt-template loaders now use small `lru_cache` instances.
+- Applied: cache schema generation and compaction:
+  - `ExtractionResult.model_json_schema()` and `_compact_json_schema()` run on
+    every structured extraction call in `extract_chunk()`.
+  - Implementation: structured extraction schema generation is memoized.
+- Applied: optionally return chunk text directly from the FTS query:
+  - `context_chunks()` calls `search_chunks()` and then a second SQL query to
+    fetch `text` by id.
+  - Implementation: `search_chunks(..., include_text=True)` selects `c.text`;
+    `context_chunks()` uses that path while the default search result shape
+    stays unchanged.
+- Pre-compile comparison regex patterns in [src/ethnos/qa.py](../src/ethnos/qa.py)
+  to avoid recompiling on each comparison detection pass.
+
+Document any applied change and re-run the MC + mixed benchmarks before
+declaring a new baseline.
+
 ## Host Profiles
 
 - [`erosion`](hosts/erosion.md): local development host, Ryzen 7 PRO 5850U,

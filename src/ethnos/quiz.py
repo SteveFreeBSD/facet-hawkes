@@ -8,6 +8,7 @@ import re
 import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal
 
@@ -797,7 +798,7 @@ def build_mc_prompt(
     max_chars: int,
     prompt_path: Path = DEFAULT_MC_PROMPT,
 ) -> str:
-    template = prompt_path.read_text(encoding="utf-8")
+    template = _prompt_template(prompt_path)
     options = "\n".join(
         f"{label}. {text}" for label, text in normalize_options(item["options"]).items()
     )
@@ -827,7 +828,7 @@ def build_choice_prompt(
     max_chars: int,
     prompt_path: Path = DEFAULT_CHOICE_PROMPT,
 ) -> str:
-    template = prompt_path.read_text(encoding="utf-8")
+    template = _prompt_template(prompt_path)
     options = "\n".join(
         f"{label}. {text}" for label, text in normalize_options(item["options"]).items()
     )
@@ -1036,7 +1037,7 @@ def build_essay_prompt(
     max_chars: int,
     prompt_path: Path = DEFAULT_ESSAY_PROMPT,
 ) -> str:
-    template = prompt_path.read_text(encoding="utf-8")
+    template = _prompt_template(prompt_path)
     target = item.get("target") or ""
     context_target = target or item.get("_context_target") or ""
     source_citation = item.get("source_citation") or ""
@@ -1052,6 +1053,11 @@ def build_essay_prompt(
         source_citation=source_citation,
         context=context,
     )
+
+
+@lru_cache(maxsize=16)
+def _prompt_template(prompt_path: Path) -> str:
+    return prompt_path.read_text(encoding="utf-8")
 
 
 def build_mc_context(

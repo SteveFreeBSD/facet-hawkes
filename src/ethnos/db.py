@@ -931,12 +931,29 @@ def search_chunks(
     document_id: int | None = None,
     role: str | None = None,
     section: str | None = None,
+    include_text: bool = False,
 ) -> list[dict[str, Any]]:
     try:
-        return _search_chunks(conn, query, limit, document_id=document_id, role=role, section=section)
+        return _search_chunks(
+            conn,
+            query,
+            limit,
+            document_id=document_id,
+            role=role,
+            section=section,
+            include_text=include_text,
+        )
     except sqlite3.OperationalError:
         quoted = '"' + query.replace('"', '""') + '"'
-        return _search_chunks(conn, quoted, limit, document_id=document_id, role=role, section=section)
+        return _search_chunks(
+            conn,
+            quoted,
+            limit,
+            document_id=document_id,
+            role=role,
+            section=section,
+            include_text=include_text,
+        )
 
 
 def _search_chunks(
@@ -947,6 +964,7 @@ def _search_chunks(
     document_id: int | None,
     role: str | None,
     section: str | None,
+    include_text: bool,
 ) -> list[dict[str, Any]]:
     filters = ["chunks_fts MATCH ?"]
     params: list[Any] = [query]
@@ -960,6 +978,7 @@ def _search_chunks(
         filters.append("c.section_label = ?")
         params.append(section)
     params.append(limit)
+    text_select = ",\n            c.text" if include_text else ""
     rows = conn.execute(
         f"""
         SELECT
@@ -973,6 +992,7 @@ def _search_chunks(
             c.content_role,
             snippet(chunks_fts, 0, '[', ']', '...', 24) AS snippet,
             bm25(chunks_fts) AS score
+            {text_select}
         FROM chunks_fts
         JOIN chunks c ON c.id = chunks_fts.rowid
         WHERE {" AND ".join(filters)}
@@ -1069,9 +1089,12 @@ def context_chunks(
         document_id=document_id,
         role=role,
         section=section,
+        include_text=True,
     )
     if not results:
         return []
+    if all("text" in row for row in results):
+        return results
     chunk_ids = [row["id"] for row in results]
     placeholders = ", ".join("?" for _ in chunk_ids)
     text_rows = conn.execute(

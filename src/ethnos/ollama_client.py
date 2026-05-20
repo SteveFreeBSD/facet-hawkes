@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
@@ -90,8 +91,13 @@ class MCSelection(BaseModel):
 
 
 def load_prompt(prompt_path: Path, chunk: ChunkRecord) -> str:
-    template = prompt_path.read_text(encoding="utf-8")
+    template = _prompt_template(prompt_path)
     return template.format(source_citation=chunk.source_citation, chunk_text=chunk.text)
+
+
+@lru_cache(maxsize=16)
+def _prompt_template(prompt_path: Path) -> str:
+    return prompt_path.read_text(encoding="utf-8")
 
 
 def extract_chunk(
@@ -108,7 +114,7 @@ def extract_chunk(
     client: object | None = None,
 ) -> StructuredCallResult:
     prompt = load_prompt(prompt_path, chunk)
-    schema = _ollama_schema(ExtractionResult.model_json_schema())
+    schema = _extraction_schema()
     last: StructuredCallResult | None = None
     client = client if client is not None else create_client(host, timeout)
 
@@ -415,6 +421,11 @@ def _chat_request_kwargs(
 
 def _ollama_schema(schema: dict) -> dict:
     return _compact_json_schema(schema)
+
+
+@lru_cache(maxsize=1)
+def _extraction_schema() -> dict:
+    return _ollama_schema(ExtractionResult.model_json_schema())
 
 
 def _compact_json_schema(value):

@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import re
 from dataclasses import dataclass, field
+from functools import lru_cache
 from typing import Any
 
 
@@ -137,9 +138,14 @@ def build_answer_prompt(
     max_chars: int,
     prompt_path: Path = DEFAULT_ANSWER_PROMPT,
 ) -> str:
-    template = prompt_path.read_text(encoding="utf-8")
+    template = _prompt_template(prompt_path)
     context = build_answer_context(context_rows, max_chars)
     return template.format(question=question, context=context)
+
+
+@lru_cache(maxsize=16)
+def _prompt_template(prompt_path: Path) -> str:
+    return prompt_path.read_text(encoding="utf-8")
 
 
 def normalize_answer_role(role: str) -> str | None:
