@@ -63,9 +63,8 @@ rebuilt during migration:
 - `data/incoming/ethics.pdf`: about 1.9 MiB, SHA prefix `eac21ab05849`.
 - `data/incoming/history.pdf`: about 6.9 MiB, SHA prefix `81ad69f0b520`.
 
-There are 27 extraction runs in the current database. Two runs are still marked
-`running` in historical metadata, but every chunk's latest output is valid. The
-older failed/partial ethics outputs are preserved for audit history.
+There are 27 extraction runs in the current database. Every chunk's latest
+output is valid.
 
 ## Smoke Checks
 

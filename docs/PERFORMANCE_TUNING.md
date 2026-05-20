@@ -267,7 +267,7 @@ distraction.
 
 Use `quiz-bench` reports so speed changes are visible next to accuracy,
 retrieval changes, unscored answers, and essay drafts. Use `mc-bench` plus
-`mc-compare` only when comparing against older MC-only reports.
+`mc-compare` when comparing MC-only reports.
 
 Create or choose a fixed quiz:
 
@@ -347,23 +347,6 @@ These runs used `gemma-python`, `ETHNOS_OLLAMA_NUM_THREAD` unset, and the fixed
 Current conclusion: keep `ETHNOS_OLLAMA_NUM_CTX=8192`, leave
 `ETHNOS_OLLAMA_NUM_THREAD` unset, avoid `game-performance` for this MC workload,
 and use `mc-bench --chars 300`.
-
-## Historical Local Baselines
-
-These are older local observations from the pre-CachyOS machine, not
-performance guarantees for the current Ryzen Embedded host:
-
-| Run | Items | Elapsed | Per Item |
-|---|---:|---:|---:|
-| `mc-bench-ethics-ch1-v6` | 10 | 90.6s | 9.1s |
-| `mc-bench-terms-medium-20` | 20 | 264.7s | 13.2s |
-| `mc-bench-terms-easy-20-v4` | 20 | 266.0s | 13.3s |
-| `mc-bench-terms-easy-20` | 20 | 338.4s | 16.9s |
-| `mc-bench-terms` | 10 | 231.3s | 23.1s |
-
-For full structure extraction with `gemma-python` and a 2048-token extraction
-budget, the latest observed 100-chunk run took about 146 minutes. Valid chunks
-averaged around 60 seconds; validation-error chunks often wasted 2-3 minutes.
 
 ## What Not To Tune Blindly
 

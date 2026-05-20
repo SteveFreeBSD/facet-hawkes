@@ -6,7 +6,7 @@ Ethnos supports local multiple-choice quiz generation, external LMS quiz import,
 mixed Canvas quiz import, pre-flight validation, source-anchor suggestion, and
 Ollama-backed quiz benchmarking. Use the generic `review-quiz`, `validate-quiz`,
 and `quiz-bench` commands for new work; the MC-only commands remain for
-historical reports and compatibility.
+MC-only comparison reports and compatibility.
 
 1. Generate or import a quiz.
 2. Apply or review the answer key.
@@ -184,7 +184,7 @@ uv run ethnos quiz-bench 1 \
   model response. No-context and invalid-response counts are reported separately
   so accuracy cannot hide coverage failures.
 - MC-only `mc-bench` reports keep their existing shape for compatibility with
-  `mc-compare`; use them only when you need that historical comparison flow.
+  `mc-compare`; use them only when you need MC-only comparison output.
   `mc-bench` defaults to `--chars 300` on the current CachyOS CPU-only
   baseline. Mixed `quiz-bench` keeps `--chars 900` so essay answers have more
   source context.

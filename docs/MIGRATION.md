@@ -15,8 +15,7 @@ live outside the tracked source tree.
 - Optional ignored run artifacts under `data/runs/` and `data/processed/` if
   you want prior benchmark traces, exported reports, or study guides.
 - Ollama model availability and aliases: `gemma-python` is required for the
-  current baseline. `gemma-fast`/`gemma4:e4b` are optional historical
-  benchmark aliases if present on the source machine.
+  current baseline.
 - The Ollama systemd drop-in at
   `/etc/systemd/system/ollama.service.d/override.conf`.
 
@@ -59,9 +58,9 @@ ETHNOS_OLLAMA_NUM_THREAD=
 
 ```bash
 mkdir -p data/incoming
-cp /old/ethnos/data/ethnos.sqlite data/ethnos.sqlite
-cp /old/ethnos/data/incoming/ethics.pdf data/incoming/ethics.pdf
-cp /old/ethnos/data/incoming/history.pdf data/incoming/history.pdf
+cp /source/ethnos/data/ethnos.sqlite data/ethnos.sqlite
+cp /source/ethnos/data/incoming/ethics.pdf data/incoming/ethics.pdf
+cp /source/ethnos/data/incoming/history.pdf data/incoming/history.pdf
 ```
 
 5. If `uv` is not available yet but the repo already has a working `.venv`, use
@@ -110,26 +109,11 @@ PARAMETER top_k 64
 PARAMETER top_p 0.95
 ```
 
-`gemma-fast` is an optional faster local alias over the same base blob as
-`gemma4:e4b`:
-
-```text
-FROM gemma4:e4b
-TEMPLATE {{ .Prompt }}
-SYSTEM "You are a concise Python scripting helper. Answer in plain language. Keep replies short unless asked for detail. Avoid long explanations. Finish complete sentences."
-PARAMETER num_ctx 2048
-PARAMETER num_predict 160
-PARAMETER temperature 0.2
-PARAMETER top_k 64
-PARAMETER top_p 0.95
-```
-
-After pulling or copying the base models, recreate aliases with temporary
-Modelfiles:
+After pulling or copying the base model, recreate the alias with a temporary
+Modelfile:
 
 ```bash
 ollama create gemma-python -f Modelfile.gemma-python
-ollama create gemma-fast -f Modelfile.gemma-fast
 ollama list
 ```
 

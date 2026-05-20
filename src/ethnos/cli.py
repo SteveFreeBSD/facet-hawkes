@@ -321,7 +321,7 @@ def build_parser() -> argparse.ArgumentParser:
     bench_parser.add_argument("--model", help="Ollama model name for --ask runs.")
     bench_parser.add_argument(
         "--models",
-        help="Comma-separated Ollama model names for comparison, e.g. gemma-python,gemma-fast.",
+        help="Comma-separated Ollama model names for comparison, e.g. gemma-python,other-model.",
     )
     bench_parser.add_argument(
         "--num-predict",

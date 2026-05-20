@@ -326,9 +326,9 @@ uv run ethnos quiz-bench 1 \
   --debug-retrieval
 ```
 
-The older `review-mc-quiz`, `validate-mc-quiz`, and `mc-bench` commands are
-still available for MC-only reports and historical comparisons. Prefer
-`review-quiz`, `validate-quiz`, and `quiz-bench` for new work so MC,
+The MC-only `review-mc-quiz`, `validate-mc-quiz`, and `mc-bench` commands are
+available when you need MC-specific reports and comparisons. Prefer
+`review-quiz`, `validate-quiz`, and `quiz-bench` for mixed work so MC,
 true/false, matching, and essay items follow one path. On the current CachyOS
 CPU-only baseline, `mc-bench` defaults to `--chars 300`; this was the fastest
 tested MC context size that preserved accuracy on the fixed local benchmark.
@@ -337,8 +337,8 @@ Compare two MC-only benchmark runs:
 
 ```bash
 uv run ethnos mc-compare \
-  data/runs/legacy-mc-bench-terms-easy.json \
-  data/runs/legacy-mc-bench-ethics-ch1.json \
+  data/runs/mc-bench-baseline.json \
+  data/runs/mc-bench-candidate.json \
   --output data/runs/mc-compare.json
 ```
 
