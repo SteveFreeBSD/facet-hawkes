@@ -20,6 +20,10 @@ Install `uv`, then run:
 uv sync --extra dev
 ```
 
+The app has sensible local defaults in code. When a host needs explicit
+settings, copy [`.env.example`](.env.example) to `.env` and edit only the values
+that differ on that machine.
+
 ## Basic Use
 
 ```bash
@@ -157,9 +161,13 @@ ignored by git.
 The full quiz workflow is documented in
 [`docs/QUIZ_WORKFLOW.md`](docs/QUIZ_WORKFLOW.md).
 
-The current local baseline and system migration checklist are documented in
-[`docs/CURRENT_BASELINE.md`](docs/CURRENT_BASELINE.md) and
-[`docs/MIGRATION.md`](docs/MIGRATION.md).
+The project baseline, migration checklist, performance guide, and host profiles
+are documented in:
+
+- [`docs/CURRENT_BASELINE.md`](docs/CURRENT_BASELINE.md)
+- [`docs/MIGRATION.md`](docs/MIGRATION.md)
+- [`docs/PERFORMANCE_TUNING.md`](docs/PERFORMANCE_TUNING.md)
+- [`docs/hosts/`](docs/hosts/)
 
 Run the local retrieval-only benchmark without calling Ollama:
 
@@ -329,9 +337,10 @@ uv run ethnos quiz-bench 1 \
 The MC-only `review-mc-quiz`, `validate-mc-quiz`, and `mc-bench` commands are
 available when you need MC-specific reports and comparisons. Prefer
 `review-quiz`, `validate-quiz`, and `quiz-bench` for mixed work so MC,
-true/false, matching, and essay items follow one path. On the current CachyOS
-CPU-only baseline, `mc-bench` defaults to `--chars 300`; this was the fastest
-tested MC context size that preserved accuracy on the fixed local benchmark.
+true/false, matching, and essay items follow one path. `mc-bench` defaults to
+`--chars 300`; this was the fastest tested MC context size that preserved
+accuracy on the fixed `caspian` benchmark. Mixed `quiz-bench` keeps
+`--chars 900` for broader answer context.
 
 Compare two MC-only benchmark runs:
 
@@ -376,15 +385,18 @@ ETHNOS_OLLAMA_THINK=false
 ETHNOS_OLLAMA_NUM_THREAD=
 ```
 
+These values are also listed in [`.env.example`](.env.example).
+
 By default ethnos sends `think=false` to Ollama because local Gemma models can
 spend the whole output budget on hidden thinking tokens. `--debug-ollama`
 reports `message_thinking_length` so this is visible during smoke checks.
 `ETHNOS_OLLAMA_NUM_THREAD` is optional and should normally stay unset; use it
-only for controlled local benchmarks, such as comparing `4`, `6`, and `8`
-threads on a 4-core/8-thread CPU.
+only for controlled local benchmarks.
 
-For local CPU-only tuning notes, Ollama service settings, SQLite pragmas, and
-benchmark protocol, see [docs/PERFORMANCE_TUNING.md](docs/PERFORMANCE_TUNING.md).
+For CPU-only tuning notes, host-specific Ollama service settings, SQLite
+pragmas, and benchmark protocol, see
+[docs/PERFORMANCE_TUNING.md](docs/PERFORMANCE_TUNING.md) and
+[docs/hosts/](docs/hosts/).
 
 The current local database baseline includes `ethics.pdf` and `history.pdf`.
 Both documents have valid latest structured output for every chunk. `ethics.pdf`

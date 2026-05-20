@@ -1,8 +1,9 @@
 # Current Baseline
 
-This is the known-good local baseline for `ethnos`. System-level migration
-steps live in [`MIGRATION.md`](MIGRATION.md), and performance tuning details
-live in [`PERFORMANCE_TUNING.md`](PERFORMANCE_TUNING.md).
+This is the known-good app and data baseline for `ethnos`. Host-specific
+hardware, Ollama service settings, and benchmark results live in
+[`PERFORMANCE_TUNING.md`](PERFORMANCE_TUNING.md) and [`hosts/`](hosts/).
+System migration steps live in [`MIGRATION.md`](MIGRATION.md).
 
 ## What Works Now
 
@@ -41,15 +42,11 @@ default. Current defaults are:
 - `ETHNOS_OLLAMA_THINK=false`
 - `ETHNOS_OLLAMA_NUM_THREAD` unset
 
-The local Ollama service uses the CachyOS CPU-only tuning baseline documented in
-[`PERFORMANCE_TUNING.md`](PERFORMANCE_TUNING.md). Keep this file focused on
-known-good data state and use the performance guide for service, kernel, and
-benchmark tuning details.
-
 The current MC-only benchmark default is `mc-bench --chars 300`, with
-`ETHNOS_OLLAMA_NUM_CTX=8192` and `ETHNOS_OLLAMA_NUM_THREAD` unset. The shorter
-context is based on the local CachyOS benchmark ladder in the performance guide;
-mixed `quiz-bench` still uses a larger context-text default for essay drafts.
+`ETHNOS_OLLAMA_NUM_CTX=8192` and `ETHNOS_OLLAMA_NUM_THREAD` unset. The value is
+based on the measured `caspian` benchmark ladder in the performance guide.
+Mixed `quiz-bench` still uses `--chars 900` for essay drafts and broader answer
+context.
 
 The structure prompt is intentionally compact. Schema `title` metadata is kept
 because removing it caused Gemma to omit required example fields in smoke tests.

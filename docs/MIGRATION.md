@@ -1,60 +1,55 @@
 # Migration Checklist
 
-Use this checklist when moving `ethnos` and the tuned local Ollama setup to a
-different machine. The app is local-first, so git alone is not enough:
-processed databases, PDFs, custom Ollama model names, and service overrides all
-live outside the tracked source tree.
+Use this checklist when moving `ethnos` and its local Ollama setup to another
+machine. Git tracks source and documentation only. Runtime data, PDFs, local
+benchmark outputs, and Ollama model stores live outside the tracked tree.
+
+## Source Of Truth
+
+- GitHub repo: `git@github.com:SteveFreeBSD/ethnos.git`
+- App/data baseline: [`CURRENT_BASELINE.md`](CURRENT_BASELINE.md)
+- Performance defaults: [`PERFORMANCE_TUNING.md`](PERFORMANCE_TUNING.md)
+- Host profiles: [`hosts/`](hosts/)
+- Environment template: [`.env.example`](../.env.example)
+
+Update the docs in the same commit as setup changes so migration instructions
+do not drift from the real machines.
 
 ## What To Move
 
-- The repo source, including `uv.lock`, `prompts/`, `src/`, `tests/`,
-  `benchmarks/`, and `docs/`.
-- Ignored runtime data if you want to keep the current processed state:
+- Repo source: `uv.lock`, `pyproject.toml`, `src/`, `tests/`, `benchmarks/`,
+  `prompts/`, `.github/`, and `docs/`.
+- Ignored runtime data if preserving processed state:
   `data/ethnos.sqlite`, `data/incoming/ethics.pdf`, and
   `data/incoming/history.pdf`.
-- Optional ignored run artifacts under `data/runs/` and `data/processed/` if
-  you want prior benchmark traces, exported reports, or study guides.
-- Ollama model availability and aliases: `gemma-python` is required for the
-  current baseline.
-- The Ollama systemd drop-in at
+- Optional ignored outputs under `data/runs/` and `data/processed/` if prior
+  benchmark reports, traces, or exports matter.
+- Ollama model availability: `gemma-python` is required.
+- Ollama service override at
   `/etc/systemd/system/ollama.service.d/override.conf`.
 
-## Current Local Snapshot
+Do not copy `.venv`, caches, or extra Ollama models unless there is a specific
+reason. Rebuild dependencies from `uv.lock`.
 
-Observed local state:
+## Set Up A New Host
 
-| Area | Value |
-|---|---|
-| OS/kernel | CachyOS, CachyOS kernel 7.0.9 |
-| CPU | AMD Ryzen Embedded V1756B, 4 cores / 8 threads |
-| GPU for Ollama | Integrated Radeon Vega present; Ollama currently uses CPU |
-| RAM/swap | 62 GiB RAM, 62 GiB zram, essentially no swap used at idle |
-| Ollama | 0.24.0 |
-| Ollama service | active, systemd service owned by `ollama` |
-| Ollama override | `OLLAMA_FLASH_ATTENTION=1`, `OLLAMA_MLOCK=1`, `OLLAMA_KEEP_ALIVE=30m`, `LimitMEMLOCK=infinity` |
-| Repo database | `data/ethnos.sqlite`, about 11 MiB |
-| Default app model | `gemma-python` |
-
-The app defaults are:
+1. Install Python 3.11 or newer, `uv`, SQLite with FTS5 support, git, and
+   Ollama.
+2. Clone the repo:
 
 ```bash
-ETHNOS_DB_PATH=data/ethnos.sqlite
-ETHNOS_OLLAMA_HOST=http://localhost:11434
-ETHNOS_OLLAMA_MODEL=gemma-python
-ETHNOS_OLLAMA_TIMEOUT=300
-ETHNOS_OLLAMA_STRUCTURE_NUM_PREDICT=2048
-ETHNOS_OLLAMA_ANSWER_NUM_PREDICT=1536
-ETHNOS_OLLAMA_NUM_CTX=8192
-ETHNOS_OLLAMA_THINK=false
-ETHNOS_OLLAMA_NUM_THREAD=
+git clone git@github.com:SteveFreeBSD/ethnos.git
+cd ethnos
+uv sync --extra dev
 ```
 
-## Set Up The New Machine
+3. Copy `.env.example` to `.env` only when local overrides are needed:
 
-1. Install Python 3.11 or newer, `uv`, SQLite with FTS5 support, and Ollama.
-2. Clone or copy the repo.
-3. From the repo root, run `uv sync --extra dev`.
-4. Copy ignored local data into place if preserving the processed state:
+```bash
+cp .env.example .env
+```
+
+4. Copy ignored data if preserving the current processed database:
 
 ```bash
 mkdir -p data/incoming
@@ -63,20 +58,31 @@ cp /source/ethnos/data/incoming/ethics.pdf data/incoming/ethics.pdf
 cp /source/ethnos/data/incoming/history.pdf data/incoming/history.pdf
 ```
 
-5. If `uv` is not available yet but the repo already has a working `.venv`, use
-   `.venv/bin/ethnos` for verification. For a clean migration, prefer rebuilding
-   the virtualenv from `uv.lock` instead of copying `.venv`.
+5. Install or recreate only the required Ollama model name:
 
-## Recreate Ollama Service Settings
+```bash
+ollama list
+ollama show gemma-python
+```
 
-Create this drop-in on the new system:
+If `gemma-python` is missing, recreate it from the documented Modelfile below
+or copy the existing Ollama store with ownership preserved.
+
+## Ollama Service Settings
+
+Common drop-in:
 
 ```ini
 [Service]
 Environment="OLLAMA_FLASH_ATTENTION=1"
 Environment="OLLAMA_MLOCK=1"
-Environment="OLLAMA_KEEP_ALIVE=30m"
 LimitMEMLOCK=infinity
+```
+
+For hosts doing repeated local runs, also add:
+
+```ini
+Environment="OLLAMA_KEEP_ALIVE=30m"
 ```
 
 Apply and verify:
@@ -86,12 +92,14 @@ sudo systemctl daemon-reload
 sudo systemctl restart ollama
 systemctl show ollama -p Environment -p LimitMEMLOCK -p ActiveState -p SubState
 ollama --version
+ollama list
 ```
 
-## Recreate Ollama Models
+Record host-specific differences in a file under [`hosts/`](hosts/).
 
-The app's default model name is `gemma-python`. On this machine it is a local
-alias over the same base blob as `gemma4:e2b`, with these important settings:
+## Model Alias
+
+The app default is `gemma-python`. The current alias was created from:
 
 ```text
 FROM gemma4:e2b
@@ -109,28 +117,17 @@ PARAMETER top_k 64
 PARAMETER top_p 0.95
 ```
 
-After pulling or copying the base model, recreate the alias with a temporary
-Modelfile:
-
-```bash
-ollama create gemma-python -f Modelfile.gemma-python
-ollama list
-```
-
-For an exact model-store migration instead, stop Ollama and copy
-`/var/lib/ollama` with ownership/permissions preserved, then start Ollama on the
-new host. That preserves blobs and manifests, but recreating aliases from
-Modelfiles is easier to audit.
-
-The repo's runtime requests override the model defaults for structured
-extraction and answering, so the critical migration detail is that the model
-names exist and support the Gemma chat/parser behavior expected by Ollama.
+Runtime requests from `ethnos` override context and output budgets for
+structure, ask, chat, and benchmark commands. The important migration invariant
+is that the `gemma-python` model name exists and behaves like the tested Gemma
+alias.
 
 ## Verify The Migration
 
-Run these low-cost checks before any long Ollama job:
+Run cheap checks first:
 
 ```bash
+uv run ruff check .
 uv run pytest -q
 uv run ethnos documents
 uv run ethnos db-info
@@ -148,8 +145,7 @@ uv run ethnos ask 1 "What is virtue ethics?" --limit 2 --debug-ollama
 ```
 
 Only run full `structure`, `quiz-bench`, or multi-model comparisons after the
-cheap checks pass. Full structure extraction is intentionally expensive on the
-current CPU-only baseline.
+cheap checks pass.
 
 ## Rebuild Instead Of Copying Data
 
@@ -166,6 +162,18 @@ uv run ethnos chunk 2
 uv run ethnos structure 2
 ```
 
-`history.pdf` currently has no labels in the local database. After migration,
-add a section preset or manual labels before treating role-filtered retrieval or
+`history.pdf` is structured in the current baseline but still unlabeled. Add a
+section preset or manual labels before treating role-filtered retrieval or
 non-core quality reports as final.
+
+## Final Sync Check
+
+Before calling a migrated host ready:
+
+```bash
+git status --short --branch
+git remote -v
+git push --dry-run origin main
+ollama list
+systemctl show ollama -p Environment -p LimitMEMLOCK -p ActiveState -p SubState
+```

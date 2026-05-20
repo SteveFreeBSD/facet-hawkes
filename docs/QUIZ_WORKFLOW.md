@@ -185,8 +185,8 @@ uv run ethnos quiz-bench 1 \
   so accuracy cannot hide coverage failures.
 - MC-only `mc-bench` reports keep their existing shape for compatibility with
   `mc-compare`; use them only when you need MC-only comparison output.
-  `mc-bench` defaults to `--chars 300` on the current CachyOS CPU-only
-  baseline. Mixed `quiz-bench` keeps `--chars 900` so essay answers have more
+  `mc-bench` defaults to `--chars 300` based on the measured `caspian`
+  benchmark. Mixed `quiz-bench` keeps `--chars 900` so essay answers have more
   source context.
 
 ## Cross-Run Comparison
