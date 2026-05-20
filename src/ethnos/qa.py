@@ -237,10 +237,11 @@ def answer_query_candidates(question: str) -> list[str]:
         _add_candidate(candidates, expanded_dropped_weaker)
 
     _add_candidate(candidates, _strong_domain_tokens(tokens))
+    _add_focused_token_candidates(candidates, tokens)
 
     if not candidates:
         candidates.append(question)
-    return candidates[:5]
+    return candidates[:12]
 
 
 def load_qa_benchmark(path: Path) -> list[dict[str, Any]]:
@@ -556,6 +557,15 @@ def _add_candidate(candidates: list[str], tokens: list[str]) -> None:
     query = " ".join(tokens)
     if query and query not in candidates:
         candidates.append(query)
+
+
+def _add_focused_token_candidates(candidates: list[str], tokens: list[str]) -> None:
+    strong_tokens = _strong_domain_tokens(tokens)
+    if len(strong_tokens) < 3:
+        return
+    for size in (2, 3):
+        for index in range(0, len(strong_tokens) - size + 1):
+            _add_candidate(candidates, strong_tokens[index : index + size])
 
 
 def retrieve_with_fallbacks(

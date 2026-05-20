@@ -490,6 +490,12 @@ def test_answer_query_candidates_preserve_phrases_and_tune_trolley_questions():
         "trolley problem utilitarianism",
         "trolley utilitarianism",
     ]
+    assert "dawes act" in answer_query_candidates(
+        "Which of the following was NOT a provision of the Dawes Act?"
+    )
+    assert "morrill act" in answer_query_candidates(
+        "Morrill Act agriculture and mechanical arts colleges"
+    )
 
 
 def test_retrieve_with_fallbacks_tries_looser_queries_until_context_found():

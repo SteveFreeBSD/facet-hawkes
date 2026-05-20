@@ -3,18 +3,20 @@
 This guide captures local performance tuning for `ethnos` on the current
 CPU-only development machine. Treat it as a measurement-driven playbook: apply
 one change at a time, record the result, and keep reversible system changes out
-of project defaults unless they prove stable.
+of project defaults unless they prove stable. For machine-to-machine setup, use
+the companion migration checklist in [`MIGRATION.md`](MIGRATION.md).
 
 ## Quick Recommendations
 
-1. Use the CPU `performance` governor during long Ollama runs, then switch back
-   to `powersave` afterward.
-2. Add `OLLAMA_KEEP_ALIVE=30m` to the Ollama systemd override so models stay
-   resident between nearby runs.
-3. Keep `OLLAMA_FLASH_ATTENTION=1`, `OLLAMA_MLOCK=1`, and
-   `LimitMEMLOCK=infinity`; they are already part of the local baseline.
-4. Do not force `num_thread=16` globally. It was slower on this Ryzen 7 PRO
-   5850U in prior smoke checks.
+1. Run long Ollama benchmarks through CachyOS `game-performance` or switch
+   `powerprofilesctl` to `performance` for the duration of the run.
+2. Keep `OLLAMA_FLASH_ATTENTION=1`, `OLLAMA_MLOCK=1`,
+   `OLLAMA_KEEP_ALIVE=30m`, and `LimitMEMLOCK=infinity`; they are already part
+   of the local baseline.
+3. Benchmark `ETHNOS_OLLAMA_NUM_THREAD=4`, `6`, and `8` on this 4-core/8-thread
+   Ryzen Embedded CPU before setting a permanent thread count.
+4. Benchmark `--num-ctx 4096` and `--num-ctx 2048` for MC/quiz runs. Larger
+   context is not automatically better on CPU.
 5. Leave SQLite and swap tuning alone until monitoring shows real pressure.
 
 ## Current Host Snapshot
@@ -24,16 +26,16 @@ rechecked after OS, kernel, Ollama, or hardware changes.
 
 | Component | Observed Value |
 |---|---|
-| OS/kernel | Garuda Linux, Zen kernel |
-| CPU | AMD Ryzen 7 PRO 5850U, 8 cores / 16 threads |
-| RAM | 62 GiB total, roughly 56 GiB available when idle |
-| Storage | NVMe SSD |
-| GPU for Ollama | None detected; inference is CPU-only |
-| Ollama | 0.23.2 |
-| Models | `gemma-python`/`gemma4:e2b` 7.2 GB, `gemma-fast`/`gemma4:e4b` 9.6 GB |
-| CPU governor | `powersave` on all 16 logical CPUs |
-| Swap | 62 GiB zram, no swap used at idle |
-| Database | `data/ethnos.sqlite`, about 4 MiB |
+| OS/kernel | CachyOS, CachyOS kernel 7.0.9 |
+| CPU | AMD Ryzen Embedded V1756B, 4 cores / 8 threads |
+| RAM | 62 GiB total, roughly 48 GiB available when idle |
+| Storage | WD_BLACK SN850P NVMe SSD on Btrfs |
+| GPU for Ollama | Integrated Radeon Vega is present; Ollama currently runs CPU-only |
+| Ollama | 0.24.0 |
+| Models | `gemma-python` 7.2 GB |
+| CPU governor/profile | `schedutil`, CachyOS `balanced` profile |
+| Swap | 62 GiB zram, essentially unused at idle |
+| Database | `data/ethnos.sqlite`, about 11 MiB |
 
 Useful inspection commands:
 
@@ -43,6 +45,7 @@ free -h
 swapon --show
 cat /proc/sys/vm/swappiness
 cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor | sort | uniq -c
+powerprofilesctl get
 ollama --version
 ollama ps
 ollama list
@@ -57,16 +60,7 @@ The current service override lives at:
 /etc/systemd/system/ollama.service.d/override.conf
 ```
 
-Known-good baseline:
-
-```ini
-[Service]
-Environment="OLLAMA_FLASH_ATTENTION=1"
-Environment="OLLAMA_MLOCK=1"
-LimitMEMLOCK=infinity
-```
-
-Recommended addition:
+Current local override:
 
 ```ini
 [Service]
@@ -94,9 +88,39 @@ option in prior testing.
 
 ## CPU Governor
 
-CPU-only Ollama is compute-bound. The current host uses `amd_pstate` with the
-`powersave` governor. Boost is enabled, but sustained inference may still
-benefit from explicitly switching to `performance`.
+CPU-only Ollama is compute-bound. The current CachyOS host uses the `schedutil`
+governor under the `balanced` profile. Boost is enabled, but sustained
+inference should be benchmarked under the performance profile.
+
+Run one command under CachyOS performance mode:
+
+```bash
+game-performance uv run ethnos quiz-bench 1 \
+  --quiz data/runs/perf-quiz-medium-20.json \
+  --output data/runs/perf-cachyos-performance.json
+```
+
+Or switch manually for a longer session:
+
+```bash
+powerprofilesctl set performance
+```
+
+Revert when the run is done:
+
+```bash
+powerprofilesctl set balanced
+```
+
+Verify:
+
+```bash
+powerprofilesctl get
+cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor | sort | uniq -c
+```
+
+The lower-level `cpupower` commands are still useful when diagnosing governor
+behavior directly:
 
 Enable performance mode:
 
@@ -107,7 +131,7 @@ sudo cpupower frequency-set -g performance
 Revert when the run is done:
 
 ```bash
-sudo cpupower frequency-set -g powersave
+sudo cpupower frequency-set -g schedutil
 ```
 
 Verify:
@@ -116,7 +140,7 @@ Verify:
 cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor | sort | uniq -c
 ```
 
-If `cpupower` is missing on this Arch/Garuda host, install the package that
+If `cpupower` is missing on this Arch/CachyOS host, install the package that
 provides it before using these commands:
 
 ```bash
@@ -134,7 +158,7 @@ case "${1:-}" in
     cpupower frequency-set -g performance
     ;;
   off)
-    cpupower frequency-set -g powersave
+    cpupower frequency-set -g schedutil
     ;;
   *)
     echo "Usage: $0 on|off" >&2
@@ -158,13 +182,17 @@ ETHNOS_OLLAMA_STRUCTURE_NUM_PREDICT=2048
 ETHNOS_OLLAMA_ANSWER_NUM_PREDICT=1536
 ETHNOS_OLLAMA_NUM_CTX=8192
 ETHNOS_OLLAMA_THINK=false
+# Optional benchmark knob. Leave unset for normal use.
+ETHNOS_OLLAMA_NUM_THREAD=
 ```
 
 `think=false` is intentional. Local Gemma models can spend the whole output
 budget on hidden thinking tokens; `--debug-ollama` reports
 `message_thinking_length` when smoke-checking this behavior.
 
-`mc-bench` uses a smaller MC response budget by default:
+`quiz-bench` uses the answer response budget by default so essay drafts can
+complete. For MC-only timing runs, the compatibility `mc-bench` command still
+uses a smaller response budget:
 
 ```text
 --num-predict 32
@@ -174,6 +202,17 @@ budget on hidden thinking tokens; `--debug-ollama` reports
 
 Those defaults are deliberate: MC answers need only a structured option label,
 and tighter context usually helps reduce distractor bleed.
+
+Thread count is now exposed as an optional Ollama request option through
+`ETHNOS_OLLAMA_NUM_THREAD`. On this host, compare unset, `4`, `6`, and `8`
+instead of assuming all logical CPUs are fastest:
+
+```bash
+ETHNOS_OLLAMA_NUM_THREAD=4 uv run ethnos mc-bench 1 \
+  --quiz data/runs/perf-quiz-medium-20.json \
+  --num-ctx 4096 \
+  --output data/runs/perf-threads4-ctx4096.json
+```
 
 ## SQLite Settings
 
@@ -188,9 +227,9 @@ PRAGMA temp_store = MEMORY;
 PRAGMA mmap_size = 134217728;
 ```
 
-For the current 4 MiB database, SQLite is not the bottleneck. Raising cache or
+For the current 11 MiB database, SQLite is not the bottleneck. Raising cache or
 mmap settings would not be measurable for normal `search`, `context`,
-`generate-quiz`, `validate-mc-quiz`, or `mc-bench` retrieval work.
+`generate-quiz`, `validate-quiz`, or `quiz-bench` retrieval work.
 
 Consider revisiting only when local databases are hundreds of MiB or when
 profiling shows SQLite time dominating Ollama time. A future large-document
@@ -221,8 +260,9 @@ distraction.
 
 ## Measurement Protocol
 
-Use existing `mc-bench` and `mc-compare` reports so speed changes are visible
-next to accuracy and retrieval changes.
+Use `quiz-bench` reports so speed changes are visible next to accuracy,
+retrieval changes, unscored answers, and essay drafts. Use `mc-bench` plus
+`mc-compare` only when comparing against older MC-only reports.
 
 Create or choose a fixed quiz:
 
@@ -238,7 +278,7 @@ uv run ethnos generate-quiz 1 \
 Run a baseline:
 
 ```bash
-uv run ethnos mc-bench 1 \
+uv run ethnos quiz-bench 1 \
   --quiz data/runs/perf-quiz-medium-20.json \
   --output data/runs/perf-baseline.json
 ```
@@ -246,11 +286,18 @@ uv run ethnos mc-bench 1 \
 Apply one change, then run again:
 
 ```bash
-sudo cpupower frequency-set -g performance
-
-uv run ethnos mc-bench 1 \
+game-performance uv run ethnos quiz-bench 1 \
   --quiz data/runs/perf-quiz-medium-20.json \
-  --output data/runs/perf-governor.json
+  --output data/runs/perf-cachyos-performance.json
+```
+
+Then test one context/thread candidate at a time:
+
+```bash
+ETHNOS_OLLAMA_NUM_THREAD=4 uv run ethnos mc-bench 1 \
+  --quiz data/runs/perf-quiz-medium-20.json \
+  --num-ctx 4096 \
+  --output data/runs/perf-thread4-ctx4096.json
 ```
 
 Compare:
@@ -258,15 +305,15 @@ Compare:
 ```bash
 uv run ethnos mc-compare \
   data/runs/perf-baseline.json \
-  data/runs/perf-governor.json \
-  --output data/runs/perf-compare-governor.json
+  data/runs/perf-thread4-ctx4096.json \
+  --output data/runs/perf-compare-thread4-ctx4096.json
 ```
 
 What to watch:
 
-- `elapsed_seconds` in each `mc-bench` report.
+- `elapsed_seconds` in each `quiz-bench` report.
 - Per-item `timings.answer_seconds`.
-- `accuracy` and correctness flips in `mc-compare`.
+- `accuracy`, no-context count, invalid-response count, and essay draft timings.
 - `selected_chunks` and retrieval changes if accuracy moves.
 - `ollama ps` to see whether the model was already resident.
 
@@ -275,7 +322,8 @@ run-to-run variance from thermals, background load, and model residency.
 
 ## Historical Local Baselines
 
-These are local observations, not performance guarantees:
+These are older local observations from the pre-CachyOS machine, not
+performance guarantees for the current Ryzen Embedded host:
 
 | Run | Items | Elapsed | Per Item |
 |---|---:|---:|---:|
@@ -291,9 +339,9 @@ averaged around 60 seconds; validation-error chunks often wasted 2-3 minutes.
 
 ## What Not To Tune Blindly
 
-- **Ollama thread count:** Prior local testing found `num_thread=16` slower on
-  the Ryzen 7 PRO 5850U CPU path. Avoid global thread overrides without a fresh
-  A/B benchmark.
+- **Ollama thread count:** Avoid global thread overrides without a fresh A/B
+  benchmark. Use `ETHNOS_OLLAMA_NUM_THREAD` for controlled tests, then leave it
+  unset unless a value repeatedly wins.
 - **Kernel VM parameters:** Do not change swappiness, dirty ratios, transparent
   huge pages, or scheduler knobs unless monitoring points to that specific
   bottleneck.
@@ -306,10 +354,10 @@ averaged around 60 seconds; validation-error chunks often wasted 2-3 minutes.
 
 - Add a small `ethnos perf-smoke` command that runs a fixed quiz subset and
   prints tokens/second or answer-seconds summaries.
-- Evaluate `mc-bench --models` once implemented, because model choice may beat
+- Evaluate `quiz-bench --models` once implemented, because model choice may beat
   system tuning.
 - Test controlled parallel structure extraction with one and two concurrent
   requests. This may reduce wall-clock time, but it could also hurt per-request
-  latency or quality on an 8-core CPU.
+  latency or quality on a 4-core CPU.
 - Revisit GPU acceleration if a supported dGPU or eGPU becomes available; that
   would likely dwarf CPU/kernel tuning.

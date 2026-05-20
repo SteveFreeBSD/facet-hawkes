@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -51,6 +52,32 @@ class MCAnswerResult:
     raw_prompt: str
     raw_response: str
     selected_option: str | None
+    validation_status: str
+    validation_error: str | None
+    debug_info: OllamaDebugInfo | None = None
+
+
+@dataclass(frozen=True)
+class ChoiceAnswerResult:
+    raw_prompt: str
+    raw_response: str
+    selected_option: str | None
+    evidence: str | None
+    source_citations: list[str]
+    validation_status: str
+    validation_error: str | None
+    debug_info: OllamaDebugInfo | None = None
+
+
+@dataclass(frozen=True)
+class EssayAnswerResult:
+    raw_prompt: str
+    raw_response: str
+    answer: str | None
+    key_points: list[str]
+    rubric: list[str]
+    source_citations: list[str]
+    limitations: list[str]
     validation_status: str
     validation_error: str | None
     debug_info: OllamaDebugInfo | None = None
@@ -211,6 +238,98 @@ def answer_mc_question(
     )
 
 
+def answer_choice_question(
+    prompt: str,
+    model_name: str,
+    host: str,
+    timeout: float,
+    num_predict: int,
+    num_ctx: int,
+    allowed_options: list[str] | tuple[str, ...] | None = None,
+    client: object | None = None,
+) -> ChoiceAnswerResult:
+    allowed_options = _normalize_allowed_options(allowed_options)
+    schema = _choice_answer_schema(allowed_options)
+    debug_info = _debug_info(prompt, schema, num_predict, num_ctx)
+    client = client if client is not None else create_client(host, timeout)
+    try:
+        chat_result = _chat_mc(
+            client=client,
+            prompt=prompt,
+            schema=schema,
+            model_name=model_name,
+            num_predict=num_predict,
+            num_ctx=num_ctx,
+        )
+    except Exception as exc:
+        return ChoiceAnswerResult(
+            raw_prompt=prompt,
+            raw_response="",
+            selected_option=None,
+            evidence=None,
+            source_citations=[],
+            validation_status="request_failed",
+            validation_error=str(exc),
+            debug_info=debug_info,
+        )
+    debug_info = OllamaDebugInfo(
+        prompt_char_length=debug_info.prompt_char_length,
+        schema_top_level_keys=debug_info.schema_top_level_keys,
+        format_kind=debug_info.format_kind,
+        num_predict=debug_info.num_predict,
+        num_ctx=debug_info.num_ctx,
+        response_summary=chat_result.response_summary,
+    )
+    return _validate_choice_response(
+        prompt, chat_result.content, debug_info, allowed_options=allowed_options
+    )
+
+
+def answer_essay_question(
+    prompt: str,
+    model_name: str,
+    host: str,
+    timeout: float,
+    num_predict: int,
+    num_ctx: int,
+    client: object | None = None,
+) -> EssayAnswerResult:
+    schema = _essay_answer_schema()
+    debug_info = _debug_info(prompt, schema, num_predict, num_ctx)
+    client = client if client is not None else create_client(host, timeout)
+    try:
+        chat_result = _chat_mc(
+            client=client,
+            prompt=prompt,
+            schema=schema,
+            model_name=model_name,
+            num_predict=num_predict,
+            num_ctx=num_ctx,
+        )
+    except Exception as exc:
+        return EssayAnswerResult(
+            raw_prompt=prompt,
+            raw_response="",
+            answer=None,
+            key_points=[],
+            rubric=[],
+            source_citations=[],
+            limitations=[],
+            validation_status="request_failed",
+            validation_error=str(exc),
+            debug_info=debug_info,
+        )
+    debug_info = OllamaDebugInfo(
+        prompt_char_length=debug_info.prompt_char_length,
+        schema_top_level_keys=debug_info.schema_top_level_keys,
+        format_kind=debug_info.format_kind,
+        num_predict=debug_info.num_predict,
+        num_ctx=debug_info.num_ctx,
+        response_summary=chat_result.response_summary,
+    )
+    return _validate_essay_response(prompt, chat_result.content, debug_info)
+
+
 def create_client(host: str, timeout: float) -> object:
     try:
         from ollama import Client
@@ -289,7 +408,7 @@ def _chat_request_kwargs(
             {"role": "user", "content": prompt},
         ],
         "format": schema,
-        "options": {"temperature": 0, "num_predict": num_predict, "num_ctx": num_ctx},
+        "options": _ollama_options(num_predict, num_ctx),
         "think": think,
     }
 
@@ -325,7 +444,7 @@ def _answer_chat_request_kwargs(
             },
             {"role": "user", "content": prompt},
         ],
-        "options": {"temperature": 0, "num_predict": num_predict, "num_ctx": num_ctx},
+        "options": _ollama_options(num_predict, num_ctx),
         "think": think,
     }
 
@@ -339,16 +458,37 @@ def _mc_chat_request_kwargs(
             {
                 "role": "system",
                 "content": (
-                    "You answer multiple-choice questions from provided local PDF context. "
+                    "You answer multiple-choice and other quiz questions from provided local PDF context. "
                     "Use only the supplied context and return only schema-valid JSON."
                 ),
             },
             {"role": "user", "content": prompt},
         ],
         "format": schema,
-        "options": {"temperature": 0, "num_predict": num_predict, "num_ctx": num_ctx},
+        "options": _ollama_options(num_predict, num_ctx),
         "think": False,
     }
+
+
+def _ollama_options(num_predict: int, num_ctx: int) -> dict[str, int]:
+    options = {"temperature": 0, "num_predict": num_predict, "num_ctx": num_ctx}
+    num_thread = _optional_positive_int_env("ETHNOS_OLLAMA_NUM_THREAD")
+    if num_thread is not None:
+        options["num_thread"] = num_thread
+    return options
+
+
+def _optional_positive_int_env(name: str) -> int | None:
+    raw_value = os.getenv(name)
+    if not raw_value:
+        return None
+    try:
+        value = int(raw_value)
+    except ValueError as exc:
+        raise ValueError(f"{name} must be a positive integer") from exc
+    if value < 1:
+        raise ValueError(f"{name} must be a positive integer")
+    return value
 
 
 def _validate_response(prompt: str, raw_response: str) -> StructuredCallResult:
@@ -464,6 +604,182 @@ def _validate_mc_response(
     )
 
 
+def _validate_choice_response(
+    prompt: str,
+    raw_response: str,
+    debug_info: OllamaDebugInfo | None = None,
+    *,
+    allowed_options: list[str] | tuple[str, ...] | None = None,
+) -> ChoiceAnswerResult:
+    allowed_options = _normalize_allowed_options(allowed_options)
+    base = _validate_json_object(raw_response)
+    if isinstance(base, str):
+        return ChoiceAnswerResult(
+            raw_prompt=prompt,
+            raw_response=raw_response,
+            selected_option=None,
+            evidence=None,
+            source_citations=[],
+            validation_status="empty_response" if not raw_response.strip() else "invalid_json",
+            validation_error=base,
+            debug_info=debug_info,
+        )
+    selected_option = base.get("selected_option")
+    if not isinstance(selected_option, str):
+        return ChoiceAnswerResult(
+            raw_prompt=prompt,
+            raw_response=raw_response,
+            selected_option=None,
+            evidence=None,
+            source_citations=[],
+            validation_status="validation_error",
+            validation_error="Choice response must include string selected_option",
+            debug_info=debug_info,
+        )
+    selected_option = selected_option.strip().upper()
+    if selected_option not in allowed_options:
+        return ChoiceAnswerResult(
+            raw_prompt=prompt,
+            raw_response=raw_response,
+            selected_option=None,
+            evidence=None,
+            source_citations=[],
+            validation_status="invalid_option",
+            validation_error=f"selected_option must be one of {', '.join(allowed_options)}",
+            debug_info=debug_info,
+        )
+    field_error = _required_field_error(
+        base,
+        required_types={
+            "evidence": str,
+            "source_citations": list,
+        },
+    )
+    if field_error:
+        return ChoiceAnswerResult(
+            raw_prompt=prompt,
+            raw_response=raw_response,
+            selected_option=None,
+            evidence=None,
+            source_citations=[],
+            validation_status="validation_error",
+            validation_error=field_error,
+            debug_info=debug_info,
+        )
+    return ChoiceAnswerResult(
+        raw_prompt=prompt,
+        raw_response=raw_response,
+        selected_option=selected_option,
+        evidence=str(base.get("evidence") or "").strip() or None,
+        source_citations=_string_list(base.get("source_citations")),
+        validation_status="valid",
+        validation_error=None,
+        debug_info=debug_info,
+    )
+
+
+def _validate_essay_response(
+    prompt: str,
+    raw_response: str,
+    debug_info: OllamaDebugInfo | None = None,
+) -> EssayAnswerResult:
+    base = _validate_json_object(raw_response)
+    if isinstance(base, str):
+        return EssayAnswerResult(
+            raw_prompt=prompt,
+            raw_response=raw_response,
+            answer=None,
+            key_points=[],
+            rubric=[],
+            source_citations=[],
+            limitations=[],
+            validation_status="empty_response" if not raw_response.strip() else "invalid_json",
+            validation_error=base,
+            debug_info=debug_info,
+        )
+    answer = str(base.get("answer") or "").strip()
+    field_error = _required_field_error(
+        base,
+        required_types={
+            "answer": str,
+            "key_points": list,
+            "rubric": list,
+            "source_citations": list,
+            "limitations": list,
+        },
+    )
+    if field_error:
+        return EssayAnswerResult(
+            raw_prompt=prompt,
+            raw_response=raw_response,
+            answer=None,
+            key_points=_string_list(base.get("key_points")),
+            rubric=_string_list(base.get("rubric")),
+            source_citations=_string_list(base.get("source_citations")),
+            limitations=_string_list(base.get("limitations")),
+            validation_status="validation_error",
+            validation_error=field_error,
+            debug_info=debug_info,
+        )
+    if not answer:
+        return EssayAnswerResult(
+            raw_prompt=prompt,
+            raw_response=raw_response,
+            answer=None,
+            key_points=_string_list(base.get("key_points")),
+            rubric=_string_list(base.get("rubric")),
+            source_citations=_string_list(base.get("source_citations")),
+            limitations=_string_list(base.get("limitations")),
+            validation_status="validation_error",
+            validation_error="Essay response must include non-empty answer",
+            debug_info=debug_info,
+        )
+    return EssayAnswerResult(
+        raw_prompt=prompt,
+        raw_response=raw_response,
+        answer=answer,
+        key_points=_string_list(base.get("key_points")),
+        rubric=_string_list(base.get("rubric")),
+        source_citations=_string_list(base.get("source_citations")),
+        limitations=_string_list(base.get("limitations")),
+        validation_status="valid",
+        validation_error=None,
+        debug_info=debug_info,
+    )
+
+
+def _validate_json_object(raw_response: str) -> dict | str:
+    if not raw_response.strip():
+        return "Ollama returned an empty response body/content"
+    try:
+        parsed = json.loads(raw_response)
+    except json.JSONDecodeError as exc:
+        return str(exc)
+    if not isinstance(parsed, dict):
+        return "Response must be a JSON object"
+    return parsed
+
+
+def _required_field_error(base: dict, *, required_types: dict[str, type]) -> str | None:
+    missing = [field for field in required_types if field not in base]
+    if missing:
+        return "Response missing required field(s): " + ", ".join(missing)
+    wrong_type = [
+        field
+        for field, expected_type in required_types.items()
+        if not isinstance(base.get(field), expected_type)
+    ]
+    if wrong_type:
+        return "Response field(s) have invalid type: " + ", ".join(wrong_type)
+    return None
+
+
+def _string_list(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item).strip() for item in value if str(item).strip()]
+
+
 def _normalize_allowed_options(
     allowed_options: list[str] | tuple[str, ...] | None,
 ) -> list[str]:
@@ -489,6 +805,40 @@ def _mc_selection_schema(allowed_options: list[str]) -> dict:
             }
         },
         "required": ["selected_option"],
+        "additionalProperties": False,
+    }
+
+
+def _choice_answer_schema(allowed_options: list[str]) -> dict:
+    return {
+        "type": "object",
+        "properties": {
+            "selected_option": {"type": "string", "enum": allowed_options},
+            "evidence": {"type": "string"},
+            "source_citations": {"type": "array", "items": {"type": "string"}},
+        },
+        "required": ["selected_option", "evidence", "source_citations"],
+        "additionalProperties": False,
+    }
+
+
+def _essay_answer_schema() -> dict:
+    return {
+        "type": "object",
+        "properties": {
+            "answer": {"type": "string"},
+            "key_points": {"type": "array", "items": {"type": "string"}},
+            "rubric": {"type": "array", "items": {"type": "string"}},
+            "source_citations": {"type": "array", "items": {"type": "string"}},
+            "limitations": {"type": "array", "items": {"type": "string"}},
+        },
+        "required": [
+            "answer",
+            "key_points",
+            "rubric",
+            "source_citations",
+            "limitations",
+        ],
         "additionalProperties": False,
     }
 

@@ -3,6 +3,9 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .ruff_cache/
+.claude/
+.env
+.env.*
 
 data/
 !data/.gitkeep

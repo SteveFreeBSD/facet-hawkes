@@ -45,6 +45,10 @@ For a small Ollama smoke test, limit `structure` to one chunk:
 uv run ethnos structure 1 --limit 1 --debug-ollama
 ```
 
+`chunk` validates sizing options before writing chunks: `--target-chars` and
+`--max-chars` must be positive, `--target-chars` cannot exceed `--max-chars`,
+and `--overlap-chars` must be non-negative and smaller than `--max-chars`.
+
 By default, `structure` processes core/unlabeled chunks that have never been
 attempted, skipping admin/support chunks to avoid spending Ollama time on
 non-study material. Use `--all-roles` when you intentionally want structured
@@ -150,6 +154,13 @@ queries, selected chunks, citations, model name, answer text, and timings. They
 are not written by default. Keep them under `data/runs/` so they stay local and
 ignored by git.
 
+The full quiz workflow is documented in
+[`docs/QUIZ_WORKFLOW.md`](docs/QUIZ_WORKFLOW.md).
+
+The current local baseline and system migration checklist are documented in
+[`docs/CURRENT_BASELINE.md`](docs/CURRENT_BASELINE.md) and
+[`docs/MIGRATION.md`](docs/MIGRATION.md).
+
 Run the local retrieval-only benchmark without calling Ollama:
 
 ```bash
@@ -178,22 +189,23 @@ topic coverage, section coverage, and source-chunk coverage. Generated items
 also include `option_sources` so benchmark reports can trace wrong distractor
 choices back to their source term/question, target, and citation.
 
-Run a multiple-choice benchmark with local Ollama:
+Run a quiz benchmark with local Ollama:
 
 ```bash
-uv run ethnos mc-bench 1 \
+uv run ethnos quiz-bench 1 \
   --quiz data/runs/mc-quiz-terms-easy.json \
-  --output data/runs/mc-bench-terms-easy.json \
+  --output data/runs/quiz-bench-terms-easy.json \
   --debug-retrieval
 ```
 
 External quiz files can also be used. They are JSON objects with a `questions`
-list; each item needs `id`, `question`, and 2 to 6 labeled options starting at
-`A`. Include `correct` when an answer key is available. `question_type` is
-normalized as `multiple_choice` by default; options `A=True` and `B=False` are
-auto-detected as `true_false`. Sparse real-world quiz questions can include
-`retrieval_questions` to point retrieval at the relevant PDF language; the older
-`retrieval_queries` name is still accepted.
+list; each item needs `question`. Choice items need 2 to 6 labeled options
+starting at `A`; untyped items without options are normalized as essays. Include
+`correct` only for multiple-choice or true/false items when an answer key is
+available. `question_type` is normalized as `multiple_choice` when options are
+present; options `A=True` and `B=False` are auto-detected as `true_false`.
+Sparse real-world quiz questions can include `retrieval_questions` to point
+retrieval at the relevant PDF language.
 
 Copied LMS quiz text can be converted into that JSON shape:
 
@@ -206,21 +218,57 @@ uv run ethnos import-mc-quiz benchmarks/ethics_ch1_mc_raw.txt \
   --with-key-preview
 ```
 
-Answer keys can be one exact answer text per line, or numbered labels such as
-`1 B`. Review the imported JSON before benchmarking; add `retrieval_questions`
-manually for sparse questions when the quiz wording does not contain enough PDF
-search language.
+Answer keys can be one exact answer text per choice question, or numbered labels
+such as `1 B`. Canvas numbered keys must reference existing choice questions;
+bad positions and non-choice targets fail import instead of being ignored.
+Review the imported JSON before benchmarking; add `retrieval_questions` manually
+for sparse questions when the quiz wording does not contain enough PDF search
+language.
 
-For a quick key audit before spending any Ollama time:
+Canvas-style pasted quizzes with mixed item types can be converted into
+`external-quiz-v2` JSON:
 
 ```bash
-uv run ethnos review-mc-quiz benchmarks/ethics_ch1_mc.json --max-questions 10
+uv run ethnos import-canvas-quiz benchmarks/canvas_mixed_quiz_raw.txt \
+  --output data/runs/canvas-mixed.json \
+  --document-id 1 \
+  --id-prefix canvas-q \
+  --with-key-preview
+```
+
+The mixed importer preserves Canvas question positions and point values, strips
+`Flag question` and `Group of answer choices` boilerplate, detects MC,
+true/false, matching, and essay items, and keeps incomplete matching questions
+with warnings. Use the generic review, validation, and benchmark commands for
+mixed quizzes:
+
+```bash
+uv run ethnos review-quiz data/runs/canvas-mixed.json
+
+uv run ethnos validate-quiz 1 \
+  --quiz data/runs/canvas-mixed.json \
+  --strict-complete
+
+uv run ethnos quiz-bench 1 \
+  --quiz data/runs/canvas-mixed.json \
+  --output data/runs/canvas-mixed-bench.json
+```
+
+`quiz-bench` scores keyed MC/true-false items, answers unkeyed choice items
+without counting them toward accuracy, drafts source-grounded essay answers with
+rubrics, and skips incomplete matching items without calling Ollama.
+
+For a quick key audit before spending any Ollama time, use the generic review
+command:
+
+```bash
+uv run ethnos review-quiz benchmarks/ethics_ch1_mc.json --max-questions 10
 ```
 
 Validate keys and source anchors before benchmarking:
 
 ```bash
-uv run ethnos validate-mc-quiz 1 \
+uv run ethnos validate-quiz 1 \
   --quiz benchmarks/ethics_ch1_mc.json \
   --require-anchors
 ```
@@ -272,18 +320,23 @@ True/false items use the same external quiz shape with a stricter option set:
 Run the included chapter-one quiz benchmark:
 
 ```bash
-uv run ethnos mc-bench 1 \
+uv run ethnos quiz-bench 1 \
   --quiz benchmarks/ethics_ch1_mc.json \
-  --output data/runs/mc-bench-ethics-ch1.json \
+  --output data/runs/quiz-bench-ethics-ch1.json \
   --debug-retrieval
 ```
 
-Compare two multiple-choice benchmark runs:
+The older `review-mc-quiz`, `validate-mc-quiz`, and `mc-bench` commands are
+still available for MC-only reports and historical comparisons. Prefer
+`review-quiz`, `validate-quiz`, and `quiz-bench` for new work so MC,
+true/false, matching, and essay items follow one path.
+
+Compare two MC-only benchmark runs:
 
 ```bash
 uv run ethnos mc-compare \
-  data/runs/mc-bench-terms-easy.json \
-  data/runs/mc-bench-ethics-ch1.json \
+  data/runs/legacy-mc-bench-terms-easy.json \
+  data/runs/legacy-mc-bench-ethics-ch1.json \
   --output data/runs/mc-compare.json
 ```
 
@@ -318,15 +371,21 @@ ETHNOS_OLLAMA_STRUCTURE_NUM_PREDICT=2048
 ETHNOS_OLLAMA_ANSWER_NUM_PREDICT=1536
 ETHNOS_OLLAMA_NUM_CTX=8192
 ETHNOS_OLLAMA_THINK=false
+ETHNOS_OLLAMA_NUM_THREAD=
 ```
 
 By default ethnos sends `think=false` to Ollama because local Gemma models can
 spend the whole output budget on hidden thinking tokens. `--debug-ollama`
 reports `message_thinking_length` so this is visible during smoke checks.
+`ETHNOS_OLLAMA_NUM_THREAD` is optional and should normally stay unset; use it
+only for controlled local benchmarks, such as comparing `4`, `6`, and `8`
+threads on a 4-core/8-thread CPU.
 
 For local CPU-only tuning notes, Ollama service settings, SQLite pragmas, and
 benchmark protocol, see [docs/PERFORMANCE_TUNING.md](docs/PERFORMANCE_TUNING.md).
 
-The current local `ethics.pdf` database baseline has 100/100 chunks with valid
-latest structured output, 100 chunk summaries, 251 key terms, 74 examples, 186
-questions, and zero non-core key terms/questions.
+The current local database baseline includes `ethics.pdf` and `history.pdf`.
+Both documents have valid latest structured output for every chunk. `ethics.pdf`
+is fully section-labeled with zero non-core key terms/questions; `history.pdf`
+is structured but still unlabeled, so label it before relying on role-filtered
+retrieval or non-core quality checks.

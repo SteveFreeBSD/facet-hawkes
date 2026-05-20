@@ -1,19 +1,29 @@
 # Current Baseline
 
-This is the known-good local baseline for `ethnos`.
+This is the known-good local baseline for `ethnos`. System-level migration
+steps live in [`MIGRATION.md`](MIGRATION.md), and performance tuning details
+live in [`PERFORMANCE_TUNING.md`](PERFORMANCE_TUNING.md).
 
 ## What Works Now
 
 - `ethics.pdf` is document `1`.
+- `history.pdf` is document `2`.
 - PDF ingestion works.
-- 118 pages and 100 chunks exist in the current local database.
-- Section labels exist, with no unlabeled pages or chunks in the current database.
-- Structured extraction is complete for the current local database: 100/100
-  chunks have a valid latest model output.
-- Normalized records are populated: 100 chunk summaries, 112 topics, 251 key
-  terms, 74 examples, and 186 questions.
-- Non-core chunks have zero persisted key terms/questions; admin/support
-  material is summary-only.
+- 582 pages and 257 chunks exist in the current local database.
+- `ethics.pdf` has 118 pages and 100 chunks. Section labels exist, with no
+  unlabeled pages or chunks.
+- `history.pdf` has 464 pages and 157 chunks. It is structured but still
+  unlabeled: all 464 pages and 157 chunks are `unlabeled / unlabeled`.
+- Structured extraction is complete for both local documents: 257/257 chunks
+  have valid latest model output.
+- Normalized records are populated across the database: 257 chunk summaries,
+  497 topics, 905 key terms, 406 examples, and 611 questions.
+- `ethics.pdf` has 100 chunk summaries, 112 topics, 251 key terms, 74 examples,
+  and 186 questions. Non-core ethics chunks have zero persisted key
+  terms/questions; admin/support material is summary-only.
+- `history.pdf` has 157 chunk summaries, 385 topics, 654 key terms, 332
+  examples, and 425 questions. Because it is unlabeled, those key terms and
+  questions currently appear under the `unlabeled` role.
 - `ask` works with local Ollama retrieval context.
 - `chat` works with the same retrieval and answer path.
 - `ask` and `chat` can write local JSON traces with `--trace-dir`.
@@ -29,8 +39,9 @@ default. Current defaults are:
 - `ETHNOS_OLLAMA_ANSWER_NUM_PREDICT=1536`
 - `ETHNOS_OLLAMA_NUM_CTX=8192`
 - `ETHNOS_OLLAMA_THINK=false`
+- `ETHNOS_OLLAMA_NUM_THREAD` unset
 
-The local Ollama service uses the CPU-only tuning baseline documented in
+The local Ollama service uses the CachyOS CPU-only tuning baseline documented in
 [`PERFORMANCE_TUNING.md`](PERFORMANCE_TUNING.md). Keep this file focused on
 known-good data state and use the performance guide for service, kernel, and
 benchmark tuning details.
@@ -38,19 +49,35 @@ benchmark tuning details.
 The structure prompt is intentionally compact. Schema `title` metadata is kept
 because removing it caused Gemma to omit required example fields in smoke tests.
 
+## Local Data Inventory
+
+`data/` is intentionally ignored by git, so this runtime state must be copied or
+rebuilt during migration:
+
+- `data/ethnos.sqlite`: about 11 MiB, contains both processed documents.
+- `data/incoming/ethics.pdf`: about 1.9 MiB, SHA prefix `eac21ab05849`.
+- `data/incoming/history.pdf`: about 6.9 MiB, SHA prefix `81ad69f0b520`.
+
+There are 27 extraction runs in the current database. Two runs are still marked
+`running` in historical metadata, but every chunk's latest output is valid. The
+older failed/partial ethics outputs are preserved for audit history.
+
 ## Smoke Checks
 
 These checks are safe to run inside Codex for baseline verification:
 
 ```bash
 python -m compileall -q src tests
-.venv/bin/uv run pytest -q
-.venv/bin/uv run ethnos documents
-.venv/bin/uv run ethnos db-info
-.venv/bin/uv run ethnos section-status 1
-.venv/bin/uv run ethnos structure-status 1
-.venv/bin/uv run ethnos quality-report 1
-.venv/bin/uv run ethnos qa-bench 1 --benchmark benchmarks/ethics_qa.json --no-ask
+.venv/bin/python -m pytest -q
+.venv/bin/ethnos documents
+.venv/bin/ethnos db-info
+.venv/bin/ethnos section-status 1
+.venv/bin/ethnos structure-status 1
+.venv/bin/ethnos quality-report 1
+.venv/bin/ethnos section-status 2
+.venv/bin/ethnos structure-status 2
+.venv/bin/ethnos quality-report 2
+.venv/bin/ethnos qa-bench 1 --benchmark benchmarks/ethics_qa.json --no-ask
 git status --short
 ```
 
@@ -59,10 +86,10 @@ git status --short
 Do not run these during baseline stabilization unless explicitly requested:
 
 ```bash
-.venv/bin/uv run ethnos qa-bench 1 --benchmark benchmarks/ethics_qa.json --ask
-.venv/bin/uv run ethnos structure 1 --force
-.venv/bin/uv run ethnos structure 1 --retry-failed
-.venv/bin/uv run ethnos structure 1 --all-roles
+.venv/bin/ethnos qa-bench 1 --benchmark benchmarks/ethics_qa.json --ask
+.venv/bin/ethnos structure 1 --force
+.venv/bin/ethnos structure 1 --retry-failed
+.venv/bin/ethnos structure 1 --all-roles
 ```
 
 Also avoid long Ollama benchmarks, multi-model comparisons, PDF re-extraction,
@@ -73,17 +100,17 @@ stabilization.
 
 `data/ethnos.sqlite` is ignored local runtime state. Deleting or replacing it
 does not delete the source code, but it does remove the local processed
-database. The source PDF for the current baseline is
-`data/incoming/ethics.pdf`.
+database. The source PDFs for the current baseline are
+`data/incoming/ethics.pdf` and `data/incoming/history.pdf`.
 
 To recover from a missing, corrupted, or intentionally replaced database,
-recreate it from the source PDF:
+recreate `ethics.pdf` from the source PDF:
 
 ```bash
-.venv/bin/uv run ethnos ingest-pdf data/incoming/ethics.pdf
-.venv/bin/uv run ethnos chunk 1
-.venv/bin/uv run ethnos label-sections 1
-.venv/bin/uv run ethnos structure 1
+.venv/bin/ethnos ingest-pdf data/incoming/ethics.pdf
+.venv/bin/ethnos chunk 1
+.venv/bin/ethnos label-sections 1 --preset ethics
+.venv/bin/ethnos structure 1
 ```
 
 The `structure` step is expensive because it calls Ollama. By default it
@@ -92,6 +119,15 @@ processes only core/unlabeled chunks and skips admin/support chunks. Use
 chunk. Do not run long structure passes inside Codex during baseline
 stabilization unless explicitly requested.
 
+`history.pdf` can be rebuilt the same way, but it still needs a section-label
+preset or manual labeling before role-filtered retrieval is meaningful:
+
+```bash
+.venv/bin/ethnos ingest-pdf data/incoming/history.pdf
+.venv/bin/ethnos chunk 2
+.venv/bin/ethnos structure 2
+```
+
 To back up the current processed database manually, copy
 `data/ethnos.sqlite` to another file under `data/` or to a location outside the
 repo. Database backups should stay ignored local data and should not be
@@ -99,6 +135,7 @@ committed.
 
 ## Next Sensible Project Areas
 
+- Label `history.pdf` pages/chunks or add a history section preset.
 - Add a small troubleshooting guide for Ollama connection and model-loading failures.
 - Clarify how traces should be inspected when an answer looks suspicious.
 - Tighten tests around chat continuation behavior.

@@ -20,9 +20,12 @@ from ethnos.ollama_client import (
     _answer_chat_request_kwargs,
     _chat_request_kwargs,
     _mc_chat_request_kwargs,
+    _ollama_options,
     _ollama_schema,
     _repair_prompt,
     _response_summary,
+    _validate_choice_response,
+    _validate_essay_response,
     _validate_mc_response,
 )
 from ethnos.models import ExtractionResult
@@ -232,6 +235,28 @@ def test_mc_chat_request_uses_json_schema_and_forces_think_false():
     assert "stream" not in kwargs
 
 
+def test_ollama_options_can_include_env_thread_count(monkeypatch):
+    monkeypatch.setenv("ETHNOS_OLLAMA_NUM_THREAD", "4")
+
+    assert _ollama_options(num_predict=128, num_ctx=4096) == {
+        "temperature": 0,
+        "num_predict": 128,
+        "num_ctx": 4096,
+        "num_thread": 4,
+    }
+
+
+def test_ollama_options_rejects_invalid_env_thread_count(monkeypatch):
+    monkeypatch.setenv("ETHNOS_OLLAMA_NUM_THREAD", "0")
+
+    try:
+        _ollama_options(num_predict=128, num_ctx=4096)
+    except ValueError as exc:
+        assert "ETHNOS_OLLAMA_NUM_THREAD must be a positive integer" in str(exc)
+    else:
+        raise AssertionError("Expected invalid ETHNOS_OLLAMA_NUM_THREAD to fail")
+
+
 def test_validate_mc_response_accepts_valid_json():
     result = _validate_mc_response("prompt", '{"selected_option":"C"}')
 
@@ -258,6 +283,45 @@ def test_validate_mc_response_rejects_invalid_json_and_option():
     assert invalid_option.selected_option is None
     assert invalid_for_true_false.validation_status == "invalid_option"
     assert empty.validation_status == "empty_response"
+
+
+def test_validate_choice_response_requires_schema_fields():
+    valid = _validate_choice_response(
+        "prompt",
+        '{"selected_option":"A","evidence":"From context.","source_citations":["p. 1"]}',
+        allowed_options=["A", "B"],
+    )
+    missing = _validate_choice_response(
+        "prompt",
+        '{"selected_option":"A"}',
+        allowed_options=["A", "B"],
+    )
+
+    assert valid.validation_status == "valid"
+    assert valid.selected_option == "A"
+    assert missing.validation_status == "validation_error"
+    assert "missing required field" in missing.validation_error
+
+
+def test_validate_essay_response_requires_schema_fields():
+    valid = _validate_essay_response(
+        "prompt",
+        json.dumps(
+            {
+                "answer": "Virtue ethics emphasizes character.",
+                "key_points": ["Character"],
+                "rubric": ["Mentions character"],
+                "source_citations": ["p. 1"],
+                "limitations": [],
+            }
+        ),
+    )
+    missing = _validate_essay_response("prompt", '{"answer":"Short answer"}')
+
+    assert valid.validation_status == "valid"
+    assert valid.answer == "Virtue ethics emphasizes character."
+    assert missing.validation_status == "validation_error"
+    assert "missing required field" in missing.validation_error
 
 
 def test_answer_mc_question_uses_client_and_validates_response():

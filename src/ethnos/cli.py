@@ -42,7 +42,14 @@ from .db import (
     structure_status,
 )
 from .export import export_json, export_markdown, export_study
-from .ollama_client import answer_mc_question, answer_question, create_client, extract_chunk
+from .ollama_client import (
+    answer_choice_question,
+    answer_essay_question,
+    answer_mc_question,
+    answer_question,
+    create_client,
+    extract_chunk,
+)
 from .pdf_extract import extract_pdf
 from .qa import (
     benchmark_hit,
@@ -55,12 +62,24 @@ from .qa import (
     retrieve_with_fallbacks,
     summarize_answer_items,
 )
+from .quiz_compare import (
+    compare_mc_bench_reports,
+    load_mc_bench_report,
+)
 from .quiz import (
+    build_choice_prompt,
+    build_essay_prompt,
     build_mc_prompt,
     compact_question_with_options,
     generate_quiz,
+    import_canvas_quiz,
     import_lms_mc_quiz,
     load_quiz,
+)
+from .quiz_validation import (
+    normalize_review_text as _normalize_review_text,
+    validate_mc_quiz_item as _validate_mc_quiz_item,
+    validate_quiz_item as _validate_quiz_item,
 )
 from .section_presets import CONTENT_ROLES, PRESETS, SECTION_LABELS, get_section_preset
 
@@ -407,6 +426,28 @@ def build_parser() -> argparse.ArgumentParser:
         help="Print each keyed answer after writing the imported quiz.",
     )
 
+    import_canvas_parser = _command(
+        subcommands,
+        "import-canvas-quiz",
+        "Convert pasted Canvas quiz text into external mixed quiz JSON.",
+        import_canvas_quiz_cmd,
+    )
+    import_canvas_parser.add_argument("input", type=Path)
+    import_canvas_parser.add_argument("--output", type=Path, required=True)
+    import_canvas_parser.add_argument("--document-id", type=int)
+    import_canvas_parser.add_argument("--title")
+    import_canvas_parser.add_argument("--answer-key", type=Path)
+    import_canvas_parser.add_argument(
+        "--id-prefix",
+        default="q",
+        help="Question id prefix before the zero-padded number, e.g. ch1-q.",
+    )
+    import_canvas_parser.add_argument(
+        "--with-key-preview",
+        action="store_true",
+        help="Print each keyed choice answer after writing the imported quiz.",
+    )
+
     review_mc_parser = _command(
         subcommands,
         "review-mc-quiz",
@@ -445,6 +486,56 @@ def build_parser() -> argparse.ArgumentParser:
     suggest_mc_parser.add_argument("--role", choices=ASK_ROLES, default="core")
     suggest_mc_parser.add_argument("--section", choices=sorted(SECTION_LABELS))
     suggest_mc_parser.add_argument("--output", type=Path)
+
+    review_quiz_parser = _command(
+        subcommands,
+        "review-quiz",
+        "Print a mixed quiz with keyed answers and warnings marked for review.",
+        review_quiz_cmd,
+    )
+    review_quiz_parser.add_argument("quiz", type=Path)
+    review_quiz_parser.add_argument("--max-questions", type=int)
+
+    validate_quiz_parser = _command(
+        subcommands,
+        "validate-quiz",
+        "Validate mixed quiz keys, completion, and source anchors without Ollama.",
+        validate_quiz_cmd,
+    )
+    validate_quiz_parser.add_argument("document_id", type=int)
+    validate_quiz_parser.add_argument("--quiz", type=Path, required=True)
+    validate_quiz_parser.add_argument("--max-questions", type=int)
+    validate_quiz_parser.add_argument(
+        "--require-anchors",
+        action="store_true",
+        help="Require target, source_chunks, source_pages, and source_citation on every item.",
+    )
+    validate_quiz_parser.add_argument(
+        "--strict-complete",
+        action="store_true",
+        help="Treat incomplete matching items and other import warnings as errors.",
+    )
+
+    quiz_bench_parser = _command(
+        subcommands,
+        "quiz-bench",
+        "Run a mixed quiz benchmark using retrieved local PDF context.",
+        quiz_bench_cmd,
+    )
+    quiz_bench_parser.add_argument("document_id", type=int)
+    quiz_bench_parser.add_argument("--quiz", type=Path, required=True)
+    quiz_bench_parser.add_argument("--max-questions", type=int)
+    quiz_bench_parser.add_argument("--limit", type=int, default=3)
+    quiz_bench_parser.add_argument("--chars", type=int, default=900)
+    quiz_bench_parser.add_argument("--output", type=Path)
+    quiz_bench_parser.add_argument("--role", choices=ASK_ROLES, default="core")
+    quiz_bench_parser.add_argument("--section", choices=sorted(SECTION_LABELS))
+    quiz_bench_parser.add_argument("--options-retrieval", action="store_true")
+    quiz_bench_parser.add_argument("--debug-ollama", action="store_true")
+    quiz_bench_parser.add_argument("--debug-retrieval", action="store_true")
+    quiz_bench_parser.add_argument("--model", help="Ollama model name.")
+    quiz_bench_parser.add_argument("--num-predict", type=int)
+    quiz_bench_parser.add_argument("--num-ctx", type=int)
 
     json_parser = _command(subcommands, "export-json", "Export document data as JSON.", export_json_cmd)
     json_parser.add_argument("document_id", type=int)
@@ -521,6 +612,16 @@ def extract(args: argparse.Namespace) -> int:
 
 def chunk_document(args: argparse.Namespace) -> int:
     _, conn = open_db(args)
+    if args.target_chars < 1:
+        raise SystemExit("--target-chars must be 1 or greater.")
+    if args.max_chars < 1:
+        raise SystemExit("--max-chars must be 1 or greater.")
+    if args.overlap_chars < 0:
+        raise SystemExit("--overlap-chars must be 0 or greater.")
+    if args.overlap_chars >= args.max_chars:
+        raise SystemExit("--overlap-chars must be less than --max-chars.")
+    if args.target_chars > args.max_chars:
+        raise SystemExit("--target-chars must be less than or equal to --max-chars.")
     document = get_document(conn, args.document_id)
     pages = list_pages(conn, args.document_id)
     chunks = build_chunks(
@@ -1588,6 +1689,38 @@ def import_mc_quiz_cmd(args: argparse.Namespace) -> int:
     return 0
 
 
+def import_canvas_quiz_cmd(args: argparse.Namespace) -> int:
+    raw_text = args.input.read_text(encoding="utf-8")
+    answer_key_text = (
+        args.answer_key.read_text(encoding="utf-8") if args.answer_key is not None else None
+    )
+    try:
+        quiz = import_canvas_quiz(
+            raw_text,
+            document_id=args.document_id,
+            title=args.title,
+            answer_key_text=answer_key_text,
+            id_prefix=args.id_prefix,
+        )
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(json.dumps(quiz, indent=2, sort_keys=True), encoding="utf-8")
+    keyed_count = sum(1 for item in quiz["questions"] if "correct" in item)
+    warning_count = sum(len(item.get("warnings", [])) for item in quiz["questions"])
+    print(f"Imported Canvas quiz: {args.output}")
+    print(f"  source: {args.input}")
+    print(f"  title: {quiz.get('title') or 'Imported Canvas Quiz'}")
+    print(f"  questions: {len(quiz['questions'])}")
+    print(f"  total points: {quiz.get('total_points') or 0}")
+    print(f"  keyed choices: {keyed_count}")
+    print(f"  warnings: {warning_count}")
+    if args.with_key_preview:
+        print()
+        _print_quiz_preview(quiz["questions"], include_options=False)
+    return 0
+
+
 def review_mc_quiz_cmd(args: argparse.Namespace) -> int:
     if args.max_questions is not None and args.max_questions < 1:
         raise SystemExit("--max-questions must be 1 or greater.")
@@ -1604,10 +1737,29 @@ def review_mc_quiz_cmd(args: argparse.Namespace) -> int:
     return 0
 
 
+def review_quiz_cmd(args: argparse.Namespace) -> int:
+    if args.max_questions is not None and args.max_questions < 1:
+        raise SystemExit("--max-questions must be 1 or greater.")
+    quiz = load_quiz(args.quiz)
+    items = limit_benchmark_items(quiz["questions"], args.max_questions)
+    keyed_count = sum(1 for item in items if "correct" in item)
+    warning_count = sum(len(item.get("warnings", [])) for item in items)
+    print("Quiz review")
+    print(f"  quiz: {args.quiz}")
+    print(f"  title: {quiz.get('title') or 'n/a'}")
+    print(f"  questions: {len(items)}")
+    print(f"  keyed choices: {keyed_count}")
+    print(f"  warnings: {warning_count}")
+    print()
+    _print_quiz_preview(items, include_options=True)
+    return 0
+
+
 def validate_mc_quiz_cmd(args: argparse.Namespace) -> int:
     _, conn = open_db(args)
     if args.max_questions is not None and args.max_questions < 1:
         raise SystemExit("--max-questions must be 1 or greater.")
+    get_document(conn, args.document_id)
     try:
         quiz = load_quiz(args.quiz)
     except ValueError as exc:
@@ -1635,6 +1787,56 @@ def validate_mc_quiz_cmd(args: argparse.Namespace) -> int:
             args.document_id,
             item,
             require_anchors=args.require_anchors,
+        )
+        if item_errors:
+            error_count += len(item_errors)
+            print(f"{item['id']}: error")
+            for error in item_errors:
+                print(f"  - {error}")
+        else:
+            print(f"{item['id']}: ok")
+
+    print()
+    print(f"Validation {'failed' if error_count else 'passed'}")
+    print(f"  errors: {error_count}")
+    return 1 if error_count else 0
+
+
+def validate_quiz_cmd(args: argparse.Namespace) -> int:
+    _, conn = open_db(args)
+    if args.max_questions is not None and args.max_questions < 1:
+        raise SystemExit("--max-questions must be 1 or greater.")
+    get_document(conn, args.document_id)
+    try:
+        quiz = load_quiz(args.quiz)
+    except ValueError as exc:
+        print("Quiz validation")
+        print(f"  document id: {args.document_id}")
+        print(f"  quiz: {args.quiz}")
+        print()
+        print("Validation failed")
+        print("  errors: 1")
+        print(f"  - {exc}")
+        return 1
+    items = limit_benchmark_items(quiz["questions"], args.max_questions)
+    error_count = 0
+
+    print("Quiz validation")
+    print(f"  document id: {args.document_id}")
+    print(f"  quiz: {args.quiz}")
+    print(f"  questions: {len(items)}")
+    print(f"  require anchors: {'yes' if args.require_anchors else 'no'}")
+    print(f"  strict complete: {'yes' if args.strict_complete else 'no'}")
+    print()
+
+    for item in items:
+        item_errors = _validate_quiz_item(
+            conn,
+            args.document_id,
+            item,
+            require_anchors=args.require_anchors,
+            strict_complete=args.strict_complete,
+            require_key=False,
         )
         if item_errors:
             error_count += len(item_errors)
@@ -1817,74 +2019,6 @@ def _anchor_snippet(text: str, target: str, max_chars: int) -> str:
     return snippet
 
 
-def _validate_mc_quiz_item(
-    conn,
-    document_id: int,
-    item: dict[str, object],
-    *,
-    require_anchors: bool,
-) -> list[str]:
-    errors = []
-    if "correct" not in item:
-        errors.append("missing correct answer")
-    question_type = str(item.get("question_type") or "multiple_choice")
-    if question_type not in {"multiple_choice", "true_false"}:
-        errors.append("question_type must be multiple_choice or true_false")
-    if question_type == "true_false":
-        options = item.get("options")
-        if not _is_true_false_item_options(options):
-            errors.append("true_false items must use exactly A=True and B=False")
-    anchor_fields = ("target", "source_chunks", "source_pages", "source_citation")
-    if require_anchors:
-        for field in anchor_fields:
-            if not item.get(field):
-                errors.append(f"missing {field}")
-
-    chunk_ids = item.get("source_chunks") or []
-    if not isinstance(chunk_ids, list):
-        errors.append("source_chunks must be a list")
-        chunk_ids = []
-    chunk_rows = []
-    for chunk_id in chunk_ids:
-        row = conn.execute(
-            """
-            SELECT id, source_citation, text
-            FROM chunks
-            WHERE id = ? AND document_id = ?
-            """,
-            (chunk_id, document_id),
-        ).fetchone()
-        if row is None:
-            errors.append(f"source chunk {chunk_id} not found for document {document_id}")
-        else:
-            chunk_rows.append(row)
-
-    target = str(item.get("target") or "").strip()
-    if target and chunk_rows:
-        source_text = _normalize_review_text(" ".join(row["text"] for row in chunk_rows))
-        if _normalize_review_text(target) not in source_text:
-            errors.append("target phrase not found in source_chunks text")
-    source_citation = str(item.get("source_citation") or "").strip()
-    if source_citation and chunk_rows:
-        citations = {str(row["source_citation"]) for row in chunk_rows}
-        if source_citation not in citations:
-            errors.append("source_citation does not match any source_chunks citation")
-    return errors
-
-
-def _normalize_review_text(value: str) -> str:
-    return " ".join(value.lower().replace("-", " ").split())
-
-
-def _is_true_false_item_options(options: object) -> bool:
-    return (
-        isinstance(options, dict)
-        and tuple(options) == ("A", "B")
-        and _normalize_review_text(str(options["A"])) == "true"
-        and _normalize_review_text(str(options["B"])) == "false"
-    )
-
-
 def _add_selected_option_provenance(
     report_item: dict[str, object],
     item: dict[str, object],
@@ -1935,6 +2069,309 @@ def _print_mc_key_preview(
         print()
 
 
+def _print_quiz_preview(
+    items: list[dict[str, object]], *, include_options: bool = False
+) -> None:
+    for item in items:
+        question_type = str(item.get("question_type") or "multiple_choice")
+        options = item.get("options") if isinstance(item.get("options"), dict) else {}
+        correct = item.get("correct")
+        correct_text = options.get(correct) if isinstance(correct, str) else None
+        print(f"{item['id']}: {item['question']}")
+        print(f"  type: {question_type}")
+        if item.get("points") is not None:
+            print(f"  points: {item['points']}")
+        if item.get("warnings"):
+            print(f"  warnings: {', '.join(str(w) for w in item['warnings'])}")
+        if question_type in {"multiple_choice", "true_false"}:
+            if correct:
+                print(f"  keyed: {correct} - {correct_text or 'n/a'}")
+            else:
+                print("  keyed: unkeyed")
+            if include_options:
+                for label, text in options.items():
+                    marker = "  <-- keyed" if label == correct else ""
+                    print(f"  {label}. {text}{marker}")
+        elif question_type == "matching":
+            prompts = item.get("matching_prompts") or []
+            print(f"  matching prompts: {len(prompts) if isinstance(prompts, list) else 0}")
+            if include_options and isinstance(prompts, list):
+                for prompt in prompts:
+                    print(f"  - {prompt}")
+        elif question_type == "essay":
+            if item.get("submitted_response"):
+                print("  submitted response: present")
+        print()
+
+
+def quiz_bench_cmd(args: argparse.Namespace) -> int:
+    settings, conn = open_db(args)
+    if args.limit < 1:
+        raise SystemExit("--limit must be 1 or greater.")
+    if args.chars < 1:
+        raise SystemExit("--chars must be 1 or greater.")
+    if args.max_questions is not None and args.max_questions < 1:
+        raise SystemExit("--max-questions must be 1 or greater.")
+    num_predict = (
+        args.num_predict
+        if args.num_predict is not None
+        else settings.ollama_answer_num_predict
+    )
+    num_ctx = ollama_num_ctx(args, settings)
+    if num_predict < 1:
+        raise SystemExit("--num-predict must be 1 or greater.")
+    if num_ctx < 1:
+        raise SystemExit("--num-ctx must be 1 or greater.")
+
+    quiz = load_quiz(args.quiz)
+    items = limit_benchmark_items(quiz["questions"], args.max_questions)
+    selected_role = normalize_answer_role(args.role)
+    model_name = args.model or settings.ollama_model
+    started_at = time.monotonic()
+    ollama_client = None
+    report_items = []
+    keyed_total = correct_count = scored_total = no_context_count = invalid_count = 0
+    answered_unscored_count = drafted_count = skipped_incomplete_count = 0
+
+    print("Quiz benchmark")
+    print(f"  document id: {args.document_id}")
+    print(f"  quiz: {args.quiz}")
+    print(f"  model: {model_name}")
+    print(f"  questions: {len(items)}")
+    print()
+
+    for index, item in enumerate(items, start=1):
+        item_started_at = time.monotonic()
+        question_type = str(item.get("question_type") or "multiple_choice")
+        keyed = question_type in {"multiple_choice", "true_false"} and "correct" in item
+        keyed_total += int(keyed)
+        selected_option = None
+        validation_status = None
+        validation_error = None
+        raw_response = ""
+        answer_elapsed = None
+        answer_payload: dict[str, object] = {}
+        retrieval, retrieval_questions = _retrieve_quiz_context_for_item(
+            conn,
+            document_id=args.document_id,
+            item=item,
+            limit=args.limit,
+            role=selected_role,
+            section=args.section,
+        )
+        if (
+            not retrieval.rows
+            and args.options_retrieval
+            and question_type in {"multiple_choice", "true_false"}
+        ):
+            option_query = compact_question_with_options(item)
+            retrieval_questions.append(option_query)
+            retrieval = _retrieve_mc_context(
+                conn,
+                document_id=args.document_id,
+                question=option_query,
+                limit=args.limit,
+                role=selected_role,
+                section=args.section,
+            )
+        context_rows = _add_quiz_source_context(
+            conn,
+            args.document_id,
+            retrieval.rows,
+            item,
+            role=selected_role,
+            section=args.section,
+        )
+        selected_chunks = [row["id"] for row in context_rows]
+        selected_citations = [row["source_citation"] for row in context_rows]
+
+        print(f"{item['id']}: {item['question']}")
+        print(f"  type: {question_type}")
+        if args.debug_retrieval:
+            _print_retrieval_debug(retrieval)
+        print(f"  selected chunks: {', '.join(str(chunk) for chunk in selected_chunks) or 'none'}")
+
+        if question_type == "matching" and "incomplete_matching_item" in item.get(
+            "warnings", []
+        ):
+            status = "skipped_incomplete"
+            skipped_incomplete_count += 1
+            print("  status: skipped_incomplete")
+        elif question_type == "matching":
+            status = "skipped_matching"
+            print("  status: skipped_matching")
+        elif not context_rows:
+            status = "no_context"
+            no_context_count += 1
+            print("  status: no_context")
+        elif question_type in {"multiple_choice", "true_false"}:
+            prompt_item = {
+                **item,
+                "_context_target": retrieval.selected_query or "",
+            }
+            prompt = build_choice_prompt(prompt_item, context_rows, max_chars=args.chars)
+            answer_started_at = time.monotonic()
+            print(progress_line(model_name, index, len(items), item["id"]), flush=True)
+            if ollama_client is None:
+                ollama_client = create_client(settings.ollama_host, settings.ollama_timeout)
+            result = answer_choice_question(
+                prompt=prompt,
+                model_name=model_name,
+                host=settings.ollama_host,
+                timeout=settings.ollama_timeout,
+                num_predict=num_predict,
+                num_ctx=num_ctx,
+                allowed_options=tuple(item["options"].keys()),
+                client=ollama_client,
+            )
+            answer_elapsed = time.monotonic() - answer_started_at
+            selected_option = result.selected_option
+            validation_status = result.validation_status
+            validation_error = result.validation_error
+            raw_response = result.raw_response
+            answer_payload = {
+                "evidence": result.evidence,
+                "source_citations": result.source_citations,
+            }
+            if args.debug_ollama:
+                _print_ollama_debug(None, result.debug_info)
+            if result.validation_status != "valid":
+                status = "invalid_response"
+                invalid_count += 1
+            elif keyed:
+                scored_total += 1
+                is_correct = result.selected_option == item["correct"]
+                correct_count += int(is_correct)
+                status = "correct" if is_correct else "incorrect"
+            else:
+                status = "answered_unscored"
+                answered_unscored_count += 1
+            print(f"  selected option: {selected_option or 'none'}")
+            if keyed:
+                print(f"  correct option: {item['correct']}")
+            print(f"  validation: {validation_status}")
+            print(f"  status: {status}")
+        elif question_type == "essay":
+            prompt_item = {
+                **item,
+                "_context_target": retrieval.selected_query or "",
+            }
+            prompt = build_essay_prompt(prompt_item, context_rows, max_chars=args.chars)
+            answer_started_at = time.monotonic()
+            print(progress_line(model_name, index, len(items), item["id"]), flush=True)
+            if ollama_client is None:
+                ollama_client = create_client(settings.ollama_host, settings.ollama_timeout)
+            result = answer_essay_question(
+                prompt=prompt,
+                model_name=model_name,
+                host=settings.ollama_host,
+                timeout=settings.ollama_timeout,
+                num_predict=num_predict,
+                num_ctx=num_ctx,
+                client=ollama_client,
+            )
+            answer_elapsed = time.monotonic() - answer_started_at
+            validation_status = result.validation_status
+            validation_error = result.validation_error
+            raw_response = result.raw_response
+            answer_payload = {
+                "answer": result.answer,
+                "key_points": result.key_points,
+                "rubric": result.rubric,
+                "source_citations": result.source_citations,
+                "limitations": result.limitations,
+            }
+            if args.debug_ollama:
+                _print_ollama_debug(None, result.debug_info)
+            if result.validation_status == "valid":
+                status = "drafted"
+                drafted_count += 1
+            else:
+                status = "invalid_response"
+                invalid_count += 1
+            print(f"  validation: {validation_status}")
+            print(f"  status: {status}")
+        else:
+            status = "unsupported"
+            print("  status: unsupported")
+        print()
+
+        item_elapsed = time.monotonic() - item_started_at
+        options = item.get("options") if isinstance(item.get("options"), dict) else {}
+        report_item = {
+            "id": item["id"],
+            "position": item.get("position"),
+            "question": item["question"],
+            "question_type": question_type,
+            "points": item.get("points"),
+            "options": options,
+            "warnings": item.get("warnings", []),
+            "target": item.get("target"),
+            "selected_option": selected_option,
+            "selected_option_text": options.get(selected_option) if selected_option else None,
+            "validation_status": validation_status,
+            "validation_error": validation_error,
+            "selected_chunks": selected_chunks,
+            "selected_source_citations": selected_citations,
+            "queries_tried": retrieval.queries_tried,
+            "retrieval_questions": retrieval_questions,
+            "raw_response": raw_response,
+            "answer": answer_payload,
+            "timings": {
+                "item_seconds": item_elapsed,
+                "answer_seconds": answer_elapsed,
+            },
+            "status": status,
+        }
+        if keyed:
+            report_item["correct"] = item["correct"]
+            report_item["correct_option_text"] = options.get(item["correct"])
+            report_item["is_correct"] = status == "correct"
+            _add_selected_option_provenance(report_item, item, selected_option)
+        if question_type == "matching":
+            report_item["matching_prompts"] = item.get("matching_prompts", [])
+            report_item["matching_pairs"] = item.get("matching_pairs", [])
+        report_items.append(report_item)
+
+    elapsed = time.monotonic() - started_at
+    accuracy = correct_count / scored_total if scored_total else None
+    print("Quiz benchmark summary:")
+    print(f"  total: {len(items)}")
+    print(f"  keyed total: {keyed_total}")
+    print(f"  scored total: {scored_total}")
+    print(f"  correct: {correct_count}")
+    print(f"  accuracy: {accuracy:.1%}" if accuracy is not None else "  accuracy: n/a")
+    print(f"  answered unscored: {answered_unscored_count}")
+    print(f"  essays drafted: {drafted_count}")
+    print(f"  skipped incomplete: {skipped_incomplete_count}")
+    print(f"  no-context cases: {no_context_count}")
+    print(f"  invalid responses: {invalid_count}")
+    print(f"  elapsed: {format_elapsed(elapsed)}")
+
+    if args.output:
+        report = {
+            "document_id": args.document_id,
+            "quiz": str(args.quiz),
+            "model": model_name,
+            "total": len(items),
+            "keyed_total": keyed_total,
+            "scored_total": scored_total,
+            "correct_count": correct_count,
+            "accuracy": accuracy,
+            "answered_unscored_count": answered_unscored_count,
+            "drafted_count": drafted_count,
+            "skipped_incomplete_count": skipped_incomplete_count,
+            "no_context_count": no_context_count,
+            "invalid_response_count": invalid_count,
+            "elapsed_seconds": elapsed,
+            "items": report_items,
+        }
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
+        print(f"  wrote report: {args.output}")
+    return 0
+
+
 def mc_bench_cmd(args: argparse.Namespace) -> int:
     settings, conn = open_db(args)
     if args.limit < 1:
@@ -1970,28 +2407,14 @@ def mc_bench_cmd(args: argparse.Namespace) -> int:
         item_started_at = time.monotonic()
         keyed = "correct" in item
         keyed_total += int(keyed)
-        retrieval = _retrieve_mc_context(
+        retrieval, retrieval_questions = _retrieve_quiz_context_for_item(
             conn,
             document_id=args.document_id,
-            question=item["question"],
+            item=item,
             limit=args.limit,
             role=selected_role,
             section=args.section,
         )
-        retrieval_questions = [item["question"]]
-        if not retrieval.rows:
-            for hinted_query in _mc_retrieval_query_hints(item):
-                retrieval_questions.append(str(hinted_query))
-                retrieval = _retrieve_mc_context(
-                    conn,
-                    document_id=args.document_id,
-                    question=str(hinted_query),
-                    limit=args.limit,
-                    role=selected_role,
-                    section=args.section,
-                )
-                if retrieval.rows:
-                    break
         if not retrieval.rows and args.options_retrieval:
             option_query = compact_question_with_options(item)
             retrieval_questions.append(option_query)
@@ -2137,8 +2560,11 @@ def mc_bench_cmd(args: argparse.Namespace) -> int:
 
 
 def mc_compare_cmd(args: argparse.Namespace) -> int:
-    baseline = _load_mc_bench_report(args.baseline, "baseline")
-    candidate = _load_mc_bench_report(args.candidate, "candidate")
+    try:
+        baseline = load_mc_bench_report(args.baseline, "baseline")
+        candidate = load_mc_bench_report(args.candidate, "candidate")
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
     comparison = compare_mc_bench_reports(baseline, candidate)
 
     print("MC benchmark comparison")
@@ -2170,120 +2596,6 @@ def mc_compare_cmd(args: argparse.Namespace) -> int:
         )
         print(f"  wrote comparison: {args.output}")
     return 0
-
-
-def _load_mc_bench_report(path: Path, label: str) -> dict[str, object]:
-    try:
-        report = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        raise SystemExit(f"{label} report is not valid JSON: {path}") from exc
-    if not isinstance(report, dict) or not isinstance(report.get("items"), list):
-        raise SystemExit(f"{label} report must be an mc-bench JSON object with items")
-    return report
-
-
-def compare_mc_bench_reports(
-    baseline: dict[str, object], candidate: dict[str, object]
-) -> dict[str, object]:
-    baseline_items = _mc_report_items_by_id(baseline)
-    candidate_items = _mc_report_items_by_id(candidate)
-    common_ids = sorted(set(baseline_items) & set(candidate_items))
-    added_ids = sorted(set(candidate_items) - set(baseline_items))
-    removed_ids = sorted(set(baseline_items) - set(candidate_items))
-
-    correct_to_incorrect = []
-    incorrect_to_correct = []
-    answer_changes = []
-    retrieval_changes = []
-    for item_id in common_ids:
-        before = baseline_items[item_id]
-        after = candidate_items[item_id]
-        before_correct = _mc_item_correctness(before)
-        after_correct = _mc_item_correctness(after)
-        change = _mc_item_change(item_id, before, after)
-        if before_correct is True and after_correct is False:
-            correct_to_incorrect.append(change)
-        elif before_correct is False and after_correct is True:
-            incorrect_to_correct.append(change)
-        if before.get("selected_option") != after.get("selected_option"):
-            answer_changes.append(change)
-        if _mc_retrieval_signature(before) != _mc_retrieval_signature(after):
-            retrieval_changes.append(change)
-
-    baseline_accuracy = _optional_float(baseline.get("accuracy"))
-    candidate_accuracy = _optional_float(candidate.get("accuracy"))
-    accuracy_delta = (
-        candidate_accuracy - baseline_accuracy
-        if baseline_accuracy is not None and candidate_accuracy is not None
-        else None
-    )
-    return {
-        "baseline_model": baseline.get("model"),
-        "candidate_model": candidate.get("model"),
-        "baseline_accuracy": baseline_accuracy,
-        "candidate_accuracy": candidate_accuracy,
-        "accuracy_delta": accuracy_delta,
-        "baseline_total": baseline.get("total"),
-        "candidate_total": candidate.get("total"),
-        "common_count": len(common_ids),
-        "added_item_ids": added_ids,
-        "removed_item_ids": removed_ids,
-        "correct_to_incorrect": correct_to_incorrect,
-        "incorrect_to_correct": incorrect_to_correct,
-        "answer_changes": answer_changes,
-        "retrieval_changes": retrieval_changes,
-    }
-
-
-def _mc_report_items_by_id(report: dict[str, object]) -> dict[str, dict[str, object]]:
-    items_by_id = {}
-    for item in report.get("items", []):
-        if isinstance(item, dict) and item.get("id") is not None:
-            items_by_id[str(item["id"])] = item
-    return items_by_id
-
-
-def _mc_item_correctness(item: dict[str, object]) -> bool | None:
-    value = item.get("is_correct")
-    return value if isinstance(value, bool) else None
-
-
-def _mc_item_change(
-    item_id: str, before: dict[str, object], after: dict[str, object]
-) -> dict[str, object]:
-    return {
-        "id": item_id,
-        "question": before.get("question") or after.get("question"),
-        "before_status": before.get("status"),
-        "after_status": after.get("status"),
-        "before_selected_option": before.get("selected_option"),
-        "after_selected_option": after.get("selected_option"),
-        "before_selected_option_text": before.get("selected_option_text"),
-        "after_selected_option_text": after.get("selected_option_text"),
-        "correct": before.get("correct") or after.get("correct"),
-        "before_chunks": before.get("selected_chunks", []),
-        "after_chunks": after.get("selected_chunks", []),
-        "before_queries": before.get("retrieval_questions")
-        or before.get("queries_tried", []),
-        "after_queries": after.get("retrieval_questions")
-        or after.get("queries_tried", []),
-    }
-
-
-def _mc_retrieval_signature(item: dict[str, object]) -> tuple[tuple[object, ...], tuple[object, ...]]:
-    chunks = item.get("selected_chunks", [])
-    queries = item.get("retrieval_questions") or item.get("queries_tried", [])
-    return (_tuple_list(chunks), _tuple_list(queries))
-
-
-def _tuple_list(value: object) -> tuple[object, ...]:
-    return tuple(value) if isinstance(value, list) else ()
-
-
-def _optional_float(value: object) -> float | None:
-    if isinstance(value, int | float):
-        return float(value)
-    return None
 
 
 def _format_accuracy(value: object) -> str:
@@ -2610,6 +2922,66 @@ def _retrieve_mc_context(
     )
 
 
+def _retrieve_quiz_context_for_item(
+    conn,
+    *,
+    document_id: int,
+    item: dict[str, object],
+    limit: int,
+    role: str | None,
+    section: str | None,
+):
+    retrieval = None
+    retrieval_questions = _quiz_retrieval_report_questions(item)
+    for query in _quiz_retrieval_query_order(item):
+        retrieval = _retrieve_mc_context(
+            conn,
+            document_id=document_id,
+            question=query,
+            limit=limit,
+            role=role,
+            section=section,
+        )
+        if retrieval.rows:
+            return retrieval, retrieval_questions
+    if retrieval is None:
+        retrieval = _retrieve_mc_context(
+            conn,
+            document_id=document_id,
+            question=str(item["question"]),
+            limit=limit,
+            role=role,
+            section=section,
+        )
+    return retrieval, retrieval_questions
+
+
+def _quiz_retrieval_report_questions(item: dict[str, object]) -> list[str]:
+    return _dedupe_quiz_queries(
+        [
+            str(item["question"]),
+            *[str(query) for query in _mc_retrieval_query_hints(item)],
+        ]
+    )
+
+
+def _quiz_retrieval_query_order(item: dict[str, object]) -> list[str]:
+    candidates = [*list(_mc_retrieval_query_hints(item)), str(item["question"])]
+    return _dedupe_quiz_queries(candidates)
+
+
+def _dedupe_quiz_queries(candidates: list[object]) -> list[str]:
+    queries = []
+    seen = set()
+    for candidate in candidates:
+        query = " ".join(candidate.split())
+        key = _normalize_review_text(query)
+        if query and key not in seen:
+            seen.add(key)
+            queries.append(query)
+    return queries
+
+
 def _add_quiz_source_context(
     conn,
     document_id: int,
@@ -2627,18 +2999,8 @@ def _add_quiz_source_context(
             continue
     if not source_chunks:
         return rows
-    seen = {int(row["id"]) for row in rows}
-    missing = [chunk_id for chunk_id in source_chunks if chunk_id not in seen]
-    if not missing:
-        return rows
-    filters = ["id IN (" + ", ".join("?" for _ in missing) + ")", "document_id = ?"]
-    params: list[object] = [*missing, document_id]
-    if role is not None:
-        filters.append("content_role = ?")
-        params.append(role)
-    if section is not None:
-        filters.append("section_label = ?")
-        params.append(section)
+    filters = ["id IN (" + ", ".join("?" for _ in source_chunks) + ")", "document_id = ?"]
+    params: list[object] = [*source_chunks, document_id]
     source_rows = conn.execute(
         f"""
         SELECT
@@ -2659,8 +3021,9 @@ def _add_quiz_source_context(
         params,
     ).fetchall()
     by_id = {int(row["id"]): dict(row) for row in source_rows}
-    prioritized = [by_id[chunk_id] for chunk_id in missing if chunk_id in by_id]
-    return prioritized + rows
+    anchored = [by_id[chunk_id] for chunk_id in source_chunks if chunk_id in by_id]
+    seen = {int(row["id"]) for row in anchored}
+    return anchored + [row for row in rows if int(row["id"]) not in seen]
 
 
 def _print_followup_debug(followup) -> None:

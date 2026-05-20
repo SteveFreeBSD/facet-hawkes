@@ -1,11 +1,12 @@
-# Multiple-Choice Quiz Generation and Benchmarking
+# Quiz Generation, Import, Validation, and Benchmarking
 
 ## Summary
 
 Ethnos supports local multiple-choice quiz generation, external LMS quiz import,
-pre-flight validation, source-anchor suggestion, and Ollama-backed MC
-benchmarking. The workflow now covers both generated quizzes and instructor/LMS
-quizzes:
+mixed Canvas quiz import, pre-flight validation, source-anchor suggestion, and
+Ollama-backed quiz benchmarking. Use the generic `review-quiz`, `validate-quiz`,
+and `quiz-bench` commands for new work; the MC-only commands remain for
+historical reports and compatibility.
 
 1. Generate or import a quiz.
 2. Apply or review the answer key.
@@ -70,16 +71,43 @@ own item difficulty metadata, and external quizzes may omit difficulty entirely.
   in the source PDF before benchmarking.
 - External items may also include `retrieval_questions` custom FTS queries used
   by anchor suggestion and benchmarking instead of relying only on the quiz
-  question text. The older `retrieval_queries` field remains accepted as an
-  alias.
+  question text.
+
+## Canvas Mixed Quiz Workflow
+
+- `ethnos import-canvas-quiz <input> --output <path> [--answer-key <path>]
+  [--document-id N] [--title T] [--id-prefix PREFIX] [--with-key-preview]`
+  converts pasted Canvas quiz text into `external-quiz-v2` JSON.
+- Mixed Canvas imports preserve question position and point values, ignore
+  `Flag question` noise, strip `Group of answer choices`, and support
+  `multiple_choice`, `true_false`, `matching`, and `essay` item types.
+- Numbered Canvas answer keys must reference existing choice questions; unknown
+  question numbers and non-choice targets fail import instead of being silently
+  skipped.
+- Incomplete matching items are preserved with
+  `warnings: ["incomplete_matching_item"]` instead of failing the import. Use
+  `validate-quiz --strict-complete` when incomplete items should fail a review
+  gate.
+- `ethnos review-quiz <quiz> [--max-questions N]` audits all mixed item types.
+  `ethnos validate-quiz <document_id> --quiz <path> [--require-anchors]
+  [--strict-complete]` validates keys, item shape, warnings, and source anchors.
+- `ethnos quiz-bench <document_id> --quiz <path> [--max-questions N]
+  [--limit N] [--chars N] [--output <path>] [--role core|support|admin|all]
+  [--section ...] [--options-retrieval] [--debug-ollama]
+  [--debug-retrieval] [--model M] [--num-predict N] [--num-ctx N]` benchmarks
+  mixed quizzes. Keyed choice items are scored, unkeyed choice items are
+  answered unscored with evidence, essay items receive a draft answer plus
+  rubric, and incomplete matching items are skipped without model calls.
 
 ## Validation And Anchoring
 
-- `ethnos review-mc-quiz <quiz> [--max-questions N]` prints keyed answers for a
-  quick human audit.
-- `ethnos validate-mc-quiz <document_id> --quiz <path> [--max-questions N]
-  [--require-anchors]` is the no-Ollama pre-flight gate. It validates option
-  labels, answer keys, true/false shape, duplicate option text, and, with
+- `ethnos review-quiz <quiz> [--max-questions N]` prints keyed answers, item
+  types, warnings, matching prompts, and essay-response presence for a quick
+  human audit.
+- `ethnos validate-quiz <document_id> --quiz <path> [--max-questions N]
+  [--require-anchors] [--strict-complete]` is the no-Ollama pre-flight gate. It
+  validates the document id, option labels, answer keys, true/false shape,
+  duplicate option text, matching prompt presence, import warnings, and, with
   `--require-anchors`, requires `target`, `source_chunks`, `source_pages`, and
   `source_citation` on every item.
 - `ethnos suggest-mc-anchors <document_id> --quiz <path> [--max-questions N]
@@ -96,7 +124,7 @@ uv run ethnos import-mc-quiz benchmarks/ethics_ch1_mc_raw.txt \
   --id-prefix ch1-q \
   --with-key-preview
 
-uv run ethnos validate-mc-quiz 1 \
+uv run ethnos validate-quiz 1 \
   --quiz data/runs/ethics_ch1_mc_imported.json \
   --require-anchors
 
@@ -104,45 +132,50 @@ uv run ethnos suggest-mc-anchors 1 \
   --quiz data/runs/ethics_ch1_mc_imported.json \
   --output data/runs/ethics_ch1_anchor_suggestions.json
 
-uv run ethnos mc-bench 1 \
+uv run ethnos quiz-bench 1 \
   --quiz data/runs/ethics_ch1_mc_imported.json \
-  --output data/runs/mc-bench-ethics-ch1.json
+  --output data/runs/quiz-bench-ethics-ch1.json
 ```
 
-## MC Benchmarking
+## Benchmarking
 
-- `ethnos mc-bench <document_id> --quiz <path> [--max-questions N]
+- `ethnos quiz-bench <document_id> --quiz <path> [--max-questions N]
   [--limit N] [--chars N] [--output <path>] [--role core|support|admin|all]
   [--section ...] [--options-retrieval] [--debug-ollama] [--debug-retrieval]
-  [--model M] [--num-predict N] [--num-ctx N]` benchmarks MC items against
-  retrieved local PDF context.
-- `--limit` remains retrieval chunk count and defaults to 3 for tighter MC
+  [--model M] [--num-predict N] [--num-ctx N]` benchmarks mixed quiz items
+  against retrieved local PDF context.
+- `--limit` remains retrieval chunk count and defaults to 3 for tighter quiz
   context after source-context injection. `--max-questions` truncates quiz item
-  count. `--chars` defaults to `900`, and MC `--num-predict` defaults to `32`.
-- `mc-bench` reuses one Ollama client, injects generated or anchored
-  `source_chunks` into context when available, skips model calls when no context
-  is found, and prints ASCII statuses such as `correct`, `incorrect`,
-  `unkeyed`, or `no_context`.
-- Retrieval uses `retrieval_questions` or `retrieval_queries` when present,
-  otherwise the question text. `--options-retrieval` is opt-in and retries
-  no-context items with compact question-plus-option text because option text can
-  bias retrieval toward distractor content.
-- The MC prompt includes question type, target term, source citation, options,
-  and target-centered context. The Ollama request forces `think=False` and uses a
-  structured `{selected_option: enum[...]}` response.
+  count. `--chars` defaults to `900`, and `--num-predict` defaults to the answer
+  budget so essay drafts have room to respond.
+- `quiz-bench` reuses one Ollama client, injects generated or anchored
+  `source_chunks` into context even when the active role/section filter would
+  exclude those anchors, skips model calls when no context is found, and prints
+  statuses such as `correct`, `incorrect`, `answered_unscored`, `drafted`,
+  `skipped_matching`, `skipped_incomplete`, or `no_context`.
+- Retrieval uses `retrieval_questions` when present, otherwise the question text.
+  `--options-retrieval` is opt-in and retries no-context choice items with
+  compact question-plus-option text because option text can bias retrieval toward
+  distractor content.
+- Choice prompts include question type, target term, source citation, options,
+  guidance for common quiz traps, and target-centered context. Essay prompts
+  request an answer, key points, rubric, source citations, and limitations. The
+  Ollama request forces `think=False` and validates required response fields
+  locally as well as through the JSON schema.
 
 ## Report Shape
 
-- Optional `mc-bench --output` writes JSON with `document_id`, `quiz`, `model`,
+- Optional `quiz-bench --output` writes JSON with `document_id`, `quiz`, `model`,
   totals, keyed totals, scored total, correct count, accuracy when applicable,
+  answered-unscored count, essay draft count, skipped-incomplete count,
   no-context count, invalid-response count, elapsed seconds, and per-item
   retrieval/model results.
-- Per-item reports include `id`, `question`, `options`, `target`,
-  `source_record_type`, `source_record_id`, `selected_option`,
+- Per-item reports include `id`, `position`, `question`, `question_type`,
+  `points`, `options`, `warnings`, `target`, `selected_option`,
   `selected_option_text`, optional `correct`, optional `correct_option_text`,
   optional `is_correct`, `validation_status`, selected chunks/citations,
-  retrieval queries tried, raw response, timing, and selected-option source
-  provenance when the quiz provides `option_sources`.
+  retrieval queries tried, raw response, answer payload, timing, and
+  selected-option source provenance when the quiz provides `option_sources`.
 - Wrong keyed answers from generated quizzes include `selected_distractor_source`
   plus flat `selected_distractor_source_record_type`,
   `selected_distractor_source_record_id`, `selected_distractor_target`, and
@@ -150,6 +183,8 @@ uv run ethnos mc-bench 1 \
 - `accuracy` denominator is keyed items that had retrieved context and a valid
   model response. No-context and invalid-response counts are reported separately
   so accuracy cannot hide coverage failures.
+- MC-only `mc-bench` reports keep their existing shape for compatibility with
+  `mc-compare`; use them only when you need that historical comparison flow.
 
 ## Cross-Run Comparison
 
@@ -164,7 +199,7 @@ uv run ethnos mc-bench 1 \
 
 ## Backlog
 
-- Add `mc-bench --models model_a,model_b` to match `qa-bench` model comparison
+- Add `quiz-bench --models model_a,model_b` to match `qa-bench` model comparison
   and report side-by-side accuracy, agreement, and speed.
 - Add quiz diff tooling for regression testing extraction changes with a fixed
   `generate-quiz --seed`.
@@ -193,16 +228,18 @@ uv run ethnos mc-bench 1 \
 - `tests/test_quiz.py` covers generated quiz metadata, option assignment, seed
   reproducibility, correct-answer exclusion, option truncation, display
   collision handling, topic/proximity distractor preference, source-page
-  parsing, true/false normalization, LMS import, validation, anchor suggestion,
-  MC prompt formatting, and DB-backed generation skipping.
-- Ollama-client tests cover valid MC JSON, invalid JSON, invalid options,
-  request failure, and forced `think=False` MC request behavior.
-- CLI tests cover `generate-quiz`, `import-mc-quiz`, `validate-mc-quiz`,
-  `suggest-mc-anchors`, `mc-bench`, and `mc-compare` behavior including keyed
-  scoring, unkeyed no-score behavior, mixed keyed/unkeyed scoring,
-  `--max-questions`, no-context skip, opt-in option-text retrieval, report
-  output, accuracy deltas, correctness flips, answer changes, and retrieval
-  changes.
+  parsing, true/false normalization, LMS import, Canvas mixed import,
+  validation, anchor suggestion, prompt formatting, and DB-backed generation
+  skipping.
+- Ollama-client tests cover valid MC/choice/essay JSON, invalid JSON, invalid
+  options, missing schema fields, request failure, and forced `think=False`
+  request behavior.
+- CLI tests cover `generate-quiz`, `import-mc-quiz`, `import-canvas-quiz`,
+  `validate-quiz`, `suggest-mc-anchors`, `quiz-bench`, `mc-bench`, and
+  `mc-compare` behavior including keyed scoring, unkeyed answer collection,
+  essay drafts, incomplete matching skips, `--max-questions`, no-context skip,
+  opt-in option-text retrieval, report output, accuracy deltas, correctness
+  flips, answer changes, and retrieval changes.
 
 ## Assumptions
 

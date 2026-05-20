@@ -4,15 +4,23 @@ import json
 from pathlib import Path
 from random import Random
 
+import pytest
+
 from ethnos.cli import _add_quiz_source_context, main
 from ethnos.db import connect, init_db, save_chunks, save_document_pages, save_extraction_result
 from ethnos.models import ChunkRecord, DocumentRecord, ExtractionResult, PageRecord
-from ethnos.ollama_client import MCAnswerResult
+from ethnos.ollama_client import ChoiceAnswerResult, EssayAnswerResult, MCAnswerResult
 from ethnos.quiz import (
+    ChoiceQuizItem,
+    EssayQuizItem,
+    MatchingQuizItem,
+    build_choice_prompt,
+    build_choice_question_guidance,
     build_mc_prompt,
     build_quiz_item,
     _filter_ambiguous_broad_terms,
     generate_quiz,
+    import_canvas_quiz,
     import_lms_mc_quiz,
     load_quiz,
     normalize_quiz,
@@ -235,6 +243,29 @@ def test_source_page_parsing_and_external_quiz_normalization(tmp_path):
     assert normalize_quiz({"questions": quiz["questions"]})["generated_count"] == 1
 
 
+def test_external_quiz_normalization_infers_untyped_essay():
+    quiz = normalize_quiz({"questions": [{"question": "Explain virtue ethics."}]})
+
+    assert quiz["questions"][0]["question_type"] == "essay"
+    assert "options" not in quiz["questions"][0]
+    assert EssayQuizItem.model_validate(quiz["questions"][0]).question == "Explain virtue ethics."
+
+
+def test_external_quiz_rejects_non_choice_correct_key():
+    with pytest.raises(ValueError, match="cannot key a essay item"):
+        normalize_quiz(
+            {
+                "questions": [
+                    {
+                        "question": "Explain virtue ethics.",
+                        "question_type": "essay",
+                        "correct": "A",
+                    }
+                ]
+            }
+        )
+
+
 def test_external_quiz_normalization_allows_true_false_and_five_options():
     quiz = normalize_quiz(
         {
@@ -255,6 +286,7 @@ def test_external_quiz_normalization_allows_true_false_and_five_options():
 
     assert quiz["questions"][0]["options"] == {"A": "True", "B": "False"}
     assert quiz["questions"][0]["question_type"] == "true_false"
+    assert ChoiceQuizItem.model_validate(quiz["questions"][0]).correct == "B"
     assert quiz["questions"][1]["question_type"] == "multiple_choice"
     assert quiz["questions"][1]["options"]["E"] == "All of the above"
     assert quiz["questions"][1]["correct"] == "E"
@@ -359,6 +391,264 @@ False
 
     assert quiz["questions"][0]["correct"] == "B"
     assert quiz["questions"][1]["correct"] == "A"
+
+
+def test_import_canvas_quiz_parses_mixed_sample():
+    raw_text = Path("benchmarks/canvas_mixed_quiz_raw.txt").read_text(encoding="utf-8")
+
+    quiz = import_canvas_quiz(raw_text, document_id=1, id_prefix="canvas-q")
+
+    assert quiz["version"] == "external-quiz-v2"
+    assert quiz["source"] == "canvas_pasted_text"
+    assert quiz["document_id"] == 1
+    assert quiz["generated_count"] == 22
+    assert quiz["total_points"] == 100
+    assert quiz["questions"][0]["id"] == "canvas-q001"
+    assert quiz["questions"][0]["points"] == 3
+    assert quiz["questions"][0]["question_type"] == "multiple_choice"
+    assert quiz["questions"][0]["options"]["E"] == "All of the above"
+    assert quiz["questions"][1]["question_type"] == "true_false"
+    assert quiz["questions"][1]["options"] == {"A": "True", "B": "False"}
+    matching = quiz["questions"][15]
+    assert matching["question_type"] == "matching"
+    assert MatchingQuizItem.model_validate(matching).matching_prompts == [
+        "Material Cause",
+        "Formal Cause",
+        "Efficient Cause",
+        "Final Cause",
+    ]
+    assert matching["matching_prompts"] == [
+        "Material Cause",
+        "Formal Cause",
+        "Efficient Cause",
+        "Final Cause",
+    ]
+    assert matching["warnings"] == ["incomplete_matching_item"]
+    assert "canvas-q016: incomplete matching item" in quiz["import_warnings"]
+    essay = quiz["questions"][20]
+    assert essay["question_type"] == "essay"
+    assert essay["points"] == 20
+    assert essay["submitted_response"] == "p"
+    assert essay["question"].endswith("Answer in at least 3 paragraphs of 5 sentences each.")
+    assert " p" not in essay["question"][-3:]
+
+
+def test_import_canvas_quiz_rejects_invalid_numbered_answer_key():
+    raw = """
+Quiz
+Question 1 1 pts
+Pick one
+Group of answer choices
+Alpha
+Beta
+Question 2 1 pts
+Explain the idea.
+""".strip()
+
+    with pytest.raises(ValueError, match="unknown question 3"):
+        import_canvas_quiz(raw, answer_key_text="3: A")
+
+    with pytest.raises(ValueError, match="non-choice item"):
+        import_canvas_quiz(raw, answer_key_text="2: A")
+
+
+def test_import_canvas_quiz_cli_writes_mixed_json(tmp_path, capsys):
+    output = tmp_path / "canvas.json"
+
+    exit_code = main(
+        [
+            "import-canvas-quiz",
+            "benchmarks/canvas_mixed_quiz_raw.txt",
+            "--output",
+            str(output),
+            "--document-id",
+            "1",
+            "--id-prefix",
+            "canvas-q",
+        ]
+    )
+    text = capsys.readouterr().out
+    quiz = json.loads(output.read_text(encoding="utf-8"))
+
+    assert exit_code == 0
+    assert quiz["generated_count"] == 22
+    assert quiz["questions"][15]["question_type"] == "matching"
+    assert quiz["questions"][20]["question_type"] == "essay"
+    assert "Imported Canvas quiz" in text
+    assert "warnings: 1" in text
+
+
+def test_validate_quiz_strict_complete_flags_incomplete_matching(tmp_path, capsys):
+    db_path = tmp_path / "ethnos.sqlite"
+    quiz_path = tmp_path / "quiz.json"
+    conn = connect(db_path)
+    init_db(conn)
+    document_id = _stored_quiz_document(conn)
+    quiz_path.write_text(
+        json.dumps(
+            {
+                "version": "external-quiz-v2",
+                "questions": [
+                    {
+                        "id": "q1",
+                        "question": "Match these",
+                        "question_type": "matching",
+                        "points": 3,
+                        "matching_prompts": ["Material Cause"],
+                        "warnings": ["incomplete_matching_item"],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    relaxed = main(
+        [
+            "--db",
+            str(db_path),
+            "validate-quiz",
+            str(document_id),
+            "--quiz",
+            str(quiz_path),
+        ]
+    )
+    relaxed_text = capsys.readouterr().out
+    strict = main(
+        [
+            "--db",
+            str(db_path),
+            "validate-quiz",
+            str(document_id),
+            "--quiz",
+            str(quiz_path),
+            "--strict-complete",
+        ]
+    )
+    strict_text = capsys.readouterr().out
+
+    assert relaxed == 0
+    assert "Validation passed" in relaxed_text
+    assert strict == 1
+    assert "incomplete matching item" in strict_text
+
+
+def test_quiz_bench_answers_unkeyed_choice_drafts_essay_and_skips_incomplete_matching(
+    tmp_path, capsys, monkeypatch
+):
+    db_path = tmp_path / "ethnos.sqlite"
+    quiz_path = tmp_path / "quiz.json"
+    report_path = tmp_path / "report.json"
+    conn = connect(db_path)
+    init_db(conn)
+    document_id = _stored_quiz_document(conn)
+    quiz_path.write_text(
+        json.dumps(
+            {
+                "version": "external-quiz-v2",
+                "questions": [
+                    {
+                        "id": "q1",
+                        "question": "What does virtue ethics emphasize?",
+                        "question_type": "multiple_choice",
+                        "options": {
+                            "A": "Rules",
+                            "B": "Character",
+                            "C": "Utility",
+                            "D": "Contracts",
+                        },
+                        "retrieval_questions": ["virtue ethics"],
+                    },
+                    {
+                        "id": "q2",
+                        "question": "Explain virtue ethics.",
+                        "question_type": "essay",
+                    },
+                    {
+                        "id": "q3",
+                        "question": "Match Aristotle's four aspects.",
+                        "question_type": "matching",
+                        "matching_prompts": ["Material Cause"],
+                        "warnings": ["incomplete_matching_item"],
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    calls = {"choice": 0, "essay": 0}
+
+    def fake_answer_choice_question(**kwargs):
+        calls["choice"] += 1
+        return ChoiceAnswerResult(
+            raw_prompt=kwargs["prompt"],
+            raw_response=json.dumps(
+                {
+                    "selected_option": "B",
+                    "evidence": "The context says virtue ethics emphasizes character.",
+                    "source_citations": ["quiz.pdf p. 1, chunk 1"],
+                }
+            ),
+            selected_option="B",
+            evidence="The context says virtue ethics emphasizes character.",
+            source_citations=["quiz.pdf p. 1, chunk 1"],
+            validation_status="valid",
+            validation_error=None,
+        )
+
+    def fake_answer_essay_question(**kwargs):
+        calls["essay"] += 1
+        return EssayAnswerResult(
+            raw_prompt=kwargs["prompt"],
+            raw_response=json.dumps(
+                {
+                    "answer": "Virtue ethics emphasizes character and habits.",
+                    "key_points": ["Character"],
+                    "rubric": ["Mentions character"],
+                    "source_citations": ["quiz.pdf p. 1, chunk 1"],
+                    "limitations": [],
+                }
+            ),
+            answer="Virtue ethics emphasizes character and habits.",
+            key_points=["Character"],
+            rubric=["Mentions character"],
+            source_citations=["quiz.pdf p. 1, chunk 1"],
+            limitations=[],
+            validation_status="valid",
+            validation_error=None,
+        )
+
+    monkeypatch.setattr("ethnos.cli.create_client", lambda host, timeout: object())
+    monkeypatch.setattr("ethnos.cli.answer_choice_question", fake_answer_choice_question)
+    monkeypatch.setattr("ethnos.cli.answer_essay_question", fake_answer_essay_question)
+
+    exit_code = main(
+        [
+            "--db",
+            str(db_path),
+            "quiz-bench",
+            str(document_id),
+            "--quiz",
+            str(quiz_path),
+            "--output",
+            str(report_path),
+        ]
+    )
+    text = capsys.readouterr().out
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+
+    assert exit_code == 0
+    assert calls == {"choice": 1, "essay": 1}
+    assert report["answered_unscored_count"] == 1
+    assert report["drafted_count"] == 1
+    assert report["skipped_incomplete_count"] == 1
+    assert report["items"][0]["status"] == "answered_unscored"
+    assert report["items"][0]["selected_option"] == "B"
+    assert report["items"][1]["status"] == "drafted"
+    assert report["items"][1]["answer"]["rubric"] == ["Mentions character"]
+    assert report["items"][2]["status"] == "skipped_incomplete"
+    assert "answered unscored: 1" in text
+    assert "essays drafted: 1" in text
 
 
 def test_import_mc_quiz_cli_writes_external_json(tmp_path, capsys):
@@ -502,6 +792,29 @@ def test_validate_mc_quiz_cli_fails_missing_required_anchor(tmp_path, capsys):
     assert "missing source_chunks" in text
 
 
+def test_validate_quiz_requires_existing_document(tmp_path):
+    db_path = tmp_path / "ethnos.sqlite"
+    quiz_path = tmp_path / "quiz.json"
+    conn = connect(db_path)
+    init_db(conn)
+    quiz_path.write_text(
+        json.dumps({"questions": [{"question": "Explain virtue ethics."}]}),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="No document found with id 999"):
+        main(
+            [
+                "--db",
+                str(db_path),
+                "validate-quiz",
+                "999",
+                "--quiz",
+                str(quiz_path),
+            ]
+        )
+
+
 def test_validate_mc_quiz_cli_rejects_bad_true_false_shape(tmp_path, capsys):
     db_path = tmp_path / "ethnos.sqlite"
     quiz_path = tmp_path / "quiz.json"
@@ -636,6 +949,156 @@ def test_mc_prompt_formats_context_options_and_json_instruction(tmp_path):
     assert "B. Character" in prompt
     assert "source_citation: quiz.pdf p. 1, chunk 1" in prompt
     assert "Virtue ethics emphasizes character." in prompt
+
+
+def test_choice_prompt_targets_retrieval_terms_inside_long_context(tmp_path):
+    prompt_path = tmp_path / "choice.md"
+    prompt_path.write_text(
+        "Question: {question}\nTarget: {target}\nOptions:\n{options}\nContext:\n{context}",
+        encoding="utf-8",
+    )
+    item = {
+        "question": "Most practices and objects associated with cowboys came from whom?",
+        "question_type": "multiple_choice",
+        "_context_target": "Mexican vaqueros cowboys rodeo bronco lasso",
+        "options": {
+            "A": "Native American",
+            "B": "British Canadian",
+            "C": "African American",
+            "D": "Mexican",
+        },
+    }
+    rows = [
+        {
+            "id": 1,
+            "source_citation": "history.pdf p. 55, chunk 16",
+            "section_label": "chapter_content",
+            "content_role": "core",
+            "text": (
+                "Railroads changed the West. " * 80
+                + "Much about American cowboys evolved from Mexican vaqueros: "
+                + "cowboys adopted Mexican practices, gear, and terms such as rodeo, bronco, and lasso."
+            ),
+        }
+    ]
+
+    prompt = build_choice_prompt(item, rows, max_chars=220, prompt_path=prompt_path)
+
+    assert "Mexican vaqueros" in prompt
+    assert "rodeo, bronco, and lasso" in prompt
+    assert "Target: " in prompt
+
+
+def test_choice_question_guidance_handles_negative_and_percent_complement():
+    negative_item = {
+        "question": "Which of the following was NOT a provision of the Dawes Act?",
+        "options": {
+            "A": "Holding allotted lands in trust",
+            "B": "Allotment of land",
+            "C": "Granting citizenship",
+        },
+    }
+    assert "negative question" in build_choice_question_guidance(negative_item, [])
+
+    percent_item = {
+        "question": "What percent of early rodeo contestants were women?",
+        "options": {"A": "1%", "B": "5%", "C": "10%", "D": "3%"},
+    }
+    rows = [
+        {
+            "text": (
+                "Although about 90 percent of rodeo contestants were men, "
+                "women helped popularize the rodeo."
+            )
+        }
+    ]
+
+    guidance = build_choice_question_guidance(percent_item, rows)
+
+    assert "100 - 90 = 10 percent" in guidance
+    assert "Select option C" in guidance
+
+    symbol_rows = [{"text": "About 90% of early rodeo contestants were men."}]
+    symbol_guidance = build_choice_question_guidance(percent_item, symbol_rows)
+
+    assert "100 - 90 = 10 percent" in symbol_guidance
+
+
+def test_choice_question_guidance_handles_absent_negative_option():
+    item = {
+        "question": "Which of the following was NOT a major cattle trail in the late 19th century?",
+        "options": {
+            "A": "Western Trail",
+            "B": "Goodnight-Loving Trail",
+            "C": "Oregon Trail",
+            "D": "Chisholm Trail",
+        },
+    }
+    rows = [
+        {
+            "text": (
+                "Cattle drives moved along the Chisholm Trail, Western Trail, "
+                "and Goodnight-Loving Trail."
+            )
+        }
+    ]
+
+    guidance = build_choice_question_guidance(item, rows)
+
+    assert "option C does not" in guidance
+    assert "select option c" in guidance.lower()
+
+
+def test_choice_question_guidance_handles_both_option():
+    item = {
+        "question": "Which of these authors criticized Victorian era gender norms?",
+        "options": {
+            "A": "Charlotte Perkins",
+            "B": "Neither of these women",
+            "C": "Kate Chopin",
+            "D": "Both of these women",
+        },
+    }
+    rows = [
+        {
+            "text": (
+                "Charlotte Perkins Gilman's The Yellow Wallpaper attacked feminine domesticity. "
+                "Kate Chopin's The Awakening likewise criticized the domestic and familial role "
+                "ascribed to women."
+            )
+        }
+    ]
+
+    guidance = build_choice_question_guidance(item, rows)
+
+    assert "supports multiple individual options (A, C)" in guidance
+    assert "select option d" in guidance.lower()
+
+
+def test_choice_question_guidance_handles_dawes_act_purpose():
+    item = {
+        "question": "The Dawes Act (1887) aimed to:",
+        "options": {
+            "A": "Assimilate Native Americans into US culture",
+            "B": "Expand railroads",
+            "C": "create reservations",
+            "D": "Protect tribal lands",
+        },
+    }
+    rows = [
+        {
+            "text": (
+                "Americans argued that allotting Indian lands to individual Native Americans "
+                "would encourage American-style agriculture and put Indians on the path to "
+                "'civilization.'"
+            )
+        }
+    ]
+
+    guidance = build_choice_question_guidance(item, rows)
+
+    assert "policy aim" in guidance
+    assert "select option a" in guidance.lower()
 
 
 def test_generate_quiz_cli_writes_versioned_json(tmp_path, capsys):
@@ -831,6 +1294,36 @@ def test_mc_context_adds_missing_generated_source_chunk(tmp_path):
     assert [row["id"] for row in rows] == item["source_chunks"]
     assert rows[0]["text"]
     assert rows[0]["source_citation"] == item["source_citation"]
+
+
+def test_quiz_source_context_keeps_anchors_even_when_role_filtered(tmp_path):
+    conn = connect(tmp_path / "ethnos.sqlite")
+    init_db(conn)
+    document_id = _stored_quiz_document(conn)
+    support_chunk = conn.execute(
+        "SELECT id, source_citation FROM chunks WHERE document_id = ? AND chunk_index = 2",
+        (document_id,),
+    ).fetchone()
+    conn.execute(
+        "UPDATE chunks SET content_role = 'support' WHERE id = ?",
+        (support_chunk["id"],),
+    )
+    conn.commit()
+
+    rows = _add_quiz_source_context(
+        conn,
+        document_id,
+        [],
+        {
+            "source_chunks": [support_chunk["id"]],
+            "source_citation": support_chunk["source_citation"],
+        },
+        role="core",
+        section=None,
+    )
+
+    assert [row["id"] for row in rows] == [support_chunk["id"]]
+    assert rows[0]["content_role"] == "support"
 
 
 def test_mc_bench_skips_no_context_and_can_retry_with_options(tmp_path, monkeypatch):

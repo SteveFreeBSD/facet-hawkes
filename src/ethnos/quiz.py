@@ -9,18 +9,76 @@ import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
+
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 
 DEFAULT_MC_PROMPT = Path(__file__).resolve().parents[2] / "prompts" / "mc_answer.md"
+DEFAULT_CHOICE_PROMPT = Path(__file__).resolve().parents[2] / "prompts" / "choice_answer.md"
+DEFAULT_ESSAY_PROMPT = Path(__file__).resolve().parents[2] / "prompts" / "essay_answer.md"
 QUIZ_VERSION = "mc-quiz-v1"
 EXTERNAL_QUIZ_VERSION = "external-mc-v1"
+EXTERNAL_MIXED_QUIZ_VERSION = "external-quiz-v2"
 OPTION_LABELS = ("A", "B", "C", "D", "E", "F")
 GENERATED_OPTION_LABELS = OPTION_LABELS[:4]
-QUESTION_TYPES = ("multiple_choice", "true_false")
+QUESTION_TYPES = ("multiple_choice", "true_false", "matching", "essay")
+CHOICE_QUESTION_TYPES = {"multiple_choice", "true_false"}
 TRUE_FALSE_OPTIONS = {"A": "True", "B": "False"}
 POSITION_HEADER_RE = re.compile(r"^Question at position\s+(\d+)\s*$", re.IGNORECASE)
+CANVAS_QUESTION_HEADER_RE = re.compile(
+    r"^Question\s+(\d+)\s+(\d+(?:\.\d+)?)\s+pts?\.?\s*$",
+    re.IGNORECASE,
+)
+CANVAS_FLAG_RE = re.compile(r"^Flag question:\s*Question\s+\d+\s*$", re.IGNORECASE)
 LABEL_ANSWER_RE = re.compile(r"^(?:q)?0*(\d+)[\s:.)-]+([A-F])\s*$", re.IGNORECASE)
+
+
+class BaseQuizItem(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    id: str
+    question: str = Field(min_length=1)
+    question_type: Literal["multiple_choice", "true_false", "matching", "essay"]
+    source_chunks: list[int] = Field(default_factory=list)
+    source_pages: list[int] = Field(default_factory=list)
+
+
+class ChoiceQuizItem(BaseQuizItem):
+    question_type: Literal["multiple_choice", "true_false"]
+    options: dict[str, str]
+    correct: str | None = None
+
+    @field_validator("options")
+    @classmethod
+    def validate_options(cls, value: dict[str, str]) -> dict[str, str]:
+        return normalize_options(value)
+
+    @field_validator("correct")
+    @classmethod
+    def validate_correct(cls, value: str | None) -> str | None:
+        return value.strip().upper() if isinstance(value, str) else value
+
+    @model_validator(mode="after")
+    def validate_choice_shape(self):
+        if self.question_type == "true_false" and not is_true_false_options(self.options):
+            raise ValueError("true_false quiz items must use options A=True and B=False")
+        if self.correct is not None and self.correct not in self.options:
+            raise ValueError("correct option must refer to an available option")
+        return self
+
+
+class MatchingQuizItem(BaseQuizItem):
+    question_type: Literal["matching"]
+    matching_prompts: list[str] = Field(default_factory=list)
+    matching_pairs: list[Any] | None = None
+
+
+class EssayQuizItem(BaseQuizItem):
+    question_type: Literal["essay"]
+
+
+QuizItemModel = ChoiceQuizItem | MatchingQuizItem | EssayQuizItem
 
 
 @dataclass(frozen=True)
@@ -252,37 +310,86 @@ def normalize_quiz_item(item: Any, index: int) -> dict[str, Any]:
     question = str(item.get("question", "")).strip()
     if not question:
         raise ValueError("Each quiz item must include a non-empty question")
-    options = normalize_options(item.get("options"))
-    question_type = normalize_question_type(item.get("question_type"), options)
+    raw_question_type = item.get("question_type")
+    if raw_question_type is None or str(raw_question_type).strip() == "":
+        options = normalize_options(item.get("options")) if item.get("options") is not None else None
+        question_type = normalize_question_type(raw_question_type, options)
+    else:
+        raw_type_name = str(raw_question_type).strip().lower().replace("-", "_")
+        options = (
+            normalize_options(item.get("options"))
+            if raw_type_name in CHOICE_QUESTION_TYPES or item.get("options") is not None
+            else {}
+        )
+        question_type = normalize_question_type(raw_question_type, options or None)
     normalized = {
         **item,
         "id": str(item.get("id") or f"q{index:04d}"),
         "question": question,
         "question_type": question_type,
-        "options": options,
         "source_chunks": _normalize_int_list(item.get("source_chunks")),
         "source_pages": _normalize_int_list(item.get("source_pages")),
     }
+    if question_type in CHOICE_QUESTION_TYPES or options:
+        normalized["options"] = options
+    else:
+        normalized.pop("options", None)
+    if "points" in item:
+        normalized["points"] = _normalize_points(item.get("points"))
+    if "position" in item:
+        normalized["position"] = _normalize_int(item.get("position"))
+    if "warnings" in item:
+        normalized["warnings"] = _normalize_string_list(item.get("warnings"))
+    if question_type == "matching":
+        normalized["matching_prompts"] = _normalize_string_list(
+            item.get("matching_prompts")
+        )
+        pairs = item.get("matching_pairs")
+        if pairs is not None and not isinstance(pairs, list):
+            raise ValueError("matching_pairs must be a list")
+        if pairs is not None:
+            normalized["matching_pairs"] = pairs
     correct = item.get("correct")
     if correct is not None:
+        if question_type not in CHOICE_QUESTION_TYPES:
+            raise ValueError(f"Quiz item {normalized['id']} cannot key a {question_type} item")
         correct_label = str(correct).strip().upper()
-        if correct_label not in options:
+        if not options or correct_label not in options:
             raise ValueError(f"Quiz item {normalized['id']} has invalid correct option")
         normalized["correct"] = correct_label
     else:
         normalized.pop("correct", None)
-    return normalized
+    return _validate_typed_quiz_item(normalized)
 
 
-def normalize_question_type(raw_type: Any, options: dict[str, str]) -> str:
+def _validate_typed_quiz_item(item: dict[str, Any]) -> dict[str, Any]:
+    question_type = item["question_type"]
+    model: type[QuizItemModel]
+    if question_type in CHOICE_QUESTION_TYPES:
+        model = ChoiceQuizItem
+    elif question_type == "matching":
+        model = MatchingQuizItem
+    elif question_type == "essay":
+        model = EssayQuizItem
+    else:
+        raise ValueError(f"Quiz item {item.get('id') or '?'} has unsupported question_type")
+    try:
+        return model.model_validate(item).model_dump(mode="json", exclude_none=True)
+    except ValidationError as exc:
+        raise ValueError(f"Quiz item {item.get('id') or '?'} is invalid: {exc}") from exc
+
+
+def normalize_question_type(raw_type: Any, options: dict[str, str] | None) -> str:
     if raw_type is None or str(raw_type).strip() == "":
+        if options is None:
+            return "essay"
         return "true_false" if is_true_false_options(options) else "multiple_choice"
     question_type = str(raw_type).strip().lower().replace("-", "_")
     if question_type not in QUESTION_TYPES:
         raise ValueError(
             f"Quiz item question_type must be one of: {', '.join(QUESTION_TYPES)}"
         )
-    if question_type == "true_false" and not is_true_false_options(options):
+    if question_type == "true_false" and not is_true_false_options(options or {}):
         raise ValueError("true_false quiz items must use options A=True and B=False")
     return question_type
 
@@ -386,6 +493,180 @@ def import_lms_mc_quiz(
     return normalize_quiz(quiz)
 
 
+def import_canvas_quiz(
+    raw_text: str,
+    *,
+    document_id: int | None = None,
+    title: str | None = None,
+    answer_key_text: str | None = None,
+    id_prefix: str = "q",
+) -> dict[str, Any]:
+    """Convert pasted Canvas quiz text into normalized mixed quiz JSON."""
+    lines = [line.rstrip() for line in raw_text.splitlines()]
+    starts = [
+        (index, int(match.group(1)), match.group(2))
+        for index, line in enumerate(lines)
+        if (match := CANVAS_QUESTION_HEADER_RE.match(line.strip()))
+    ]
+    if not starts:
+        raise ValueError("Could not find any 'Question N X pts' markers")
+
+    quiz_title = title or _infer_canvas_quiz_title(lines, starts[0][0])
+    questions = []
+    import_warnings: list[str] = []
+    for start_index, question_number, raw_points in starts:
+        next_starts = [index for index, _, _ in starts if index > start_index]
+        end_index = next_starts[0] if next_starts else len(lines)
+        block = lines[start_index + 1 : end_index]
+        item = _parse_canvas_question_block(
+            block,
+            question_number=question_number,
+            points=_normalize_points(raw_points),
+            id_prefix=id_prefix,
+        )
+        if item["question_type"] == "matching" and "incomplete_matching_item" in item.get(
+            "warnings", []
+        ):
+            import_warnings.append(f"{item['id']}: incomplete matching item")
+        questions.append(item)
+
+    if answer_key_text:
+        _apply_choice_answer_key(questions, answer_key_text)
+
+    quiz: dict[str, Any] = {
+        "version": EXTERNAL_MIXED_QUIZ_VERSION,
+        "source": "canvas_pasted_text",
+        "title": quiz_title,
+        "total_points": sum(float(item.get("points") or 0) for item in questions),
+        "import_warnings": import_warnings,
+        "questions": questions,
+    }
+    if document_id is not None:
+        quiz["document_id"] = document_id
+    normalized = normalize_quiz(quiz)
+    total_points = normalized.get("total_points")
+    if isinstance(total_points, float) and total_points.is_integer():
+        normalized["total_points"] = int(total_points)
+    return normalized
+
+
+def _parse_canvas_question_block(
+    block: list[str],
+    *,
+    question_number: int,
+    points: int | float | None,
+    id_prefix: str,
+) -> dict[str, Any]:
+    content = [
+        line.strip()
+        for line in block
+        if line.strip() and not CANVAS_FLAG_RE.match(line.strip())
+    ]
+    content = [
+        line
+        for line in content
+        if not CANVAS_QUESTION_HEADER_RE.match(line)
+        and _normalize_option(line) != "group of answer choices"
+    ]
+    if not content:
+        raise ValueError(f"Question {question_number} must include prompt text")
+
+    group_index = _canvas_answer_group_index(block)
+    if group_index is not None:
+        before_group = [
+            line.strip()
+            for line in block[:group_index]
+            if line.strip()
+            and not CANVAS_FLAG_RE.match(line.strip())
+            and not CANVAS_QUESTION_HEADER_RE.match(line.strip())
+        ]
+        after_group = [
+            line.strip()
+            for line in block[group_index + 1 :]
+            if line.strip()
+            and not CANVAS_FLAG_RE.match(line.strip())
+            and not CANVAS_QUESTION_HEADER_RE.match(line.strip())
+        ]
+        question = _join_canvas_prompt(before_group)
+        if _looks_like_matching_prompt(question):
+            warnings = []
+            matching_prompts = after_group
+            item: dict[str, Any] = {
+                "id": f"{id_prefix}{question_number:03d}",
+                "position": question_number,
+                "question": question,
+                "question_type": "matching",
+                "points": points,
+                "matching_prompts": matching_prompts,
+            }
+            if not _has_complete_matching_pairs(matching_prompts):
+                warnings.append("incomplete_matching_item")
+            if warnings:
+                item["warnings"] = warnings
+            return item
+        options = normalize_options(after_group)
+        return {
+            "id": f"{id_prefix}{question_number:03d}",
+            "position": question_number,
+            "question": question,
+            "question_type": normalize_question_type(None, options),
+            "points": points,
+            "options": options,
+        }
+
+    prompt_lines, submitted_response = _split_canvas_essay_response(content)
+    return {
+        "id": f"{id_prefix}{question_number:03d}",
+        "position": question_number,
+        "question": _join_canvas_prompt(prompt_lines),
+        "question_type": "essay",
+        "points": points,
+        **({"submitted_response": submitted_response} if submitted_response else {}),
+    }
+
+
+def _canvas_answer_group_index(block: list[str]) -> int | None:
+    for index, line in enumerate(block):
+        if _normalize_option(line.strip()) == "group of answer choices":
+            return index
+    return None
+
+
+def _infer_canvas_quiz_title(lines: list[str], first_marker_index: int) -> str:
+    for line in lines[:first_marker_index]:
+        stripped = line.strip()
+        if stripped and not CANVAS_FLAG_RE.match(stripped):
+            return stripped
+    return "Imported Canvas Quiz"
+
+
+def _join_canvas_prompt(lines: list[str]) -> str:
+    return " ".join(line.strip() for line in lines if line.strip()).strip()
+
+
+def _looks_like_matching_prompt(question: str) -> bool:
+    normalized = _normalize_option(question)
+    return normalized.startswith("match ") or " matching " in f" {normalized} "
+
+
+def _has_complete_matching_pairs(lines: list[str]) -> bool:
+    if not lines:
+        return False
+    return any("->" in line or "=" in line or ":" in line for line in lines)
+
+
+def _split_canvas_essay_response(lines: list[str]) -> tuple[list[str], str | None]:
+    if len(lines) < 2:
+        return lines, None
+    last = lines[-1].strip()
+    previous_text = " ".join(lines[:-1]).lower()
+    if len(last.split()) <= 2 and (
+        "answer in at least" in previous_text or "paragraph" in previous_text
+    ):
+        return lines[:-1], last
+    return lines, None
+
+
 def _infer_lms_quiz_title(lines: list[str], first_marker_index: int) -> str:
     for line in lines[:first_marker_index]:
         if line and not _is_lms_quiz_boilerplate(line):
@@ -450,6 +731,65 @@ def _apply_answer_key(questions: list[dict[str, Any]], answer_key_text: str) -> 
         question["correct"] = matches[0]
 
 
+def _apply_choice_answer_key(questions: list[dict[str, Any]], answer_key_text: str) -> None:
+    raw_entries = [line.strip() for line in answer_key_text.splitlines() if line.strip()]
+    if not raw_entries:
+        return
+    choice_questions = [
+        question
+        for question in questions
+        if question.get("question_type") in CHOICE_QUESTION_TYPES
+    ]
+    keyed_by_number: dict[int, str] = {}
+    positional_entries = []
+    for entry in raw_entries:
+        if match := LABEL_ANSWER_RE.match(entry):
+            keyed_by_number[int(match.group(1))] = match.group(2).upper()
+        else:
+            positional_entries.append(entry)
+    if keyed_by_number and positional_entries:
+        raise ValueError(
+            "Answer key must use either numbered labels or one answer text per line"
+        )
+    if keyed_by_number:
+        by_position = {
+            int(question.get("position") or index): question
+            for index, question in enumerate(questions, start=1)
+        }
+        for position, label in keyed_by_number.items():
+            question = by_position.get(position)
+            if question is None:
+                raise ValueError(f"Answer key references unknown question {position}")
+            if question.get("question_type") not in CHOICE_QUESTION_TYPES:
+                raise ValueError(
+                    f"Answer key for question {position} targets a non-choice item"
+                )
+            if label not in question["options"]:
+                raise ValueError(
+                    f"Answer key for question {position} uses invalid option {label}"
+                )
+            question["correct"] = label
+        return
+    if len(positional_entries) != len(choice_questions):
+        raise ValueError(
+            "Answer key text line count must match the imported choice question count"
+        )
+    for index, (question, answer_text) in enumerate(
+        zip(choice_questions, positional_entries), start=1
+    ):
+        answer_norm = _normalize_option(answer_text)
+        matches = [
+            label
+            for label, text in question["options"].items()
+            if _normalize_option(text) == answer_norm
+        ]
+        if len(matches) != 1:
+            raise ValueError(
+                f"Answer key text for choice question {index} did not match exactly one option"
+            )
+        question["correct"] = matches[0]
+
+
 def build_mc_prompt(
     item: dict[str, Any],
     context_rows: list[dict[str, Any]],
@@ -476,6 +816,240 @@ def build_mc_prompt(
         source_citation=source_citation,
         option_labels=option_labels,
         options=options,
+        context=context,
+    )
+
+
+def build_choice_prompt(
+    item: dict[str, Any],
+    context_rows: list[dict[str, Any]],
+    *,
+    max_chars: int,
+    prompt_path: Path = DEFAULT_CHOICE_PROMPT,
+) -> str:
+    template = prompt_path.read_text(encoding="utf-8")
+    options = "\n".join(
+        f"{label}. {text}" for label, text in normalize_options(item["options"]).items()
+    )
+    option_labels = ", ".join(normalize_options(item["options"]))
+    target = item.get("target") or ""
+    context_target = target or item.get("_context_target") or ""
+    source_citation = item.get("source_citation") or ""
+    context = build_mc_context(
+        _prioritized_context_rows(item, context_rows),
+        max_chars,
+        target=context_target,
+    )
+    question_guidance = build_choice_question_guidance(item, context_rows)
+    return template.format(
+        question=item["question"],
+        question_type=item.get("question_type") or "multiple_choice",
+        target=target,
+        source_citation=source_citation,
+        option_labels=option_labels,
+        options=options,
+        question_guidance=question_guidance,
+        context=context,
+    )
+
+
+def build_choice_question_guidance(
+    item: dict[str, Any], context_rows: list[dict[str, Any]]
+) -> str:
+    guidance = []
+    question = str(item.get("question") or "")
+    if re.search(r"\b(?:not|except)\b", question, flags=re.IGNORECASE):
+        guidance.append(
+            "This is a negative question: choose the option that the context does not state as true or directly contradicts."
+        )
+        negative_guidance = _negative_option_guidance(item, context_rows)
+        if negative_guidance:
+            guidance.append(negative_guidance)
+    both_guidance = _both_option_guidance(item, context_rows)
+    if both_guidance:
+        guidance.append(both_guidance)
+    purpose_guidance = _purpose_option_guidance(item, context_rows)
+    if purpose_guidance:
+        guidance.append(purpose_guidance)
+    percent_guidance = _percentage_complement_guidance(item, context_rows)
+    if percent_guidance:
+        guidance.append(percent_guidance)
+    return "\n".join(guidance) if guidance else "None."
+
+
+def _negative_option_guidance(
+    item: dict[str, Any], context_rows: list[dict[str, Any]]
+) -> str | None:
+    options = normalize_options(item.get("options") or {})
+    if len(options) < 3:
+        return None
+    context = _choice_guidance_context(context_rows)
+    if not context:
+        return None
+    supported = []
+    unsupported = []
+    for label, text in options.items():
+        if _option_text_supported(text, context):
+            supported.append(label)
+        else:
+            unsupported.append(label)
+    if len(unsupported) == 1 and len(supported) >= 2:
+        label = unsupported[0]
+        return (
+            f"Direct option-text check: options {', '.join(supported)} appear in the context; "
+            f"option {label} does not. For this negative question, select option {label}."
+        )
+    return None
+
+
+def _both_option_guidance(
+    item: dict[str, Any], context_rows: list[dict[str, Any]]
+) -> str | None:
+    options = normalize_options(item.get("options") or {})
+    context = _choice_guidance_context(context_rows)
+    if not options or not context:
+        return None
+    both_options = [
+        (label, text)
+        for label, text in options.items()
+        if re.search(r"\bboth\b", text, flags=re.IGNORECASE)
+    ]
+    if not both_options:
+        return None
+    supported = [
+        label
+        for label, text in options.items()
+        if not re.search(r"\b(?:both|neither|none|all)\b", text, flags=re.IGNORECASE)
+        and _option_text_supported(text, context)
+    ]
+    if len(supported) >= 2:
+        both_label = both_options[0][0]
+        return (
+            f"The context supports multiple individual options ({', '.join(supported)}). "
+            f"Because option {both_label} is a 'Both' answer, select option {both_label}."
+        )
+    return None
+
+
+def _purpose_option_guidance(
+    item: dict[str, Any], context_rows: list[dict[str, Any]]
+) -> str | None:
+    question = str(item.get("question") or "").lower()
+    if not re.search(r"\b(?:aimed|purpose|primary purpose|intended)\b", question):
+        return None
+    options = normalize_options(item.get("options") or {})
+    context = _choice_guidance_context(context_rows)
+    if not options or not context:
+        return None
+    context_search = _guidance_normalized_text(context)
+    if (
+        "dawes" in question
+        and "path to civilization" in context_search
+        and "american style agriculture" in context_search
+    ):
+        for label, text in options.items():
+            if re.search(r"\bassimilat", text, flags=re.IGNORECASE):
+                return (
+                    "This purpose question asks for the policy aim, not a narrower implementation detail. "
+                    "The context says allotment would encourage American-style agriculture and put Native Americans "
+                    f"on the path to 'civilization,' so select option {label}."
+                )
+    return None
+
+
+def _choice_guidance_context(context_rows: list[dict[str, Any]]) -> str:
+    return " ".join(" ".join(str(row.get("text", "")).split()) for row in context_rows)
+
+
+def _option_text_supported(option_text: str, context: str) -> bool:
+    option_norm = _guidance_normalized_text(option_text)
+    context_norm = _guidance_normalized_text(context)
+    if not option_norm:
+        return False
+    return re.search(rf"\b{re.escape(option_norm)}\b", context_norm) is not None
+
+
+def _guidance_normalized_text(text: str) -> str:
+    dehyphenated = re.sub(r"(\w)-\s+(\w)", r"\1\2", str(text))
+    return " ".join(re.sub(r"[^a-z0-9]+", " ", dehyphenated.lower()).split())
+
+
+def _percentage_complement_guidance(
+    item: dict[str, Any], context_rows: list[dict[str, Any]]
+) -> str | None:
+    question = str(item.get("question") or "").lower()
+    if "percent" not in question and "%" not in question:
+        return None
+    question_group = _percentage_group(question)
+    if question_group is None:
+        return None
+    context = " ".join(str(row.get("text", "")) for row in context_rows)
+    context_compact = " ".join(context.split())
+    context_lower = context_compact.lower()
+    for match in re.finditer(r"\b(\d{1,3})\s*(?:%|percent)(?=\W|$)", context_lower):
+        value = int(match.group(1))
+        if not 0 <= value <= 100:
+            continue
+        window = context_lower[match.start() : match.end() + 140]
+        clause = re.split(r"[,.;:]", window, maxsplit=1)[0]
+        context_group = _percentage_group(clause)
+        if context_group is None or context_group == question_group:
+            continue
+        complement = 100 - value
+        options = normalize_options(item["options"])
+        label = _percentage_option_label(options, complement)
+        if label is None:
+            continue
+        return (
+            f"The context says about {value} percent were {context_group}; "
+            f"the question asks for {question_group}, so use the complement "
+            f"100 - {value} = {complement} percent. Select option {label}."
+        )
+    return None
+
+
+def _percentage_group(text: str) -> str | None:
+    if re.search(r"\b(?:women|woman|female|females)\b", text):
+        return "women"
+    if re.search(r"\b(?:men|man|male|males)\b", text):
+        return "men"
+    return None
+
+
+def _percentage_option_label(options: dict[str, str], value: int) -> str | None:
+    value_patterns = {
+        f"{value}%",
+        f"{value} percent",
+        f"{value} per cent",
+    }
+    for label, text in options.items():
+        normalized = _normalize_option(text)
+        if normalized in value_patterns:
+            return label
+    return None
+
+
+def build_essay_prompt(
+    item: dict[str, Any],
+    context_rows: list[dict[str, Any]],
+    *,
+    max_chars: int,
+    prompt_path: Path = DEFAULT_ESSAY_PROMPT,
+) -> str:
+    template = prompt_path.read_text(encoding="utf-8")
+    target = item.get("target") or ""
+    context_target = target or item.get("_context_target") or ""
+    source_citation = item.get("source_citation") or ""
+    context = build_mc_context(
+        _prioritized_context_rows(item, context_rows),
+        max_chars,
+        target=context_target,
+    )
+    return template.format(
+        question=item["question"],
+        points=item.get("points") or "",
+        target=target,
+        source_citation=source_citation,
         context=context,
     )
 
@@ -511,6 +1085,8 @@ def _targeted_context_text(text: str, max_chars: int, target: str | None) -> str
         return limit_option_text(compact, max_chars)
     index = compact.lower().find(target.lower())
     if index < 0:
+        index = _best_token_window_center(compact, target, max_chars)
+    if index < 0:
         return limit_option_text(compact, max_chars)
     half_window = max((max_chars - len(target)) // 2, 0)
     start = max(index - half_window, 0)
@@ -522,6 +1098,39 @@ def _targeted_context_text(text: str, max_chars: int, target: str | None) -> str
     if end < len(compact):
         excerpt = excerpt.rstrip() + "..."
     return excerpt
+
+
+def _best_token_window_center(text: str, target: str, max_chars: int) -> int:
+    lowered = text.lower()
+    tokens = [
+        token
+        for token in re.findall(r"[a-z0-9]+", target.lower())
+        if len(token) > 2
+    ]
+    if not tokens:
+        return -1
+    unique_tokens = list(dict.fromkeys(tokens))
+    best_index = -1
+    best_score: tuple[int, int, int] | None = None
+    for token in unique_tokens:
+        start = 0
+        while True:
+            index = lowered.find(token, start)
+            if index < 0:
+                break
+            window_start = max(index - max_chars // 2, 0)
+            window_end = min(window_start + max_chars, len(text))
+            window = lowered[window_start:window_end]
+            score = (
+                sum(1 for candidate in unique_tokens if candidate in window),
+                len(token),
+                index,
+            )
+            if best_score is None or score > best_score:
+                best_score = score
+                best_index = index
+            start = index + len(token)
+    return best_index
 
 
 def _prioritized_context_rows(
@@ -980,6 +1589,31 @@ def _option_length_stats(lengths: list[int]) -> dict[str, float | int | None]:
 
 def _normalize_option(value: str) -> str:
     return " ".join(str(value).strip().lower().split())
+
+
+def _normalize_points(value: Any) -> int | float | None:
+    if value is None or value == "":
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return int(number) if number.is_integer() else number
+
+
+def _normalize_int(value: Any) -> int | None:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _normalize_string_list(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        return []
+    return [str(item).strip() for item in value if str(item).strip()]
 
 
 def _normalize_int_list(value: Any) -> list[int]:
