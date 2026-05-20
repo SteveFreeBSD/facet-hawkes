@@ -375,7 +375,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=3,
         help="Retrieved context chunks per quiz question.",
     )
-    mc_bench_parser.add_argument("--chars", type=int, default=900)
+    mc_bench_parser.add_argument("--chars", type=int, default=300)
     mc_bench_parser.add_argument("--output", type=Path)
     mc_bench_parser.add_argument("--role", choices=ASK_ROLES, default="core")
     mc_bench_parser.add_argument("--section", choices=sorted(SECTION_LABELS))

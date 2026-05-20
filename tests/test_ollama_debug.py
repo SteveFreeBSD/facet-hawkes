@@ -57,6 +57,21 @@ def test_structure_parser_accepts_debug_ollama_flag():
     assert args.debug_ollama is True
 
 
+def test_mc_bench_parser_uses_measured_short_context_default():
+    parser = build_parser()
+
+    args = parser.parse_args(
+        [
+            "mc-bench",
+            "1",
+            "--quiz",
+            "data/runs/perf-quiz-medium-20.json",
+        ]
+    )
+
+    assert args.chars == 300
+
+
 def test_response_summary_reports_compact_envelope_fields():
     response = {
         "done": True,

@@ -13,11 +13,13 @@ the companion migration checklist in [`MIGRATION.md`](MIGRATION.md).
 2. Keep `OLLAMA_FLASH_ATTENTION=1`, `OLLAMA_MLOCK=1`,
    `OLLAMA_KEEP_ALIVE=30m`, and `LimitMEMLOCK=infinity`; they are already part
    of the local baseline.
-3. Benchmark `ETHNOS_OLLAMA_NUM_THREAD=4`, `6`, and `8` on this 4-core/8-thread
-   Ryzen Embedded CPU before setting a permanent thread count.
-4. Benchmark `--num-ctx 4096` and `--num-ctx 2048` for MC/quiz runs. Larger
-   context is not automatically better on CPU.
-5. Leave SQLite and swap tuning alone until monitoring shows real pressure.
+3. Keep `ETHNOS_OLLAMA_NUM_CTX=8192` for the current `gemma-python` MC path.
+   Local benchmarks found lower context and thread overrides slower.
+4. Use the MC-only `mc-bench` default `--chars 300`. It was the fastest tested
+   context size that preserved accuracy; `225` crossed the accuracy cliff.
+5. Leave `ETHNOS_OLLAMA_NUM_THREAD` unset unless a fresh A/B benchmark proves a
+   thread count repeatedly wins.
+6. Leave SQLite and swap tuning alone until monitoring shows real pressure.
 
 ## Current Host Snapshot
 
@@ -197,15 +199,18 @@ uses a smaller response budget:
 ```text
 --num-predict 32
 --limit 3
---chars 900
+--chars 300
 ```
 
 Those defaults are deliberate: MC answers need only a structured option label,
-and tighter context usually helps reduce distractor bleed.
+and local CachyOS benchmarks found 300 characters per retrieved context chunk
+about 31% faster than 900 characters with the same 90% accuracy on the fixed
+20-question quiz. The next lower test, 225 characters, dropped accuracy to 85%.
 
 Thread count is now exposed as an optional Ollama request option through
-`ETHNOS_OLLAMA_NUM_THREAD`. On this host, compare unset, `4`, `6`, and `8`
-instead of assuming all logical CPUs are fastest:
+`ETHNOS_OLLAMA_NUM_THREAD`. On this host, the measured MC runs favored leaving
+it unset. Use explicit values only for fresh A/B tests instead of assuming all
+logical CPUs are fastest:
 
 ```bash
 ETHNOS_OLLAMA_NUM_THREAD=4 uv run ethnos mc-bench 1 \
@@ -275,38 +280,41 @@ uv run ethnos generate-quiz 1 \
   --output data/runs/perf-quiz-medium-20.json
 ```
 
-Run a baseline:
+Run a current MC-only baseline:
+
+```bash
+uv run ethnos mc-bench 1 \
+  --quiz data/runs/perf-quiz-medium-20.json \
+  --num-ctx 8192 \
+  --output data/runs/perf-baseline-mc.json
+```
+
+For mixed quizzes with essays, use `quiz-bench` and keep the larger default
+context text unless a separate mixed-quiz benchmark proves a smaller value safe:
 
 ```bash
 uv run ethnos quiz-bench 1 \
   --quiz data/runs/perf-quiz-medium-20.json \
-  --output data/runs/perf-baseline.json
+  --output data/runs/perf-baseline-mixed.json
 ```
 
-Apply one change, then run again:
+Apply one change, then run again. For example, test a shorter MC context:
 
 ```bash
-game-performance uv run ethnos quiz-bench 1 \
+uv run ethnos mc-bench 1 \
   --quiz data/runs/perf-quiz-medium-20.json \
-  --output data/runs/perf-cachyos-performance.json
-```
-
-Then test one context/thread candidate at a time:
-
-```bash
-ETHNOS_OLLAMA_NUM_THREAD=4 uv run ethnos mc-bench 1 \
-  --quiz data/runs/perf-quiz-medium-20.json \
-  --num-ctx 4096 \
-  --output data/runs/perf-thread4-ctx4096.json
+  --num-ctx 8192 \
+  --chars 225 \
+  --output data/runs/perf-mc-chars225.json
 ```
 
 Compare:
 
 ```bash
 uv run ethnos mc-compare \
-  data/runs/perf-baseline.json \
-  data/runs/perf-thread4-ctx4096.json \
-  --output data/runs/perf-compare-thread4-ctx4096.json
+  data/runs/perf-baseline-mc.json \
+  data/runs/perf-mc-chars225.json \
+  --output data/runs/perf-compare-mc-chars225.json
 ```
 
 What to watch:
@@ -319,6 +327,26 @@ What to watch:
 
 Use at least two runs per configuration when possible. CPU inference has normal
 run-to-run variance from thermals, background load, and model residency.
+
+## Current CachyOS MC Results
+
+These runs used `gemma-python`, `ETHNOS_OLLAMA_NUM_THREAD` unset, and the fixed
+20-question `perf-quiz-medium-20.json` quiz unless noted otherwise.
+
+| Run | Context Text | Elapsed | Avg Answer | Accuracy | Notes |
+|---|---:|---:|---:|---:|---|
+| baseline rerun | 900 chars | 15m 20s | 46.01s | 90% | Stable with original 8192 context |
+| shorter context | 600 chars | 12m 39s | 37.95s | 90% | Same accuracy, different wrong pair |
+| shorter context | 450 chars | 11m 49s | 35.42s | 90% | Same answers as 600 |
+| current default | 300 chars | 10m 30s | 31.51s | 90% | Fastest safe MC setting tested |
+| too short | 225 chars | 10m 10s | 30.48s | 85% | Accuracy cliff; do not use by default |
+| `game-performance`, ctx4096 | 900 chars | 16m 21s | 49.05s | 90% | Slower |
+| thread 4, ctx4096 | 900 chars | 16m 01s | 48.05s | 90% | Slower |
+| thread 6, ctx4096 | 900 chars | 16m 09s | 48.47s | 90% | Slower |
+
+Current conclusion: keep `ETHNOS_OLLAMA_NUM_CTX=8192`, leave
+`ETHNOS_OLLAMA_NUM_THREAD` unset, avoid `game-performance` for this MC workload,
+and use `mc-bench --chars 300`.
 
 ## Historical Local Baselines
 

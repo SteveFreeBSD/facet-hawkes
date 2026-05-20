@@ -46,6 +46,11 @@ The local Ollama service uses the CachyOS CPU-only tuning baseline documented in
 known-good data state and use the performance guide for service, kernel, and
 benchmark tuning details.
 
+The current MC-only benchmark default is `mc-bench --chars 300`, with
+`ETHNOS_OLLAMA_NUM_CTX=8192` and `ETHNOS_OLLAMA_NUM_THREAD` unset. The shorter
+context is based on the local CachyOS benchmark ladder in the performance guide;
+mixed `quiz-bench` still uses a larger context-text default for essay drafts.
+
 The structure prompt is intentionally compact. Schema `title` metadata is kept
 because removing it caused Gemma to omit required example fields in smoke tests.
 
