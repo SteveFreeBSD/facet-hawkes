@@ -33,16 +33,16 @@ Observed on 2026-05-20:
 
 ## Current Tuning Decision
 
-`caspian` produced the current MC benchmark default:
+`caspian` produced the current MC benchmark defaults:
 
 - `mc-bench --chars 300`
 - `ETHNOS_OLLAMA_NUM_CTX=8192`
 - `ETHNOS_OLLAMA_NUM_THREAD` unset
 - `gemma-python`
 
-The 300-character MC context was the fastest tested setting that preserved 90%
-accuracy on the fixed 20-question benchmark. The 225-character run was a little
-faster but dropped to 85%, so it is not a baseline setting.
+Use the generator's current `medium` filtering for source-of-truth MC runs. It
+skips broad same-chunk sibling terms before benchmarking so the score reflects
+model retrieval and answering rather than ambiguous quiz construction.
 
 ## Verification
 

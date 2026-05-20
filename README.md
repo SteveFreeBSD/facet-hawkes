@@ -194,9 +194,10 @@ uv run ethnos generate-quiz 1 \
 ```
 
 `--difficulty` controls distractor selection. `easy` uses farther, lower-overlap
-distractors and skips broad ambiguous terms when a more specific sibling term is
-present in the same chunk. `medium` is balanced, and `hard` prefers closer
-shared-topic distractors.
+distractors. `medium` is balanced and prefers nearby context outside the source
+chunk before same-chunk sibling terms. Both `easy` and `medium` skip broad
+single-word terms when a more specific sibling term is present in the same
+chunk, while `hard` keeps the closest shared-topic distractors.
 
 `generate-quiz` writes `quality_stats` metadata and prints the same summary:
 skipped item counts, distractor-pool utilization, option length average/max,

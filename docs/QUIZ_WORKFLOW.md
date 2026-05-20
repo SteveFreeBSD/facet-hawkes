@@ -45,9 +45,11 @@ own item difficulty metadata, and external quizzes may omit difficulty entirely.
 - Generation uses one `random.Random(seed)` per run so distractor selection and
   option shuffling are reproducible.
 - Distractor ranking supports `easy`, `medium`, and `hard`. Easy mode prefers
-  farther, lower-overlap distractors and skips broad single-word terms when a
-  more specific sibling term exists in the same chunk. Hard mode prefers
-  shared-topic and nearby distractors. Medium stays balanced.
+  farther, lower-overlap distractors. Medium stays balanced by preferring nearby
+  same-section context outside the source chunk before same-chunk sibling terms.
+  Both `easy` and `medium` skip broad single-word terms when a more specific
+  sibling term exists in the same chunk. Hard mode keeps the closest
+  shared-topic and nearby distractors.
 - Correct answers and distractors are deduplicated by normalized raw text and by
   normalized display text after `max_option_chars` truncation. Items skipped
   because too few distractors survive are counted separately from items skipped

@@ -1215,7 +1215,7 @@ def _load_records_by_type(
         records["key_terms"] = _load_term_records(
             conn, document_id, role=role, section=section
         )
-        if difficulty == "easy":
+        if difficulty in {"easy", "medium"}:
             records["key_terms"] = _filter_ambiguous_broad_terms(records["key_terms"])
     if source in {"questions", "both"}:
         records["questions"] = _load_question_records(
@@ -1359,11 +1359,16 @@ def _filter_ambiguous_broad_terms(
 ) -> list[QuizSourceRecord]:
     filtered = []
     for record in records:
+        raw_target_tokens = _raw_target_tokens(record.target or "")
         target_tokens = _target_tokens(record.target or "")
         has_specific_sibling = any(
             other.source_record_id != record.source_record_id
             and other.chunk_id == record.chunk_id
-            and _is_more_specific_term(target_tokens, _target_tokens(other.target or ""))
+            and _is_more_specific_term(
+                raw_target_tokens,
+                target_tokens,
+                _target_tokens(other.target or ""),
+            )
             for other in records
         )
         if has_specific_sibling:
@@ -1372,16 +1377,38 @@ def _filter_ambiguous_broad_terms(
     return filtered
 
 
-def _is_more_specific_term(target_tokens: set[str], sibling_tokens: set[str]) -> bool:
-    return len(target_tokens) == 1 and len(sibling_tokens) > 1 and target_tokens < sibling_tokens
+def _is_more_specific_term(
+    raw_target_tokens: set[str],
+    target_tokens: set[str],
+    sibling_tokens: set[str],
+) -> bool:
+    return (
+        len(raw_target_tokens) == 1
+        and len(sibling_tokens) > 1
+        and bool(target_tokens & sibling_tokens)
+    )
 
 
-def _target_tokens(value: str) -> set[str]:
+def _raw_target_tokens(value: str) -> set[str]:
     return {
         token
         for token in _normalize_option(value).replace("-", " ").split()
         if len(token) > 2
     }
+
+
+def _target_tokens(value: str) -> set[str]:
+    tokens = set(_raw_target_tokens(value))
+    for token in _normalize_option(value).replace("-", " ").split():
+        if len(token) <= 2:
+            continue
+        if token.endswith("ity") and len(token) > 5:
+            tokens.add(token[:-3])
+        if token.endswith("s") and len(token) > 4:
+            tokens.add(token[:-1])
+        if token.endswith("al") and len(token) > 5:
+            tokens.add(token[:-2])
+    return tokens
 
 
 def _ranked_distractors(
@@ -1448,6 +1475,7 @@ def _distractor_sort_key(
             answer_overlap,
         )
     return (
+        1 if same_chunk else 0,
         0 if same_section else 1,
         min(distance, 10),
         answer_overlap,

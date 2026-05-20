@@ -202,9 +202,56 @@ def test_easy_distractor_difficulty_prefers_farther_less_local_options():
     assert "Farther option" in item["options"].values()
 
 
-def test_easy_generation_filters_broad_single_word_term_with_specific_sibling():
+def test_medium_distractor_difficulty_avoids_same_chunk_before_nearby_siblings():
+    records = [
+        _record(1, 10, "Correct"),
+        _record(2, 10, "Same chunk sibling"),
+        _record(3, 11, "Nearby option"),
+        _record(4, 12, "Second nearby option"),
+        _record(5, 13, "Third nearby option"),
+    ]
+
+    item = build_quiz_item(
+        records[0],
+        records,
+        topics_by_chunk={},
+        rng=Random(4),
+        max_option_chars=80,
+        difficulty="medium",
+    )
+
+    assert item is not None
+    assert "Same chunk sibling" not in item["options"].values()
+    assert "Nearby option" in item["options"].values()
+
+
+def test_medium_generation_filters_broad_single_word_term_with_specific_sibling():
     records = [
         _record(1, 10, "Broad answer", target="Egoism"),
+        _record(2, 10, "Specific answer", target="Ethical Egoism"),
+        _record(3, 11, "Other answer", target="Utilitarianism"),
+    ]
+
+    filtered = _filter_ambiguous_broad_terms(records)
+
+    assert [record.target for record in filtered] == ["Ethical Egoism", "Utilitarianism"]
+
+
+def test_broad_term_filter_matches_nominal_variants():
+    records = [
+        _record(1, 10, "Broad answer", target="Morality"),
+        _record(2, 10, "Specific answer", target="Moral Relativism"),
+        _record(3, 11, "Other answer", target="Subjectivism"),
+    ]
+
+    filtered = _filter_ambiguous_broad_terms(records)
+
+    assert [record.target for record in filtered] == ["Moral Relativism", "Subjectivism"]
+
+
+def test_broad_term_filter_matches_plural_and_adjectival_variants():
+    records = [
+        _record(1, 10, "Broad answer", target="Ethics"),
         _record(2, 10, "Specific answer", target="Ethical Egoism"),
         _record(3, 11, "Other answer", target="Utilitarianism"),
     ]
