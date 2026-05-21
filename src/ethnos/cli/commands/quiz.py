@@ -192,6 +192,36 @@ def register(subcommands):
     quiz_bench_parser.add_argument("--num-predict", type=int)
     quiz_bench_parser.add_argument("--num-ctx", type=int)
 
+    import_chapter_parser = add_command(
+        subcommands,
+        "import-chapter-quiz",
+        "Import, validate, and contract-check one chapter Canvas quiz fixture.",
+        import_chapter_quiz_cmd,
+    )
+    import_chapter_parser.add_argument("course", help="Course fixture prefix, e.g. ethics.")
+    import_chapter_parser.add_argument("chapter", type=int, help="Chapter number to import.")
+    import_chapter_parser.add_argument(
+        "--manifest",
+        type=Path,
+        help="Chapter quiz manifest. Defaults to benchmarks/<course>_chapter_quizzes.json.",
+    )
+    import_chapter_parser.add_argument(
+        "--base-dir",
+        type=Path,
+        default=Path("benchmarks"),
+        help="Directory containing raw, key, and imported chapter quiz files.",
+    )
+    import_chapter_parser.add_argument(
+        "--strict-complete",
+        action="store_true",
+        help="Treat incomplete matching items and other import warnings as errors.",
+    )
+    import_chapter_parser.add_argument(
+        "--review",
+        action="store_true",
+        help="Print the full keyed/unkeyed quiz review after the summary.",
+    )
+
 
 def generate_quiz_cmd(args) -> int:
     _, conn = open_db(args)
@@ -319,6 +349,273 @@ def import_canvas_quiz_cmd(args) -> int:
         print()
         _print_quiz_preview(quiz["questions"], include_options=False)
     return 0
+
+def import_chapter_quiz_cmd(args) -> int:
+    _, conn = open_db(args)
+    if args.chapter < 1:
+        raise SystemExit("chapter must be 1 or greater.")
+    manifest_path = args.manifest or args.base_dir / f"{args.course}_chapter_quizzes.json"
+    try:
+        manifest = _load_chapter_quiz_manifest(manifest_path)
+        chapter = _chapter_quiz_manifest_entry(manifest, args.chapter)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
+
+    document_id = int(chapter.get("document_id") or manifest.get("document_id") or 0)
+    if document_id < 1:
+        raise SystemExit("Chapter quiz manifest must define document_id.")
+    get_document(conn, document_id)
+
+    stem = _chapter_quiz_file_stem(manifest, args.course, args.chapter)
+    raw_path = args.base_dir / f"{stem}_raw.txt"
+    answer_key_path = args.base_dir / f"{stem}_answer_key.txt"
+    output_path = args.base_dir / f"{stem}.json"
+    if not raw_path.exists():
+        raise SystemExit(f"Raw Canvas quiz file not found: {raw_path}")
+    answer_key_text = None
+    if answer_key_path.exists():
+        answer_key_text = answer_key_path.read_text(encoding="utf-8")
+    elif int(chapter.get("expected_keyed_choices") or 0) > 0:
+        raise SystemExit(f"Expected keyed choices but answer key file is missing: {answer_key_path}")
+
+    try:
+        quiz = import_canvas_quiz(
+            raw_path.read_text(encoding="utf-8"),
+            document_id=document_id,
+            title=str(chapter.get("title") or f"Quiz CH {args.chapter}"),
+            answer_key_text=answer_key_text,
+            id_prefix=f"ch{args.chapter}-q",
+        )
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
+
+    shape_errors = _validate_imported_chapter_quiz_shape(
+        conn,
+        document_id=document_id,
+        quiz=quiz,
+        strict_complete=args.strict_complete,
+    )
+    contract_errors = _validate_chapter_quiz_contract(
+        quiz,
+        chapter=chapter,
+        chapter_number=args.chapter,
+    )
+    errors = [*shape_errors, *contract_errors]
+    wrote_output = False
+    if not errors:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(json.dumps(quiz, indent=2, sort_keys=True), encoding="utf-8")
+        wrote_output = True
+    keyed_count = _keyed_choice_count(quiz["questions"])
+    warning_count = _quiz_warning_count(quiz["questions"])
+
+    print("Chapter quiz import")
+    print(f"  course: {args.course}")
+    print(f"  chapter: {args.chapter}")
+    print(f"  manifest: {manifest_path}")
+    print(f"  raw: {raw_path}")
+    print(f"  answer key: {answer_key_path if answer_key_path.exists() else 'none'}")
+    print(f"  output: {output_path}")
+    print(f"  wrote output: {'yes' if wrote_output else 'no'}")
+    print(f"  document id: {document_id}")
+    print(f"  title: {quiz.get('title') or 'n/a'}")
+    print(f"  questions: {len(quiz['questions'])}")
+    print(f"  total points: {quiz.get('total_points') or 0}")
+    print(f"  keyed choices: {keyed_count}")
+    print(f"  warnings: {warning_count}")
+    if errors:
+        print()
+        print("Validation failed")
+        print(f"  errors: {len(errors)}")
+        for error in errors:
+            print(f"  - {error}")
+    else:
+        print()
+        print("Validation passed")
+    unresolved = _chapter_quiz_unresolved_notes(quiz)
+    if unresolved:
+        print()
+        print("Unresolved")
+        for note in unresolved:
+            print(f"  - {note}")
+    if args.review:
+        print()
+        _print_quiz_preview(quiz["questions"], include_options=True)
+    return 1 if errors else 0
+
+def _load_chapter_quiz_manifest(path: Path) -> dict[str, object]:
+    if not path.exists():
+        raise ValueError(f"Chapter quiz manifest not found: {path}")
+    try:
+        manifest = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Chapter quiz manifest is invalid JSON: {path}") from exc
+    if not isinstance(manifest, dict):
+        raise ValueError("Chapter quiz manifest must be a JSON object.")
+    chapters = manifest.get("chapters")
+    if not isinstance(chapters, dict):
+        raise ValueError("Chapter quiz manifest must include a chapters object.")
+    return manifest
+
+def _chapter_quiz_manifest_entry(
+    manifest: dict[str, object],
+    chapter_number: int,
+) -> dict[str, object]:
+    chapters = manifest.get("chapters")
+    if not isinstance(chapters, dict):
+        raise ValueError("Chapter quiz manifest must include a chapters object.")
+    chapter = chapters.get(str(chapter_number))
+    if not isinstance(chapter, dict):
+        raise ValueError(f"Chapter {chapter_number} is not defined in the manifest.")
+    return chapter
+
+def _chapter_quiz_file_stem(
+    manifest: dict[str, object],
+    course: str,
+    chapter_number: int,
+) -> str:
+    template = str(manifest.get("file_template") or "{course}_ch{chapter}_canvas")
+    try:
+        return template.format(course=course, chapter=chapter_number)
+    except KeyError as exc:
+        raise SystemExit(f"Unsupported file_template placeholder: {exc}") from exc
+
+def _validate_imported_chapter_quiz_shape(
+    conn,
+    *,
+    document_id: int,
+    quiz: dict[str, object],
+    strict_complete: bool,
+) -> list[str]:
+    errors = []
+    if quiz.get("version") != "external-quiz-v2":
+        errors.append("imported quiz must use version external-quiz-v2")
+    questions = quiz.get("questions")
+    if not isinstance(questions, list):
+        return [*errors, "imported quiz must include a questions list"]
+    for item in questions:
+        if not isinstance(item, dict):
+            errors.append("quiz questions must be objects")
+            continue
+        for error in _validate_quiz_item(
+            conn,
+            document_id,
+            item,
+            require_anchors=False,
+            strict_complete=strict_complete,
+            require_key=False,
+        ):
+            errors.append(f"{item.get('id') or '?'}: {error}")
+    return errors
+
+def _validate_chapter_quiz_contract(
+    quiz: dict[str, object],
+    *,
+    chapter: dict[str, object],
+    chapter_number: int,
+) -> list[str]:
+    questions = quiz.get("questions")
+    if not isinstance(questions, list):
+        return []
+    errors = []
+    expected_questions = chapter.get("expected_questions")
+    if expected_questions is not None and len(questions) != int(expected_questions):
+        errors.append(
+            f"expected {expected_questions} questions, imported {len(questions)}"
+        )
+    expected_points = chapter.get("expected_total_points")
+    if expected_points is not None and quiz.get("total_points") != expected_points:
+        errors.append(
+            f"expected total_points {expected_points}, imported {quiz.get('total_points')}"
+        )
+    expected_keyed = chapter.get("expected_keyed_choices")
+    if expected_keyed is not None:
+        keyed_count = _keyed_choice_count(questions)
+        if keyed_count != int(expected_keyed):
+            errors.append(f"expected {expected_keyed} keyed choices, imported {keyed_count}")
+    expected_types = chapter.get("expected_question_types")
+    if isinstance(expected_types, dict):
+        actual_types = _question_type_counts(questions)
+        expected_type_counts = {
+            str(key): int(value) for key, value in expected_types.items()
+        }
+        if actual_types != expected_type_counts:
+            errors.append(
+                f"expected question types {expected_type_counts}, imported {actual_types}"
+            )
+    expected_prefix = f"ch{chapter_number}-q"
+    for position, item in enumerate(questions, start=1):
+        if not isinstance(item, dict):
+            continue
+        expected_id = f"{expected_prefix}{position:03d}"
+        if item.get("id") != expected_id:
+            errors.append(f"expected question {position} id {expected_id}, got {item.get('id')}")
+    allowed_warnings = {
+        str(warning) for warning in chapter.get("allowed_warnings", [])
+    }
+    for item in questions:
+        if not isinstance(item, dict):
+            continue
+        for warning in item.get("warnings", []):
+            if str(warning) not in allowed_warnings:
+                errors.append(f"{item.get('id')}: warning not allowed: {warning}")
+    return errors
+
+def _keyed_choice_count(items: list[object]) -> int:
+    return sum(
+        1
+        for item in items
+        if isinstance(item, dict)
+        and item.get("question_type") in {"multiple_choice", "true_false"}
+        and "correct" in item
+    )
+
+def _quiz_warning_count(items: list[object]) -> int:
+    return sum(
+        len(item.get("warnings", []))
+        for item in items
+        if isinstance(item, dict) and isinstance(item.get("warnings", []), list)
+    )
+
+def _question_type_counts(items: list[object]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        question_type = str(item.get("question_type") or "multiple_choice")
+        counts[question_type] = counts.get(question_type, 0) + 1
+    return counts
+
+def _chapter_quiz_unresolved_notes(quiz: dict[str, object]) -> list[str]:
+    questions = quiz.get("questions")
+    if not isinstance(questions, list):
+        return []
+    unkeyed_choices = sum(
+        1
+        for item in questions
+        if isinstance(item, dict)
+        and item.get("question_type") in {"multiple_choice", "true_false"}
+        and "correct" not in item
+    )
+    essays = sum(
+        1
+        for item in questions
+        if isinstance(item, dict) and item.get("question_type") == "essay"
+    )
+    incomplete_matching = sum(
+        1
+        for item in questions
+        if isinstance(item, dict)
+        and "incomplete_matching_item" in item.get("warnings", [])
+    )
+    notes = []
+    if unkeyed_choices:
+        notes.append(f"{unkeyed_choices} choice item(s) are unkeyed.")
+    if essays:
+        notes.append(f"{essays} essay prompt(s) require rubric/model review.")
+    if incomplete_matching:
+        notes.append(f"{incomplete_matching} matching item(s) are incomplete.")
+    return notes
 
 def review_mc_quiz_cmd(args) -> int:
     if args.max_questions is not None and args.max_questions < 1:

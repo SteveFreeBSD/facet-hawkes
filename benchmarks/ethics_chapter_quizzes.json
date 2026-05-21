@@ -1,0 +1,43 @@
+{
+  "course": "ethics",
+  "document_id": 1,
+  "file_template": "{course}_ch{chapter}_canvas",
+  "chapters": {
+    "1": {
+      "title": "Quiz CH 1",
+      "expected_questions": 10,
+      "expected_total_points": 10,
+      "expected_keyed_choices": 10,
+      "expected_question_types": {
+        "multiple_choice": 8,
+        "true_false": 2
+      },
+      "allowed_warnings": []
+    },
+    "2": {
+      "title": "Quiz CH 2",
+      "expected_questions": 11,
+      "expected_total_points": 67,
+      "expected_keyed_choices": 0,
+      "expected_question_types": {
+        "multiple_choice": 8,
+        "matching": 1,
+        "essay": 2
+      },
+      "allowed_warnings": [
+        "incomplete_matching_item"
+      ],
+      "notes": "Chapter 2 is intentionally unkeyed until the instructor key is available. The copied Canvas text includes essay prompts and an incomplete matching item."
+    },
+    "3": {
+      "title": "Quiz CH 3",
+      "expected_questions": 10,
+      "expected_total_points": 10,
+      "expected_keyed_choices": 10,
+      "expected_question_types": {
+        "multiple_choice": 10
+      },
+      "allowed_warnings": []
+    }
+  }
+}

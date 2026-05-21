@@ -80,6 +80,16 @@ own item difficulty metadata, and external quizzes may omit difficulty entirely.
 - `ethnos import-canvas-quiz <input> --output <path> [--answer-key <path>]
   [--document-id N] [--title T] [--id-prefix PREFIX] [--with-key-preview]`
   converts pasted Canvas quiz text into `external-quiz-v2` JSON.
+- `ethnos import-chapter-quiz <course> <chapter> [--manifest <path>]
+  [--base-dir <dir>] [--strict-complete] [--review]` is the recommended path
+  for chapter-level Canvas fixtures. It infers
+  `<course>_ch<chapter>_canvas_raw.txt`, the optional answer-key file, and the
+  normalized JSON output from the chapter manifest, then imports, validates,
+  checks expected question counts/type mix/keyed totals/warnings, and prints
+  unresolved work such as unkeyed choices, essay prompts, or incomplete
+  matching items. It writes the normalized JSON only after the shape and
+  manifest contract pass, so a bad import does not clobber a known-good
+  fixture.
 - Mixed Canvas imports preserve question position and point values, ignore
   `Flag question` noise, strip `Group of answer choices`, and support
   `multiple_choice`, `true_false`, `matching`, and `essay` item types.
@@ -100,6 +110,11 @@ own item difficulty metadata, and external quizzes may omit difficulty entirely.
   mixed quizzes. Keyed choice items are scored, unkeyed choice items are
   answered unscored with evidence, essay items receive a draft answer plus
   rubric, and incomplete matching items are skipped without model calls.
+- Ethics chapter quiz fixtures use `benchmarks/ethics_chapter_quizzes.json` as
+  the machine-readable contract and `benchmarks/ethics_chapter_quizzes.md` as
+  the human workflow note. Keep raw Canvas text, optional answer keys, and
+  normalized JSON imports together under the `ethics_chN_canvas.*` naming
+  convention.
 
 ## Validation And Anchoring
 

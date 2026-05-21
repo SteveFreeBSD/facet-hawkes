@@ -525,6 +525,122 @@ def test_import_canvas_quiz_cli_writes_mixed_json(tmp_path, capsys):
     assert "warnings: 1" in text
 
 
+def test_ethics_chapter_canvas_fixtures_match_manifest():
+    manifest = json.loads(
+        Path("benchmarks/ethics_chapter_quizzes.json").read_text(encoding="utf-8")
+    )
+    document_id = manifest["document_id"]
+
+    for chapter_number, chapter in manifest["chapters"].items():
+        stem = manifest["file_template"].format(
+            course=manifest["course"],
+            chapter=chapter_number,
+        )
+        raw_path = Path("benchmarks") / f"{stem}_raw.txt"
+        answer_key_path = Path("benchmarks") / f"{stem}_answer_key.txt"
+        imported_path = Path("benchmarks") / f"{stem}.json"
+        answer_key_text = (
+            answer_key_path.read_text(encoding="utf-8")
+            if answer_key_path.exists()
+            else None
+        )
+
+        imported = import_canvas_quiz(
+            raw_path.read_text(encoding="utf-8"),
+            document_id=document_id,
+            title=chapter["title"],
+            answer_key_text=answer_key_text,
+            id_prefix=f"ch{chapter_number}-q",
+        )
+        checked_in = json.loads(imported_path.read_text(encoding="utf-8"))
+
+        assert imported == checked_in
+        assert checked_in["version"] == "external-quiz-v2"
+        assert checked_in["generated_count"] == chapter["expected_questions"]
+        assert checked_in["total_points"] == chapter["expected_total_points"]
+        assert _type_counts(checked_in["questions"]) == chapter["expected_question_types"]
+        assert _keyed_choice_count(checked_in["questions"]) == chapter[
+            "expected_keyed_choices"
+        ]
+        allowed_warnings = set(chapter["allowed_warnings"])
+        for item in checked_in["questions"]:
+            assert item["id"].startswith(f"ch{chapter_number}-q")
+            assert set(item.get("warnings", [])) <= allowed_warnings
+
+
+def test_import_chapter_quiz_cli_imports_validates_and_reports_unresolved(
+    tmp_path, capsys
+):
+    db_path = tmp_path / "ethnos.sqlite"
+    conn = connect(db_path)
+    init_db(conn)
+    document_id = _stored_quiz_document(conn)
+    raw_path = tmp_path / "sample_ch1_canvas_raw.txt"
+    key_path = tmp_path / "sample_ch1_canvas_answer_key.txt"
+    manifest_path = tmp_path / "sample_chapter_quizzes.json"
+    raw_path.write_text(
+        """
+Quiz CH 1
+Question 1 1 pts
+Pick one
+Group of answer choices
+Alpha
+Beta
+
+Flag question: Question 2
+Question 2 20 pts
+Explain the idea.
+""".strip(),
+        encoding="utf-8",
+    )
+    key_path.write_text("1 B\n", encoding="utf-8")
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "course": "sample",
+                "document_id": document_id,
+                "file_template": "{course}_ch{chapter}_canvas",
+                "chapters": {
+                    "1": {
+                        "title": "Quiz CH 1",
+                        "expected_questions": 2,
+                        "expected_total_points": 21,
+                        "expected_keyed_choices": 1,
+                        "expected_question_types": {
+                            "multiple_choice": 1,
+                            "essay": 1,
+                        },
+                        "allowed_warnings": [],
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    exit_code = main(
+        [
+            "--db",
+            str(db_path),
+            "import-chapter-quiz",
+            "sample",
+            "1",
+            "--manifest",
+            str(manifest_path),
+            "--base-dir",
+            str(tmp_path),
+        ]
+    )
+    text = capsys.readouterr().out
+    imported = json.loads((tmp_path / "sample_ch1_canvas.json").read_text(encoding="utf-8"))
+
+    assert exit_code == 0
+    assert imported["questions"][0]["correct"] == "B"
+    assert imported["questions"][1]["question_type"] == "essay"
+    assert "Validation passed" in text
+    assert "1 essay prompt(s) require rubric/model review." in text
+
+
 def test_validate_quiz_strict_complete_flags_incomplete_matching(tmp_path, capsys):
     db_path = tmp_path / "ethnos.sqlite"
     quiz_path = tmp_path / "quiz.json"
@@ -1646,6 +1762,23 @@ def test_mc_compare_reports_accuracy_flips_and_retrieval_changes(tmp_path, capsy
     assert [item["id"] for item in comparison["incorrect_to_correct"]] == ["q2"]
     assert [item["id"] for item in comparison["answer_changes"]] == ["q2"]
     assert [item["id"] for item in comparison["retrieval_changes"]] == ["q2"]
+
+
+def _type_counts(items: list[dict[str, object]]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for item in items:
+        question_type = str(item.get("question_type") or "multiple_choice")
+        counts[question_type] = counts.get(question_type, 0) + 1
+    return counts
+
+
+def _keyed_choice_count(items: list[dict[str, object]]) -> int:
+    return sum(
+        1
+        for item in items
+        if item.get("question_type") in {"multiple_choice", "true_false"}
+        and "correct" in item
+    )
 
 
 def _stored_quiz_document(conn) -> int:

@@ -1,0 +1,170 @@
+{
+  "document_id": 1,
+  "generated_count": 10,
+  "import_warnings": [],
+  "questions": [
+    {
+      "correct": "D",
+      "id": "ch3-q001",
+      "options": {
+        "A": "Human flourishing of living well",
+        "B": "Not just a good day but a good life",
+        "C": "The purpose, function, or telos of all human activity",
+        "D": "all of the above"
+      },
+      "points": 1,
+      "position": 1,
+      "question": "What is Eudaimonia?",
+      "question_type": "multiple_choice",
+      "source_chunks": [],
+      "source_pages": []
+    },
+    {
+      "correct": "C",
+      "id": "ch3-q002",
+      "options": {
+        "A": "Nature",
+        "B": "Education",
+        "C": "Government, military, and other social hierarchies and power structures",
+        "D": "none of the above"
+      },
+      "points": 1,
+      "position": 2,
+      "question": "What most contributes to separation from the Dao?",
+      "question_type": "multiple_choice",
+      "source_chunks": [],
+      "source_pages": []
+    },
+    {
+      "correct": "C",
+      "id": "ch3-q003",
+      "options": {
+        "A": "an emphasis on a Virtue Ethical system that teaches the art of becoming balanced and harmonious though humility",
+        "B": "the end goal being free from dukkha",
+        "C": "both a and b",
+        "D": "none of the above"
+      },
+      "points": 1,
+      "position": 3,
+      "question": "Under Buddhist Virtue Ethics there is",
+      "question_type": "multiple_choice",
+      "source_chunks": [],
+      "source_pages": []
+    },
+    {
+      "correct": "E",
+      "id": "ch3-q004",
+      "options": {
+        "A": "Every action affects our character and our environment",
+        "B": "Every action needs to be performed with proper procedure and respect",
+        "C": "there are no rules for children",
+        "D": "no need to cultivate Ren",
+        "E": "both a and b"
+      },
+      "points": 1,
+      "position": 4,
+      "question": "According to Confucius, Li or Ritual",
+      "question_type": "multiple_choice",
+      "source_chunks": [],
+      "source_pages": []
+    },
+    {
+      "correct": "D",
+      "id": "ch3-q005",
+      "options": {
+        "A": "Virtue and understanding",
+        "B": "East vs west",
+        "C": "Culture vs Religion",
+        "D": "Vagueness and Relativism"
+      },
+      "points": 1,
+      "position": 5,
+      "question": "There are two main objections to Virtue Ethics. What are they?",
+      "question_type": "multiple_choice",
+      "source_chunks": [],
+      "source_pages": []
+    },
+    {
+      "correct": "A",
+      "id": "ch3-q006",
+      "options": {
+        "A": "Choose a virtuous act for its own sake",
+        "B": "Has a hard time choosing",
+        "C": "Lives life to extremes",
+        "D": "Has no idea what they are doing"
+      },
+      "points": 1,
+      "position": 6,
+      "question": "The truly virtuous person",
+      "question_type": "multiple_choice",
+      "source_chunks": [],
+      "source_pages": []
+    },
+    {
+      "correct": "B",
+      "id": "ch3-q007",
+      "options": {
+        "A": "yes",
+        "B": "no"
+      },
+      "points": 1,
+      "position": 7,
+      "question": "According to Virtue Ethics are your ethics that same at age four as they are at 18 as compared to 30?",
+      "question_type": "multiple_choice",
+      "source_chunks": [],
+      "source_pages": []
+    },
+    {
+      "correct": "D",
+      "id": "ch3-q008",
+      "options": {
+        "A": "God has no part in virtue",
+        "B": "That sin affects our moral life but not our rational life",
+        "C": "Man has no ability to reason",
+        "D": "None of the above"
+      },
+      "points": 1,
+      "position": 8,
+      "question": "Thomas Aquinas believed",
+      "question_type": "multiple_choice",
+      "source_chunks": [],
+      "source_pages": []
+    },
+    {
+      "correct": "B",
+      "id": "ch3-q009",
+      "options": {
+        "A": "St. Constantia of Constantinople",
+        "B": "St. Catherine of Alexandria",
+        "C": "St. Helena of Brittania",
+        "D": "St. Faustina of Kowalska"
+      },
+      "points": 1,
+      "position": 9,
+      "question": "Who was martyred by the Roman empower Maxentius in 305 CE?",
+      "question_type": "multiple_choice",
+      "source_chunks": [],
+      "source_pages": []
+    },
+    {
+      "correct": "C",
+      "id": "ch3-q010",
+      "options": {
+        "A": "nothing",
+        "B": "you are dust in the wind",
+        "C": "you are the make of your life/ lives",
+        "D": "like sands in the hour glass, so are the days of your life"
+      },
+      "points": 1,
+      "position": 10,
+      "question": "Karma means",
+      "question_type": "multiple_choice",
+      "source_chunks": [],
+      "source_pages": []
+    }
+  ],
+  "source": "canvas_pasted_text",
+  "title": "Quiz CH 3",
+  "total_points": 10,
+  "version": "external-quiz-v2"
+}

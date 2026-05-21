@@ -1,0 +1,171 @@
+{
+  "document_id": 1,
+  "generated_count": 11,
+  "import_warnings": [
+    "ch2-q005: incomplete matching item"
+  ],
+  "questions": [
+    {
+      "id": "ch2-q001",
+      "options": {
+        "A": "Advaita Vdanta",
+        "B": "Buddhism",
+        "C": "Daoism",
+        "D": "None of the above"
+      },
+      "points": 3,
+      "position": 1,
+      "question": "Which religion thinks of the ultimate reality as non-personal?",
+      "question_type": "multiple_choice",
+      "source_chunks": [],
+      "source_pages": []
+    },
+    {
+      "id": "ch2-q002",
+      "options": {
+        "A": "Submission",
+        "B": "Obedience",
+        "C": "A theory of moral obligation that equates our moral duties to the commandments of God",
+        "D": "Kantism"
+      },
+      "points": 3,
+      "position": 2,
+      "question": "What is the best definition of Divine Command Theory?",
+      "question_type": "multiple_choice",
+      "source_chunks": [],
+      "source_pages": []
+    },
+    {
+      "id": "ch2-q003",
+      "options": {
+        "A": "Divine Command Theory cannot work",
+        "B": "This sets up God's commandments as arbitrary",
+        "C": "Both a and b",
+        "D": "None of the above"
+      },
+      "points": 3,
+      "position": 3,
+      "question": "What happens to Divine Command Theory if morality is placed higher than God's commandments?",
+      "question_type": "multiple_choice",
+      "source_chunks": [],
+      "source_pages": []
+    },
+    {
+      "id": "ch2-q004",
+      "options": {
+        "A": "Does not deny God issues commands",
+        "B": "Takes morality to be implicit in creation",
+        "C": "Everything holds a natural purpose",
+        "D": "Purpose is determined by study using reason",
+        "E": "all of the above"
+      },
+      "points": 3,
+      "position": 4,
+      "question": "Natural Law Theory",
+      "question_type": "multiple_choice",
+      "source_chunks": [],
+      "source_pages": []
+    },
+    {
+      "id": "ch2-q005",
+      "matching_prompts": [
+        "Material Cause",
+        "Formal Cause",
+        "Efficient Cause",
+        "Final Cause"
+      ],
+      "points": 3,
+      "position": 5,
+      "question": "Match Aristotle's four aspects with their meanings",
+      "question_type": "matching",
+      "source_chunks": [],
+      "source_pages": [],
+      "warnings": [
+        "incomplete_matching_item"
+      ]
+    },
+    {
+      "id": "ch2-q006",
+      "options": {
+        "A": "Natural reason",
+        "B": "Purpose",
+        "C": "Proper use",
+        "D": "None of the above"
+      },
+      "points": 3,
+      "position": 6,
+      "question": "Under Natural Law Theory; God created the universe, including human beings and other objects, with _____________.",
+      "question_type": "multiple_choice",
+      "source_chunks": [],
+      "source_pages": []
+    },
+    {
+      "id": "ch2-q007",
+      "options": {
+        "A": "the laws that govern morality",
+        "B": "commandments so we know exactly what to do",
+        "C": "predict the consequences of our actions",
+        "D": "only God can infallibly identify the consequences of all actions"
+      },
+      "points": 3,
+      "position": 7,
+      "question": "According to Natural Law theory: Anyone, theist or not, is able to identify",
+      "question_type": "multiple_choice",
+      "source_chunks": [],
+      "source_pages": []
+    },
+    {
+      "id": "ch2-q008",
+      "options": {
+        "A": "Takes morality to be implicit in creation",
+        "B": "Everything holds a natural purpose",
+        "C": "Underpants gnomes",
+        "D": "Presupposes a model at odds with today's scientific reasoning"
+      },
+      "points": 3,
+      "position": 8,
+      "question": "What is a problem with Natural Law Theory?",
+      "question_type": "multiple_choice",
+      "source_chunks": [],
+      "source_pages": []
+    },
+    {
+      "id": "ch2-q009",
+      "options": {
+        "A": "Religious practice might support our moral life in ways that are independent of determining how we ought to act",
+        "B": "Fear of divine punishment= doing the right thing",
+        "C": "Morality requires doing the right thing for the right reason",
+        "D": "All of the above"
+      },
+      "points": 3,
+      "position": 9,
+      "question": "Religious Morality",
+      "question_type": "multiple_choice",
+      "source_chunks": [],
+      "source_pages": []
+    },
+    {
+      "id": "ch2-q010",
+      "points": 20,
+      "position": 10,
+      "question": "According to Normative Relativism who is right in the following scenario? Why? The British believe Suttee (aka Sati) is wrong. The Indian believe that the British is in the wrong as they should not judge. A widow should be able to place herself of the funeral pyre of her husband. Answer in at least 3 paragraphs of 5 sentences each.",
+      "question_type": "essay",
+      "source_chunks": [],
+      "source_pages": [],
+      "submitted_response": "p"
+    },
+    {
+      "id": "ch2-q011",
+      "points": 20,
+      "position": 11,
+      "question": "Under the Euthyphro dilemma argue why the statement \"Morality is logically independent of God,\" is true. Answer in at least 3 paragraphs of 5 sentences each.",
+      "question_type": "essay",
+      "source_chunks": [],
+      "source_pages": []
+    }
+  ],
+  "source": "canvas_pasted_text",
+  "title": "Quiz CH 2",
+  "total_points": 67,
+  "version": "external-quiz-v2"
+}
