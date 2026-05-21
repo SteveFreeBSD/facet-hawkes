@@ -104,6 +104,27 @@ def register(subcommands):
     verify_key_parser.add_argument("report", type=Path)
     verify_key_parser.add_argument("--output", type=Path)
 
+    ground_quiz_parser = add_command(
+        subcommands,
+        "ground-quiz",
+        "Build source-grounding records for every quiz item without model calls.",
+        ground_quiz_cmd,
+    )
+    ground_quiz_parser.add_argument("document_id", type=int)
+    ground_quiz_parser.add_argument("--quiz", type=Path, required=True)
+    ground_quiz_parser.add_argument("--output", type=Path)
+    ground_quiz_parser.add_argument("--max-questions", type=int)
+    ground_quiz_parser.add_argument("--limit", type=int, default=3)
+    ground_quiz_parser.add_argument("--chars", type=int, default=360)
+    ground_quiz_parser.add_argument("--role", choices=ASK_ROLES, default="core")
+    ground_quiz_parser.add_argument("--section", choices=sorted(SECTION_LABELS))
+    ground_quiz_parser.add_argument("--options-retrieval", action="store_true")
+    ground_quiz_parser.add_argument(
+        "--fail-unresolved",
+        action="store_true",
+        help="Exit nonzero when any item is ungrounded, invalidly anchored, or incomplete.",
+    )
+
     import_mc_parser = add_command(
         subcommands, "import-mc-quiz",
         "Convert copied LMS quiz text into external multiple-choice quiz JSON.",
@@ -352,6 +373,204 @@ def verify_answer_key_cmd(args) -> int:
         print(f"wrote audit: {args.output}")
     return 1 if audit["key_conflict_candidate_count"] else 0
 
+def ground_quiz_cmd(args) -> int:
+    _, conn = open_db(args)
+    if args.max_questions is not None and args.max_questions < 1:
+        raise SystemExit("--max-questions must be 1 or greater.")
+    if args.limit < 1:
+        raise SystemExit("--limit must be 1 or greater.")
+    if args.chars < 1:
+        raise SystemExit("--chars must be 1 or greater.")
+    get_document(conn, args.document_id)
+    quiz = load_quiz(args.quiz)
+    items = limit_benchmark_items(quiz["questions"], args.max_questions)
+    selected_role = normalize_answer_role(args.role)
+    records = []
+
+    print("Quiz grounding")
+    print(f"  document id: {args.document_id}")
+    print(f"  quiz: {args.quiz}")
+    print(f"  questions: {len(items)}")
+    print(f"  candidate chunks per query: {args.limit}")
+    print()
+
+    for item in items:
+        retrieval, retrieval_questions = _retrieve_quiz_context_for_item(
+            conn,
+            document_id=args.document_id,
+            item=item,
+            limit=args.limit,
+            role=selected_role,
+            section=args.section,
+        )
+        if (
+            not retrieval.rows
+            and args.options_retrieval
+            and str(item.get("question_type") or "multiple_choice")
+            in {"multiple_choice", "true_false"}
+        ):
+            option_query = compact_question_with_options(item)
+            retrieval_questions.append(option_query)
+            retrieval = _retrieve_mc_context(
+                conn,
+                document_id=args.document_id,
+                question=option_query,
+                limit=args.limit,
+                role=selected_role,
+                section=args.section,
+            )
+        context_rows = _add_quiz_source_context(
+            conn,
+            args.document_id,
+            retrieval.rows,
+            item,
+            role=selected_role,
+            section=args.section,
+        )
+        record = _build_source_grounding_record(
+            conn,
+            document_id=args.document_id,
+            item=item,
+            context_rows=context_rows,
+            retrieval=retrieval,
+            retrieval_questions=retrieval_questions,
+            chars=args.chars,
+        )
+        records.append(record)
+        print(f"{record['id']}: {record['source_status']}")
+        print(f"  type: {record['question_type']}")
+        print(
+            "  source chunks: "
+            + (
+                ", ".join(str(chunk_id) for chunk_id in record["source_chunks"])
+                or "none"
+            )
+        )
+        if record["source_citations"]:
+            print(f"  citations: {', '.join(record['source_citations'])}")
+        if record["validation_errors"]:
+            print(f"  validation errors: {', '.join(record['validation_errors'])}")
+        print()
+
+    counts = _source_grounding_counts(records)
+    unresolved_count = sum(
+        count
+        for status, count in counts.items()
+        if status in {"ungrounded", "invalid_anchor", "incomplete"}
+    )
+    report = {
+        "version": "quiz-grounding-v1",
+        "document_id": args.document_id,
+        "quiz": str(args.quiz),
+        "total": len(records),
+        "counts": counts,
+        "unresolved_count": unresolved_count,
+        "items": records,
+    }
+
+    print("Quiz grounding summary:")
+    print(f"  total: {len(records)}")
+    for status, count in counts.items():
+        print(f"  {status}: {count}")
+    print(f"  unresolved: {unresolved_count}")
+    if args.output:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
+        print(f"  wrote grounding: {args.output}")
+    return 1 if args.fail_unresolved and unresolved_count else 0
+
+def _build_source_grounding_record(
+    conn,
+    *,
+    document_id: int,
+    item: dict[str, object],
+    context_rows: list[dict[str, object]],
+    retrieval,
+    retrieval_questions: list[str],
+    chars: int,
+) -> dict[str, object]:
+    warnings = item.get("warnings", [])
+    if not isinstance(warnings, list):
+        warnings = []
+    validation_errors = _validate_quiz_item(
+        conn,
+        document_id,
+        item,
+        require_anchors=False,
+        strict_complete=False,
+        require_key=False,
+    )
+    source_chunks = [row["id"] for row in context_rows]
+    source_citations = [str(row["source_citation"]) for row in context_rows]
+    target = str(item.get("target") or "").strip()
+    selected_query = retrieval.selected_query or ""
+    source_status = _source_status_for_item(
+        item,
+        warnings=warnings,
+        validation_errors=validation_errors,
+        context_rows=context_rows,
+    )
+    evidence_summary = _grounding_evidence_summary(
+        context_rows,
+        target or selected_query or str(item.get("question") or ""),
+        chars,
+    )
+    return {
+        "id": item.get("id"),
+        "question": item.get("question"),
+        "question_type": item.get("question_type") or "multiple_choice",
+        "source_status": source_status,
+        "target": item.get("target"),
+        "source_chunks": source_chunks,
+        "source_pages": item.get("source_pages", []),
+        "source_citation": item.get("source_citation"),
+        "source_citations": source_citations,
+        "selected_query": selected_query,
+        "retrieval_questions": retrieval_questions,
+        "queries_tried": retrieval.queries_tried,
+        "evidence_summary": evidence_summary,
+        "validation_errors": validation_errors,
+        "warnings": warnings,
+        "keyed_option": item.get("correct"),
+        "external_source_note": item.get("external_source_note"),
+    }
+
+def _source_status_for_item(
+    item: dict[str, object],
+    *,
+    warnings: list[object],
+    validation_errors: list[str],
+    context_rows: list[dict[str, object]],
+) -> str:
+    if "external_source_item" in warnings:
+        return "external_source"
+    if "incomplete_matching_item" in warnings:
+        return "incomplete"
+    if validation_errors:
+        return "invalid_anchor"
+    if item.get("source_chunks") and item.get("source_citation") and context_rows:
+        return "pdf_grounded"
+    if context_rows:
+        return "retrieved_candidate"
+    return "ungrounded"
+
+def _grounding_evidence_summary(
+    context_rows: list[dict[str, object]],
+    target: str,
+    chars: int,
+) -> str | None:
+    if not context_rows:
+        return None
+    text = " ".join(str(row.get("text") or "") for row in context_rows)
+    return _anchor_snippet(text, target, chars)
+
+def _source_grounding_counts(records: list[dict[str, object]]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for record in records:
+        status = str(record.get("source_status") or "unknown")
+        counts[status] = counts.get(status, 0) + 1
+    return counts
+
 def _load_quiz_bench_report(path: Path) -> dict[str, object]:
     if not path.exists():
         raise ValueError(f"Quiz benchmark report not found: {path}")
@@ -399,6 +618,9 @@ def _verify_answer_key_report(
 
 def _audit_keyed_report_item(item: dict[str, object]) -> dict[str, object]:
     status = str(item.get("status") or "")
+    source_grounding = (
+        item.get("source_grounding") if isinstance(item.get("source_grounding"), dict) else {}
+    )
     audit_status = {
         "correct": "key_supported",
         "incorrect": "key_conflict_candidate",
@@ -418,6 +640,7 @@ def _audit_keyed_report_item(item: dict[str, object]) -> dict[str, object]:
         "question_type": item.get("question_type") or "multiple_choice",
         "audit_status": audit_status,
         "benchmark_status": status,
+        "source_status": source_grounding.get("source_status"),
         "keyed_option": item.get("correct"),
         "keyed_option_text": item.get("correct_option_text"),
         "selected_option": item.get("selected_option"),
@@ -1194,6 +1417,15 @@ def quiz_bench_cmd(args) -> int:
             role=selected_role,
             section=args.section,
         )
+        source_grounding = _build_source_grounding_record(
+            conn,
+            document_id=args.document_id,
+            item=item,
+            context_rows=context_rows,
+            retrieval=retrieval,
+            retrieval_questions=retrieval_questions,
+            chars=args.chars,
+        )
         selected_chunks = [row["id"] for row in context_rows]
         selected_citations = [row["source_citation"] for row in context_rows]
 
@@ -1337,6 +1569,7 @@ def quiz_bench_cmd(args) -> int:
             "selected_source_citations": selected_citations,
             "queries_tried": retrieval.queries_tried,
             "retrieval_questions": retrieval_questions,
+            "source_grounding": source_grounding,
             "raw_response": raw_response,
             "answer": answer_payload,
             "timings": {
@@ -1457,6 +1690,15 @@ def mc_bench_cmd(args) -> int:
             role=selected_role,
             section=args.section,
         )
+        source_grounding = _build_source_grounding_record(
+            conn,
+            document_id=args.document_id,
+            item=item,
+            context_rows=context_rows,
+            retrieval=retrieval,
+            retrieval_questions=retrieval_questions,
+            chars=args.chars,
+        )
 
         selected_chunks = [row["id"] for row in context_rows]
         selected_citations = [row["source_citation"] for row in context_rows]
@@ -1537,6 +1779,7 @@ def mc_bench_cmd(args) -> int:
             "selected_source_citations": selected_citations,
             "queries_tried": retrieval.queries_tried,
             "retrieval_questions": retrieval_questions,
+            "source_grounding": source_grounding,
             "raw_response": raw_response,
             "timings": {
                 "item_seconds": item_elapsed,

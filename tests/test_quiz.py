@@ -698,6 +698,97 @@ def test_validate_quiz_strict_complete_flags_incomplete_matching(tmp_path, capsy
     assert "incomplete matching item" in strict_text
 
 
+def test_ground_quiz_cli_writes_source_grounding_records(tmp_path, capsys):
+    db_path = tmp_path / "ethnos.sqlite"
+    quiz_path = tmp_path / "quiz.json"
+    output_path = tmp_path / "grounding.json"
+    conn = connect(db_path)
+    init_db(conn)
+    document_id = _stored_quiz_document(conn)
+    quiz_path.write_text(
+        json.dumps(
+            {
+                "version": "external-quiz-v2",
+                "questions": [
+                    {
+                        "id": "q1",
+                        "question": "What does virtue ethics emphasize?",
+                        "question_type": "multiple_choice",
+                        "options": {
+                            "A": "Rules",
+                            "B": "Character",
+                        },
+                        "target": "Virtue ethics",
+                        "source_chunks": [1],
+                        "source_pages": [1],
+                        "source_citation": "quiz.pdf p. 1, chunk 1",
+                    },
+                    {
+                        "id": "q2",
+                        "question": "What does deontology emphasize?",
+                        "question_type": "multiple_choice",
+                        "options": {
+                            "A": "Duties",
+                            "B": "Utility",
+                        },
+                        "retrieval_questions": ["deontology duties moral rules"],
+                    },
+                    {
+                        "id": "q3",
+                        "question": "Instructor-only fact?",
+                        "question_type": "multiple_choice",
+                        "options": {
+                            "A": "Alpha",
+                            "B": "Beta",
+                        },
+                        "warnings": ["external_source_item"],
+                    },
+                    {
+                        "id": "q4",
+                        "question": "Match these",
+                        "question_type": "matching",
+                        "matching_prompts": ["Material Cause"],
+                        "warnings": ["incomplete_matching_item"],
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    exit_code = main(
+        [
+            "--db",
+            str(db_path),
+            "ground-quiz",
+            str(document_id),
+            "--quiz",
+            str(quiz_path),
+            "--output",
+            str(output_path),
+        ]
+    )
+    text = capsys.readouterr().out
+    report = json.loads(output_path.read_text(encoding="utf-8"))
+
+    assert exit_code == 0
+    assert report["version"] == "quiz-grounding-v1"
+    assert report["counts"] == {
+        "pdf_grounded": 1,
+        "retrieved_candidate": 1,
+        "external_source": 1,
+        "incomplete": 1,
+    }
+    assert report["unresolved_count"] == 1
+    assert report["items"][0]["source_status"] == "pdf_grounded"
+    assert report["items"][1]["source_status"] == "retrieved_candidate"
+    assert report["items"][1]["source_chunks"]
+    assert report["items"][2]["source_status"] == "external_source"
+    assert report["items"][3]["source_status"] == "incomplete"
+    assert "q1: pdf_grounded" in text
+    assert "q3: external_source" in text
+
+
 def test_quiz_bench_answers_unkeyed_choice_drafts_essay_and_skips_incomplete_matching(
     tmp_path, capsys, monkeypatch
 ):
@@ -820,6 +911,7 @@ def test_quiz_bench_answers_unkeyed_choice_drafts_essay_and_skips_incomplete_mat
     assert report["skipped_incomplete_count"] == 1
     assert report["skipped_external_source_count"] == 1
     assert report["items"][0]["status"] == "answered_unscored"
+    assert report["items"][0]["source_grounding"]["source_status"] == "retrieved_candidate"
     assert report["items"][0]["selected_option"] == "B"
     assert report["items"][1]["status"] == "drafted"
     assert report["items"][1]["answer"]["rubric"] == ["Mentions character"]

@@ -79,6 +79,21 @@ uv run ethnos validate-quiz 1 --quiz benchmarks/ethics_ch2_canvas.json
 uv run ethnos validate-quiz 1 --quiz benchmarks/ethics_ch3_canvas.json
 ```
 
+## Source Grounding
+
+Build the source-grounding report before running model-backed checks:
+
+```bash
+uv run ethnos ground-quiz 1 \
+  --quiz benchmarks/ethics_ch3_canvas.json \
+  --output data/runs/ethics_ch3_grounding.json \
+  --options-retrieval
+```
+
+The grounding report is the canonical per-item source state. It distinguishes
+PDF-grounded questions from retrieved candidates, external-source questions,
+incomplete matching items, invalid anchors, and ungrounded items.
+
 ## Answer-Key Audit
 
 Use `quiz-bench` to produce PDF-grounded selections, then audit the key:
