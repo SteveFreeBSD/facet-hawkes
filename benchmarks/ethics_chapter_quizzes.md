@@ -78,3 +78,23 @@ uv run ethnos validate-quiz 1 --quiz benchmarks/ethics_ch1_canvas.json
 uv run ethnos validate-quiz 1 --quiz benchmarks/ethics_ch2_canvas.json
 uv run ethnos validate-quiz 1 --quiz benchmarks/ethics_ch3_canvas.json
 ```
+
+## Answer-Key Audit
+
+Use `quiz-bench` to produce PDF-grounded selections, then audit the key:
+
+```bash
+uv run ethnos quiz-bench 1 \
+  --quiz benchmarks/ethics_ch3_canvas.json \
+  --output data/runs/ethics_ch3_key_check.json \
+  --options-retrieval
+
+uv run ethnos verify-answer-key data/runs/ethics_ch3_key_check.json \
+  --output data/runs/ethics_ch3_key_audit.json
+```
+
+`verify-answer-key` separates likely wrong keys from other cases:
+
+- `key_conflict_candidate`: PDF-backed selection disagrees with the key.
+- `no_pdf_context`: no source context was found, so the key cannot be judged.
+- `external_source`: the item is intentionally outside the PDF source.

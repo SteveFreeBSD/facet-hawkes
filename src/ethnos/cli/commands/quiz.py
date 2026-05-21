@@ -95,6 +95,15 @@ def register(subcommands):
     mc_compare_parser.add_argument("candidate", type=Path)
     mc_compare_parser.add_argument("--output", type=Path)
 
+    verify_key_parser = add_command(
+        subcommands,
+        "verify-answer-key",
+        "Audit keyed quiz answers from a quiz-bench report.",
+        verify_answer_key_cmd,
+    )
+    verify_key_parser.add_argument("report", type=Path)
+    verify_key_parser.add_argument("--output", type=Path)
+
     import_mc_parser = add_command(
         subcommands, "import-mc-quiz",
         "Convert copied LMS quiz text into external multiple-choice quiz JSON.",
@@ -290,6 +299,136 @@ def generate_quiz_cmd(args) -> int:
         f"({_format_optional_percent(chunk_coverage['coverage'])})"
     )
     return 0
+
+def verify_answer_key_cmd(args) -> int:
+    try:
+        report = _load_quiz_bench_report(args.report)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
+    audit = _verify_answer_key_report(report, report_path=args.report)
+
+    print("Answer key verification")
+    print(f"  report: {args.report}")
+    print(f"  quiz: {audit.get('quiz') or 'n/a'}")
+    print(f"  model: {audit.get('model') or 'n/a'}")
+    print(f"  keyed items: {audit['keyed_item_count']}")
+    print(f"  supported: {audit['key_supported_count']}")
+    print(f"  conflict candidates: {audit['key_conflict_candidate_count']}")
+    print(f"  no PDF context: {audit['no_pdf_context_count']}")
+    print(f"  external source: {audit['external_source_count']}")
+    print(f"  invalid responses: {audit['invalid_response_count']}")
+    print()
+
+    findings = [
+        item for item in audit["items"] if item["audit_status"] != "key_supported"
+    ]
+    if findings:
+        print("Findings:")
+        for item in findings:
+            print(f"{item['id']}: {item['audit_status']}")
+            print(f"  question: {item['question']}")
+            if item.get("keyed_option"):
+                print(
+                    f"  keyed: {item['keyed_option']} - "
+                    f"{item.get('keyed_option_text') or 'n/a'}"
+                )
+            if item.get("selected_option"):
+                print(
+                    f"  selected: {item['selected_option']} - "
+                    f"{item.get('selected_option_text') or 'n/a'}"
+                )
+            if item.get("evidence"):
+                print(f"  evidence: {item['evidence']}")
+            citations = item.get("source_citations") or []
+            if citations:
+                print(f"  citations: {', '.join(str(citation) for citation in citations)}")
+    else:
+        print("Findings: none")
+
+    if args.output:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(json.dumps(audit, indent=2, sort_keys=True), encoding="utf-8")
+        print()
+        print(f"wrote audit: {args.output}")
+    return 1 if audit["key_conflict_candidate_count"] else 0
+
+def _load_quiz_bench_report(path: Path) -> dict[str, object]:
+    if not path.exists():
+        raise ValueError(f"Quiz benchmark report not found: {path}")
+    try:
+        report = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Quiz benchmark report is invalid JSON: {path}") from exc
+    if not isinstance(report, dict):
+        raise ValueError("Quiz benchmark report must be a JSON object.")
+    if not isinstance(report.get("items"), list):
+        raise ValueError("Quiz benchmark report must include an items list.")
+    return report
+
+def _verify_answer_key_report(
+    report: dict[str, object],
+    *,
+    report_path: Path,
+) -> dict[str, object]:
+    audit_items = []
+    for item in report["items"]:
+        if not isinstance(item, dict) or "correct" not in item:
+            continue
+        question_type = str(item.get("question_type") or "multiple_choice")
+        if question_type not in {"multiple_choice", "true_false"}:
+            continue
+        audit_items.append(_audit_keyed_report_item(item))
+
+    counts = {
+        "key_supported_count": _audit_status_count(audit_items, "key_supported"),
+        "key_conflict_candidate_count": _audit_status_count(
+            audit_items, "key_conflict_candidate"
+        ),
+        "no_pdf_context_count": _audit_status_count(audit_items, "no_pdf_context"),
+        "external_source_count": _audit_status_count(audit_items, "external_source"),
+        "invalid_response_count": _audit_status_count(audit_items, "invalid_response"),
+    }
+    return {
+        "report": str(report_path),
+        "quiz": report.get("quiz"),
+        "model": report.get("model"),
+        "keyed_item_count": len(audit_items),
+        **counts,
+        "items": audit_items,
+    }
+
+def _audit_keyed_report_item(item: dict[str, object]) -> dict[str, object]:
+    status = str(item.get("status") or "")
+    audit_status = {
+        "correct": "key_supported",
+        "incorrect": "key_conflict_candidate",
+        "no_context": "no_pdf_context",
+        "skipped_external_source": "external_source",
+        "invalid_response": "invalid_response",
+    }.get(status, "unclassified")
+    answer = item.get("answer") if isinstance(item.get("answer"), dict) else {}
+    source_citations = []
+    if isinstance(answer, dict) and isinstance(answer.get("source_citations"), list):
+        source_citations = answer["source_citations"]
+    if not source_citations and isinstance(item.get("selected_source_citations"), list):
+        source_citations = item["selected_source_citations"]
+    return {
+        "id": item.get("id"),
+        "question": item.get("question"),
+        "question_type": item.get("question_type") or "multiple_choice",
+        "audit_status": audit_status,
+        "benchmark_status": status,
+        "keyed_option": item.get("correct"),
+        "keyed_option_text": item.get("correct_option_text"),
+        "selected_option": item.get("selected_option"),
+        "selected_option_text": item.get("selected_option_text"),
+        "evidence": answer.get("evidence") if isinstance(answer, dict) else None,
+        "source_citations": source_citations,
+        "warnings": item.get("warnings", []),
+    }
+
+def _audit_status_count(items: list[dict[str, object]], status: str) -> int:
+    return sum(1 for item in items if item.get("audit_status") == status)
 
 def import_mc_quiz_cmd(args) -> int:
     raw_text = args.input.read_text(encoding="utf-8")

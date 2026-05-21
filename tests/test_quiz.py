@@ -1780,6 +1780,94 @@ def test_mc_compare_reports_accuracy_flips_and_retrieval_changes(tmp_path, capsy
     assert [item["id"] for item in comparison["retrieval_changes"]] == ["q2"]
 
 
+def test_verify_answer_key_flags_conflicts_and_unresolved_items(tmp_path, capsys):
+    report_path = tmp_path / "bench.json"
+    output_path = tmp_path / "audit.json"
+    report_path.write_text(
+        json.dumps(
+            {
+                "quiz": "benchmarks/ethics_ch3_canvas.json",
+                "model": "test-model",
+                "items": [
+                    {
+                        "id": "q1",
+                        "question": "Supported key?",
+                        "question_type": "multiple_choice",
+                        "status": "correct",
+                        "selected_option": "A",
+                        "selected_option_text": "Alpha",
+                        "correct": "A",
+                        "correct_option_text": "Alpha",
+                        "answer": {
+                            "evidence": "The PDF supports Alpha.",
+                            "source_citations": ["quiz.pdf p. 1, chunk 1"],
+                        },
+                    },
+                    {
+                        "id": "q8",
+                        "question": "Thomas Aquinas believed",
+                        "question_type": "multiple_choice",
+                        "status": "incorrect",
+                        "selected_option": "B",
+                        "selected_option_text": "That sin affects our moral life but not our rational life",
+                        "correct": "D",
+                        "correct_option_text": "None of the above",
+                        "answer": {
+                            "evidence": "The text says sin affects moral life but not rational life.",
+                            "source_citations": ["ethics.pdf p. 49, chunk 36"],
+                        },
+                    },
+                    {
+                        "id": "q9",
+                        "question": "Instructor-only fact?",
+                        "question_type": "multiple_choice",
+                        "status": "skipped_external_source",
+                        "selected_option": None,
+                        "selected_option_text": None,
+                        "correct": "B",
+                        "correct_option_text": "Beta",
+                        "warnings": ["external_source_item"],
+                    },
+                    {
+                        "id": "q10",
+                        "question": "Missing context?",
+                        "question_type": "multiple_choice",
+                        "status": "no_context",
+                        "selected_option": None,
+                        "selected_option_text": None,
+                        "correct": "C",
+                        "correct_option_text": "Charlie",
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    exit_code = main(
+        [
+            "verify-answer-key",
+            str(report_path),
+            "--output",
+            str(output_path),
+        ]
+    )
+    text = capsys.readouterr().out
+    audit = json.loads(output_path.read_text(encoding="utf-8"))
+
+    assert exit_code == 1
+    assert audit["keyed_item_count"] == 4
+    assert audit["key_supported_count"] == 1
+    assert audit["key_conflict_candidate_count"] == 1
+    assert audit["external_source_count"] == 1
+    assert audit["no_pdf_context_count"] == 1
+    assert audit["items"][1]["audit_status"] == "key_conflict_candidate"
+    assert audit["items"][1]["selected_option"] == "B"
+    assert audit["items"][1]["keyed_option"] == "D"
+    assert "q8: key_conflict_candidate" in text
+    assert "selected: B - That sin affects our moral life but not our rational life" in text
+
+
 def _type_counts(items: list[dict[str, object]]) -> dict[str, int]:
     counts: dict[str, int] = {}
     for item in items:

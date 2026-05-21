@@ -114,6 +114,13 @@ own item difficulty metadata, and external quizzes may omit difficulty entirely.
   rubric, incomplete matching items are skipped without model calls, and items
   tagged with `warnings: ["external_source_item"]` are reported as
   `skipped_external_source` instead of being counted as PDF retrieval failures.
+- `ethnos verify-answer-key <quiz-bench-report> [--output <path>]` audits keyed
+  choice items from a benchmark report. It classifies each item as
+  `key_supported`, `key_conflict_candidate`, `no_pdf_context`,
+  `external_source`, `invalid_response`, or `unclassified`. This is the
+  recommended way to catch wrong instructor keys: if the benchmark selects a
+  different option with PDF evidence, the audit reports a conflict candidate
+  instead of hiding it inside model accuracy.
 - Ethics chapter quiz fixtures use `benchmarks/ethics_chapter_quizzes.json` as
   the machine-readable contract and `benchmarks/ethics_chapter_quizzes.md` as
   the human workflow note. Keep raw Canvas text, optional answer keys, and
@@ -156,6 +163,9 @@ uv run ethnos suggest-mc-anchors 1 \
 uv run ethnos quiz-bench 1 \
   --quiz data/runs/ethics_ch1_mc_imported.json \
   --output data/runs/quiz-bench-ethics-ch1.json
+
+uv run ethnos verify-answer-key data/runs/quiz-bench-ethics-ch1.json \
+  --output data/runs/quiz-bench-ethics-ch1-key-audit.json
 ```
 
 ## Benchmarking
@@ -201,6 +211,9 @@ uv run ethnos quiz-bench 1 \
   plus flat `selected_distractor_source_record_type`,
   `selected_distractor_source_record_id`, `selected_distractor_target`, and
   `selected_distractor_source_citation` fields for confusion-matrix analysis.
+- `verify-answer-key --output` writes a compact audit report with the source
+  benchmark report, quiz path, model, keyed item counts, status counts, keyed
+  option text, selected option text, evidence, citations, and warnings.
 - `accuracy` denominator is keyed items that had retrieved context and a valid
   model response. No-context and invalid-response counts are reported separately
   so accuracy cannot hide coverage failures.
