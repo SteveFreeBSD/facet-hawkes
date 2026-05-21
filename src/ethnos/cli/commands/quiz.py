@@ -386,6 +386,7 @@ def import_chapter_quiz_cmd(args) -> int:
             answer_key_text=answer_key_text,
             id_prefix=f"ch{args.chapter}-q",
         )
+        _apply_chapter_quiz_item_overrides(quiz, chapter)
     except ValueError as exc:
         raise SystemExit(str(exc)) from exc
 
@@ -560,6 +561,46 @@ def _validate_chapter_quiz_contract(
             if str(warning) not in allowed_warnings:
                 errors.append(f"{item.get('id')}: warning not allowed: {warning}")
     return errors
+
+def _apply_chapter_quiz_item_overrides(
+    quiz: dict[str, object],
+    chapter: dict[str, object],
+) -> None:
+    overrides = chapter.get("item_overrides")
+    if not isinstance(overrides, dict):
+        return
+    questions = quiz.get("questions")
+    if not isinstance(questions, list):
+        return
+    by_id = {
+        str(item.get("id")): item
+        for item in questions
+        if isinstance(item, dict) and item.get("id")
+    }
+    for item_id, override in overrides.items():
+        if not isinstance(override, dict):
+            raise ValueError(f"item_overrides.{item_id} must be an object")
+        item = by_id.get(str(item_id))
+        if item is None:
+            raise ValueError(f"item_overrides references unknown item {item_id}")
+        for key, value in override.items():
+            if key == "warnings":
+                item[key] = _merged_warning_list(item.get("warnings"), value)
+            else:
+                item[key] = value
+
+def _merged_warning_list(existing: object, override: object) -> list[str]:
+    warnings: list[str] = []
+    for values in (existing, override):
+        if values is None:
+            continue
+        if not isinstance(values, list):
+            raise ValueError("warning overrides must be lists")
+        for value in values:
+            warning = str(value)
+            if warning not in warnings:
+                warnings.append(warning)
+    return warnings
 
 def _keyed_choice_count(items: list[object]) -> int:
     return sum(
@@ -963,6 +1004,7 @@ def quiz_bench_cmd(args) -> int:
     report_items = []
     keyed_total = correct_count = scored_total = no_context_count = invalid_count = 0
     answered_unscored_count = drafted_count = skipped_incomplete_count = 0
+    skipped_external_source_count = 0
 
     print("Quiz benchmark")
     print(f"  document id: {args.document_id}")
@@ -1022,7 +1064,11 @@ def quiz_bench_cmd(args) -> int:
             _print_retrieval_debug(retrieval)
         print(f"  selected chunks: {', '.join(str(chunk) for chunk in selected_chunks) or 'none'}")
 
-        if question_type == "matching" and "incomplete_matching_item" in item.get(
+        if "external_source_item" in item.get("warnings", []):
+            status = "skipped_external_source"
+            skipped_external_source_count += 1
+            print("  status: skipped_external_source")
+        elif question_type == "matching" and "incomplete_matching_item" in item.get(
             "warnings", []
         ):
             status = "skipped_incomplete"
@@ -1181,6 +1227,7 @@ def quiz_bench_cmd(args) -> int:
     print(f"  answered unscored: {answered_unscored_count}")
     print(f"  essays drafted: {drafted_count}")
     print(f"  skipped incomplete: {skipped_incomplete_count}")
+    print(f"  skipped external source: {skipped_external_source_count}")
     print(f"  no-context cases: {no_context_count}")
     print(f"  invalid responses: {invalid_count}")
     print(f"  elapsed: {format_elapsed(elapsed)}")
@@ -1198,6 +1245,7 @@ def quiz_bench_cmd(args) -> int:
             "answered_unscored_count": answered_unscored_count,
             "drafted_count": drafted_count,
             "skipped_incomplete_count": skipped_incomplete_count,
+            "skipped_external_source_count": skipped_external_source_count,
             "no_context_count": no_context_count,
             "invalid_response_count": invalid_count,
             "elapsed_seconds": elapsed,

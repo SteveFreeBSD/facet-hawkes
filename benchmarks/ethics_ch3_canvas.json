@@ -16,8 +16,17 @@
       "position": 1,
       "question": "What is Eudaimonia?",
       "question_type": "multiple_choice",
-      "source_chunks": [],
-      "source_pages": []
+      "retrieval_questions": [
+        "eudaimonia human flourishing living well telos"
+      ],
+      "source_chunks": [
+        32
+      ],
+      "source_citation": "ethics.pdf p. 45, chunk 32",
+      "source_pages": [
+        45
+      ],
+      "target": "eudaimonia"
     },
     {
       "correct": "C",
@@ -32,8 +41,17 @@
       "position": 2,
       "question": "What most contributes to separation from the Dao?",
       "question_type": "multiple_choice",
-      "source_chunks": [],
-      "source_pages": []
+      "retrieval_questions": [
+        "separation from the Dao government military social hierarchies power structures"
+      ],
+      "source_chunks": [
+        39
+      ],
+      "source_citation": "ethics.pdf p. 52, chunk 39",
+      "source_pages": [
+        52
+      ],
+      "target": "separation from the Dao"
     },
     {
       "correct": "C",
@@ -48,8 +66,17 @@
       "position": 3,
       "question": "Under Buddhist Virtue Ethics there is",
       "question_type": "multiple_choice",
-      "source_chunks": [],
-      "source_pages": []
+      "retrieval_questions": [
+        "Buddhist virtue ethics balanced harmonious humility free from dukkha"
+      ],
+      "source_chunks": [
+        36
+      ],
+      "source_citation": "ethics.pdf p. 49, chunk 36",
+      "source_pages": [
+        49
+      ],
+      "target": "Buddhist virtue ethics"
     },
     {
       "correct": "E",
@@ -65,8 +92,17 @@
       "position": 4,
       "question": "According to Confucius, Li or Ritual",
       "question_type": "multiple_choice",
-      "source_chunks": [],
-      "source_pages": []
+      "retrieval_questions": [
+        "Confucius Li every action affects character environment proper respect procedures"
+      ],
+      "source_chunks": [
+        38
+      ],
+      "source_citation": "ethics.pdf p. 51, chunk 38",
+      "source_pages": [
+        51
+      ],
+      "target": "Ritual, or Li"
     },
     {
       "correct": "D",
@@ -81,8 +117,17 @@
       "position": 5,
       "question": "There are two main objections to Virtue Ethics. What are they?",
       "question_type": "multiple_choice",
-      "source_chunks": [],
-      "source_pages": []
+      "retrieval_questions": [
+        "two main objections to virtue ethics vagueness relativism"
+      ],
+      "source_chunks": [
+        39
+      ],
+      "source_citation": "ethics.pdf p. 52, chunk 39",
+      "source_pages": [
+        52
+      ],
+      "target": "vagueness and its relativism"
     },
     {
       "correct": "A",
@@ -97,8 +142,17 @@
       "position": 6,
       "question": "The truly virtuous person",
       "question_type": "multiple_choice",
-      "source_chunks": [],
-      "source_pages": []
+      "retrieval_questions": [
+        "truly virtuous person chooses a virtuous act for its own sake"
+      ],
+      "source_chunks": [
+        34
+      ],
+      "source_citation": "ethics.pdf p. 47, chunk 34",
+      "source_pages": [
+        47
+      ],
+      "target": "Chooses a virtuous act for its own sake"
     },
     {
       "correct": "B",
@@ -111,11 +165,20 @@
       "position": 7,
       "question": "According to Virtue Ethics are your ethics that same at age four as they are at 18 as compared to 30?",
       "question_type": "multiple_choice",
-      "source_chunks": [],
-      "source_pages": []
+      "retrieval_questions": [
+        "virtue ethics being ethical is a skill that one develops through practice"
+      ],
+      "source_chunks": [
+        33
+      ],
+      "source_citation": "ethics.pdf p. 46, chunk 33",
+      "source_pages": [
+        46
+      ],
+      "target": "Being ethical, then, is a skill that one develops"
     },
     {
-      "correct": "D",
+      "correct": "B",
       "id": "ch3-q008",
       "options": {
         "A": "God has no part in virtue",
@@ -127,11 +190,23 @@
       "position": 8,
       "question": "Thomas Aquinas believed",
       "question_type": "multiple_choice",
-      "source_chunks": [],
-      "source_pages": []
+      "retrieval_questions": [
+        "Aquinas sin affects our moral life but not our rational life"
+      ],
+      "source_chunks": [
+        35,
+        36
+      ],
+      "source_citation": "ethics.pdf p. 49, chunk 36",
+      "source_pages": [
+        48,
+        49
+      ],
+      "target": "affects our moral life but not our rational life"
     },
     {
       "correct": "B",
+      "external_source_note": "No matching source text for St. Catherine of Alexandria or Maxentius was found in ethics.pdf. Keep the instructor key, but skip this item for PDF-grounded benchmarking.",
       "id": "ch3-q009",
       "options": {
         "A": "St. Constantia of Constantinople",
@@ -144,7 +219,10 @@
       "question": "Who was martyred by the Roman empower Maxentius in 305 CE?",
       "question_type": "multiple_choice",
       "source_chunks": [],
-      "source_pages": []
+      "source_pages": [],
+      "warnings": [
+        "external_source_item"
+      ]
     },
     {
       "correct": "C",
@@ -159,8 +237,19 @@
       "position": 10,
       "question": "Karma means",
       "question_type": "multiple_choice",
-      "source_chunks": [],
-      "source_pages": []
+      "retrieval_questions": [
+        "karma thoughts actions intend harm benefit future lives Buddhist virtue ethics"
+      ],
+      "source_chunks": [
+        36,
+        37
+      ],
+      "source_citation": "ethics.pdf p. 49, chunk 36",
+      "source_pages": [
+        49,
+        50
+      ],
+      "target": "karma"
     }
   ],
   "source": "canvas_pasted_text",

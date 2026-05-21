@@ -89,7 +89,9 @@ own item difficulty metadata, and external quizzes may omit difficulty entirely.
   unresolved work such as unkeyed choices, essay prompts, or incomplete
   matching items. It writes the normalized JSON only after the shape and
   manifest contract pass, so a bad import does not clobber a known-good
-  fixture.
+  fixture. Chapter manifests may also provide `item_overrides` keyed by item id
+  to add source anchors, retrieval questions, warning tags, or notes after raw
+  Canvas import without editing generated JSON by hand.
 - Mixed Canvas imports preserve question position and point values, ignore
   `Flag question` noise, strip `Group of answer choices`, and support
   `multiple_choice`, `true_false`, `matching`, and `essay` item types.
@@ -109,7 +111,9 @@ own item difficulty metadata, and external quizzes may omit difficulty entirely.
   [--debug-retrieval] [--model M] [--num-predict N] [--num-ctx N]` benchmarks
   mixed quizzes. Keyed choice items are scored, unkeyed choice items are
   answered unscored with evidence, essay items receive a draft answer plus
-  rubric, and incomplete matching items are skipped without model calls.
+  rubric, incomplete matching items are skipped without model calls, and items
+  tagged with `warnings: ["external_source_item"]` are reported as
+  `skipped_external_source` instead of being counted as PDF retrieval failures.
 - Ethics chapter quiz fixtures use `benchmarks/ethics_chapter_quizzes.json` as
   the machine-readable contract and `benchmarks/ethics_chapter_quizzes.md` as
   the human workflow note. Keep raw Canvas text, optional answer keys, and

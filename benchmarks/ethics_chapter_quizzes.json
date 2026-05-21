@@ -37,7 +37,138 @@
       "expected_question_types": {
         "multiple_choice": 10
       },
-      "allowed_warnings": []
+      "allowed_warnings": [
+        "external_source_item"
+      ],
+      "item_overrides": {
+        "ch3-q001": {
+          "target": "eudaimonia",
+          "source_chunks": [
+            32
+          ],
+          "source_pages": [
+            45
+          ],
+          "source_citation": "ethics.pdf p. 45, chunk 32",
+          "retrieval_questions": [
+            "eudaimonia human flourishing living well telos"
+          ]
+        },
+        "ch3-q002": {
+          "target": "separation from the Dao",
+          "source_chunks": [
+            39
+          ],
+          "source_pages": [
+            52
+          ],
+          "source_citation": "ethics.pdf p. 52, chunk 39",
+          "retrieval_questions": [
+            "separation from the Dao government military social hierarchies power structures"
+          ]
+        },
+        "ch3-q003": {
+          "target": "Buddhist virtue ethics",
+          "source_chunks": [
+            36
+          ],
+          "source_pages": [
+            49
+          ],
+          "source_citation": "ethics.pdf p. 49, chunk 36",
+          "retrieval_questions": [
+            "Buddhist virtue ethics balanced harmonious humility free from dukkha"
+          ]
+        },
+        "ch3-q004": {
+          "target": "Ritual, or Li",
+          "source_chunks": [
+            38
+          ],
+          "source_pages": [
+            51
+          ],
+          "source_citation": "ethics.pdf p. 51, chunk 38",
+          "retrieval_questions": [
+            "Confucius Li every action affects character environment proper respect procedures"
+          ]
+        },
+        "ch3-q005": {
+          "target": "vagueness and its relativism",
+          "source_chunks": [
+            39
+          ],
+          "source_pages": [
+            52
+          ],
+          "source_citation": "ethics.pdf p. 52, chunk 39",
+          "retrieval_questions": [
+            "two main objections to virtue ethics vagueness relativism"
+          ]
+        },
+        "ch3-q006": {
+          "target": "Chooses a virtuous act for its own sake",
+          "source_chunks": [
+            34
+          ],
+          "source_pages": [
+            47
+          ],
+          "source_citation": "ethics.pdf p. 47, chunk 34",
+          "retrieval_questions": [
+            "truly virtuous person chooses a virtuous act for its own sake"
+          ]
+        },
+        "ch3-q007": {
+          "target": "Being ethical, then, is a skill that one develops",
+          "source_chunks": [
+            33
+          ],
+          "source_pages": [
+            46
+          ],
+          "source_citation": "ethics.pdf p. 46, chunk 33",
+          "retrieval_questions": [
+            "virtue ethics being ethical is a skill that one develops through practice"
+          ]
+        },
+        "ch3-q008": {
+          "target": "affects our moral life but not our rational life",
+          "source_chunks": [
+            35,
+            36
+          ],
+          "source_pages": [
+            48,
+            49
+          ],
+          "source_citation": "ethics.pdf p. 49, chunk 36",
+          "retrieval_questions": [
+            "Aquinas sin affects our moral life but not our rational life"
+          ]
+        },
+        "ch3-q009": {
+          "warnings": [
+            "external_source_item"
+          ],
+          "external_source_note": "No matching source text for St. Catherine of Alexandria or Maxentius was found in ethics.pdf. Keep the instructor key, but skip this item for PDF-grounded benchmarking."
+        },
+        "ch3-q010": {
+          "target": "karma",
+          "source_chunks": [
+            36,
+            37
+          ],
+          "source_pages": [
+            49,
+            50
+          ],
+          "source_citation": "ethics.pdf p. 49, chunk 36",
+          "retrieval_questions": [
+            "karma thoughts actions intend harm benefit future lives Buddhist virtue ethics"
+          ]
+        }
+      }
     }
   }
 }

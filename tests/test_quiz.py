@@ -7,6 +7,7 @@ from random import Random
 import pytest
 
 from ethnos.cli import _add_quiz_source_context, main
+from ethnos.cli.commands.quiz import _apply_chapter_quiz_item_overrides
 from ethnos.db import connect, init_db, save_chunks, save_document_pages, save_extraction_result
 from ethnos.models import ChunkRecord, DocumentRecord, ExtractionResult, PageRecord
 from ethnos.ollama_client import ChoiceAnswerResult, EssayAnswerResult, MCAnswerResult
@@ -552,6 +553,7 @@ def test_ethics_chapter_canvas_fixtures_match_manifest():
             answer_key_text=answer_key_text,
             id_prefix=f"ch{chapter_number}-q",
         )
+        _apply_chapter_quiz_item_overrides(imported, chapter)
         checked_in = json.loads(imported_path.read_text(encoding="utf-8"))
 
         assert imported == checked_in
@@ -734,6 +736,17 @@ def test_quiz_bench_answers_unkeyed_choice_drafts_essay_and_skips_incomplete_mat
                         "matching_prompts": ["Material Cause"],
                         "warnings": ["incomplete_matching_item"],
                     },
+                    {
+                        "id": "q4",
+                        "question": "Which instructor-only detail is correct?",
+                        "question_type": "multiple_choice",
+                        "options": {
+                            "A": "Alpha",
+                            "B": "Beta",
+                        },
+                        "correct": "B",
+                        "warnings": ["external_source_item"],
+                    },
                 ],
             }
         ),
@@ -805,13 +818,16 @@ def test_quiz_bench_answers_unkeyed_choice_drafts_essay_and_skips_incomplete_mat
     assert report["answered_unscored_count"] == 1
     assert report["drafted_count"] == 1
     assert report["skipped_incomplete_count"] == 1
+    assert report["skipped_external_source_count"] == 1
     assert report["items"][0]["status"] == "answered_unscored"
     assert report["items"][0]["selected_option"] == "B"
     assert report["items"][1]["status"] == "drafted"
     assert report["items"][1]["answer"]["rubric"] == ["Mentions character"]
     assert report["items"][2]["status"] == "skipped_incomplete"
+    assert report["items"][3]["status"] == "skipped_external_source"
     assert "answered unscored: 1" in text
     assert "essays drafted: 1" in text
+    assert "skipped external source: 1" in text
 
 
 def test_import_mc_quiz_cli_writes_external_json(tmp_path, capsys):
