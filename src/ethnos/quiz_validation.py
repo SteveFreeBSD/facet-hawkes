@@ -72,6 +72,23 @@ def normalize_review_text(value: str) -> str:
     return " ".join(value.lower().replace("-", " ").split())
 
 
+def target_text_found(target: str, source_text: str) -> bool:
+    normalized_target = normalize_review_text(target)
+    normalized_source = normalize_review_text(source_text)
+    if not normalized_target:
+        return True
+    if normalized_target in normalized_source:
+        return True
+    if "/" not in target:
+        return False
+    parts = [
+        normalize_review_text(part)
+        for part in target.split("/")
+        if normalize_review_text(part)
+    ]
+    return bool(parts) and all(part in normalized_source for part in parts)
+
+
 def is_true_false_item_options(options: object) -> bool:
     return (
         isinstance(options, dict)
@@ -117,7 +134,7 @@ def _anchor_errors(
     target = str(item.get("target") or "").strip()
     if target and chunk_rows:
         source_text = normalize_review_text(" ".join(row["text"] for row in chunk_rows))
-        if normalize_review_text(target) not in source_text:
+        if not target_text_found(target, source_text):
             errors.append("target phrase not found in source_chunks text")
     source_citation = str(item.get("source_citation") or "").strip()
     if source_citation and chunk_rows:

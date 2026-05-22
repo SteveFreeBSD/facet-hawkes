@@ -30,6 +30,7 @@ that differ on that machine.
 uv run ethnos ingest-pdf path/to/course.pdf
 uv run ethnos documents
 uv run ethnos chunk 1
+uv run ethnos label-sections 1 --preset ethics
 uv run ethnos section-status 1
 uv run ethnos search "photosynthesis"
 uv run ethnos inspect-chunk 1 80 --records
@@ -52,6 +53,10 @@ uv run ethnos structure 1 --limit 1 --debug-ollama
 `chunk` validates sizing options before writing chunks: `--target-chars` and
 `--max-chars` must be positive, `--target-chars` cannot exceed `--max-chars`,
 and `--overlap-chars` must be non-negative and smaller than `--max-chars`.
+
+Known local source documents have manual presets: use `--preset ethics` for
+`ethics.pdf` and `--preset history` for `history.pdf`. Apply section labels
+before structured extraction when rebuilding from source PDFs.
 
 By default, `structure` processes core/unlabeled chunks that have never been
 attempted, skipping admin/support chunks to avoid spending Ollama time on
@@ -161,9 +166,14 @@ leave. Empty input is ignored.
 
 Use `--trace-dir` with `ask` or `chat` when you want inspectable local JSON
 traces of answered questions. Traces include the question, derived retrieval
-queries, selected chunks, citations, model name, answer text, and timings. They
-are not written by default. Keep them under `data/runs/` so they stay local and
-ignored by git.
+queries, selected chunks, citations, model name, answer text, timings, and
+compact Ollama response diagnostics. They are not written by default. Keep them
+under `data/runs/` so they stay local and ignored by git.
+
+```bash
+uv run ethnos inspect-trace data/runs/<trace-file>.json
+uv run ethnos inspect-trace data/runs/<trace-file>.json --show-answer
+```
 
 The full quiz workflow is documented in
 [`docs/QUIZ_WORKFLOW.md`](docs/QUIZ_WORKFLOW.md).
@@ -171,9 +181,12 @@ The full quiz workflow is documented in
 The project baseline, migration checklist, performance guide, and host profiles
 are documented in:
 
+- [`docs/CTO_REVIEW.md`](docs/CTO_REVIEW.md)
 - [`docs/CURRENT_BASELINE.md`](docs/CURRENT_BASELINE.md)
 - [`docs/MIGRATION.md`](docs/MIGRATION.md)
+- [`docs/OLLAMA_TROUBLESHOOTING.md`](docs/OLLAMA_TROUBLESHOOTING.md)
 - [`docs/PERFORMANCE_TUNING.md`](docs/PERFORMANCE_TUNING.md)
+- [`docs/TRACE_DEBUGGING.md`](docs/TRACE_DEBUGGING.md)
 - [`docs/hosts/`](docs/hosts/)
 
 Run the local retrieval-only benchmark without calling Ollama:
@@ -398,6 +411,8 @@ These values are also listed in [`.env.example`](.env.example).
 By default ethnos sends `think=false` to Ollama because local Gemma models can
 spend the whole output budget on hidden thinking tokens. `--debug-ollama`
 reports `message_thinking_length` so this is visible during smoke checks.
+Set `ETHNOS_OLLAMA_THINK=auto` to omit the request field, or use
+`true`/`low`/`medium`/`high` for models where thinking improves quality.
 `ETHNOS_OLLAMA_NUM_THREAD` is optional and should normally stay unset; use it
 only for controlled local benchmarks.
 
@@ -405,6 +420,8 @@ For CPU-only tuning notes, host-specific Ollama service settings, SQLite
 pragmas, and benchmark protocol, see
 [docs/PERFORMANCE_TUNING.md](docs/PERFORMANCE_TUNING.md) and
 [docs/hosts/](docs/hosts/).
+For connection failures, empty responses, length cutoffs, and invalid JSON, see
+[docs/OLLAMA_TROUBLESHOOTING.md](docs/OLLAMA_TROUBLESHOOTING.md).
 
 The current local database baseline includes `ethics.pdf` and `history.pdf`.
 Both documents have valid latest structured output for every chunk. `ethics.pdf`

@@ -10,7 +10,7 @@ from ethnos.cli import (
     ollama_num_ctx,
     structure_num_predict,
 )
-from ethnos.config import load_settings
+from ethnos.config import load_settings, parse_ollama_think
 from ethnos.ollama_client import (
     MCAnswerResult,
     OllamaDebugInfo,
@@ -403,12 +403,28 @@ def test_ollama_think_can_be_enabled_via_env(monkeypatch):
     assert settings.ollama_think is True
 
 
+def test_ollama_think_supports_auto_and_effort_values(monkeypatch):
+    monkeypatch.setenv("ETHNOS_OLLAMA_THINK", "auto")
+    assert load_settings().ollama_think is None
+    assert parse_ollama_think("low") == "low"
+    assert parse_ollama_think("medium") == "medium"
+    assert parse_ollama_think("high") == "high"
+
+
 def test_chat_request_kwargs_passes_think_true():
     schema = {"type": "object"}
     kwargs = _chat_request_kwargs(
         "gemma-python", "prompt", schema, num_predict=2048, num_ctx=8192, think=True
     )
     assert kwargs["think"] is True
+
+
+def test_chat_request_kwargs_can_omit_think():
+    schema = {"type": "object"}
+    kwargs = _chat_request_kwargs(
+        "gemma-python", "prompt", schema, num_predict=2048, num_ctx=8192, think=None
+    )
+    assert "think" not in kwargs
 
 
 def test_num_predict_uses_cli_option_before_settings():

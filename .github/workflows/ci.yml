@@ -21,5 +21,7 @@ jobs:
         run: uv run ruff check .
       - name: Compile
         run: uv run python -m compileall -q src tests
+      - name: Dead code audit
+        run: uv run vulture src tests --min-confidence 80
       - name: Test
         run: uv run pytest -q

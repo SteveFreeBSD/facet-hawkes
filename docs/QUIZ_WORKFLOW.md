@@ -5,8 +5,8 @@
 Ethnos treats imported quiz content, answer keys, source grounding, model
 answers, and key audits as separate claims. The source-grounding record is the
 center of the workflow: it says whether each item is actually supported by the
-local PDF, only a retrieval candidate, intentionally external to the PDF,
-incomplete, invalidly anchored, or ungrounded.
+local PDF, only a retrieval candidate, missing from the current local PDF
+extraction, incomplete, invalidly anchored, or ungrounded.
 
 Recommended chapter workflow:
 
@@ -55,7 +55,9 @@ Grounding statuses:
 
 - `pdf_grounded`: anchored source chunks/citation validate against the PDF.
 - `retrieved_candidate`: no explicit anchor, but retrieval found PDF context.
-- `external_source`: the item is tagged `external_source_item`.
+- `source_missing_in_local_pdf`: the item is tagged `external_source_item`
+  for backward-compatible fixture import, but the current local PDF extraction
+  does not contain enough source text to score it as grounded.
 - `incomplete`: the item is incomplete, such as missing matching pairs.
 - `invalid_anchor`: anchor metadata exists but does not validate.
 - `ungrounded`: no usable PDF source was found.
@@ -94,12 +96,15 @@ It reports:
 - `answered_unscored` for unkeyed choice items.
 - `drafted` for essays.
 - `skipped_incomplete` for incomplete matching items.
-- `skipped_external_source` for items tagged `external_source_item`.
+- `skipped_source_missing` for items whose quiz source cannot be found in the
+  current local PDF extraction.
 - `no_context` when PDF retrieval fails.
 - `invalid_response` when the model response cannot be parsed.
 
 Each benchmark item includes a `source_grounding` record so downstream tools can
-distinguish a likely wrong key from missing or external source material.
+distinguish a likely wrong key from missing local PDF source material.
+Benchmark summaries separate `grounded accuracy` from `source coverage`; this
+keeps model correctness and source availability honest.
 
 ## Answer-Key Audit
 
@@ -116,7 +121,8 @@ Audit statuses:
 - `key_conflict_candidate`: benchmark selected a different option with valid
   PDF evidence.
 - `no_pdf_context`: no source context was found, so the key cannot be judged.
-- `external_source`: the item is intentionally outside the local PDF.
+- `source_missing_in_local_pdf`: the key may be correct, but the current local
+  PDF extraction does not provide source text to judge it.
 - `invalid_response`: model output was not valid enough to judge the key.
 - `unclassified`: any remaining status that needs human review.
 

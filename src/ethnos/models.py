@@ -59,7 +59,7 @@ class TopicExtraction(BaseModel):
 
     @field_validator("confidence", mode="before")
     @classmethod
-    def clamp_confidence(cls, v: Any) -> float:
+    def clamp_confidence(_cls, v: Any) -> float:
         """Normalize confidence to 0-1.  Gemma sometimes returns integer scales."""
         v = float(v)
         if v > 1.0:

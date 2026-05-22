@@ -32,9 +32,11 @@ The normalized JSON is written only after validation and manifest checks pass.
 Use manifest `item_overrides` to attach source anchors, retrieval questions,
 warning tags, or notes without hand-editing the normalized JSON.
 
-Chapter 3 question 9 is tagged `external_source_item` because the St. Catherine/
-Maxentius source text is not present in `ethics.pdf`; quiz benchmarking skips it
-instead of counting it as a PDF no-context failure.
+Chapter 3 question 9 is tagged `external_source_item` for backward-compatible
+fixture import, but the review meaning is `source_missing_in_local_pdf`: the
+St. Catherine/Maxentius source text is not present in the current local
+`ethics.pdf` extraction. Quiz benchmarking reports it as source coverage
+missing instead of counting it as a model error or a PDF no-context failure.
 
 ```bash
 uv run ethnos import-chapter-quiz ethics 1
@@ -91,7 +93,7 @@ uv run ethnos ground-quiz 1 \
 ```
 
 The grounding report is the canonical per-item source state. It distinguishes
-PDF-grounded questions from retrieved candidates, external-source questions,
+PDF-grounded questions from retrieved candidates, source-missing questions,
 incomplete matching items, invalid anchors, and ungrounded items.
 
 ## Answer-Key Audit
@@ -112,4 +114,5 @@ uv run ethnos verify-answer-key data/runs/ethics_ch3_key_check.json \
 
 - `key_conflict_candidate`: PDF-backed selection disagrees with the key.
 - `no_pdf_context`: no source context was found, so the key cannot be judged.
-- `external_source`: the item is intentionally outside the PDF source.
+- `source_missing_in_local_pdf`: the key may be correct, but the current local
+  PDF extraction does not provide source text to judge it.

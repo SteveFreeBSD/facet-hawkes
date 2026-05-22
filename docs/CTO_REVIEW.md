@@ -1,0 +1,71 @@
+# CTO Review
+
+This is the concise review packet for `ethnos`: what the repo is, what is
+authoritative, what was verified, and what remains before calling the project
+fully polished.
+
+## Source Of Truth
+
+- Runtime command surface: `uv run ethnos --help`.
+- App/data baseline: [`CURRENT_BASELINE.md`](CURRENT_BASELINE.md).
+- Ollama and benchmark policy: [`PERFORMANCE_TUNING.md`](PERFORMANCE_TUNING.md).
+- Ollama troubleshooting: [`OLLAMA_TROUBLESHOOTING.md`](OLLAMA_TROUBLESHOOTING.md).
+- Suspicious answer debugging: [`TRACE_DEBUGGING.md`](TRACE_DEBUGGING.md).
+- Migration procedure: [`MIGRATION.md`](MIGRATION.md).
+- Host-specific facts: [`hosts/`](hosts/).
+- Environment defaults: [`.env.example`](../.env.example) and
+  [`src/ethnos/config.py`](../src/ethnos/config.py).
+
+## Repo Shape
+
+- Python uses a `src/` layout with package code under [`src/ethnos`](../src/ethnos).
+- The public interface is a CLI, not a web API. There are 38 registered
+  subcommands and no FastAPI/Flask route layer.
+- Core storage is SQLite with FTS5. [`db.py`](../src/ethnos/db.py) is the public
+  facade; implementation is split across `db_core`, `db_sections`,
+  `db_outputs`, `db_query`, `db_structure`, and `db_reports`.
+- Schema validation is Pydantic v2 in [`models.py`](../src/ethnos/models.py) and
+  quiz-specific models in `quiz_core`.
+- [`quiz.py`](../src/ethnos/quiz.py) is the public quiz facade; implementation
+  is split across `quiz_core`, `quiz_importers`, `quiz_prompts`, and
+  `quiz_generation`.
+- Ollama calls are centralized in
+  [`ollama_client.py`](../src/ethnos/ollama_client.py), using the current
+  Python client `Client.chat(...)` API with JSON-schema `format`, request
+  `options`, response-summary diagnostics, retries, and validation statuses.
+
+## Current Verification
+
+Observed on 2026-05-21:
+
+- `uv run ruff check .`: passed.
+- `uv run python -m compileall -q src tests`: passed.
+- `uv run pytest`: 172 passed.
+- Dead-code scan with Vulture at 80% confidence: clean and enforced in CI.
+- Live Ollama smoke: `ask` retrieved core ethics chunks, called
+  `gemma-python`, returned a cited answer, and reported no hidden thinking or
+  API error.
+
+## Ollama Position
+
+- Local Ollama service: 0.24.0, active systemd service.
+- Installed baseline model: `gemma-python:latest`.
+- Python dependency: `ollama==0.6.2` in `uv.lock`.
+- Stable baseline: keep `ETHNOS_OLLAMA_THINK=false`, `num_ctx=8192`, and
+  `ETHNOS_OLLAMA_NUM_THREAD` unset.
+- Compatibility option: `ETHNOS_OLLAMA_THINK=auto` omits the request field;
+  `true`, `low`, `medium`, and `high` are accepted for controlled experiments
+  with newer thinking models.
+- Upgrade policy: treat `v0.30.0-rc*` Ollama server builds as experimental until
+  they beat the current benchmark without accuracy or validity regressions.
+- Upstream references checked on 2026-05-21:
+  [Ollama releases](https://github.com/ollama/ollama/releases),
+  [Ollama REST API](https://github.com/ollama/ollama/blob/main/docs/api.md),
+  and [ollama-python v0.6.2](https://github.com/ollama/ollama-python/releases/tag/v0.6.2).
+
+## Remaining Review Targets
+
+- Keep section presets aligned with source PDFs before any future re-chunking or
+  source-document replacement.
+- Keep future changes inside the focused modules instead of expanding the public
+  facades.

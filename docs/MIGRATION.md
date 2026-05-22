@@ -7,8 +7,10 @@ benchmark outputs, and Ollama model stores live outside the tracked tree.
 ## Source Of Truth
 
 - GitHub repo: `git@github.com:SteveFreeBSD/ethnos.git`
+- CTO review packet: [`CTO_REVIEW.md`](CTO_REVIEW.md)
 - App/data baseline: [`CURRENT_BASELINE.md`](CURRENT_BASELINE.md)
 - Performance defaults: [`PERFORMANCE_TUNING.md`](PERFORMANCE_TUNING.md)
+- Ollama troubleshooting: [`OLLAMA_TROUBLESHOOTING.md`](OLLAMA_TROUBLESHOOTING.md)
 - Host profiles: [`hosts/`](hosts/)
 - Environment template: [`.env.example`](../.env.example)
 
@@ -155,16 +157,18 @@ If the database is not copied, rebuild from source PDFs:
 uv run ethnos ingest-pdf data/incoming/ethics.pdf
 uv run ethnos chunk 1
 uv run ethnos label-sections 1 --preset ethics
-uv run ethnos structure 1
+uv run ethnos structure 1 --all-roles
 
 uv run ethnos ingest-pdf data/incoming/history.pdf
 uv run ethnos chunk 2
-uv run ethnos structure 2
+uv run ethnos label-sections 2 --preset history
+uv run ethnos structure 2 --all-roles
 ```
 
-`history.pdf` is structured in the current baseline but still unlabeled. Add a
-section preset or manual labels before treating role-filtered retrieval or
-non-core quality reports as final.
+The baseline keeps model outputs and summaries for every chunk, which is why
+the exact rebuild uses `--all-roles`. If you apply labels after a document was
+already structured, run `uv run ethnos refresh-records <document_id>` so
+normalized key terms/questions are rebuilt from the current roles.
 
 ## Final Sync Check
 

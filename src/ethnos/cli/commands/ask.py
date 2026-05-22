@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import re
 import time
-import json
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -24,6 +24,7 @@ from ..formatting import (
     _print_retrieval_debug,
 )
 
+from ...config import OllamaThink
 from ...db import add_continuation_context_chunks, context_chunks
 from ...qa import (
     build_answer_prompt,
@@ -65,6 +66,12 @@ def register(subcommands):
     chat_parser.add_argument("--debug-ollama", action="store_true", help="Print compact Ollama request/response diagnostics.")
     chat_parser.add_argument("--debug-retrieval", action="store_true", help="Print answer retrieval query attempts.")
     chat_parser.add_argument("--trace-dir", type=Path, help="Write one local JSON trace file per answered question.")
+
+    trace_parser = add_command(
+        subcommands, "inspect-trace", "Summarize one local ask/chat JSON trace.", inspect_trace_cmd
+    )
+    trace_parser.add_argument("trace_path", type=Path)
+    trace_parser.add_argument("--show-answer", action="store_true", help="Print the full stored answer text.")
 
 
 def ask_cmd(args) -> int:
@@ -153,7 +160,7 @@ def _answer_once(
     model_name: str,
     num_predict: int,
     num_ctx: int,
-    think: bool,
+    think: OllamaThink,
     debug_retrieval: bool,
     debug_ollama: bool,
     trace_dir: Path | None,
@@ -191,6 +198,7 @@ def _answer_once(
             retrieval=retrieval, model_name=model_name, num_predict=num_predict,
             num_ctx=num_ctx, answer_text=answer_text, elapsed_seconds=elapsed,
             context_found=False, mode=mode, followup=followup,
+            ollama_debug_info=None,
             rewritten_retrieval_question=(
                 retrieval_question if retrieval_question != question else None
             ),
@@ -232,6 +240,7 @@ def _answer_once(
         retrieval=retrieval, model_name=model_name, num_predict=num_predict,
         num_ctx=num_ctx, answer_text=answer_text, elapsed_seconds=elapsed,
         context_found=True, mode=mode, followup=followup,
+        ollama_debug_info=result.debug_info,
         rewritten_retrieval_question=(
             retrieval_question if retrieval_question != question else None
         ),
@@ -254,7 +263,7 @@ def _retrieve_answer_context(conn, *, document_id, question, limit, role, sectio
 def _maybe_write_answer_trace(
     *, trace_dir, document_id, question, retrieval, model_name,
     num_predict, num_ctx, answer_text, elapsed_seconds, context_found,
-    mode, followup=None, rewritten_retrieval_question=None,
+    mode, followup=None, ollama_debug_info=None, rewritten_retrieval_question=None,
 ) -> Path | None:
     if trace_dir is None:
         return None
@@ -288,6 +297,7 @@ def _maybe_write_answer_trace(
         "elapsed_seconds": elapsed_seconds,
         "context_found": context_found,
         "command_mode": mode,
+        "ollama": _trace_ollama_debug(ollama_debug_info),
         "follow_up_detected": bool(followup.detected) if followup is not None else False,
         "previous_question": followup.previous_question if followup is not None else None,
         "previous_topic": followup.previous_topic if followup is not None else None,
@@ -316,3 +326,80 @@ def _trace_chunk(row: dict) -> dict:
         "page_start": row["page_start"],
         "page_end": row["page_end"],
     }
+
+
+def _trace_ollama_debug(debug_info) -> dict | None:
+    if debug_info is None:
+        return None
+    return {
+        "prompt_char_length": debug_info.prompt_char_length,
+        "format_kind": debug_info.format_kind,
+        "num_predict": debug_info.num_predict,
+        "num_ctx": debug_info.num_ctx,
+        "response_summary": debug_info.response_summary,
+    }
+
+
+def inspect_trace_cmd(args) -> int:
+    trace = json.loads(args.trace_path.read_text(encoding="utf-8"))
+    print(f"Trace: {args.trace_path}")
+    print(f"Mode: {trace.get('command_mode', 'unknown')}")
+    print(f"Document: {trace.get('document_id')}")
+    print(f"Question: {trace.get('question', '')}")
+    rewritten = trace.get("rewritten_retrieval_question")
+    if rewritten:
+        print(f"Rewritten retrieval question: {rewritten}")
+    print(f"Selected query: {trace.get('selected_query') or '(none)'}")
+    fallback_queries = trace.get("fallback_queries_tried") or []
+    if fallback_queries:
+        print(f"Fallback queries tried: {', '.join(fallback_queries)}")
+    print(f"Context found: {_yes_no(bool(trace.get('context_found')))}")
+    print(f"Comparison detected: {_yes_no(bool(trace.get('comparison_detected')))}")
+    if trace.get("follow_up_detected"):
+        previous = trace.get("previous_question") or "(unknown)"
+        print(f"Follow-up detected: yes, previous question: {previous}")
+    chunks = trace.get("selected_chunks") or []
+    print(f"Selected chunks: {len(chunks)}")
+    for chunk in chunks:
+        print(
+            "  "
+            f"chunk {chunk.get('chunk_id')} "
+            f"(index {chunk.get('chunk_index')}): "
+            f"{chunk.get('source_citation')} "
+            f"[{chunk.get('section_label')} / {chunk.get('content_role')}]"
+        )
+    _print_trace_ollama_summary(trace.get("ollama"))
+    answer = trace.get("answer_text") or ""
+    if args.show_answer:
+        print()
+        print("Answer:")
+        print(answer)
+    else:
+        print(f"Answer chars: {len(answer)}")
+    return 0
+
+
+def _print_trace_ollama_summary(ollama: dict | None) -> None:
+    if not ollama:
+        print("Ollama: not called")
+        return
+    print(
+        "Ollama: "
+        f"format={ollama.get('format_kind')}, "
+        f"prompt_chars={ollama.get('prompt_char_length')}, "
+        f"num_predict={ollama.get('num_predict')}, "
+        f"num_ctx={ollama.get('num_ctx')}"
+    )
+    summary = ollama.get("response_summary") or {}
+    print(
+        "Ollama response: "
+        f"done_reason={summary.get('done_reason')}, "
+        f"eval_count={summary.get('eval_count')}, "
+        f"content_chars={summary.get('message_content_length')}, "
+        f"thinking_chars={summary.get('message_thinking_length')}, "
+        f"error={summary.get('error')}"
+    )
+
+
+def _yes_no(value: bool) -> str:
+    return "yes" if value else "no"

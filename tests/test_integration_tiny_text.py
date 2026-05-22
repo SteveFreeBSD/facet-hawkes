@@ -33,7 +33,7 @@ from ethnos.db import (
 )
 from ethnos.models import ChunkRecord, DocumentRecord, ExtractionResult, PageRecord
 from ethnos.export import export_json, export_study
-from ethnos.ollama_client import AnswerCallResult
+from ethnos.ollama_client import AnswerCallResult, OllamaDebugInfo
 from ethnos.qa import (
     answer_query_candidates,
     benchmark_hit,
@@ -914,6 +914,21 @@ def test_ask_cli_writes_trace_when_requested(tmp_path, capsys, monkeypatch):
         return AnswerCallResult(
             raw_prompt=kwargs["prompt"],
             raw_response="Evolutionary ethics is answered [labeled.pdf p. 1, chunk 1].",
+            debug_info=OllamaDebugInfo(
+                prompt_char_length=len(kwargs["prompt"]),
+                schema_top_level_keys=[],
+                format_kind="plain_text",
+                num_predict=kwargs["num_predict"],
+                num_ctx=kwargs["num_ctx"],
+                response_summary={
+                    "done": True,
+                    "done_reason": "stop",
+                    "eval_count": 12,
+                    "message_content_length": 68,
+                    "message_thinking_length": 0,
+                    "error": None,
+                },
+            ),
         )
 
     monkeypatch.setattr("ethnos.cli.answer_question", fake_answer_question)
@@ -945,9 +960,97 @@ def test_ask_cli_writes_trace_when_requested(tmp_path, capsys, monkeypatch):
     assert trace["num_ctx"] == 8192
     assert trace["context_found"] is True
     assert trace["command_mode"] == "ask"
+    assert trace["ollama"]["format_kind"] == "plain_text"
+    assert trace["ollama"]["response_summary"]["done_reason"] == "stop"
     assert trace["selected_chunks"][0]["chunk_id"] == chunks[0].id
     assert trace["selected_chunks"][0]["source_citation"] == "labeled.pdf p. 1, chunk 1"
     assert trace["answer_text"].startswith("Evolutionary ethics is answered")
+
+
+def test_inspect_trace_cmd_summarizes_answer_trace(tmp_path, capsys, monkeypatch):
+    db_path = tmp_path / "ethnos.sqlite"
+    trace_dir = tmp_path / "runs"
+    conn = connect(db_path)
+    init_db(conn)
+    document_id, _ = _stored_labeled_record_document(conn)
+
+    def fake_answer_question(**kwargs):
+        return AnswerCallResult(
+            raw_prompt=kwargs["prompt"],
+            raw_response="Evolutionary ethics is answered.",
+            debug_info=OllamaDebugInfo(
+                prompt_char_length=len(kwargs["prompt"]),
+                schema_top_level_keys=[],
+                format_kind="plain_text",
+                num_predict=kwargs["num_predict"],
+                num_ctx=kwargs["num_ctx"],
+                response_summary={
+                    "done": True,
+                    "done_reason": "stop",
+                    "eval_count": 8,
+                    "message_content_length": 32,
+                    "message_thinking_length": 0,
+                    "error": None,
+                },
+            ),
+        )
+
+    monkeypatch.setattr("ethnos.cli.answer_question", fake_answer_question)
+    assert main(
+        [
+            "--db",
+            str(db_path),
+            "ask",
+            str(document_id),
+            "What is evolutionary ethics?",
+            "--trace-dir",
+            str(trace_dir),
+        ]
+    ) == 0
+    trace_path = next(trace_dir.glob("*.json"))
+    capsys.readouterr()
+
+    exit_code = main(["inspect-trace", str(trace_path)])
+    output = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert f"Trace: {trace_path}" in output
+    assert "Mode: ask" in output
+    assert "Context found: yes" in output
+    assert "Selected chunks: 1" in output
+    assert "labeled.pdf p. 1, chunk 1 [chapter_content / core]" in output
+    assert "Ollama: format=plain_text" in output
+    assert "done_reason=stop" in output
+    assert "Answer chars: 32" in output
+
+
+def test_inspect_trace_cmd_can_show_full_answer(tmp_path, capsys):
+    trace_path = tmp_path / "trace.json"
+    trace_path.write_text(
+        json.dumps(
+            {
+                "command_mode": "ask",
+                "document_id": 1,
+                "question": "What is missing?",
+                "selected_query": None,
+                "context_found": False,
+                "comparison_detected": False,
+                "selected_chunks": [],
+                "ollama": None,
+                "answer_text": "The document context did not contain enough information.",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    exit_code = main(["inspect-trace", str(trace_path), "--show-answer"])
+    output = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert "Context found: no" in output
+    assert "Ollama: not called" in output
+    assert "Answer:" in output
+    assert "did not contain enough information" in output
 
 
 def test_ask_cli_does_not_write_trace_by_default(tmp_path, capsys, monkeypatch):

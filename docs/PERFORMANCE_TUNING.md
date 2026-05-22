@@ -3,6 +3,8 @@
 This guide is the shared tuning playbook for `ethnos`. Hardware-specific facts
 belong in [`docs/hosts/`](hosts/README.md); project defaults belong here only
 when they are safe across the current hosts.
+Operational failures belong in
+[`OLLAMA_TROUBLESHOOTING.md`](OLLAMA_TROUBLESHOOTING.md).
 
 ## Quick Defaults
 
@@ -39,6 +41,10 @@ ETHNOS_OLLAMA_NUM_THREAD=
 `ETHNOS_OLLAMA_NUM_THREAD` is intentionally blank. Ollama's default scheduler
 was faster than fixed `4` or `6` thread settings in the measured MC benchmark
 on `caspian`.
+
+`ETHNOS_OLLAMA_THINK=false` is the tuned default for the current local Gemma
+alias. Use `auto` to omit the `think` field entirely, or `true`, `low`,
+`medium`, or `high` only in controlled model/version tests.
 
 ## Ollama Service Override
 
@@ -214,8 +220,12 @@ Capture the current state before any changes and record it in
 
 ### Phase 2: Ollama Upgrade Evaluation
 
-- Ollama 0.30.0 is a pre-release with a new llama.cpp architecture. Treat it
-  as experimental until it proves faster and stable under the same benchmarks.
+- As of 2026-05-21, local `caspian` and `erosion` are on Ollama 0.24.0, which
+  is the current stable baseline. The tracked Python client is `ollama==0.6.2`,
+  the current stable Python client release.
+- Ollama 0.30.0-rc22 is a pre-release with a new llama.cpp architecture. Treat
+  it as experimental until it proves faster and stable under the same
+  benchmarks.
 - Do not replace the current install in place. Prefer a side-by-side run or
   temporary binary test, then compare results against the baseline.
 - Gate adoption on equal-or-better accuracy and reduced elapsed time.

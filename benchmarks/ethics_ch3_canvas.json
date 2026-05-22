@@ -206,7 +206,6 @@
     },
     {
       "correct": "B",
-      "external_source_note": "No matching source text for St. Catherine of Alexandria or Maxentius was found in ethics.pdf. Keep the instructor key, but skip this item for PDF-grounded benchmarking.",
       "id": "ch3-q009",
       "options": {
         "A": "St. Constantia of Constantinople",
@@ -219,6 +218,7 @@
       "question": "Who was martyred by the Roman empower Maxentius in 305 CE?",
       "question_type": "multiple_choice",
       "source_chunks": [],
+      "source_missing_note": "No matching source text for St. Catherine of Alexandria or Maxentius is present in the current local ethics.pdf extraction. Keep the instructor key, but report this as source coverage missing rather than scoring it as PDF-grounded.",
       "source_pages": [],
       "warnings": [
         "external_source_item"

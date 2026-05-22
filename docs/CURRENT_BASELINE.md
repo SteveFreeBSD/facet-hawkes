@@ -4,6 +4,10 @@ This is the known-good app and data baseline for `ethnos`. Host-specific
 hardware, Ollama service settings, and benchmark results live in
 [`PERFORMANCE_TUNING.md`](PERFORMANCE_TUNING.md) and [`hosts/`](hosts/).
 System migration steps live in [`MIGRATION.md`](MIGRATION.md).
+Suspicious answer inspection lives in [`TRACE_DEBUGGING.md`](TRACE_DEBUGGING.md).
+
+For a CTO-facing rollup of repo shape, verification status, and remaining
+hardening work, start with [`CTO_REVIEW.md`](CTO_REVIEW.md).
 
 ## What Works Now
 
@@ -13,21 +17,22 @@ System migration steps live in [`MIGRATION.md`](MIGRATION.md).
 - 582 pages and 257 chunks exist in the current local database.
 - `ethics.pdf` has 118 pages and 100 chunks. Section labels exist, with no
   unlabeled pages or chunks.
-- `history.pdf` has 464 pages and 157 chunks. It is structured but still
-  unlabeled: all 464 pages and 157 chunks are `unlabeled / unlabeled`.
+- `history.pdf` has 464 pages and 157 chunks. Section labels exist, with no
+  unlabeled pages or chunks.
 - Structured extraction is complete for both local documents: 257/257 chunks
   have valid latest model output.
 - Normalized records are populated across the database: 257 chunk summaries,
-  498 topics, 906 key terms, 406 examples, and 611 questions.
+  465 topics, 852 key terms, 390 examples, and 590 questions.
 - `ethics.pdf` has 100 chunk summaries, 113 topics, 252 key terms, 74 examples,
   and 186 questions. Non-core ethics chunks have zero persisted key
   terms/questions; admin/support material is summary-only.
-- `history.pdf` has 157 chunk summaries, 385 topics, 654 key terms, 332
-  examples, and 425 questions. Because it is unlabeled, those key terms and
-  questions currently appear under the `unlabeled` role.
+- `history.pdf` has 157 chunk summaries, 352 topics, 600 key terms, 316
+  examples, and 404 questions. Non-core history chunks have zero persisted key
+  terms/questions; admin/support material is summary-only.
 - `ask` works with local Ollama retrieval context.
 - `chat` works with the same retrieval and answer path.
 - `ask` and `chat` can write local JSON traces with `--trace-dir`.
+- `inspect-trace` summarizes local answer traces without calling Ollama.
 - Comparison-aware retrieval works for retrieval-only benchmark cases.
 - Chat follow-up and continuation context appears to be present.
 
@@ -41,6 +46,23 @@ default. Current defaults are:
 - `ETHNOS_OLLAMA_NUM_CTX=8192`
 - `ETHNOS_OLLAMA_THINK=false`
 - `ETHNOS_OLLAMA_NUM_THREAD` unset
+
+`ETHNOS_OLLAMA_THINK=auto` can be used to omit the `think` request field when
+testing another model or Ollama build. The app also accepts `true`, `low`,
+`medium`, and `high` for current Ollama Python clients, but those are not the
+review baseline.
+
+## Verification Snapshot
+
+Observed on 2026-05-21:
+
+- `uv run ruff check .`: passed.
+- `uv run python -m compileall -q src tests`: passed.
+- `uv run pytest`: 172 passed.
+- `uv run vulture src tests --min-confidence 80`: clean and enforced in CI.
+- `uv run ethnos ask 1 "What is virtue ethics?" --limit 2 --num-predict 256 --debug-ollama`:
+  retrieved core chunks 31, 32, and 39; Ollama returned a cited answer with
+  `done_reason=stop`, no hidden thinking, and no API error.
 
 The current MC-only benchmark default is `mc-bench --chars 300`, with
 `ETHNOS_OLLAMA_NUM_CTX=8192` and `ETHNOS_OLLAMA_NUM_THREAD` unset. The value is
@@ -125,23 +147,28 @@ recreate `ethics.pdf` from the source PDF:
 uv run ethnos ingest-pdf data/incoming/ethics.pdf
 uv run ethnos chunk 1
 uv run ethnos label-sections 1 --preset ethics
-uv run ethnos structure 1
+uv run ethnos structure 1 --all-roles
 ```
 
-The `structure` step is expensive because it calls Ollama. By default it
-processes only core/unlabeled chunks and skips admin/support chunks. Use
-`--all-roles` only when you intentionally want model outputs for every labeled
-chunk. Do not run long structure passes inside Codex during baseline
+The `structure` step is expensive because it calls Ollama. The baseline keeps
+valid model outputs and summaries for every chunk, so exact recovery uses
+`--all-roles`; normalized key terms/questions are still persisted only for core
+chunks. Omit `--all-roles` when you intentionally want a cheaper core-only
+rebuild. Do not run long structure passes inside Codex during baseline
 stabilization unless explicitly requested.
 
-`history.pdf` can be rebuilt the same way, but it still needs a section-label
-preset or manual labeling before role-filtered retrieval is meaningful:
+`history.pdf` can be rebuilt the same way:
 
 ```bash
 uv run ethnos ingest-pdf data/incoming/history.pdf
 uv run ethnos chunk 2
-uv run ethnos structure 2
+uv run ethnos label-sections 2 --preset history
+uv run ethnos structure 2 --all-roles
 ```
+
+If a document was structured before section labels were applied, run
+`uv run ethnos refresh-records <document_id>` after labeling to rebuild
+normalized records according to the current content roles.
 
 To back up the current processed database manually, copy
 `data/ethnos.sqlite` to another file under `data/` or to a location outside the
@@ -150,7 +177,4 @@ committed.
 
 ## Next Sensible Project Areas
 
-- Label `history.pdf` pages/chunks or add a history section preset.
-- Add a small troubleshooting guide for Ollama connection and model-loading failures.
-- Clarify how traces should be inspected when an answer looks suspicious.
 - Tighten tests around chat continuation behavior.

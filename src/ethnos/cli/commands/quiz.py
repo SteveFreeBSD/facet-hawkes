@@ -336,7 +336,7 @@ def verify_answer_key_cmd(args) -> int:
     print(f"  supported: {audit['key_supported_count']}")
     print(f"  conflict candidates: {audit['key_conflict_candidate_count']}")
     print(f"  no PDF context: {audit['no_pdf_context_count']}")
-    print(f"  external source: {audit['external_source_count']}")
+    print(f"  source missing in local PDF: {audit['source_missing_count']}")
     print(f"  invalid responses: {audit['invalid_response_count']}")
     print()
 
@@ -532,7 +532,8 @@ def _build_source_grounding_record(
         "validation_errors": validation_errors,
         "warnings": warnings,
         "keyed_option": item.get("correct"),
-        "external_source_note": item.get("external_source_note"),
+        "source_missing_note": item.get("source_missing_note")
+        or item.get("external_source_note"),
     }
 
 def _source_status_for_item(
@@ -543,7 +544,7 @@ def _source_status_for_item(
     context_rows: list[dict[str, object]],
 ) -> str:
     if "external_source_item" in warnings:
-        return "external_source"
+        return "source_missing_in_local_pdf"
     if "incomplete_matching_item" in warnings:
         return "incomplete"
     if validation_errors:
@@ -604,7 +605,8 @@ def _verify_answer_key_report(
             audit_items, "key_conflict_candidate"
         ),
         "no_pdf_context_count": _audit_status_count(audit_items, "no_pdf_context"),
-        "external_source_count": _audit_status_count(audit_items, "external_source"),
+        "source_missing_count": _audit_status_count(audit_items, "source_missing_in_local_pdf"),
+        "external_source_count": _audit_status_count(audit_items, "source_missing_in_local_pdf"),
         "invalid_response_count": _audit_status_count(audit_items, "invalid_response"),
     }
     return {
@@ -625,7 +627,8 @@ def _audit_keyed_report_item(item: dict[str, object]) -> dict[str, object]:
         "correct": "key_supported",
         "incorrect": "key_conflict_candidate",
         "no_context": "no_pdf_context",
-        "skipped_external_source": "external_source",
+        "skipped_external_source": "source_missing_in_local_pdf",
+        "skipped_source_missing": "source_missing_in_local_pdf",
         "invalid_response": "invalid_response",
     }.get(status, "unclassified")
     answer = item.get("answer") if isinstance(item.get("answer"), dict) else {}
@@ -1366,7 +1369,7 @@ def quiz_bench_cmd(args) -> int:
     report_items = []
     keyed_total = correct_count = scored_total = no_context_count = invalid_count = 0
     answered_unscored_count = drafted_count = skipped_incomplete_count = 0
-    skipped_external_source_count = 0
+    skipped_source_missing_count = 0
 
     print("Quiz benchmark")
     print(f"  document id: {args.document_id}")
@@ -1436,9 +1439,9 @@ def quiz_bench_cmd(args) -> int:
         print(f"  selected chunks: {', '.join(str(chunk) for chunk in selected_chunks) or 'none'}")
 
         if "external_source_item" in item.get("warnings", []):
-            status = "skipped_external_source"
-            skipped_external_source_count += 1
-            print("  status: skipped_external_source")
+            status = "skipped_source_missing"
+            skipped_source_missing_count += 1
+            print("  status: skipped_source_missing")
         elif question_type == "matching" and "incomplete_matching_item" in item.get(
             "warnings", []
         ):
@@ -1590,16 +1593,27 @@ def quiz_bench_cmd(args) -> int:
 
     elapsed = time.monotonic() - started_at
     accuracy = correct_count / scored_total if scored_total else None
+    source_covered_total = len(items) - skipped_source_missing_count
+    source_coverage = source_covered_total / len(items) if items else None
     print("Quiz benchmark summary:")
     print(f"  total: {len(items)}")
     print(f"  keyed total: {keyed_total}")
     print(f"  scored total: {scored_total}")
     print(f"  correct: {correct_count}")
-    print(f"  accuracy: {accuracy:.1%}" if accuracy is not None else "  accuracy: n/a")
+    print(
+        f"  grounded accuracy: {accuracy:.1%}"
+        if accuracy is not None
+        else "  grounded accuracy: n/a"
+    )
+    print(
+        f"  source coverage: {source_covered_total}/{len(items)} ({source_coverage:.1%})"
+        if source_coverage is not None
+        else "  source coverage: n/a"
+    )
     print(f"  answered unscored: {answered_unscored_count}")
     print(f"  essays drafted: {drafted_count}")
     print(f"  skipped incomplete: {skipped_incomplete_count}")
-    print(f"  skipped external source: {skipped_external_source_count}")
+    print(f"  skipped source-missing: {skipped_source_missing_count}")
     print(f"  no-context cases: {no_context_count}")
     print(f"  invalid responses: {invalid_count}")
     print(f"  elapsed: {format_elapsed(elapsed)}")
@@ -1614,10 +1628,14 @@ def quiz_bench_cmd(args) -> int:
             "scored_total": scored_total,
             "correct_count": correct_count,
             "accuracy": accuracy,
+            "grounded_accuracy": accuracy,
+            "source_covered_total": source_covered_total,
+            "source_coverage": source_coverage,
             "answered_unscored_count": answered_unscored_count,
             "drafted_count": drafted_count,
             "skipped_incomplete_count": skipped_incomplete_count,
-            "skipped_external_source_count": skipped_external_source_count,
+            "skipped_source_missing_count": skipped_source_missing_count,
+            "skipped_external_source_count": skipped_source_missing_count,
             "no_context_count": no_context_count,
             "invalid_response_count": invalid_count,
             "elapsed_seconds": elapsed,

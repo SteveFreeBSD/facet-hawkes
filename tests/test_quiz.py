@@ -28,6 +28,7 @@ from ethnos.quiz import (
     parse_source_pages,
     QuizGenerationDiagnostics,
 )
+from ethnos.quiz_validation import target_text_found
 
 
 def test_generate_quiz_uses_terms_by_default_and_is_reproducible(tmp_path):
@@ -43,6 +44,7 @@ def test_generate_quiz_uses_terms_by_default_and_is_reproducible(tmp_path):
     assert first["generated_count"] == 2
     assert first["record_counts"]["available_terms"] == 4
     assert first["record_counts"]["available_questions"] == 0
+
     assert first["quality_stats"]["skipped_insufficient_distractors"] == 0
     assert first["quality_stats"]["skipped_display_collision"] == 0
     assert first["quality_stats"]["distractor_pool"] == {
@@ -84,6 +86,13 @@ def test_generate_quiz_uses_terms_by_default_and_is_reproducible(tmp_path):
     )
     assert first["questions"][0]["source_pages"] == [1]
     assert first["questions"][0]["source_chunks"]
+
+
+def test_target_anchor_accepts_slash_alias_present_as_or_phrase():
+    assert target_text_found(
+        "Moral Philosophy/Ethics",
+        "Moral philosophy or ethics is concerned with critical examination.",
+    )
 
 
 def test_generate_quiz_supports_questions_source_and_option_cap(tmp_path):
@@ -776,17 +785,17 @@ def test_ground_quiz_cli_writes_source_grounding_records(tmp_path, capsys):
     assert report["counts"] == {
         "pdf_grounded": 1,
         "retrieved_candidate": 1,
-        "external_source": 1,
+        "source_missing_in_local_pdf": 1,
         "incomplete": 1,
     }
     assert report["unresolved_count"] == 1
     assert report["items"][0]["source_status"] == "pdf_grounded"
     assert report["items"][1]["source_status"] == "retrieved_candidate"
     assert report["items"][1]["source_chunks"]
-    assert report["items"][2]["source_status"] == "external_source"
+    assert report["items"][2]["source_status"] == "source_missing_in_local_pdf"
     assert report["items"][3]["source_status"] == "incomplete"
     assert "q1: pdf_grounded" in text
-    assert "q3: external_source" in text
+    assert "q3: source_missing_in_local_pdf" in text
 
 
 def test_quiz_bench_answers_unkeyed_choice_drafts_essay_and_skips_incomplete_matching(
@@ -909,17 +918,22 @@ def test_quiz_bench_answers_unkeyed_choice_drafts_essay_and_skips_incomplete_mat
     assert report["answered_unscored_count"] == 1
     assert report["drafted_count"] == 1
     assert report["skipped_incomplete_count"] == 1
+    assert report["skipped_source_missing_count"] == 1
     assert report["skipped_external_source_count"] == 1
+    assert report["source_covered_total"] == 3
+    assert report["source_coverage"] == 0.75
     assert report["items"][0]["status"] == "answered_unscored"
     assert report["items"][0]["source_grounding"]["source_status"] == "retrieved_candidate"
     assert report["items"][0]["selected_option"] == "B"
     assert report["items"][1]["status"] == "drafted"
     assert report["items"][1]["answer"]["rubric"] == ["Mentions character"]
     assert report["items"][2]["status"] == "skipped_incomplete"
-    assert report["items"][3]["status"] == "skipped_external_source"
+    assert report["items"][3]["status"] == "skipped_source_missing"
     assert "answered unscored: 1" in text
     assert "essays drafted: 1" in text
-    assert "skipped external source: 1" in text
+    assert "grounded accuracy: n/a" in text
+    assert "source coverage: 3/4 (75.0%)" in text
+    assert "skipped source-missing: 1" in text
 
 
 def test_import_mc_quiz_cli_writes_external_json(tmp_path, capsys):
@@ -1344,6 +1358,35 @@ def test_choice_question_guidance_handles_both_option():
 
     assert "supports multiple individual options (A, C)" in guidance
     assert "select option d" in guidance.lower()
+
+
+def test_choice_question_guidance_handles_both_option_with_paraphrased_support():
+    item = {
+        "question": "Under Buddhist Virtue Ethics there is",
+        "options": {
+            "A": (
+                "an emphasis on a Virtue Ethical system that teaches the art of becoming "
+                "balanced and harmonious though humility"
+            ),
+            "B": "the end goal being free from dukkha",
+            "C": "both a and b",
+            "D": "none of the above",
+        },
+    }
+    rows = [
+        {
+            "text": (
+                "A common thread among most Buddhist schools of thought is an emphasis on "
+                "a virtue ethical system that teaches the art of becoming balanced and "
+                "harmonious through humility, with the goal of being free from dukkha."
+            )
+        }
+    ]
+
+    guidance = build_choice_question_guidance(item, rows)
+
+    assert "supports multiple individual options (A, B)" in guidance
+    assert "select option c" in guidance.lower()
 
 
 def test_choice_question_guidance_handles_dawes_act_purpose():
@@ -1913,7 +1956,7 @@ def test_verify_answer_key_flags_conflicts_and_unresolved_items(tmp_path, capsys
                         "id": "q9",
                         "question": "Instructor-only fact?",
                         "question_type": "multiple_choice",
-                        "status": "skipped_external_source",
+                        "status": "skipped_source_missing",
                         "selected_option": None,
                         "selected_option_text": None,
                         "correct": "B",
@@ -1951,12 +1994,15 @@ def test_verify_answer_key_flags_conflicts_and_unresolved_items(tmp_path, capsys
     assert audit["keyed_item_count"] == 4
     assert audit["key_supported_count"] == 1
     assert audit["key_conflict_candidate_count"] == 1
+    assert audit["source_missing_count"] == 1
     assert audit["external_source_count"] == 1
     assert audit["no_pdf_context_count"] == 1
     assert audit["items"][1]["audit_status"] == "key_conflict_candidate"
+    assert audit["items"][2]["audit_status"] == "source_missing_in_local_pdf"
     assert audit["items"][1]["selected_option"] == "B"
     assert audit["items"][1]["keyed_option"] == "D"
     assert "q8: key_conflict_candidate" in text
+    assert "source missing in local PDF: 1" in text
     assert "selected: B - That sin affects our moral life but not our rational life" in text
 
 

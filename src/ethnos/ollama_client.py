@@ -11,6 +11,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
+from .config import OllamaThink
 from .models import ChunkRecord, ExtractionResult
 
 
@@ -110,7 +111,7 @@ def extract_chunk(
     num_ctx: int,
     retries: int = 1,
     debug_ollama: bool = False,
-    think: bool = False,
+    think: OllamaThink = False,
     client: object | None = None,
 ) -> StructuredCallResult:
     prompt = load_prompt(prompt_path, chunk)
@@ -172,7 +173,7 @@ def answer_question(
     timeout: float,
     num_predict: int,
     num_ctx: int,
-    think: bool = False,
+    think: OllamaThink = False,
     client: object | None = None,
 ) -> AnswerCallResult:
     client = client if client is not None else create_client(host, timeout)
@@ -352,7 +353,7 @@ def _chat(
     model_name: str,
     num_predict: int,
     num_ctx: int,
-    think: bool = False,
+    think: OllamaThink = False,
 ) -> OllamaChatResult:
     return _do_chat(
         client,
@@ -366,7 +367,7 @@ def _chat_plain(
     model_name: str,
     num_predict: int,
     num_ctx: int,
-    think: bool = False,
+    think: OllamaThink = False,
 ) -> OllamaChatResult:
     return _do_chat(
         client,
@@ -402,9 +403,14 @@ def _do_chat(client: object, request_kwargs: dict) -> OllamaChatResult:
 
 
 def _chat_request_kwargs(
-    model_name: str, prompt: str, schema: dict, num_predict: int, num_ctx: int, think: bool = False
+    model_name: str,
+    prompt: str,
+    schema: dict,
+    num_predict: int,
+    num_ctx: int,
+    think: OllamaThink = False,
 ) -> dict:
-    return {
+    request = {
         "model": model_name,
         "messages": [
             {
@@ -415,8 +421,9 @@ def _chat_request_kwargs(
         ],
         "format": schema,
         "options": _ollama_options(num_predict, num_ctx),
-        "think": think,
     }
+    _add_think_option(request, think)
+    return request
 
 
 def _ollama_schema(schema: dict) -> dict:
@@ -441,9 +448,13 @@ def _compact_json_schema(value):
 
 
 def _answer_chat_request_kwargs(
-    model_name: str, prompt: str, num_predict: int, num_ctx: int, think: bool = False
+    model_name: str,
+    prompt: str,
+    num_predict: int,
+    num_ctx: int,
+    think: OllamaThink = False,
 ) -> dict:
-    return {
+    request = {
         "model": model_name,
         "messages": [
             {
@@ -456,8 +467,9 @@ def _answer_chat_request_kwargs(
             {"role": "user", "content": prompt},
         ],
         "options": _ollama_options(num_predict, num_ctx),
-        "think": think,
     }
+    _add_think_option(request, think)
+    return request
 
 
 def _mc_chat_request_kwargs(
@@ -479,6 +491,11 @@ def _mc_chat_request_kwargs(
         "options": _ollama_options(num_predict, num_ctx),
         "think": False,
     }
+
+
+def _add_think_option(request: dict, think: OllamaThink) -> None:
+    if think is not None:
+        request["think"] = think
 
 
 def _ollama_options(num_predict: int, num_ctx: int) -> dict[str, int]:
