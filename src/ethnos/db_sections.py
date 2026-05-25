@@ -5,6 +5,7 @@ from __future__ import annotations
 import sqlite3
 from typing import Any
 
+from .db_core import quote_identifier
 from .section_presets import SectionPreset
 
 
@@ -84,13 +85,15 @@ def _count_section_ranges(
     number_column: str,
     ranges,
 ) -> list[dict[str, Any]]:
+    table_sql = quote_identifier(table)
+    number_column_sql = quote_identifier(number_column)
     counts: dict[tuple[str, str], int] = {}
     for section_range in ranges:
         count = conn.execute(
             f"""
             SELECT COUNT(*) AS count
-            FROM {table}
-            WHERE document_id = ? AND {number_column} BETWEEN ? AND ?
+            FROM {table_sql}
+            WHERE document_id = ? AND {number_column_sql} BETWEEN ? AND ?
             """,
             (document_id, section_range.start, section_range.end),
         ).fetchone()["count"]
@@ -106,13 +109,14 @@ def _count_section_ranges(
 def _section_status_rows(
     conn: sqlite3.Connection, table: str, document_id: int
 ) -> list[dict[str, Any]]:
+    table_sql = quote_identifier(table)
     rows = conn.execute(
         f"""
         SELECT
             COALESCE(section_label, 'unlabeled') AS section_label,
             COALESCE(content_role, 'unlabeled') AS content_role,
             COUNT(*) AS count
-        FROM {table}
+        FROM {table_sql}
         WHERE document_id = ?
         GROUP BY section_label, content_role
         ORDER BY section_label, content_role
@@ -123,11 +127,12 @@ def _section_status_rows(
 
 
 def _unlabeled_count(conn: sqlite3.Connection, table: str, document_id: int) -> int:
+    table_sql = quote_identifier(table)
     return int(
         conn.execute(
             f"""
             SELECT COUNT(*) AS count
-            FROM {table}
+            FROM {table_sql}
             WHERE document_id = ? AND (section_label IS NULL OR content_role IS NULL)
             """,
             (document_id,),

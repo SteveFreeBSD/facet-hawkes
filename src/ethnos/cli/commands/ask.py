@@ -23,14 +23,13 @@ from ..formatting import (
     _print_ollama_debug,
     _print_retrieval_debug,
 )
+from ..retrieval import retrieve_answer_context
 
 from ...config import OllamaThink
-from ...db import add_continuation_context_chunks, context_chunks
 from ...qa import (
     build_answer_prompt,
     normalize_answer_role,
     resolve_chat_followup,
-    retrieve_with_fallbacks,
 )
 from ...section_presets import SECTION_LABELS
 
@@ -174,7 +173,7 @@ def _answer_once(
     started_at = time.monotonic()
     retrieval_question = retrieval_question or question
     selected_role = normalize_answer_role(role)
-    retrieval = _retrieve_answer_context(
+    retrieval = retrieve_answer_context(
         conn, document_id=document_id, question=retrieval_question,
         limit=limit, role=selected_role, section=section,
     )
@@ -246,19 +245,6 @@ def _answer_once(
         ),
     )
     return retrieval
-
-
-def _retrieve_answer_context(conn, *, document_id, question, limit, role, section):
-    return retrieve_with_fallbacks(
-        search_func=lambda doc_id, query, limit, role, section: add_continuation_context_chunks(
-            conn, doc_id,
-            context_chunks(conn, doc_id, query, limit=limit, role=role, section=section),
-            role=role, section=section,
-        ),
-        document_id=document_id, question=question,
-        limit=limit, role=role, section=section,
-    )
-
 
 def _maybe_write_answer_trace(
     *, trace_dir, document_id, question, retrieval, model_name,

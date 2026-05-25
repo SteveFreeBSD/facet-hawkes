@@ -16,6 +16,7 @@ from ethnos.ollama_client import (
     OllamaDebugInfo,
     StructuredCallResult,
     answer_mc_question,
+    extract_chunk,
     _chat,
     _answer_chat_request_kwargs,
     _chat_request_kwargs,
@@ -24,12 +25,13 @@ from ethnos.ollama_client import (
     _ollama_options,
     _ollama_schema,
     _repair_prompt,
+    _retry_delay_seconds,
     _response_summary,
     _validate_choice_response,
     _validate_essay_response,
     _validate_mc_response,
 )
-from ethnos.models import ExtractionResult
+from ethnos.models import ChunkRecord, ExtractionResult
 
 
 def test_structure_parser_accepts_debug_ollama_flag():
@@ -104,6 +106,42 @@ def test_response_summary_ignores_empty_thinking_field():
 
     assert summary["message_thinking_length"] == 0
     assert summary["message_thinking_exists"] is False
+
+
+def test_extract_chunk_uses_exponential_backoff_between_retries(tmp_path):
+    class InvalidJsonClient:
+        def chat(self, **kwargs):
+            return {"message": {"content": "not json"}, "done_reason": "stop"}
+
+    prompt_path = tmp_path / "prompt.md"
+    prompt_path.write_text("{source_citation}\n{chunk_text}", encoding="utf-8")
+    chunk = ChunkRecord(
+        document_id=1,
+        page_start=1,
+        page_end=1,
+        chunk_index=1,
+        text="Virtue ethics emphasizes character.",
+        char_count=35,
+        source_citation="ethics.pdf p. 1, chunk 1",
+    )
+    sleeps = []
+
+    result = extract_chunk(
+        chunk,
+        prompt_path,
+        model_name="test-model",
+        host="http://localhost:11434",
+        timeout=1,
+        num_predict=128,
+        num_ctx=2048,
+        retries=2,
+        client=InvalidJsonClient(),
+        retry_sleep=sleeps.append,
+    )
+
+    assert result.validation_status == "invalid_json"
+    assert sleeps == [0.5, 1.0]
+    assert _retry_delay_seconds(4) == 4.0
 
 
 def test_print_ollama_debug_outputs_request_and_response_summary(capsys):

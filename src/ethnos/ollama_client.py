@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal
+from typing import Callable, Literal
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
@@ -113,6 +114,7 @@ def extract_chunk(
     debug_ollama: bool = False,
     think: OllamaThink = False,
     client: object | None = None,
+    retry_sleep: Callable[[float], None] = time.sleep,
 ) -> StructuredCallResult:
     prompt = load_prompt(prompt_path, chunk)
     schema = _extraction_schema()
@@ -143,6 +145,7 @@ def extract_chunk(
                 validation_error=str(exc),
                 debug_info=debug_info if debug_ollama else None,
             )
+            _sleep_before_retry(attempt, retries, retry_sleep)
             continue
 
         result = _validate_response(attempt_prompt, raw_response)
@@ -160,10 +163,25 @@ def extract_chunk(
         if result.result is not None:
             return result
         last = result
+        _sleep_before_retry(attempt, retries, retry_sleep)
 
     if last is None:
         raise RuntimeError("Ollama extraction failed before producing a result")
     return last
+
+
+def _sleep_before_retry(
+    attempt: int,
+    retries: int,
+    retry_sleep: Callable[[float], None],
+) -> None:
+    if attempt >= retries:
+        return
+    retry_sleep(_retry_delay_seconds(attempt))
+
+
+def _retry_delay_seconds(attempt: int) -> float:
+    return min(0.5 * (2**attempt), 4.0)
 
 
 def answer_question(

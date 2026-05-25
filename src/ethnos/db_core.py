@@ -9,6 +9,33 @@ from typing import Any
 
 from .models import ChunkRecord, DocumentRecord, PageRecord
 
+SQL_IDENTIFIERS = {
+    "chunk_index",
+    "chunk_summaries",
+    "chunks",
+    "content_role",
+    "documents",
+    "examples",
+    "extraction_runs",
+    "id",
+    "key_terms",
+    "model_outputs",
+    "page_number",
+    "pages",
+    "questions",
+    "section_confidence",
+    "section_label",
+    "topics",
+}
+
+SQL_COLUMN_DEFINITIONS = {"TEXT", "REAL", "INTEGER"}
+
+
+def quote_identifier(identifier: str) -> str:
+    if identifier not in SQL_IDENTIFIERS:
+        raise ValueError(f"Unsafe SQL identifier: {identifier!r}")
+    return f'"{identifier}"'
+
 
 def connect(db_path: Path) -> sqlite3.Connection:
     db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -171,9 +198,13 @@ def init_db(conn: sqlite3.Connection) -> None:
 def _ensure_column(
     conn: sqlite3.Connection, table: str, column: str, column_definition: str
 ) -> None:
-    columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+    table_sql = quote_identifier(table)
+    column_sql = quote_identifier(column)
+    if column_definition not in SQL_COLUMN_DEFINITIONS:
+        raise ValueError(f"Unsafe SQL column definition: {column_definition!r}")
+    columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table_sql})")}
     if column not in columns:
-        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {column_definition}")
+        conn.execute(f"ALTER TABLE {table_sql} ADD COLUMN {column_sql} {column_definition}")
 
 
 def save_document_pages(

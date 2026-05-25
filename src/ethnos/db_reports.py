@@ -5,7 +5,7 @@ from __future__ import annotations
 import sqlite3
 from typing import Any
 
-from .db_core import get_document, list_chunks, list_pages
+from .db_core import get_document, list_chunks, list_pages, quote_identifier
 from .db_counts import _normalized_record_counts
 from .db_sections import section_label_status
 from .db_structure import list_structure_chunk_status
@@ -62,10 +62,11 @@ def _latest_output_status_counts(rows: list[dict[str, Any]]) -> list[dict[str, A
 def _normalized_count_by_role(
     conn: sqlite3.Connection, table: str, document_id: int
 ) -> list[dict[str, Any]]:
+    table_sql = quote_identifier(table)
     rows = conn.execute(
         f"""
         SELECT COALESCE(c.content_role, 'unlabeled') AS content_role, COUNT(*) AS count
-        FROM {table} t
+        FROM {table_sql} t
         JOIN chunks c ON c.id = t.chunk_id
         WHERE c.document_id = ?
         GROUP BY content_role
@@ -160,10 +161,11 @@ def export_document(conn: sqlite3.Connection, document_id: int) -> dict[str, Any
 
 
 def _rows(conn: sqlite3.Connection, table: str, document_id: int) -> list[dict[str, Any]]:
+    table_sql = quote_identifier(table)
     rows = conn.execute(
         f"""
         SELECT t.*
-        FROM {table} t
+        FROM {table_sql} t
         JOIN chunks c ON c.id = t.chunk_id
         WHERE c.document_id = ?
         ORDER BY t.id
@@ -189,7 +191,9 @@ def db_info(conn: sqlite3.Connection) -> dict[str, Any]:
         "model_outputs",
     ]
     info = {
-        table: conn.execute(f"SELECT COUNT(*) AS count FROM {table}").fetchone()["count"]
+        table: conn.execute(
+            f"SELECT COUNT(*) AS count FROM {quote_identifier(table)}"
+        ).fetchone()["count"]
         for table in tables
     }
     try:

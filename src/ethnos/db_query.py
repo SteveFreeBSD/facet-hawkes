@@ -5,6 +5,8 @@ from __future__ import annotations
 import sqlite3
 from typing import Any
 
+from .db_core import quote_identifier
+
 
 def inspect_page(
     conn: sqlite3.Connection, document_id: int, page_number: int
@@ -43,8 +45,9 @@ def inspect_chunk(
         raise ValueError(f"No chunk {chunk_id} found for document {document_id}")
     counts = {}
     for table in ["chunk_summaries", "key_terms", "questions", "topics", "examples"]:
+        table_sql = quote_identifier(table)
         counts[table] = conn.execute(
-            f"SELECT COUNT(*) AS count FROM {table} WHERE chunk_id = ?", (chunk_id,)
+            f"SELECT COUNT(*) AS count FROM {table_sql} WHERE chunk_id = ?", (chunk_id,)
         ).fetchone()["count"]
     return {"chunk": dict(row), "counts": counts}
 
@@ -60,10 +63,11 @@ def chunk_records(conn: sqlite3.Connection, chunk_id: int) -> dict[str, list[dic
 
 
 def _chunk_table_rows(conn: sqlite3.Connection, table: str, chunk_id: int) -> list[dict[str, Any]]:
+    table_sql = quote_identifier(table)
     rows = conn.execute(
         f"""
         SELECT *
-        FROM {table}
+        FROM {table_sql}
         WHERE chunk_id = ?
         ORDER BY id
         """,
@@ -192,6 +196,7 @@ def _structured_rows_for_table(
     section: str | None,
     chunk_id: int | None,
 ) -> list[dict[str, Any]]:
+    table_sql = quote_identifier(table)
     filters = ["c.document_id = ?"]
     params: list[Any] = [document_id]
     if role is not None:
@@ -212,7 +217,7 @@ def _structured_rows_for_table(
             c.source_citation,
             c.section_label,
             c.content_role
-        FROM {table} t
+        FROM {table_sql} t
         JOIN chunks c ON c.id = t.chunk_id
         WHERE {" AND ".join(filters)}
         ORDER BY c.chunk_index, t.id

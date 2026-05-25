@@ -18,8 +18,8 @@ from ..shared import (
     progress_line,
 )
 from ..formatting import format_elapsed, preview_text, _print_model_summary
+from ..retrieval import retrieve_answer_context
 
-from ...db import add_continuation_context_chunks, context_chunks
 from ...qa import (
     benchmark_hit,
     build_answer_prompt,
@@ -27,7 +27,6 @@ from ...qa import (
     load_qa_benchmark,
     normalize_answer_role,
     rank_model_summaries,
-    retrieve_with_fallbacks,
     summarize_answer_items,
 )
 from ...section_presets import SECTION_LABELS
@@ -50,18 +49,6 @@ def register(subcommands):
     bench_parser.add_argument("--num-predict", type=int, help="Ollama output token budget for --ask answers.")
     bench_parser.add_argument("--num-ctx", type=int, help="Ollama context window token budget for --ask answers.")
     bench_parser.add_argument("--output", type=Path)
-
-
-def _retrieve_answer_context(conn, *, document_id, question, limit, role, section):
-    return retrieve_with_fallbacks(
-        search_func=lambda doc_id, query, limit, role, section: add_continuation_context_chunks(
-            conn, doc_id,
-            context_chunks(conn, doc_id, query, limit=limit, role=role, section=section),
-            role=role, section=section,
-        ),
-        document_id=document_id, question=question,
-        limit=limit, role=role, section=section,
-    )
 
 
 def qa_bench_cmd(args) -> int:
@@ -102,7 +89,7 @@ def qa_bench_cmd(args) -> int:
     for item in items:
         item_started_at = time.monotonic()
         item_number = len(report_items) + 1
-        retrieval = _retrieve_answer_context(
+        retrieval = retrieve_answer_context(
             conn, document_id=args.document_id, question=item["question"],
             limit=args.limit, role=selected_role, section=args.section,
         )
@@ -221,7 +208,7 @@ def qa_bench_compare_models(
     retrieval_entries = []
     retrieval_hits = retrieval_misses = no_context = 0
     for item in items:
-        retrieval = _retrieve_answer_context(
+        retrieval = retrieve_answer_context(
             conn, document_id=args.document_id, question=item["question"],
             limit=args.limit, role=selected_role, section=args.section,
         )
