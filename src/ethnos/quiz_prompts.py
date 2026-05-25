@@ -166,19 +166,19 @@ def _purpose_option_guidance(
     context = _choice_guidance_context(context_rows)
     if not options or not context:
         return None
-    context_search = _guidance_normalized_text(context)
-    if (
-        "dawes" in question
-        and "path to civilization" in context_search
-        and "american style agriculture" in context_search
-    ):
-        for label, text in options.items():
-            if re.search(r"\bassimilat", text, flags=re.IGNORECASE):
-                return (
-                    "This purpose question asks for the policy aim, not a narrower implementation detail. "
-                    "The context says allotment would encourage American-style agriculture and put Native Americans "
-                    f"on the path to 'civilization,' so select option {label}."
-                )
+    context_norm = _guidance_normalized_text(context)
+    for label, text in options.items():
+        option_norm = _guidance_normalized_text(text)
+        if _option_text_supported(text, context):
+            return (
+                "This purpose question asks for the policy aim. "
+                f"The context directly supports option {label}, so select option {label}."
+            )
+        if _purpose_paraphrase_supported(option_norm, context_norm):
+            return (
+                "This purpose question asks for the policy aim, not a narrower implementation detail. "
+                f"The context paraphrases option {label}, so select option {label}."
+            )
     return None
 
 
@@ -230,6 +230,22 @@ def _guidance_significant_terms(text: str) -> list[str]:
         for token in _guidance_normalized_text(text).split()
         if len(token) >= 4 and token not in stopwords
     ]
+
+
+def _purpose_paraphrase_supported(option_norm: str, context_norm: str) -> bool:
+    if "assimil" in option_norm:
+        has_target_group = any(term in context_norm for term in ("native", "indian"))
+        has_culture_goal = any(
+            phrase in context_norm
+            for phrase in (
+                "civilization",
+                "american style",
+                "american culture",
+                "mainstream culture",
+            )
+        )
+        return has_target_group and has_culture_goal
+    return False
 
 
 def _percentage_complement_guidance(

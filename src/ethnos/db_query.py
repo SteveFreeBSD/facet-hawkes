@@ -52,7 +52,9 @@ def inspect_chunk(
     return {"chunk": dict(row), "counts": counts}
 
 
-def chunk_records(conn: sqlite3.Connection, chunk_id: int) -> dict[str, list[dict[str, Any]]]:
+def chunk_records(
+    conn: sqlite3.Connection, chunk_id: int
+) -> dict[str, list[dict[str, Any]]]:
     return {
         "chunk_summaries": _chunk_table_rows(conn, "chunk_summaries", chunk_id),
         "key_terms": _chunk_table_rows(conn, "key_terms", chunk_id),
@@ -62,7 +64,9 @@ def chunk_records(conn: sqlite3.Connection, chunk_id: int) -> dict[str, list[dic
     }
 
 
-def _chunk_table_rows(conn: sqlite3.Connection, table: str, chunk_id: int) -> list[dict[str, Any]]:
+def _chunk_table_rows(
+    conn: sqlite3.Connection, table: str, chunk_id: int
+) -> list[dict[str, Any]]:
     table_sql = quote_identifier(table)
     rows = conn.execute(
         f"""
@@ -96,7 +100,9 @@ def search_chunks(
             section=section,
             include_text=include_text,
         )
-    except sqlite3.OperationalError:
+    except sqlite3.OperationalError as exc:
+        if not _is_fts_query_syntax_error(exc):
+            raise
         quoted = '"' + query.replace('"', '""') + '"'
         return _search_chunks(
             conn,
@@ -107,6 +113,11 @@ def search_chunks(
             section=section,
             include_text=include_text,
         )
+
+
+def _is_fts_query_syntax_error(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return "fts5:" in message or "malformed match expression" in message
 
 
 def _search_chunks(

@@ -1,8 +1,7 @@
 # CTO Review
 
 This is the concise review packet for `ethnos`: what the repo is, what is
-authoritative, what was verified, and what remains before calling the project
-fully polished.
+authoritative, what was verified, and how future changes should stay aligned.
 
 ## Source Of Truth
 
@@ -30,7 +29,8 @@ fully polished.
   is split across `quiz_core`, `quiz_importers`, `quiz_prompts`, and
   `quiz_generation`.
 - CLI answer retrieval uses a shared helper in `cli/retrieval.py`; quiz
-  grounding and answer-key audit helpers live in `cli/quiz_audit.py`.
+  manifest validation lives in `cli/quiz_manifest.py`; quiz grounding and
+  answer-key audit helpers live in `cli/quiz_audit.py`.
 - Ollama calls are centralized in
   [`ollama_client.py`](../src/ethnos/ollama_client.py), using the current
   Python client `Client.chat(...)` API with JSON-schema `format`, request
@@ -43,7 +43,7 @@ Observed on 2026-05-25:
 
 - `uv run ruff check .`: passed.
 - `uv run python -m compileall -q src tests`: passed.
-- `uv run pytest`: 174 passed.
+- `uv run pytest`: 175 passed.
 - Dead-code scan with Vulture at 80% confidence: clean and enforced in CI.
 - Live Ollama smoke: `ask` retrieved core ethics chunks, called
   `gemma-python`, returned a cited answer, and reported no hidden thinking or
@@ -72,3 +72,6 @@ Observed on 2026-05-25:
   source-document replacement.
 - Keep future changes inside the focused modules instead of expanding the public
   facades.
+- Treat the local Canvas quiz source as derived from the PDF-backed quiz export:
+  if an item is missing from the export, mark it unresolved instead of adding
+  undocumented outside knowledge.

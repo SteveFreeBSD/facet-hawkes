@@ -32,6 +32,17 @@ from ..quiz_audit import (
     source_grounding_counts,
     verify_answer_key_report,
 )
+from ..quiz_manifest import (
+    _keyed_choice_count,
+    _quiz_warning_count,
+    apply_chapter_quiz_item_overrides as _apply_chapter_quiz_item_overrides,
+    chapter_quiz_file_stem as _chapter_quiz_file_stem,
+    chapter_quiz_manifest_entry as _chapter_quiz_manifest_entry,
+    chapter_quiz_unresolved_notes as _chapter_quiz_unresolved_notes,
+    load_chapter_quiz_manifest as _load_chapter_quiz_manifest,
+    validate_chapter_quiz_contract as _validate_chapter_quiz_contract,
+    validate_imported_chapter_quiz_shape as _validate_imported_chapter_quiz_shape,
+)
 
 from ...db import context_chunks, get_document
 from ...qa import normalize_answer_role, retrieve_with_fallbacks
@@ -56,32 +67,43 @@ from ...section_presets import SECTION_LABELS
 
 def register(subcommands):
     generate_quiz_parser = add_command(
-        subcommands, "generate-quiz",
+        subcommands,
+        "generate-quiz",
         "Generate a local multiple-choice quiz from structured records.",
         generate_quiz_cmd,
     )
     generate_quiz_parser.add_argument("document_id", type=int)
     generate_quiz_parser.add_argument("--output", type=Path, required=True)
-    generate_quiz_parser.add_argument("--source", choices=["terms", "questions", "both"], default="terms")
+    generate_quiz_parser.add_argument(
+        "--source", choices=["terms", "questions", "both"], default="terms"
+    )
     generate_quiz_parser.add_argument("--limit", type=int)
     generate_quiz_parser.add_argument("--seed", type=int)
     generate_quiz_parser.add_argument("--max-option-chars", type=int, default=120)
     generate_quiz_parser.add_argument(
-        "--difficulty", choices=["easy", "medium", "hard"], default="medium",
+        "--difficulty",
+        choices=["easy", "medium", "hard"],
+        default="medium",
         help="Distractor difficulty: easy uses farther distractors, hard uses closer/shared-topic distractors.",
     )
     generate_quiz_parser.add_argument("--role", choices=ASK_ROLES, default="core")
     generate_quiz_parser.add_argument("--section", choices=sorted(SECTION_LABELS))
 
     mc_bench_parser = add_command(
-        subcommands, "mc-bench",
+        subcommands,
+        "mc-bench",
         "Run a multiple-choice benchmark using retrieved local PDF context.",
         mc_bench_cmd,
     )
     mc_bench_parser.add_argument("document_id", type=int)
     mc_bench_parser.add_argument("--quiz", type=Path, required=True)
     mc_bench_parser.add_argument("--max-questions", type=int)
-    mc_bench_parser.add_argument("--limit", type=int, default=3, help="Retrieved context chunks per quiz question.")
+    mc_bench_parser.add_argument(
+        "--limit",
+        type=int,
+        default=3,
+        help="Retrieved context chunks per quiz question.",
+    )
     mc_bench_parser.add_argument("--chars", type=int, default=300)
     mc_bench_parser.add_argument("--output", type=Path)
     mc_bench_parser.add_argument("--role", choices=ASK_ROLES, default="core")
@@ -90,11 +112,18 @@ def register(subcommands):
     mc_bench_parser.add_argument("--debug-ollama", action="store_true")
     mc_bench_parser.add_argument("--debug-retrieval", action="store_true")
     mc_bench_parser.add_argument("--model", help="Ollama model name.")
-    mc_bench_parser.add_argument("--num-predict", type=int, help="Ollama output token budget for the MC JSON answer.")
-    mc_bench_parser.add_argument("--num-ctx", type=int, help="Ollama context window token budget.")
+    mc_bench_parser.add_argument(
+        "--num-predict",
+        type=int,
+        help="Ollama output token budget for the MC JSON answer.",
+    )
+    mc_bench_parser.add_argument(
+        "--num-ctx", type=int, help="Ollama context window token budget."
+    )
 
     mc_compare_parser = add_command(
-        subcommands, "mc-compare",
+        subcommands,
+        "mc-compare",
         "Compare two multiple-choice benchmark JSON reports.",
         mc_compare_cmd,
     )
@@ -133,7 +162,8 @@ def register(subcommands):
     )
 
     import_mc_parser = add_command(
-        subcommands, "import-mc-quiz",
+        subcommands,
+        "import-mc-quiz",
         "Convert copied LMS quiz text into external multiple-choice quiz JSON.",
         import_mc_quiz_cmd,
     )
@@ -142,11 +172,20 @@ def register(subcommands):
     import_mc_parser.add_argument("--document-id", type=int)
     import_mc_parser.add_argument("--title")
     import_mc_parser.add_argument("--answer-key", type=Path)
-    import_mc_parser.add_argument("--id-prefix", default="q", help="Question id prefix before the zero-padded number, e.g. ch1-q.")
-    import_mc_parser.add_argument("--with-key-preview", action="store_true", help="Print each keyed answer after writing the imported quiz.")
+    import_mc_parser.add_argument(
+        "--id-prefix",
+        default="q",
+        help="Question id prefix before the zero-padded number, e.g. ch1-q.",
+    )
+    import_mc_parser.add_argument(
+        "--with-key-preview",
+        action="store_true",
+        help="Print each keyed answer after writing the imported quiz.",
+    )
 
     import_canvas_parser = add_command(
-        subcommands, "import-canvas-quiz",
+        subcommands,
+        "import-canvas-quiz",
         "Convert pasted Canvas quiz text into external mixed quiz JSON.",
         import_canvas_quiz_cmd,
     )
@@ -155,11 +194,20 @@ def register(subcommands):
     import_canvas_parser.add_argument("--document-id", type=int)
     import_canvas_parser.add_argument("--title")
     import_canvas_parser.add_argument("--answer-key", type=Path)
-    import_canvas_parser.add_argument("--id-prefix", default="q", help="Question id prefix before the zero-padded number, e.g. ch1-q.")
-    import_canvas_parser.add_argument("--with-key-preview", action="store_true", help="Print each keyed choice answer after writing the imported quiz.")
+    import_canvas_parser.add_argument(
+        "--id-prefix",
+        default="q",
+        help="Question id prefix before the zero-padded number, e.g. ch1-q.",
+    )
+    import_canvas_parser.add_argument(
+        "--with-key-preview",
+        action="store_true",
+        help="Print each keyed choice answer after writing the imported quiz.",
+    )
 
     review_mc_parser = add_command(
-        subcommands, "review-mc-quiz",
+        subcommands,
+        "review-mc-quiz",
         "Print a multiple-choice quiz with keyed answers marked for review.",
         review_mc_quiz_cmd,
     )
@@ -167,17 +215,23 @@ def register(subcommands):
     review_mc_parser.add_argument("--max-questions", type=int)
 
     validate_mc_parser = add_command(
-        subcommands, "validate-mc-quiz",
+        subcommands,
+        "validate-mc-quiz",
         "Validate multiple-choice quiz keys and source anchors without calling Ollama.",
         validate_mc_quiz_cmd,
     )
     validate_mc_parser.add_argument("document_id", type=int)
     validate_mc_parser.add_argument("--quiz", type=Path, required=True)
     validate_mc_parser.add_argument("--max-questions", type=int)
-    validate_mc_parser.add_argument("--require-anchors", action="store_true", help="Require target, source_chunks, source_pages, and source_citation on every item.")
+    validate_mc_parser.add_argument(
+        "--require-anchors",
+        action="store_true",
+        help="Require target, source_chunks, source_pages, and source_citation on every item.",
+    )
 
     suggest_mc_parser = add_command(
-        subcommands, "suggest-mc-anchors",
+        subcommands,
+        "suggest-mc-anchors",
         "Suggest source chunks for anchoring a multiple-choice quiz without calling Ollama.",
         suggest_mc_anchors_cmd,
     )
@@ -191,7 +245,8 @@ def register(subcommands):
     suggest_mc_parser.add_argument("--output", type=Path)
 
     review_quiz_parser = add_command(
-        subcommands, "review-quiz",
+        subcommands,
+        "review-quiz",
         "Print a mixed quiz with keyed answers and warnings marked for review.",
         review_quiz_cmd,
     )
@@ -199,18 +254,28 @@ def register(subcommands):
     review_quiz_parser.add_argument("--max-questions", type=int)
 
     validate_quiz_parser = add_command(
-        subcommands, "validate-quiz",
+        subcommands,
+        "validate-quiz",
         "Validate mixed quiz keys, completion, and source anchors without Ollama.",
         validate_quiz_cmd,
     )
     validate_quiz_parser.add_argument("document_id", type=int)
     validate_quiz_parser.add_argument("--quiz", type=Path, required=True)
     validate_quiz_parser.add_argument("--max-questions", type=int)
-    validate_quiz_parser.add_argument("--require-anchors", action="store_true", help="Require target, source_chunks, source_pages, and source_citation on every item.")
-    validate_quiz_parser.add_argument("--strict-complete", action="store_true", help="Treat incomplete matching items and other import warnings as errors.")
+    validate_quiz_parser.add_argument(
+        "--require-anchors",
+        action="store_true",
+        help="Require target, source_chunks, source_pages, and source_citation on every item.",
+    )
+    validate_quiz_parser.add_argument(
+        "--strict-complete",
+        action="store_true",
+        help="Treat incomplete matching items and other import warnings as errors.",
+    )
 
     quiz_bench_parser = add_command(
-        subcommands, "quiz-bench",
+        subcommands,
+        "quiz-bench",
         "Run a mixed quiz benchmark using retrieved local PDF context.",
         quiz_bench_cmd,
     )
@@ -235,8 +300,12 @@ def register(subcommands):
         "Import, validate, and contract-check one chapter Canvas quiz fixture.",
         import_chapter_quiz_cmd,
     )
-    import_chapter_parser.add_argument("course", help="Course fixture prefix, e.g. ethics.")
-    import_chapter_parser.add_argument("chapter", type=int, help="Chapter number to import.")
+    import_chapter_parser.add_argument(
+        "course", help="Course fixture prefix, e.g. ethics."
+    )
+    import_chapter_parser.add_argument(
+        "chapter", type=int, help="Chapter number to import."
+    )
     import_chapter_parser.add_argument(
         "--manifest",
         type=Path,
@@ -328,6 +397,7 @@ def generate_quiz_cmd(args) -> int:
     )
     return 0
 
+
 def verify_answer_key_cmd(args) -> int:
     try:
         report = load_quiz_bench_report(args.report)
@@ -369,16 +439,21 @@ def verify_answer_key_cmd(args) -> int:
                 print(f"  evidence: {item['evidence']}")
             citations = item.get("source_citations") or []
             if citations:
-                print(f"  citations: {', '.join(str(citation) for citation in citations)}")
+                print(
+                    f"  citations: {', '.join(str(citation) for citation in citations)}"
+                )
     else:
         print("Findings: none")
 
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(json.dumps(audit, indent=2, sort_keys=True), encoding="utf-8")
+        args.output.write_text(
+            json.dumps(audit, indent=2, sort_keys=True), encoding="utf-8"
+        )
         print()
         print(f"wrote audit: {args.output}")
     return 1 if audit["key_conflict_candidate_count"] else 0
+
 
 def ground_quiz_cmd(args) -> int:
     _, conn = open_db(args)
@@ -482,14 +557,19 @@ def ground_quiz_cmd(args) -> int:
     print(f"  unresolved: {unresolved_count}")
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
+        args.output.write_text(
+            json.dumps(report, indent=2, sort_keys=True), encoding="utf-8"
+        )
         print(f"  wrote grounding: {args.output}")
     return 1 if args.fail_unresolved and unresolved_count else 0
+
 
 def import_mc_quiz_cmd(args) -> int:
     raw_text = args.input.read_text(encoding="utf-8")
     answer_key_text = (
-        args.answer_key.read_text(encoding="utf-8") if args.answer_key is not None else None
+        args.answer_key.read_text(encoding="utf-8")
+        if args.answer_key is not None
+        else None
     )
     try:
         quiz = import_lms_mc_quiz(
@@ -514,10 +594,13 @@ def import_mc_quiz_cmd(args) -> int:
         _print_mc_key_preview(quiz["questions"])
     return 0
 
+
 def import_canvas_quiz_cmd(args) -> int:
     raw_text = args.input.read_text(encoding="utf-8")
     answer_key_text = (
-        args.answer_key.read_text(encoding="utf-8") if args.answer_key is not None else None
+        args.answer_key.read_text(encoding="utf-8")
+        if args.answer_key is not None
+        else None
     )
     try:
         quiz = import_canvas_quiz(
@@ -545,11 +628,14 @@ def import_canvas_quiz_cmd(args) -> int:
         _print_quiz_preview(quiz["questions"], include_options=False)
     return 0
 
+
 def import_chapter_quiz_cmd(args) -> int:
     _, conn = open_db(args)
     if args.chapter < 1:
         raise SystemExit("chapter must be 1 or greater.")
-    manifest_path = args.manifest or args.base_dir / f"{args.course}_chapter_quizzes.json"
+    manifest_path = (
+        args.manifest or args.base_dir / f"{args.course}_chapter_quizzes.json"
+    )
     try:
         manifest = _load_chapter_quiz_manifest(manifest_path)
         chapter = _chapter_quiz_manifest_entry(manifest, args.chapter)
@@ -571,7 +657,9 @@ def import_chapter_quiz_cmd(args) -> int:
     if answer_key_path.exists():
         answer_key_text = answer_key_path.read_text(encoding="utf-8")
     elif int(chapter.get("expected_keyed_choices") or 0) > 0:
-        raise SystemExit(f"Expected keyed choices but answer key file is missing: {answer_key_path}")
+        raise SystemExit(
+            f"Expected keyed choices but answer key file is missing: {answer_key_path}"
+        )
 
     try:
         quiz = import_canvas_quiz(
@@ -600,7 +688,9 @@ def import_chapter_quiz_cmd(args) -> int:
     wrote_output = False
     if not errors:
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(json.dumps(quiz, indent=2, sort_keys=True), encoding="utf-8")
+        output_path.write_text(
+            json.dumps(quiz, indent=2, sort_keys=True), encoding="utf-8"
+        )
         wrote_output = True
     keyed_count = _keyed_choice_count(quiz["questions"])
     warning_count = _quiz_warning_count(quiz["questions"])
@@ -639,219 +729,6 @@ def import_chapter_quiz_cmd(args) -> int:
         _print_quiz_preview(quiz["questions"], include_options=True)
     return 1 if errors else 0
 
-def _load_chapter_quiz_manifest(path: Path) -> dict[str, object]:
-    if not path.exists():
-        raise ValueError(f"Chapter quiz manifest not found: {path}")
-    try:
-        manifest = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"Chapter quiz manifest is invalid JSON: {path}") from exc
-    if not isinstance(manifest, dict):
-        raise ValueError("Chapter quiz manifest must be a JSON object.")
-    chapters = manifest.get("chapters")
-    if not isinstance(chapters, dict):
-        raise ValueError("Chapter quiz manifest must include a chapters object.")
-    return manifest
-
-def _chapter_quiz_manifest_entry(
-    manifest: dict[str, object],
-    chapter_number: int,
-) -> dict[str, object]:
-    chapters = manifest.get("chapters")
-    if not isinstance(chapters, dict):
-        raise ValueError("Chapter quiz manifest must include a chapters object.")
-    chapter = chapters.get(str(chapter_number))
-    if not isinstance(chapter, dict):
-        raise ValueError(f"Chapter {chapter_number} is not defined in the manifest.")
-    return chapter
-
-def _chapter_quiz_file_stem(
-    manifest: dict[str, object],
-    course: str,
-    chapter_number: int,
-) -> str:
-    template = str(manifest.get("file_template") or "{course}_ch{chapter}_canvas")
-    try:
-        return template.format(course=course, chapter=chapter_number)
-    except KeyError as exc:
-        raise SystemExit(f"Unsupported file_template placeholder: {exc}") from exc
-
-def _validate_imported_chapter_quiz_shape(
-    conn,
-    *,
-    document_id: int,
-    quiz: dict[str, object],
-    strict_complete: bool,
-) -> list[str]:
-    errors = []
-    if quiz.get("version") != "external-quiz-v2":
-        errors.append("imported quiz must use version external-quiz-v2")
-    questions = quiz.get("questions")
-    if not isinstance(questions, list):
-        return [*errors, "imported quiz must include a questions list"]
-    for item in questions:
-        if not isinstance(item, dict):
-            errors.append("quiz questions must be objects")
-            continue
-        for error in _validate_quiz_item(
-            conn,
-            document_id,
-            item,
-            require_anchors=False,
-            strict_complete=strict_complete,
-            require_key=False,
-        ):
-            errors.append(f"{item.get('id') or '?'}: {error}")
-    return errors
-
-def _validate_chapter_quiz_contract(
-    quiz: dict[str, object],
-    *,
-    chapter: dict[str, object],
-    chapter_number: int,
-) -> list[str]:
-    questions = quiz.get("questions")
-    if not isinstance(questions, list):
-        return []
-    errors = []
-    expected_questions = chapter.get("expected_questions")
-    if expected_questions is not None and len(questions) != int(expected_questions):
-        errors.append(
-            f"expected {expected_questions} questions, imported {len(questions)}"
-        )
-    expected_points = chapter.get("expected_total_points")
-    if expected_points is not None and quiz.get("total_points") != expected_points:
-        errors.append(
-            f"expected total_points {expected_points}, imported {quiz.get('total_points')}"
-        )
-    expected_keyed = chapter.get("expected_keyed_choices")
-    if expected_keyed is not None:
-        keyed_count = _keyed_choice_count(questions)
-        if keyed_count != int(expected_keyed):
-            errors.append(f"expected {expected_keyed} keyed choices, imported {keyed_count}")
-    expected_types = chapter.get("expected_question_types")
-    if isinstance(expected_types, dict):
-        actual_types = _question_type_counts(questions)
-        expected_type_counts = {
-            str(key): int(value) for key, value in expected_types.items()
-        }
-        if actual_types != expected_type_counts:
-            errors.append(
-                f"expected question types {expected_type_counts}, imported {actual_types}"
-            )
-    expected_prefix = f"ch{chapter_number}-q"
-    for position, item in enumerate(questions, start=1):
-        if not isinstance(item, dict):
-            continue
-        expected_id = f"{expected_prefix}{position:03d}"
-        if item.get("id") != expected_id:
-            errors.append(f"expected question {position} id {expected_id}, got {item.get('id')}")
-    allowed_warnings = {
-        str(warning) for warning in chapter.get("allowed_warnings", [])
-    }
-    for item in questions:
-        if not isinstance(item, dict):
-            continue
-        for warning in item.get("warnings", []):
-            if str(warning) not in allowed_warnings:
-                errors.append(f"{item.get('id')}: warning not allowed: {warning}")
-    return errors
-
-def _apply_chapter_quiz_item_overrides(
-    quiz: dict[str, object],
-    chapter: dict[str, object],
-) -> None:
-    overrides = chapter.get("item_overrides")
-    if not isinstance(overrides, dict):
-        return
-    questions = quiz.get("questions")
-    if not isinstance(questions, list):
-        return
-    by_id = {
-        str(item.get("id")): item
-        for item in questions
-        if isinstance(item, dict) and item.get("id")
-    }
-    for item_id, override in overrides.items():
-        if not isinstance(override, dict):
-            raise ValueError(f"item_overrides.{item_id} must be an object")
-        item = by_id.get(str(item_id))
-        if item is None:
-            raise ValueError(f"item_overrides references unknown item {item_id}")
-        for key, value in override.items():
-            if key == "warnings":
-                item[key] = _merged_warning_list(item.get("warnings"), value)
-            else:
-                item[key] = value
-
-def _merged_warning_list(existing: object, override: object) -> list[str]:
-    warnings: list[str] = []
-    for values in (existing, override):
-        if values is None:
-            continue
-        if not isinstance(values, list):
-            raise ValueError("warning overrides must be lists")
-        for value in values:
-            warning = str(value)
-            if warning not in warnings:
-                warnings.append(warning)
-    return warnings
-
-def _keyed_choice_count(items: list[object]) -> int:
-    return sum(
-        1
-        for item in items
-        if isinstance(item, dict)
-        and item.get("question_type") in {"multiple_choice", "true_false"}
-        and "correct" in item
-    )
-
-def _quiz_warning_count(items: list[object]) -> int:
-    return sum(
-        len(item.get("warnings", []))
-        for item in items
-        if isinstance(item, dict) and isinstance(item.get("warnings", []), list)
-    )
-
-def _question_type_counts(items: list[object]) -> dict[str, int]:
-    counts: dict[str, int] = {}
-    for item in items:
-        if not isinstance(item, dict):
-            continue
-        question_type = str(item.get("question_type") or "multiple_choice")
-        counts[question_type] = counts.get(question_type, 0) + 1
-    return counts
-
-def _chapter_quiz_unresolved_notes(quiz: dict[str, object]) -> list[str]:
-    questions = quiz.get("questions")
-    if not isinstance(questions, list):
-        return []
-    unkeyed_choices = sum(
-        1
-        for item in questions
-        if isinstance(item, dict)
-        and item.get("question_type") in {"multiple_choice", "true_false"}
-        and "correct" not in item
-    )
-    essays = sum(
-        1
-        for item in questions
-        if isinstance(item, dict) and item.get("question_type") == "essay"
-    )
-    incomplete_matching = sum(
-        1
-        for item in questions
-        if isinstance(item, dict)
-        and "incomplete_matching_item" in item.get("warnings", [])
-    )
-    notes = []
-    if unkeyed_choices:
-        notes.append(f"{unkeyed_choices} choice item(s) are unkeyed.")
-    if essays:
-        notes.append(f"{essays} essay prompt(s) require rubric/model review.")
-    if incomplete_matching:
-        notes.append(f"{incomplete_matching} matching item(s) are incomplete.")
-    return notes
 
 def review_mc_quiz_cmd(args) -> int:
     if args.max_questions is not None and args.max_questions < 1:
@@ -867,6 +744,7 @@ def review_mc_quiz_cmd(args) -> int:
     print()
     _print_mc_key_preview(items, include_options=True)
     return 0
+
 
 def review_quiz_cmd(args) -> int:
     if args.max_questions is not None and args.max_questions < 1:
@@ -884,6 +762,7 @@ def review_quiz_cmd(args) -> int:
     print()
     _print_quiz_preview(items, include_options=True)
     return 0
+
 
 def validate_mc_quiz_cmd(args) -> int:
     _, conn = open_db(args)
@@ -930,6 +809,7 @@ def validate_mc_quiz_cmd(args) -> int:
     print(f"Validation {'failed' if error_count else 'passed'}")
     print(f"  errors: {error_count}")
     return 1 if error_count else 0
+
 
 def validate_quiz_cmd(args) -> int:
     _, conn = open_db(args)
@@ -980,6 +860,7 @@ def validate_quiz_cmd(args) -> int:
     print(f"  errors: {error_count}")
     return 1 if error_count else 0
 
+
 def suggest_mc_anchors_cmd(args) -> int:
     _, conn = open_db(args)
     if args.max_questions is not None and args.max_questions < 1:
@@ -1027,7 +908,9 @@ def suggest_mc_anchors_cmd(args) -> int:
                 print("    no candidates")
                 continue
             for candidate in query_entry["candidates"]:
-                print(f"    chunk {candidate['chunk_id']}: {candidate['source_citation']}")
+                print(
+                    f"    chunk {candidate['chunk_id']}: {candidate['source_citation']}"
+                )
                 print(f"      {candidate['snippet']}")
         print()
 
@@ -1040,9 +923,12 @@ def suggest_mc_anchors_cmd(args) -> int:
             "items": report_items,
         }
         args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
+        args.output.write_text(
+            json.dumps(report, indent=2, sort_keys=True), encoding="utf-8"
+        )
         print(f"wrote suggestions: {args.output}")
     return 0
+
 
 def _mc_anchor_suggestions_for_item(
     conn,
@@ -1092,10 +978,13 @@ def _mc_anchor_suggestions_for_item(
         "queries": query_entries,
     }
 
+
 def _mc_anchor_query_candidates(item: dict[str, object]) -> list[str]:
     options = item.get("options") if isinstance(item.get("options"), dict) else {}
     correct = str(item.get("correct") or "")
-    correct_option_text = str(options.get(correct) or "") if isinstance(options, dict) else ""
+    correct_option_text = (
+        str(options.get(correct) or "") if isinstance(options, dict) else ""
+    )
     candidates = [
         str(item.get("target") or ""),
         *[str(query) for query in _mc_retrieval_query_hints(item)],
@@ -1124,6 +1013,7 @@ def _mc_retrieval_query_hints(item: dict[str, object]) -> list[object]:
         hints.extend(questions)
     return hints
 
+
 def _add_selected_option_provenance(
     report_item: dict[str, object],
     item: dict[str, object],
@@ -1145,11 +1035,10 @@ def _add_selected_option_provenance(
     report_item["selected_distractor_source_record_type"] = source.get(
         "source_record_type"
     )
-    report_item["selected_distractor_source_record_id"] = source.get(
-        "source_record_id"
-    )
+    report_item["selected_distractor_source_record_id"] = source.get("source_record_id")
     report_item["selected_distractor_target"] = source.get("target")
     report_item["selected_distractor_source_citation"] = source.get("source_citation")
+
 
 def quiz_bench_cmd(args) -> int:
     settings, conn = open_db(args)
@@ -1246,7 +1135,9 @@ def quiz_bench_cmd(args) -> int:
         print(f"  type: {question_type}")
         if args.debug_retrieval:
             _print_retrieval_debug(retrieval)
-        print(f"  selected chunks: {', '.join(str(chunk) for chunk in selected_chunks) or 'none'}")
+        print(
+            f"  selected chunks: {', '.join(str(chunk) for chunk in selected_chunks) or 'none'}"
+        )
 
         if "external_source_item" in item.get("warnings", []):
             status = "skipped_source_missing"
@@ -1270,15 +1161,21 @@ def quiz_bench_cmd(args) -> int:
                 **item,
                 "_context_target": retrieval.selected_query or "",
             }
-            prompt = build_choice_prompt(prompt_item, context_rows, max_chars=args.chars)
+            prompt = build_choice_prompt(
+                prompt_item, context_rows, max_chars=args.chars
+            )
             answer_started_at = time.monotonic()
             print(progress_line(model_name, index, len(items), item["id"]), flush=True)
             if ollama_client is None:
                 # Late import to support monkeypatching via "ethnos.cli.*"
                 from .. import create_client as _create_client
-                ollama_client = _create_client(settings.ollama_host, settings.ollama_timeout)
+
+                ollama_client = _create_client(
+                    settings.ollama_host, settings.ollama_timeout
+                )
             # Late import to support monkeypatching
             from .. import answer_choice_question as _answer_choice
+
             result = _answer_choice(
                 prompt=prompt,
                 model_name=model_name,
@@ -1326,8 +1223,12 @@ def quiz_bench_cmd(args) -> int:
             print(progress_line(model_name, index, len(items), item["id"]), flush=True)
             if ollama_client is None:
                 from .. import create_client as _create_client
-                ollama_client = _create_client(settings.ollama_host, settings.ollama_timeout)
+
+                ollama_client = _create_client(
+                    settings.ollama_host, settings.ollama_timeout
+                )
             from .. import answer_essay_question as _answer_essay
+
             result = _answer_essay(
                 prompt=prompt,
                 model_name=model_name,
@@ -1375,7 +1276,9 @@ def quiz_bench_cmd(args) -> int:
             "warnings": item.get("warnings", []),
             "target": item.get("target"),
             "selected_option": selected_option,
-            "selected_option_text": options.get(selected_option) if selected_option else None,
+            "selected_option_text": options.get(selected_option)
+            if selected_option
+            else None,
             "validation_status": validation_status,
             "validation_error": validation_error,
             "selected_chunks": selected_chunks,
@@ -1452,9 +1355,12 @@ def quiz_bench_cmd(args) -> int:
             "items": report_items,
         }
         args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
+        args.output.write_text(
+            json.dumps(report, indent=2, sort_keys=True), encoding="utf-8"
+        )
         print(f"  wrote report: {args.output}")
     return 0
+
 
 def mc_bench_cmd(args) -> int:
     settings, conn = open_db(args)
@@ -1539,7 +1445,9 @@ def mc_bench_cmd(args) -> int:
         print(f"{item['id']}: {item['question']}")
         if args.debug_retrieval:
             _print_retrieval_debug(retrieval)
-        print(f"  selected chunks: {', '.join(str(chunk) for chunk in selected_chunks) or 'none'}")
+        print(
+            f"  selected chunks: {', '.join(str(chunk) for chunk in selected_chunks) or 'none'}"
+        )
 
         if not context_rows:
             status = "no_context"
@@ -1551,8 +1459,12 @@ def mc_bench_cmd(args) -> int:
             print(progress_line(model_name, index, len(items), item["id"]), flush=True)
             if ollama_client is None:
                 from .. import create_client as _create_client
-                ollama_client = _create_client(settings.ollama_host, settings.ollama_timeout)
+
+                ollama_client = _create_client(
+                    settings.ollama_host, settings.ollama_timeout
+                )
             from .. import answer_mc_question as _answer_mc
+
             result = _answer_mc(
                 prompt=prompt,
                 model_name=model_name,
@@ -1650,9 +1562,12 @@ def mc_bench_cmd(args) -> int:
             "items": report_items,
         }
         args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
+        args.output.write_text(
+            json.dumps(report, indent=2, sort_keys=True), encoding="utf-8"
+        )
         print(f"  wrote report: {args.output}")
     return 0
+
 
 def mc_compare_cmd(args) -> int:
     try:
@@ -1678,8 +1593,12 @@ def mc_compare_cmd(args) -> int:
     print(f"  answer changes: {len(comparison['answer_changes'])}")
     print(f"  retrieval changes: {len(comparison['retrieval_changes'])}")
 
-    _print_mc_compare_section("correct -> incorrect", comparison["correct_to_incorrect"])
-    _print_mc_compare_section("incorrect -> correct", comparison["incorrect_to_correct"])
+    _print_mc_compare_section(
+        "correct -> incorrect", comparison["correct_to_incorrect"]
+    )
+    _print_mc_compare_section(
+        "incorrect -> correct", comparison["incorrect_to_correct"]
+    )
     _print_mc_compare_section("answer changes", comparison["answer_changes"])
     _print_mc_compare_section("retrieval changes", comparison["retrieval_changes"])
 
@@ -1691,6 +1610,7 @@ def mc_compare_cmd(args) -> int:
         )
         print(f"  wrote comparison: {args.output}")
     return 0
+
 
 def _retrieve_mc_context(
     conn,
@@ -1716,6 +1636,7 @@ def _retrieve_mc_context(
         role=role,
         section=section,
     )
+
 
 def _retrieve_quiz_context_for_item(
     conn,
@@ -1776,6 +1697,7 @@ def _dedupe_quiz_queries(candidates: list[object]) -> list[str]:
             queries.append(query)
     return queries
 
+
 def _add_quiz_source_context(
     conn,
     document_id: int,
@@ -1793,7 +1715,10 @@ def _add_quiz_source_context(
             continue
     if not source_chunks:
         return rows
-    filters = ["id IN (" + ", ".join("?" for _ in source_chunks) + ")", "document_id = ?"]
+    filters = [
+        "id IN (" + ", ".join("?" for _ in source_chunks) + ")",
+        "document_id = ?",
+    ]
     params: list[object] = [*source_chunks, document_id]
     source_rows = conn.execute(
         f"""

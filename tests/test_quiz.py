@@ -8,7 +8,13 @@ import pytest
 
 from ethnos.cli import _add_quiz_source_context, main
 from ethnos.cli.commands.quiz import _apply_chapter_quiz_item_overrides
-from ethnos.db import connect, init_db, save_chunks, save_document_pages, save_extraction_result
+from ethnos.db import (
+    connect,
+    init_db,
+    save_chunks,
+    save_document_pages,
+    save_extraction_result,
+)
 from ethnos.models import ChunkRecord, DocumentRecord, ExtractionResult, PageRecord
 from ethnos.ollama_client import ChoiceAnswerResult, EssayAnswerResult, MCAnswerResult
 from ethnos.quiz import (
@@ -67,7 +73,10 @@ def test_generate_quiz_uses_terms_by_default_and_is_reproducible(tmp_path):
     assert first["quality_stats"]["option_lengths"]["max"] <= 120
     assert first["questions"] == second["questions"]
     assert first["difficulty"] == "medium"
-    assert first["questions"][0]["question"] == "Which definition best matches Virtue ethics in this text?"
+    assert (
+        first["questions"][0]["question"]
+        == "Which definition best matches Virtue ethics in this text?"
+    )
     assert first["questions"][0]["target"] == "Virtue ethics"
     assert first["questions"][0]["source_record_type"] == "key_terms"
     assert set(first["questions"][0]["options"]) == {"A", "B", "C", "D"}
@@ -78,7 +87,9 @@ def test_generate_quiz_uses_terms_by_default_and_is_reproducible(tmp_path):
     ]
     assert correct_source["role"] == "correct"
     assert correct_source["source_record_type"] == "key_terms"
-    assert correct_source["source_record_id"] == first["questions"][0]["source_record_id"]
+    assert (
+        correct_source["source_record_id"] == first["questions"][0]["source_record_id"]
+    )
     assert any(
         source["role"] == "distractor"
         for label, source in first["questions"][0]["option_sources"].items()
@@ -244,7 +255,10 @@ def test_medium_generation_filters_broad_single_word_term_with_specific_sibling(
 
     filtered = _filter_ambiguous_broad_terms(records)
 
-    assert [record.target for record in filtered] == ["Ethical Egoism", "Utilitarianism"]
+    assert [record.target for record in filtered] == [
+        "Ethical Egoism",
+        "Utilitarianism",
+    ]
 
 
 def test_broad_term_filter_matches_nominal_variants():
@@ -256,7 +270,10 @@ def test_broad_term_filter_matches_nominal_variants():
 
     filtered = _filter_ambiguous_broad_terms(records)
 
-    assert [record.target for record in filtered] == ["Moral Relativism", "Subjectivism"]
+    assert [record.target for record in filtered] == [
+        "Moral Relativism",
+        "Subjectivism",
+    ]
 
 
 def test_broad_term_filter_matches_plural_and_adjectival_variants():
@@ -268,7 +285,10 @@ def test_broad_term_filter_matches_plural_and_adjectival_variants():
 
     filtered = _filter_ambiguous_broad_terms(records)
 
-    assert [record.target for record in filtered] == ["Ethical Egoism", "Utilitarianism"]
+    assert [record.target for record in filtered] == [
+        "Ethical Egoism",
+        "Utilitarianism",
+    ]
 
 
 def test_source_page_parsing_and_external_quiz_normalization(tmp_path):
@@ -305,7 +325,10 @@ def test_external_quiz_normalization_infers_untyped_essay():
 
     assert quiz["questions"][0]["question_type"] == "essay"
     assert "options" not in quiz["questions"][0]
-    assert EssayQuizItem.model_validate(quiz["questions"][0]).question == "Explain virtue ethics."
+    assert (
+        EssayQuizItem.model_validate(quiz["questions"][0]).question
+        == "Explain virtue ethics."
+    )
 
 
 def test_external_quiz_rejects_non_choice_correct_key():
@@ -413,9 +436,9 @@ def test_imported_chapter_one_fixture_matches_checked_in_quiz_without_retrieval_
     )
     checked_in = load_quiz(Path("benchmarks/ethics_ch1_mc.json"))
 
-    assert _quiz_without_manual_review_fields(imported) == _quiz_without_manual_review_fields(
-        checked_in
-    )
+    assert _quiz_without_manual_review_fields(
+        imported
+    ) == _quiz_without_manual_review_fields(checked_in)
 
 
 def test_checked_in_chapter_one_quiz_has_source_anchors():
@@ -486,7 +509,9 @@ def test_import_canvas_quiz_parses_mixed_sample():
     assert essay["question_type"] == "essay"
     assert essay["points"] == 20
     assert essay["submitted_response"] == "p"
-    assert essay["question"].endswith("Answer in at least 3 paragraphs of 5 sentences each.")
+    assert essay["question"].endswith(
+        "Answer in at least 3 paragraphs of 5 sentences each."
+    )
     assert " p" not in essay["question"][-3:]
 
 
@@ -569,10 +594,13 @@ def test_ethics_chapter_canvas_fixtures_match_manifest():
         assert checked_in["version"] == "external-quiz-v2"
         assert checked_in["generated_count"] == chapter["expected_questions"]
         assert checked_in["total_points"] == chapter["expected_total_points"]
-        assert _type_counts(checked_in["questions"]) == chapter["expected_question_types"]
-        assert _keyed_choice_count(checked_in["questions"]) == chapter[
-            "expected_keyed_choices"
-        ]
+        assert (
+            _type_counts(checked_in["questions"]) == chapter["expected_question_types"]
+        )
+        assert (
+            _keyed_choice_count(checked_in["questions"])
+            == chapter["expected_keyed_choices"]
+        )
         allowed_warnings = set(chapter["allowed_warnings"])
         for item in checked_in["questions"]:
             assert item["id"].startswith(f"ch{chapter_number}-q")
@@ -643,7 +671,9 @@ Explain the idea.
         ]
     )
     text = capsys.readouterr().out
-    imported = json.loads((tmp_path / "sample_ch1_canvas.json").read_text(encoding="utf-8"))
+    imported = json.loads(
+        (tmp_path / "sample_ch1_canvas.json").read_text(encoding="utf-8")
+    )
 
     assert exit_code == 0
     assert imported["questions"][0]["correct"] == "B"
@@ -895,7 +925,9 @@ def test_quiz_bench_answers_unkeyed_choice_drafts_essay_and_skips_incomplete_mat
         )
 
     monkeypatch.setattr("ethnos.cli.create_client", lambda host, timeout: object())
-    monkeypatch.setattr("ethnos.cli.answer_choice_question", fake_answer_choice_question)
+    monkeypatch.setattr(
+        "ethnos.cli.answer_choice_question", fake_answer_choice_question
+    )
     monkeypatch.setattr("ethnos.cli.answer_essay_question", fake_answer_essay_question)
 
     exit_code = main(
@@ -923,7 +955,9 @@ def test_quiz_bench_answers_unkeyed_choice_drafts_essay_and_skips_incomplete_mat
     assert report["source_covered_total"] == 3
     assert report["source_coverage"] == 0.75
     assert report["items"][0]["status"] == "answered_unscored"
-    assert report["items"][0]["source_grounding"]["source_status"] == "retrieved_candidate"
+    assert (
+        report["items"][0]["source_grounding"]["source_status"] == "retrieved_candidate"
+    )
     assert report["items"][0]["selected_option"] == "B"
     assert report["items"][1]["status"] == "drafted"
     assert report["items"][1]["answer"]["rubric"] == ["Mentions character"]
@@ -1006,7 +1040,9 @@ def test_review_mc_quiz_cli_marks_keyed_options(capsys):
     assert "questions: 2" in text
     assert "ch1-q002: What is metaethics?" in text
     assert "type: multiple_choice" in text
-    assert "A. A branch of Ethics that deals with the nature of reality  <-- keyed" in text
+    assert (
+        "A. A branch of Ethics that deals with the nature of reality  <-- keyed" in text
+    )
 
 
 def test_validate_mc_quiz_cli_accepts_generated_anchored_quiz(tmp_path, capsys):
@@ -1412,6 +1448,7 @@ def test_choice_question_guidance_handles_dawes_act_purpose():
     guidance = build_choice_question_guidance(item, rows)
 
     assert "policy aim" in guidance
+    assert "paraphrases option A" in guidance
     assert "select option a" in guidance.lower()
 
 
@@ -1507,15 +1544,23 @@ def test_mc_bench_cli_scores_keyed_and_unkeyed_items(tmp_path, capsys, monkeypat
     assert report["accuracy"] == 1.0
     assert report["items"][0]["question_type"] == "multiple_choice"
     assert report["items"][0]["options"] == quiz["questions"][0]["options"]
-    assert report["items"][0]["source_record_type"] == quiz["questions"][0]["source_record_type"]
-    assert report["items"][0]["source_record_id"] == quiz["questions"][0]["source_record_id"]
+    assert (
+        report["items"][0]["source_record_type"]
+        == quiz["questions"][0]["source_record_type"]
+    )
+    assert (
+        report["items"][0]["source_record_id"]
+        == quiz["questions"][0]["source_record_id"]
+    )
     assert report["items"][0]["target"] == quiz["questions"][0]["target"]
-    assert report["items"][0]["selected_option_text"] == quiz["questions"][0]["options"][
-        quiz["questions"][0]["correct"]
-    ]
-    assert report["items"][0]["correct_option_text"] == quiz["questions"][0]["options"][
-        quiz["questions"][0]["correct"]
-    ]
+    assert (
+        report["items"][0]["selected_option_text"]
+        == quiz["questions"][0]["options"][quiz["questions"][0]["correct"]]
+    )
+    assert (
+        report["items"][0]["correct_option_text"]
+        == quiz["questions"][0]["options"][quiz["questions"][0]["correct"]]
+    )
     assert report["items"][1]["status"] == "unkeyed"
     assert "accuracy: 100.0%" in output
     assert "status: correct" in output
@@ -1569,23 +1614,28 @@ def test_mc_bench_reports_selected_distractor_provenance(tmp_path, monkeypatch):
     assert exit_code == 0
     assert report_item["status"] == "incorrect"
     assert report_item["selected_option_source"] == selected_source
-    assert report_item["selected_option_source_record_type"] == selected_source[
-        "source_record_type"
-    ]
-    assert report_item["selected_option_source_record_id"] == selected_source[
-        "source_record_id"
-    ]
+    assert (
+        report_item["selected_option_source_record_type"]
+        == selected_source["source_record_type"]
+    )
+    assert (
+        report_item["selected_option_source_record_id"]
+        == selected_source["source_record_id"]
+    )
     assert report_item["selected_distractor_source"] == selected_source
-    assert report_item["selected_distractor_source_record_type"] == selected_source[
-        "source_record_type"
-    ]
-    assert report_item["selected_distractor_source_record_id"] == selected_source[
-        "source_record_id"
-    ]
+    assert (
+        report_item["selected_distractor_source_record_type"]
+        == selected_source["source_record_type"]
+    )
+    assert (
+        report_item["selected_distractor_source_record_id"]
+        == selected_source["source_record_id"]
+    )
     assert report_item["selected_distractor_target"] == selected_source["target"]
-    assert report_item["selected_distractor_source_citation"] == selected_source[
-        "source_citation"
-    ]
+    assert (
+        report_item["selected_distractor_source_citation"]
+        == selected_source["source_citation"]
+    )
 
 
 def test_mc_context_adds_missing_generated_source_chunk(tmp_path):
@@ -1715,7 +1765,9 @@ def test_mc_bench_skips_no_context_and_can_retry_with_options(tmp_path, monkeypa
     assert retry == 0
     assert len(calls) == 1
     assert retried["scored_total"] == 1
-    assert retried["items"][0]["retrieval_questions"][1].startswith("What is it? Virtue ethics")
+    assert retried["items"][0]["retrieval_questions"][1].startswith(
+        "What is it? Virtue ethics"
+    )
 
 
 def test_mc_bench_uses_external_retrieval_queries(tmp_path, monkeypatch):
@@ -2003,7 +2055,10 @@ def test_verify_answer_key_flags_conflicts_and_unresolved_items(tmp_path, capsys
     assert audit["items"][1]["keyed_option"] == "D"
     assert "q8: key_conflict_candidate" in text
     assert "source missing in local PDF: 1" in text
-    assert "selected: B - That sin affects our moral life but not our rational life" in text
+    assert (
+        "selected: B - That sin affects our moral life but not our rational life"
+        in text
+    )
 
 
 def _type_counts(items: list[dict[str, object]]) -> dict[str, int]:
@@ -2088,7 +2143,12 @@ def _quiz_results() -> list[ExtractionResult]:
             {
                 "chunk_summary": "Virtue ethics.",
                 "topics": [
-                    {"name": "Ethical theories", "summary": "Theory", "confidence": 1, "source_pages": [1]}
+                    {
+                        "name": "Ethical theories",
+                        "summary": "Theory",
+                        "confidence": 1,
+                        "source_pages": [1],
+                    }
                 ],
                 "key_terms": [
                     {
@@ -2111,7 +2171,12 @@ def _quiz_results() -> list[ExtractionResult]:
             {
                 "chunk_summary": "Utilitarianism.",
                 "topics": [
-                    {"name": "Ethical theories", "summary": "Theory", "confidence": 1, "source_pages": [2]}
+                    {
+                        "name": "Ethical theories",
+                        "summary": "Theory",
+                        "confidence": 1,
+                        "source_pages": [2],
+                    }
                 ],
                 "key_terms": [
                     {
@@ -2134,7 +2199,12 @@ def _quiz_results() -> list[ExtractionResult]:
             {
                 "chunk_summary": "Deontology.",
                 "topics": [
-                    {"name": "Ethical theories", "summary": "Theory", "confidence": 1, "source_pages": [3]}
+                    {
+                        "name": "Ethical theories",
+                        "summary": "Theory",
+                        "confidence": 1,
+                        "source_pages": [3],
+                    }
                 ],
                 "key_terms": [
                     {
@@ -2157,7 +2227,12 @@ def _quiz_results() -> list[ExtractionResult]:
             {
                 "chunk_summary": "Social contract.",
                 "topics": [
-                    {"name": "Political ethics", "summary": "Theory", "confidence": 1, "source_pages": [4]}
+                    {
+                        "name": "Political ethics",
+                        "summary": "Theory",
+                        "confidence": 1,
+                        "source_pages": [4],
+                    }
                 ],
                 "key_terms": [
                     {
@@ -2202,9 +2277,7 @@ def _record(record_id: int, chunk_index: int, answer: str, target: str | None = 
 
 def _quiz_without_manual_review_fields(quiz):
     cleaned = {
-        key: value
-        for key, value in quiz.items()
-        if key not in {"answer_key_notes"}
+        key: value for key, value in quiz.items() if key not in {"answer_key_notes"}
     }
     cleaned["questions"] = []
     for item in quiz["questions"]:

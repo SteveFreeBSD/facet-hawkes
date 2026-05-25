@@ -58,7 +58,7 @@ Observed on 2026-05-25:
 
 - `uv run ruff check .`: passed.
 - `uv run python -m compileall -q src tests`: passed.
-- `uv run pytest`: 174 passed.
+- `uv run pytest`: 175 passed.
 - `uv run vulture src tests --min-confidence 80`: clean and enforced in CI.
 - `uv run ethnos ask 1 "What is virtue ethics?" --limit 2 --num-predict 256 --debug-ollama`:
   retrieved core chunks 31, 32, and 39; Ollama returned a cited answer with
