@@ -1,0 +1,331 @@
+{
+  "document_id": 2,
+  "generated_count": 20,
+  "import_warnings": [],
+  "questions": [
+    {
+      "correct": "D",
+      "id": "ch20-q001",
+      "options": {
+        "A": "Progressive legislators",
+        "B": "Social workers",
+        "C": "Organized crime",
+        "D": "Investigative journalists"
+      },
+      "points": 5,
+      "position": 1,
+      "question": "Which of the following definitions best describes the work of \"muckrakers?\"",
+      "question_type": "multiple_choice",
+      "source_chunks": [],
+      "source_pages": []
+    },
+    {
+      "correct": "B",
+      "id": "ch20-q002",
+      "options": {
+        "A": "Jane Addams' Hull House gained support",
+        "B": "Regulation of industrialized food production",
+        "C": "Immigration reform",
+        "D": "Socialist groups lost power"
+      },
+      "points": 5,
+      "position": 2,
+      "question": "What was the unintended consequence of the book \"The Jungle\" by Upton Sinclair?",
+      "question_type": "multiple_choice",
+      "source_chunks": [],
+      "source_pages": []
+    },
+    {
+      "correct": "A",
+      "id": "ch20-q003",
+      "options": {
+        "A": "Northern Securities Company",
+        "B": "New York Central Railroad",
+        "C": "General Electric",
+        "D": "Standard Oil"
+      },
+      "points": 5,
+      "position": 3,
+      "question": "Theodore Roosevelt first gained fame as a trustbuster by attacking which monopoly in 1902?",
+      "question_type": "multiple_choice",
+      "source_chunks": [],
+      "source_pages": []
+    },
+    {
+      "correct": "D",
+      "id": "ch20-q004",
+      "options": {
+        "A": "Union protests",
+        "B": "Corrupt law enforcement",
+        "C": "Racial violence",
+        "D": "Unsafe working conditions"
+      },
+      "points": 5,
+      "position": 4,
+      "question": "Why did so many workers die in the Triangle Shirtwaist Factory fire in 1911?",
+      "question_type": "multiple_choice",
+      "source_chunks": [],
+      "source_pages": []
+    },
+    {
+      "correct": "C",
+      "id": "ch20-q005",
+      "options": {
+        "A": "Habeas Corpus",
+        "B": "Substantial performance",
+        "C": "Separate but equal",
+        "D": "Fundamental breach"
+      },
+      "points": 5,
+      "position": 5,
+      "question": "What legal principle was enshrined by the Supreme Court in 1896 with the ruling of Plessy v. Ferguson?",
+      "question_type": "multiple_choice",
+      "source_chunks": [],
+      "source_pages": []
+    },
+    {
+      "correct": "C",
+      "id": "ch20-q006",
+      "options": {
+        "A": "A religious temperance movement",
+        "B": "To strive making all people in the US wealthy",
+        "C": "The goal was saving society, as well as saving souls",
+        "D": "The theological defense of segregation"
+      },
+      "points": 5,
+      "position": 6,
+      "question": "Which of the following best describes the Social Gospel?",
+      "question_type": "multiple_choice",
+      "source_chunks": [],
+      "source_pages": []
+    },
+    {
+      "correct": "B",
+      "id": "ch20-q007",
+      "options": {
+        "A": "was too radical",
+        "B": "was not bold enough",
+        "C": "was corrupt and immoral",
+        "D": "lacked skills to organize a large movement"
+      },
+      "points": 5,
+      "position": 7,
+      "question": "W.E.B. DuBois, founder of the National Association for the Advancement of Colored People (NAACP), broke with his former mentor Booker T. Washington because, DuBois believed that Washington ______.",
+      "question_type": "multiple_choice",
+      "source_chunks": [],
+      "source_pages": []
+    },
+    {
+      "correct": "C",
+      "id": "ch20-q008",
+      "options": {
+        "A": "Mark Twain",
+        "B": "Upton Sinclair",
+        "C": "Jacob Riis",
+        "D": "Edward Bellamy"
+      },
+      "points": 5,
+      "position": 8,
+      "question": "Which of the following authors most effectively used photography to demonstrate their views of what they wrote about?",
+      "question_type": "multiple_choice",
+      "source_chunks": [],
+      "source_pages": []
+    },
+    {
+      "correct": "B",
+      "id": "ch20-q009",
+      "options": {
+        "A": "The Anti-Saloon League",
+        "B": "Temperence",
+        "C": "Suffrage",
+        "D": "Social Gospel"
+      },
+      "points": 5,
+      "position": 9,
+      "question": "What women's movement eventually led to the 18th Amendment (Prohibition)?",
+      "question_type": "multiple_choice",
+      "source_chunks": [],
+      "source_pages": []
+    },
+    {
+      "correct": "D",
+      "id": "ch20-q010",
+      "options": {
+        "A": "Bimetalism",
+        "B": "Pinchot Laws",
+        "C": "Standards and Poors",
+        "D": "Granger Laws"
+      },
+      "points": 5,
+      "position": 10,
+      "question": "What laws did farmers push for during this era to regulate railroads and other companies?",
+      "question_type": "multiple_choice",
+      "source_chunks": [],
+      "source_pages": []
+    },
+    {
+      "correct": "C",
+      "id": "ch20-q011",
+      "options": {
+        "A": "Industrialists",
+        "B": "Farmers' Alliances",
+        "C": "Muckrakers",
+        "D": "Populists"
+      },
+      "points": 5,
+      "position": 11,
+      "question": "Which group played a major role in exposing corruption and social issues?",
+      "question_type": "multiple_choice",
+      "source_chunks": [],
+      "source_pages": []
+    },
+    {
+      "correct": "C",
+      "id": "ch20-q012",
+      "options": {
+        "A": "Strengthen political machines",
+        "B": "Expand presidential powers",
+        "C": "Increase direct democracy",
+        "D": "Limit voter participation"
+      },
+      "points": 5,
+      "position": 12,
+      "question": "What was the purpose of the initiative, referendum, and recall?",
+      "question_type": "multiple_choice",
+      "source_chunks": [],
+      "source_pages": []
+    },
+    {
+      "correct": "A",
+      "id": "ch20-q013",
+      "options": {
+        "A": "Pure Food and Drug Act & Meat Inspection Act",
+        "B": "Interstate Commerce Act",
+        "C": "Clayton Antitrust Act",
+        "D": "Sherman Antitrust Act"
+      },
+      "points": 5,
+      "position": 13,
+      "question": "Which laws were passed in response to The Jungle?",
+      "question_type": "multiple_choice",
+      "source_chunks": [],
+      "source_pages": []
+    },
+    {
+      "correct": "C",
+      "id": "ch20-q014",
+      "options": {
+        "A": "New Freedom",
+        "B": "New Deal",
+        "C": "Square Deal",
+        "D": "Fair Deal"
+      },
+      "points": 5,
+      "position": 14,
+      "question": "Theodore Roosevelt's domestic program was known as the:",
+      "question_type": "multiple_choice",
+      "source_chunks": [],
+      "source_pages": []
+    },
+    {
+      "correct": "B",
+      "id": "ch20-q015",
+      "options": {
+        "A": "Expanding overseas trade",
+        "B": "Promoting competition and limiting big business",
+        "C": "Increasing tariffs",
+        "D": "Supporting labor unions"
+      },
+      "points": 5,
+      "position": 15,
+      "question": "What was the main focus of Woodrow Wilson's \"New Freedom\"?",
+      "question_type": "multiple_choice",
+      "source_chunks": [],
+      "source_pages": []
+    },
+    {
+      "correct": "C",
+      "id": "ch20-q016",
+      "options": {
+        "A": "Increase tariffs",
+        "B": "Support small farmers",
+        "C": "Break up or regulate large corporations",
+        "D": "Protect monopolies"
+      },
+      "points": 5,
+      "position": 16,
+      "question": "What was the goal of antitrust legislation?",
+      "question_type": "multiple_choice",
+      "source_chunks": [],
+      "source_pages": []
+    },
+    {
+      "correct": "D",
+      "id": "ch20-q017",
+      "options": {
+        "A": "Train politicians",
+        "B": "Enforce prohibition laws",
+        "C": "Promote industrial growth",
+        "D": "Provide services to immigrants and the poor"
+      },
+      "points": 5,
+      "position": 17,
+      "question": "Settlement houses primarily aimed to:",
+      "question_type": "multiple_choice",
+      "source_chunks": [],
+      "source_pages": []
+    },
+    {
+      "correct": "B",
+      "id": "ch20-q018",
+      "options": {
+        "A": "Only businesses should lead reform",
+        "B": "Scientific principles could solve social problems",
+        "C": "Tradition should be preserved at all costs",
+        "D": "Government should not intervene in society"
+      },
+      "points": 5,
+      "position": 18,
+      "question": "What belief guided many Progressive reformers?",
+      "question_type": "multiple_choice",
+      "source_chunks": [],
+      "source_pages": []
+    },
+    {
+      "correct": "C",
+      "id": "ch20-q019",
+      "options": {
+        "A": "Lincoln Steffens",
+        "B": "Jacob Riis",
+        "C": "Upton Sinclair",
+        "D": "Ida Tarbell"
+      },
+      "points": 5,
+      "position": 19,
+      "question": "Who wrote The Jungle, exposing problems in the meatpacking industry?",
+      "question_type": "multiple_choice",
+      "source_chunks": [],
+      "source_pages": []
+    },
+    {
+      "correct": "D",
+      "id": "ch20-q020",
+      "options": {
+        "A": "Supporting labor unions",
+        "B": "Increasing tariffs",
+        "C": "Expanding overseas trade",
+        "D": "Promoting competition and limiting big business"
+      },
+      "points": 5,
+      "position": 20,
+      "question": "What was the main focus of Woodrow Wilson's \"New Freedom\"?",
+      "question_type": "multiple_choice",
+      "source_chunks": [],
+      "source_pages": []
+    }
+  ],
+  "source": "canvas_pasted_text",
+  "title": "Quiz CH 20",
+  "total_points": 100,
+  "version": "external-quiz-v2"
+}

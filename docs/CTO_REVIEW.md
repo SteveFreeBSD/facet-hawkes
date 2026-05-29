@@ -39,11 +39,11 @@ authoritative, what was verified, and how future changes should stay aligned.
 
 ## Current Verification
 
-Observed on 2026-05-25:
+Observed on 2026-05-29:
 
 - `uv run ruff check .`: passed.
 - `uv run python -m compileall -q src tests`: passed.
-- `uv run pytest`: 175 passed.
+- `uv run pytest`: 176 passed.
 - Dead-code scan with Vulture at 80% confidence: clean and enforced in CI.
 - Live Ollama smoke: `ask` retrieved core ethics chunks, called
   `gemma-python`, returned a cited answer, and reported no hidden thinking or

@@ -1,0 +1,18 @@
+{
+  "course": "history",
+  "document_id": 2,
+  "file_template": "{course}_ch{chapter}_canvas",
+  "chapters": {
+    "20": {
+      "title": "Quiz CH 20",
+      "expected_questions": 20,
+      "expected_total_points": 100,
+      "expected_keyed_choices": 20,
+      "expected_question_types": {
+        "multiple_choice": 20
+      },
+      "allowed_warnings": [],
+      "notes": "Chapter 20 is a keyed Canvas multiple-choice quiz. Questions 15 and 20 intentionally repeat the Woodrow Wilson New Freedom prompt with different option order."
+    }
+  }
+}

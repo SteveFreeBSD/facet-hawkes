@@ -560,10 +560,15 @@ def test_import_canvas_quiz_cli_writes_mixed_json(tmp_path, capsys):
     assert "warnings: 1" in text
 
 
-def test_ethics_chapter_canvas_fixtures_match_manifest():
-    manifest = json.loads(
-        Path("benchmarks/ethics_chapter_quizzes.json").read_text(encoding="utf-8")
-    )
+@pytest.mark.parametrize(
+    "manifest_path",
+    [
+        Path("benchmarks/ethics_chapter_quizzes.json"),
+        Path("benchmarks/history_chapter_quizzes.json"),
+    ],
+)
+def test_chapter_canvas_fixtures_match_manifest(manifest_path):
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     document_id = manifest["document_id"]
 
     for chapter_number, chapter in manifest["chapters"].items():
