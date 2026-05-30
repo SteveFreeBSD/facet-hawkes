@@ -39,7 +39,8 @@ authoritative, what was verified, and how future changes should stay aligned.
   validation statuses.
 - Agent Review is the flagship model-driven layer: it lets Gemma 3/local or
   explicitly hybrid Ollama models call deterministic Ethnos tools, inspect PDF
-  evidence, critique answer keys, and emit auditable Markdown/JSON reports.
+  evidence, critique answer keys, score evidence strength/confidence, audit
+  distractors, and emit auditable Markdown/JSON review queues.
 
 ## Current Verification
 
@@ -50,6 +51,9 @@ Observed on 2026-05-30:
 - `uv run python -m compileall -q src tests`: passed.
 - `uv run pytest`: 189 passed.
 - Dead-code scan with Vulture at 80% confidence: clean and enforced in CI.
+- CPU-local Agent Review probe for History chapter 20: `20` keyed answers
+  supported, `17` pass items, `3` inspect items, duplicate prompt and spelling
+  findings preserved.
 - Live Ollama smoke: `ask` retrieved core ethics chunks, called
   `gemma-python`, returned a cited answer, and reported no hidden thinking or
   API error.

@@ -61,6 +61,9 @@ Observed on 2026-05-30:
 - `uv run python -m compileall -q src tests`: passed.
 - `uv run pytest`: 189 passed.
 - `uv run vulture src tests --min-confidence 80`: clean and enforced in CI.
+- CPU-local Agent Review deterministic probe for `history_ch20_canvas.json`:
+  `20` keyed answers supported, `17` pass items, `3` inspect items, and the
+  duplicate prompt plus `Temperence` quality findings preserved.
 - `uv run ethnos ask 1 "What is virtue ethics?" --limit 2 --num-predict 256 --debug-ollama`:
   retrieved core chunks 31, 32, and 39; Ollama returned a cited answer with
   `done_reason=stop`, no hidden thinking, and no API error.

@@ -29,6 +29,14 @@ AgentVerdict = Literal[
     "needs_human_review",
 ]
 FindingSeverity = Literal["info", "low", "medium", "high"]
+EvidenceStrength = Literal["direct", "strong", "partial", "weak", "missing"]
+DistractorVerdict = Literal[
+    "contradicted_by_source",
+    "plausible_but_wrong",
+    "not_discussed",
+    "ambiguous",
+]
+ReviewPriority = Literal["pass", "inspect", "fix"]
 
 
 class ModelProfile(BaseModel):
@@ -134,6 +142,16 @@ class QuestionQualityFinding(BaseModel):
     message: str
 
 
+class DistractorReview(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    option: str
+    option_text: str
+    verdict: DistractorVerdict
+    confidence_score: float = Field(ge=0.0, le=1.0)
+    rationale: str
+
+
 class AgentReviewItem(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -145,13 +163,18 @@ class AgentReviewItem(BaseModel):
     selected_option: str | None = None
     selected_option_text: str | None = None
     explanation: str
+    evidence_strength: EvidenceStrength = "missing"
+    confidence_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    support_reason: str | None = None
     distractor_analysis: dict[str, str] = Field(default_factory=dict)
+    distractor_verdicts: dict[str, DistractorReview] = Field(default_factory=dict)
     misconception_risks: list[str] = Field(default_factory=list)
     evidence: list[EvidenceCitation] = Field(default_factory=list)
     quality_findings: list[QuestionQualityFinding] = Field(default_factory=list)
     source_status: str | None = None
     tool_calls: list[str] = Field(default_factory=list)
     needs_human_review_reason: str | None = None
+    review_priority: ReviewPriority = "inspect"
 
 
 class AgentAction(BaseModel):
@@ -192,5 +215,6 @@ class AgentReviewReport(BaseModel):
     item_count: int
     verdict_counts: dict[str, int]
     quality_counts: dict[str, int]
+    priority_counts: dict[str, int] = Field(default_factory=dict)
     items: list[AgentReviewItem]
     tool_trace_path: str | None = None

@@ -25,6 +25,14 @@ COMMON_ANSWER_SPELLING_FIXES = {
     "temperence": "Temperance",
 }
 
+STRENGTH_CONFIDENCE = {
+    "direct": 0.98,
+    "strong": 0.9,
+    "partial": 0.72,
+    "weak": 0.35,
+    "missing": 0.0,
+}
+
 
 class AgentTool(Protocol):
     def __call__(self, arguments: dict[str, Any]) -> AgentToolResult: ...
@@ -308,7 +316,7 @@ def _build_source_grounding_record(
     )
     source_chunks = [row["id"] for row in context_rows]
     source_citations = [str(row["source_citation"]) for row in context_rows]
-    return {
+    record = {
         "id": item.get("id"),
         "question": item.get("question"),
         "question_type": item.get("question_type") or "multiple_choice",
@@ -335,13 +343,15 @@ def _build_source_grounding_record(
         "warnings": warnings,
         "keyed_option": keyed_option,
         "keyed_option_text": keyed_option_text,
-        "keyed_answer_supported": answer_text_supported_by_rows(
+        "keyed_answer_support": answer_support_details(
             str(keyed_option_text or ""),
             context_rows,
         ),
         "source_missing_note": item.get("source_missing_note")
         or item.get("external_source_note"),
     }
+    record["keyed_answer_supported"] = record["keyed_answer_support"]["supported"]
+    return record
 
 
 def _source_status_for_item(
@@ -384,17 +394,109 @@ def _grounding_evidence_summary(
 
 
 def answer_text_supported_by_rows(text: str, rows: list[dict[str, object]]) -> bool:
+    return bool(answer_support_details(text, rows)["supported"])
+
+
+def answer_support_details(
+    text: str, rows: list[dict[str, object]]
+) -> dict[str, object]:
     terms = _significant_terms(text)
     if not terms:
-        return False
+        return _support_result(
+            supported=False,
+            evidence_strength="missing",
+            confidence_score=0.0,
+            support_reason="No significant answer terms were available to score.",
+            hit_terms=[],
+        )
+    original_phrase = " ".join(_tokenize_terms(text))
+    canonical_phrases = [
+        phrase
+        for phrase in [original_phrase, *_canonical_answer_queries(text)]
+        if phrase
+    ]
+    best = _support_result(
+        supported=False,
+        evidence_strength="missing",
+        confidence_score=0.0,
+        support_reason="No matching evidence terms were found in the retrieved rows.",
+        hit_terms=[],
+    )
     for row in rows:
         evidence = _normalized_search_text(
             str(row.get("text") or row.get("snippet") or "")
         )
-        hits = _term_hit_count(terms, evidence)
-        if _term_supports_answer(len(terms), hits):
-            return True
-    return False
+        hit_terms = _hit_terms(terms, evidence)
+        phrase_match = any(
+            phrase and phrase in evidence for phrase in canonical_phrases
+        )
+        candidate = _score_answer_support(terms, hit_terms, phrase_match)
+        if candidate["confidence_score"] > best["confidence_score"]:
+            best = candidate
+    return best
+
+
+def _score_answer_support(
+    terms: list[str],
+    hit_terms: list[str],
+    phrase_match: bool,
+) -> dict[str, object]:
+    hit_count = len(hit_terms)
+    if phrase_match:
+        return _support_result(
+            supported=True,
+            evidence_strength="direct",
+            confidence_score=STRENGTH_CONFIDENCE["direct"],
+            support_reason="The retrieved evidence contains the canonical answer phrase.",
+            hit_terms=hit_terms,
+        )
+    if _term_supports_answer(len(terms), hit_count):
+        strength = "strong" if hit_count == len(terms) else "partial"
+        return _support_result(
+            supported=True,
+            evidence_strength=strength,
+            confidence_score=STRENGTH_CONFIDENCE[strength],
+            support_reason=(
+                f"The retrieved evidence contains {hit_count}/{len(terms)} "
+                "significant answer terms in a single row."
+            ),
+            hit_terms=hit_terms,
+        )
+    if hit_count:
+        return _support_result(
+            supported=False,
+            evidence_strength="weak",
+            confidence_score=STRENGTH_CONFIDENCE["weak"],
+            support_reason=(
+                f"The retrieved evidence contains only {hit_count}/{len(terms)} "
+                "significant answer terms."
+            ),
+            hit_terms=hit_terms,
+        )
+    return _support_result(
+        supported=False,
+        evidence_strength="missing",
+        confidence_score=STRENGTH_CONFIDENCE["missing"],
+        support_reason="No matching evidence terms were found in the retrieved rows.",
+        hit_terms=[],
+    )
+
+
+def _support_result(
+    *,
+    supported: bool,
+    evidence_strength: str,
+    confidence_score: float,
+    support_reason: str,
+    hit_terms: list[str],
+) -> dict[str, object]:
+    return {
+        "supported": supported,
+        "evidence_strength": evidence_strength,
+        "confidence_score": confidence_score,
+        "support_reason": support_reason,
+        "hit_terms": hit_terms,
+    }
 
 
 def _canonical_answer_queries(text: str) -> list[str]:
@@ -645,6 +747,10 @@ def _normalized_search_text(text: str) -> str:
 
 def _term_hit_count(terms: list[str], text: str) -> int:
     return sum(1 for term in terms if term in text)
+
+
+def _hit_terms(terms: list[str], text: str) -> list[str]:
+    return [term for term in terms if term in text]
 
 
 def _plain_tool_payload(value: object) -> dict[str, Any]:

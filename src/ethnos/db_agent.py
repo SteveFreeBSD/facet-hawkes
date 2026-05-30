@@ -107,6 +107,7 @@ def agent_report_summary(report: AgentReviewReport) -> dict[str, Any]:
         "item_count": report.item_count,
         "verdict_counts": report.verdict_counts,
         "quality_counts": report.quality_counts,
+        "priority_counts": report.priority_counts,
     }
 
 

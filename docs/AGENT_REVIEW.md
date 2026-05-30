@@ -15,6 +15,13 @@ above broad question-only matches, PDF line-break hyphenation is normalized, and
 answer terms are canonicalized for simple spelling/plural variants before a
 fallback verdict is accepted.
 
+The review layer also scores the evidence behind each fallback verdict. Every
+item receives `evidence_strength`, `confidence_score`, `support_reason`,
+`review_priority`, and per-option `distractor_verdicts`. This makes the report a
+review queue, not just a list of answers: clean items can pass, while typo,
+duplicate, ambiguous, weakly grounded, or source-missing items stay visible for
+human inspection.
+
 ## Command
 
 ```bash
@@ -44,7 +51,8 @@ The output directory contains:
 
 - `agent_review.md`: human-readable review.
 - `agent_review.json`: structured report with verdicts, evidence, and question
-  quality findings.
+  quality findings, evidence strength, confidence, review priority, and
+  distractor audit fields.
 - `tool_trace.jsonl`: optional model action and tool result trace.
 
 Each run is also persisted to SQLite in `agent_runs` and `agent_findings`.
@@ -75,6 +83,27 @@ Verdicts:
 Quality findings are separate from verdicts. For example, History chapter 20
 flags the repeated New Freedom prompt and the `Temperence` spelling while still
 preserving the keyed answers.
+
+Evidence strength values:
+
+- `direct`: the retrieved evidence contains the canonical answer phrase.
+- `strong`: the evidence contains all significant keyed-answer terms.
+- `partial`: enough significant terms are present to support the answer, but the
+  source wording is conceptual rather than exact.
+- `weak`: only a small amount of answer language appears in evidence.
+- `missing`: the retrieval set does not materially support the answer.
+
+Review priorities:
+
+- `pass`: supported answer with no quality note requiring inspection.
+- `inspect`: supported or unresolved item with a quality note, conceptual
+  evidence, weak evidence, or model-finalization gap.
+- `fix`: source-missing, conflict-candidate, or ambiguous item that should block
+  release until corrected or explicitly accepted.
+
+The current CPU-local history chapter 20 probe reports `20` supported keyed
+answers, `17` pass items, and `3` inspect items: the two duplicate New Freedom
+prompts and the `Temperence` spelling note.
 
 For CPU-only hosts, prefer:
 

@@ -13,6 +13,7 @@ from .agent_models import (
     AgentAction,
     AgentReviewItem,
     AgentReviewReport,
+    DistractorReview,
     EvidenceCitation,
     ModelProfile,
     QuestionQualityFinding,
@@ -20,7 +21,7 @@ from .agent_models import (
 from .agent_tools import (
     COMMON_ANSWER_SPELLING_FIXES,
     AgentToolContext,
-    answer_text_supported_by_rows,
+    answer_support_details,
     build_agent_tool_registry,
     call_agent_tool,
 )
@@ -158,7 +159,15 @@ def review_quiz_item(
         if action.tool == "finalize_item_review":
             final = action.final_review
             assert final is not None
-            return _merge_review_defaults(item, final, quality_findings, tool_calls)
+            evidence = _evidence_from_observations(observations)
+            return _merge_review_defaults(
+                item,
+                final,
+                quality_findings,
+                tool_calls,
+                grounding=_latest_grounding(observations),
+                evidence=evidence,
+            )
         result = call_agent_tool(registry, action.tool, action.arguments)
         observations.append(result.model_dump(mode="json"))
         _write_trace(
@@ -227,6 +236,11 @@ def render_agent_review_markdown(report: AgentReviewReport) -> str:
         f"- items: {report.item_count}",
         f"- verdicts: {json.dumps(report.verdict_counts, sort_keys=True)}",
         f"- quality findings: {json.dumps(report.quality_counts, sort_keys=True)}",
+        f"- review priorities: {json.dumps(getattr(report, 'priority_counts', {}), sort_keys=True)}",
+        "",
+        "## Review Queue",
+        "",
+        *_review_queue_lines(report.items),
         "",
         "## Items",
         "",
@@ -238,15 +252,30 @@ def render_agent_review_markdown(report: AgentReviewReport) -> str:
                 "",
                 f"**Verdict:** `{item.verdict}`",
                 "",
+                f"**Priority:** `{item.review_priority}`",
+                "",
+                f"**Evidence strength:** `{item.evidence_strength}` "
+                f"({item.confidence_score:.2f})",
+                "",
                 item.question,
                 "",
                 f"**Keyed:** {item.keyed_option or 'n/a'}"
                 + (f" - {item.keyed_option_text}" if item.keyed_option_text else ""),
                 "",
+                f"**Support:** {item.support_reason or 'n/a'}",
+                "",
                 item.explanation,
                 "",
             ]
         )
+        if item.distractor_verdicts:
+            lines.append("Distractor audit:")
+            for distractor in item.distractor_verdicts.values():
+                lines.append(
+                    f"- `{distractor.option}` {distractor.option_text}: "
+                    f"`{distractor.verdict}` ({distractor.confidence_score:.2f})"
+                )
+            lines.append("")
         if item.evidence:
             lines.append("Evidence:")
             for citation in item.evidence:
@@ -261,6 +290,30 @@ def render_agent_review_markdown(report: AgentReviewReport) -> str:
                 )
             lines.append("")
     return "\n".join(lines).rstrip() + "\n"
+
+
+def _review_queue_lines(items: list[AgentReviewItem]) -> list[str]:
+    priority_order = {"fix": 0, "inspect": 1, "pass": 2}
+    queued = sorted(
+        items,
+        key=lambda item: (
+            priority_order.get(item.review_priority, 9),
+            item.confidence_score,
+            item.id,
+        ),
+    )
+    lines = []
+    for item in queued[:10]:
+        if item.review_priority == "pass":
+            continue
+        note = item.support_reason or item.verdict
+        lines.append(
+            f"- `{item.review_priority}` `{item.id}`: {item.verdict}, "
+            f"{item.evidence_strength} evidence ({item.confidence_score:.2f}) - {note}"
+        )
+    if not lines:
+        return ["- No fix or inspection items were identified."]
+    return lines
 
 
 def _initial_messages(item: dict[str, Any]) -> list[dict[str, str]]:
@@ -296,16 +349,25 @@ def _fallback_review(
     correct = item.get("correct")
     keyed_text = options.get(correct) if isinstance(correct, str) else None
     evidence = _evidence_from_observations(observations)
+    evidence_rows = _evidence_rows(evidence)
+    key_support = _key_support_details(
+        grounding=grounding,
+        keyed_option_text=keyed_text,
+        evidence_rows=evidence_rows,
+    )
     verdict = _fallback_verdict(
         source_status=source_status,
-        keyed_option_text=keyed_text,
-        evidence=evidence,
-        grounding=grounding,
+        key_support=key_support,
     )
     review_reason = (
         None if verdict == "key_supported" else "model_final_review_unavailable"
     )
-    explanation = _fallback_explanation(verdict)
+    explanation = _fallback_explanation(verdict, key_support)
+    review_priority = _review_priority(
+        verdict=verdict,
+        evidence_strength=str(key_support["evidence_strength"]),
+        quality_findings=quality_findings,
+    )
     return AgentReviewItem(
         id=str(item.get("id") or ""),
         question=str(item.get("question") or ""),
@@ -313,39 +375,42 @@ def _fallback_review(
         keyed_option=str(correct) if isinstance(correct, str) else None,
         keyed_option_text=options.get(correct) if isinstance(correct, str) else None,
         explanation=explanation,
+        evidence_strength=str(key_support["evidence_strength"]),
+        confidence_score=float(key_support["confidence_score"]),
+        support_reason=str(key_support["support_reason"]),
+        distractor_verdicts=_distractor_verdicts(
+            options=options,
+            correct=correct,
+            evidence_rows=evidence_rows,
+            key_supported=verdict == "key_supported",
+        ),
         evidence=evidence,
         quality_findings=quality_findings,
         source_status=str(source_status) if source_status else None,
         tool_calls=tool_calls,
         needs_human_review_reason=review_reason,
+        review_priority=review_priority,
     )
 
 
 def _fallback_verdict(
     *,
     source_status: object,
-    keyed_option_text: str | None,
-    evidence: list[EvidenceCitation],
-    grounding: dict[str, Any],
+    key_support: dict[str, object],
 ) -> str:
     if source_status in {"ungrounded", "source_missing_in_local_pdf"}:
         return "source_missing"
-    if grounding.get("keyed_answer_supported") is True:
-        return "key_supported"
-    if keyed_option_text and answer_text_supported_by_rows(
-        keyed_option_text,
-        [{"text": citation.snippet} for citation in evidence],
-    ):
+    if key_support.get("supported") is True:
         return "key_supported"
     return "needs_human_review"
 
 
-def _fallback_explanation(verdict: str) -> str:
+def _fallback_explanation(verdict: str, key_support: dict[str, object]) -> str:
     if verdict == "key_supported":
         return (
             "The model did not produce a validated final review, but deterministic "
-            "retrieval found PDF evidence containing the keyed answer text. Treat "
-            "this as source-supported fallback review."
+            "retrieval found PDF evidence supporting the keyed answer. "
+            f"Evidence strength is {key_support['evidence_strength']}."
         )
     if verdict == "source_missing":
         return (
@@ -358,15 +423,123 @@ def _fallback_explanation(verdict: str) -> str:
     )
 
 
+def _key_support_details(
+    *,
+    grounding: dict[str, Any],
+    keyed_option_text: str | None,
+    evidence_rows: list[dict[str, object]],
+) -> dict[str, object]:
+    support = grounding.get("keyed_answer_support")
+    if isinstance(support, dict):
+        return support
+    if keyed_option_text:
+        return answer_support_details(keyed_option_text, evidence_rows)
+    return {
+        "supported": False,
+        "evidence_strength": "missing",
+        "confidence_score": 0.0,
+        "support_reason": "No keyed answer text was available to score.",
+        "hit_terms": [],
+    }
+
+
+def _distractor_verdicts(
+    *,
+    options: dict[str, Any],
+    correct: object,
+    evidence_rows: list[dict[str, object]],
+    key_supported: bool,
+) -> dict[str, DistractorReview]:
+    verdicts: dict[str, DistractorReview] = {}
+    for option, option_text in options.items():
+        if option == correct:
+            continue
+        text = str(option_text)
+        support = answer_support_details(text, evidence_rows)
+        strength = str(support["evidence_strength"])
+        if support["supported"]:
+            verdict = "ambiguous" if key_supported else "plausible_but_wrong"
+            rationale = (
+                "The retrieved evidence also contains direct or sufficient terms "
+                "for this distractor, so a reviewer should inspect the item."
+            )
+        elif strength == "weak":
+            verdict = "plausible_but_wrong"
+            rationale = (
+                "The retrieved evidence mentions some distractor terms, but not "
+                "enough to support it as the answer."
+            )
+        else:
+            verdict = "not_discussed"
+            rationale = (
+                "The retrieved evidence does not materially discuss this option."
+            )
+        verdicts[str(option)] = DistractorReview(
+            option=str(option),
+            option_text=text,
+            verdict=verdict,
+            confidence_score=float(support["confidence_score"]),
+            rationale=rationale,
+        )
+    return verdicts
+
+
+def _review_priority(
+    *,
+    verdict: str,
+    evidence_strength: str,
+    quality_findings: list[QuestionQualityFinding],
+) -> str:
+    if verdict in {"source_missing", "key_conflict_candidate", "ambiguous_question"}:
+        return "fix"
+    if verdict != "key_supported":
+        return "inspect"
+    if evidence_strength in {"missing", "weak"}:
+        return "inspect"
+    if quality_findings:
+        return "inspect"
+    return "pass"
+
+
 def _merge_review_defaults(
     item: dict[str, Any],
     review: AgentReviewItem,
     quality_findings: list[QuestionQualityFinding],
     tool_calls: list[str],
+    *,
+    grounding: dict[str, Any] | None = None,
+    evidence: list[EvidenceCitation] | None = None,
 ) -> AgentReviewItem:
     options = item.get("options") if isinstance(item.get("options"), dict) else {}
     correct = item.get("correct")
     merged_findings = [*review.quality_findings, *quality_findings]
+    merged_evidence = review.evidence or evidence or []
+    evidence_rows = _evidence_rows(merged_evidence)
+    keyed_text = options.get(correct) if isinstance(correct, str) else None
+    key_support = _key_support_details(
+        grounding=grounding or {},
+        keyed_option_text=keyed_text,
+        evidence_rows=evidence_rows,
+    )
+    evidence_strength = (
+        str(key_support["evidence_strength"])
+        if review.evidence_strength == "missing"
+        else review.evidence_strength
+    )
+    confidence_score = (
+        float(key_support["confidence_score"])
+        if review.confidence_score == 0
+        else review.confidence_score
+    )
+    review_priority = (
+        _review_priority(
+            verdict=review.verdict,
+            evidence_strength=evidence_strength,
+            quality_findings=merged_findings,
+        )
+        if review.review_priority == "inspect"
+        else review.review_priority
+    )
     return review.model_copy(
         update={
             "id": review.id or str(item.get("id") or ""),
@@ -376,6 +549,18 @@ def _merge_review_defaults(
             "keyed_option_text": review.keyed_option_text
             or (options.get(correct) if isinstance(correct, str) else None),
             "quality_findings": merged_findings,
+            "evidence": merged_evidence,
+            "evidence_strength": evidence_strength,
+            "confidence_score": confidence_score,
+            "support_reason": review.support_reason or key_support["support_reason"],
+            "distractor_verdicts": review.distractor_verdicts
+            or _distractor_verdicts(
+                options=options,
+                correct=correct,
+                evidence_rows=evidence_rows,
+                key_supported=review.verdict == "key_supported",
+            ),
+            "review_priority": review_priority,
             "tool_calls": [*tool_calls, *review.tool_calls],
         }
     )
@@ -417,6 +602,18 @@ def _evidence_from_observations(
     return citations[:5]
 
 
+def _evidence_rows(evidence: list[EvidenceCitation]) -> list[dict[str, object]]:
+    return [
+        {
+            "id": citation.chunk_id,
+            "page_start": citation.page,
+            "source_citation": citation.citation,
+            "text": citation.snippet,
+        }
+        for citation in evidence
+    ]
+
+
 def _build_report(
     *,
     document_id: int,
@@ -432,6 +629,7 @@ def _build_report(
     quality_counts = Counter(
         finding.finding_type for item in reviews for finding in item.quality_findings
     )
+    priority_counts = Counter(item.review_priority for item in reviews)
     return AgentReviewReport(
         document_id=document_id,
         quiz=str(quiz_path),
@@ -442,6 +640,7 @@ def _build_report(
         item_count=len(reviews),
         verdict_counts=dict(sorted(verdict_counts.items())),
         quality_counts=dict(sorted(quality_counts.items())),
+        priority_counts=dict(sorted(priority_counts.items())),
         items=reviews,
         tool_trace_path=str(trace_path) if trace_path else None,
     )

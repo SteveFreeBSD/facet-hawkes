@@ -115,6 +115,10 @@ def test_ground_quiz_item_uses_key_and_option_aware_queries(tmp_path):
 
     assert grounding.ok is True
     assert grounding.result["grounding"]["keyed_answer_supported"] is True
+    assert (
+        grounding.result["grounding"]["keyed_answer_support"]["evidence_strength"]
+        == "direct"
+    )
     assert any(
         "jacob riis" in query
         for query in grounding.result["grounding"]["queries_tried"]
@@ -260,6 +264,14 @@ def test_agent_review_writes_reports_and_persists_findings(tmp_path):
     ).fetchall()
 
     assert report.verdict_counts == {"key_supported": 1}
+    assert report.priority_counts == {"pass": 1}
+    assert report.items[0].evidence_strength == "direct"
+    assert report.items[0].confidence_score > 0.9
+    assert report.items[0].review_priority == "pass"
+    assert report.items[0].distractor_verdicts["B"].verdict in {
+        "not_discussed",
+        "plausible_but_wrong",
+    }
     assert (tmp_path / "agent_review" / "agent_review.md").exists()
     assert (tmp_path / "agent_review" / "agent_review.json").exists()
     assert (tmp_path / "agent_review" / "tool_trace.jsonl").exists()
@@ -310,6 +322,9 @@ def test_agent_loop_repairs_item_scoped_tool_arguments(tmp_path):
     trace = (tmp_path / "agent_review" / "tool_trace.jsonl").read_text(encoding="utf-8")
 
     assert report.items[0].verdict == "key_supported"
+    assert report.items[0].evidence_strength == "direct"
+    assert report.items[0].review_priority == "pass"
+    assert report.items[0].distractor_verdicts["B"].verdict == "not_discussed"
     assert '"error": null' in trace
 
 
@@ -354,6 +369,7 @@ def test_agent_report_renderer_includes_quality_findings():
             "item_count": 1,
             "verdict_counts": {"needs_human_review": 1},
             "quality_counts": {},
+            "priority_counts": {"inspect": 1},
             "items": [item],
         },
     )()
@@ -361,6 +377,8 @@ def test_agent_report_renderer_includes_quality_findings():
     markdown = render_agent_review_markdown(report)
 
     assert "# Agent Review" in markdown
+    assert "Review Queue" in markdown
+    assert "Evidence strength" in markdown
     assert "q9" in markdown
 
 
@@ -394,6 +412,7 @@ def test_agent_review_cli_with_fake_agent(tmp_path, monkeypatch, capsys):
                 "item_count": 1,
                 "verdict_counts": {"key_supported": 1},
                 "quality_counts": {},
+                "priority_counts": {"pass": 1},
                 "items": [item],
                 "model_dump": lambda self, mode="json": {
                     "document_id": 1,
@@ -405,6 +424,7 @@ def test_agent_review_cli_with_fake_agent(tmp_path, monkeypatch, capsys):
                     "item_count": 1,
                     "verdict_counts": {"key_supported": 1},
                     "quality_counts": {},
+                    "priority_counts": {"pass": 1},
                     "items": [item.model_dump(mode="json")],
                 },
             },
@@ -465,6 +485,7 @@ def test_history_ch20_agent_quality_acceptance(tmp_path):
     by_id = {item.id: item for item in report.items}
 
     assert report.item_count == 20
+    assert sum(report.priority_counts.values()) == 20
     assert by_id["ch20-q015"].quality_findings[0].finding_type == "duplicate_prompt"
     assert by_id["ch20-q020"].quality_findings[0].finding_type == "duplicate_prompt"
     assert any(
@@ -481,6 +502,12 @@ def test_history_ch20_agent_quality_acceptance(tmp_path):
             "key_conflict_candidate",
         }
         for item in report.items
+    )
+    assert all(0.0 <= item.confidence_score <= 1.0 for item in report.items)
+    assert all(
+        item.evidence_strength != "missing"
+        for item in report.items
+        if item.verdict == "key_supported"
     )
 
 
