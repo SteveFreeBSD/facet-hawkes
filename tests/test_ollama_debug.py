@@ -17,6 +17,7 @@ from ethnos.ollama_client import (
     StructuredCallResult,
     answer_mc_question,
     extract_chunk,
+    structured_chat_json,
     _chat,
     _answer_chat_request_kwargs,
     _chat_request_kwargs,
@@ -193,6 +194,38 @@ def test_structured_chat_request_sets_context_without_thinking():
     assert kwargs["options"] == {"temperature": 0, "num_predict": 4096, "num_ctx": 8192}
     assert kwargs["think"] is False
     assert "stream" not in kwargs
+
+
+def test_generic_structured_chat_accepts_schema_messages_and_images():
+    class FakeClient:
+        def chat(self, **kwargs):
+            self.kwargs = kwargs
+            return {
+                "message": {"content": '{"ok": true}'},
+                "done_reason": "stop",
+            }
+
+    client = FakeClient()
+
+    result = structured_chat_json(
+        client=client,
+        model_name="gemma3:4b",
+        messages=[{"role": "user", "content": "describe"}],
+        schema={
+            "type": "object",
+            "properties": {"ok": {"type": "boolean", "default": False}},
+            "required": ["ok"],
+        },
+        num_predict=64,
+        num_ctx=4096,
+        images=["page.png"],
+    )
+
+    assert result.validation_status == "valid"
+    assert result.parsed_json == {"ok": True}
+    assert client.kwargs["model"] == "gemma3:4b"
+    assert client.kwargs["messages"][0]["images"] == ["page.png"]
+    assert "default" not in json.dumps(client.kwargs["format"])
 
 
 def test_ollama_schema_strips_schema_defaults_but_keeps_titles():

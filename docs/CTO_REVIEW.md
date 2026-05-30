@@ -10,6 +10,7 @@ authoritative, what was verified, and how future changes should stay aligned.
 - Ollama and benchmark policy: [`PERFORMANCE_TUNING.md`](PERFORMANCE_TUNING.md).
 - Ollama troubleshooting: [`OLLAMA_TROUBLESHOOTING.md`](OLLAMA_TROUBLESHOOTING.md).
 - Suspicious answer debugging: [`TRACE_DEBUGGING.md`](TRACE_DEBUGGING.md).
+- Agentic model review: [`AGENT_REVIEW.md`](AGENT_REVIEW.md).
 - Migration procedure: [`MIGRATION.md`](MIGRATION.md).
 - Host-specific facts: [`hosts/`](hosts/).
 - Environment defaults: [`.env.example`](../.env.example) and
@@ -36,14 +37,17 @@ authoritative, what was verified, and how future changes should stay aligned.
   Python client `Client.chat(...)` API with JSON-schema `format`, request
   `options`, response-summary diagnostics, exponential retry backoff, and
   validation statuses.
+- Agent Review is the flagship model-driven layer: it lets Gemma 3/local or
+  explicitly hybrid Ollama models call deterministic Ethnos tools, inspect PDF
+  evidence, critique answer keys, and emit auditable Markdown/JSON reports.
 
 ## Current Verification
 
-Observed on 2026-05-29:
+Observed on 2026-05-30:
 
 - `uv run ruff check .`: passed.
 - `uv run python -m compileall -q src tests`: passed.
-- `uv run pytest`: 176 passed.
+- `uv run pytest`: 184 passed.
 - Dead-code scan with Vulture at 80% confidence: clean and enforced in CI.
 - Live Ollama smoke: `ask` retrieved core ethics chunks, called
   `gemma-python`, returned a cited answer, and reported no hidden thinking or

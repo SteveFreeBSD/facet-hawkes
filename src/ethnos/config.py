@@ -22,6 +22,10 @@ class Settings:
     ollama_answer_num_predict: int
     ollama_num_ctx: int
     ollama_think: OllamaThink
+    agent_model: str | None
+    agent_model_profile: str
+    agent_allow_web: bool
+    agent_vision_pages: str
     prompt_path: Path
 
 
@@ -66,5 +70,20 @@ def load_settings() -> Settings:
         ),
         ollama_num_ctx=int(os.getenv("ETHNOS_OLLAMA_NUM_CTX", "8192")),
         ollama_think=parse_ollama_think(os.getenv("ETHNOS_OLLAMA_THINK")),
+        agent_model=os.getenv("ETHNOS_AGENT_MODEL"),
+        agent_model_profile=os.getenv("ETHNOS_AGENT_MODEL_PROFILE", "gemma3-local"),
+        agent_allow_web=_parse_bool(os.getenv("ETHNOS_AGENT_ALLOW_WEB"), default=False),
+        agent_vision_pages=os.getenv("ETHNOS_AGENT_VISION_PAGES", "auto"),
         prompt_path=prompt_path,
     )
+
+
+def _parse_bool(value: str | None, *, default: bool) -> bool:
+    if value is None or value.strip() == "":
+        return default
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError("Boolean environment values must be one of true/false")

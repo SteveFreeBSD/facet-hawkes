@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from .commands import agent as agent_commands
 from .commands import ask as ask_commands
 from .commands import bench as bench_commands
 from .commands import export as export_commands
@@ -39,6 +40,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--db", type=Path, help="SQLite database path.")
     subcommands = parser.add_subparsers(dest="command")
+    agent_commands.register(subcommands)
     ingest_commands.register(subcommands)
     inspect_commands.register(subcommands)
     ask_commands.register(subcommands)

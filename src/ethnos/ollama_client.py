@@ -33,6 +33,15 @@ class OllamaChatResult:
 
 
 @dataclass(frozen=True)
+class GenericStructuredChatResult:
+    raw_response: str
+    parsed_json: dict | None
+    validation_status: str
+    validation_error: str | None
+    response_summary: dict
+
+
+@dataclass(frozen=True)
 class StructuredCallResult:
     raw_prompt: str
     raw_response: str
@@ -405,6 +414,73 @@ def _chat_mc(
         client,
         _mc_chat_request_kwargs(model_name, prompt, schema, num_predict, num_ctx),
     )
+
+
+def structured_chat_json(
+    *,
+    client: object,
+    model_name: str,
+    messages: list[dict],
+    schema: dict,
+    num_predict: int,
+    num_ctx: int,
+    think: OllamaThink = False,
+    images: list[str] | None = None,
+    tools: list[object] | None = None,
+) -> GenericStructuredChatResult:
+    request = {
+        "model": model_name,
+        "messages": _messages_with_images(messages, images),
+        "format": _ollama_schema(schema),
+        "options": _ollama_options(num_predict, num_ctx),
+    }
+    if tools:
+        request["tools"] = tools
+    _add_think_option(request, think)
+    try:
+        chat_result = _do_chat(client, request)
+    except Exception as exc:
+        return GenericStructuredChatResult(
+            raw_response="",
+            parsed_json=None,
+            validation_status="request_failed",
+            validation_error=str(exc),
+            response_summary={},
+        )
+    base = _validate_json_object(chat_result.content)
+    if isinstance(base, str):
+        return GenericStructuredChatResult(
+            raw_response=chat_result.content,
+            parsed_json=None,
+            validation_status="empty_response"
+            if not chat_result.content.strip()
+            else "invalid_json",
+            validation_error=base,
+            response_summary=chat_result.response_summary,
+        )
+    return GenericStructuredChatResult(
+        raw_response=chat_result.content,
+        parsed_json=base,
+        validation_status="valid",
+        validation_error=None,
+        response_summary=chat_result.response_summary,
+    )
+
+
+def _messages_with_images(messages: list[dict], images: list[str] | None) -> list[dict]:
+    if not images:
+        return messages
+    copied = [dict(message) for message in messages]
+    for message in reversed(copied):
+        if message.get("role") == "user":
+            existing = message.get("images")
+            message["images"] = [
+                *(existing if isinstance(existing, list) else []),
+                *images,
+            ]
+            return copied
+    copied.append({"role": "user", "content": "", "images": images})
+    return copied
 
 
 def _do_chat(client: object, request_kwargs: dict) -> OllamaChatResult:

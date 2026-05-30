@@ -8,6 +8,7 @@ Implementation lives in focused modules:
 - ``db_query``: inspection, FTS search, and retrieval context
 - ``db_structure``: structured-output status
 - ``db_reports``: quality, export, and database inventory reports
+- ``db_agent``: agent review run and finding persistence
 """
 
 from __future__ import annotations
@@ -51,19 +52,28 @@ from .db_query import (
 from .db_reports import db_info, export_document, quality_report
 from .db_sections import apply_section_preset, section_label_status
 from .db_structure import list_structure_chunk_status, select_chunks_for_structure, structure_status
+from .db_agent import (
+    agent_report_summary,
+    create_agent_run,
+    finish_agent_run,
+    save_agent_findings,
+)
 
 __all__ = [
     "add_continuation_context_chunks",
+    "agent_report_summary",
     "apply_section_preset",
     "backfill_chunk_summaries",
     "chunk_records",
     "clear_document_outputs",
     "connect",
     "context_chunks",
+    "create_agent_run",
     "create_extraction_run",
     "db_info",
     "export_document",
     "finish_extraction_run",
+    "finish_agent_run",
     "get_document",
     "init_db",
     "inspect_chunk",
@@ -78,6 +88,7 @@ __all__ = [
     "save_chunks",
     "save_document_pages",
     "save_extraction_result",
+    "save_agent_findings",
     "save_model_output",
     "search_chunks",
     "section_label_status",

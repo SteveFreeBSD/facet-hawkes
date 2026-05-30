@@ -17,6 +17,8 @@ SQL_IDENTIFIERS = {
     "documents",
     "examples",
     "extraction_runs",
+    "agent_findings",
+    "agent_runs",
     "id",
     "key_terms",
     "model_outputs",
@@ -159,6 +161,33 @@ def init_db(conn: sqlite3.Connection) -> None:
             parsed_json TEXT,
             validation_status TEXT NOT NULL,
             validation_error TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS agent_runs (
+            id INTEGER PRIMARY KEY,
+            document_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+            quiz_path TEXT NOT NULL,
+            model_name TEXT NOT NULL,
+            model_profile TEXT NOT NULL,
+            config_json TEXT NOT NULL DEFAULT '{}',
+            started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            finished_at TEXT,
+            status TEXT NOT NULL,
+            output_path TEXT NOT NULL,
+            summary_json TEXT NOT NULL DEFAULT '{}',
+            error_message TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS agent_findings (
+            id INTEGER PRIMARY KEY,
+            run_id INTEGER NOT NULL REFERENCES agent_runs(id) ON DELETE CASCADE,
+            quiz_item_id TEXT NOT NULL,
+            verdict TEXT NOT NULL,
+            severity TEXT NOT NULL,
+            finding_type TEXT NOT NULL,
+            evidence_json TEXT NOT NULL DEFAULT '[]',
+            result_json TEXT NOT NULL DEFAULT '{}',
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
 

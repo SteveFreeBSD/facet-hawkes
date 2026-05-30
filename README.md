@@ -8,9 +8,10 @@ The project intentionally starts with simple foundations:
 - PyMuPDF for PDF text extraction
 - Pydantic v2 for validation and JSON schema
 - SQLite and FTS5 for local storage and search
-- Ollama for local structured extraction
+- Ollama for local structured extraction, grounded Q&A, and agent review
 
-No cloud APIs are used.
+The default path is local-first. Agent Review can use explicit hybrid web/cloud
+tools only when enabled by the operator.
 
 ## Setup
 
@@ -40,6 +41,7 @@ uv run ethnos context 1 "methodological ethical naturalism" --limit 3
 uv run ethnos ask 1 "What is methodological ethical naturalism?"
 uv run ethnos chat 1
 uv run ethnos qa-bench 1 --benchmark benchmarks/ethics_qa.json --no-ask
+uv run ethnos agent-review 2 --quiz benchmarks/history_ch20_canvas.json --output data/runs/history_ch20_agent_review --profile cto
 uv run ethnos export-markdown 1
 uv run ethnos export-study 1 --output data/processed/study-guide.md
 ```
