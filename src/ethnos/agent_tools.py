@@ -213,6 +213,9 @@ def _quiz_item_retrieval_queries(item: dict[str, Any]) -> list[str]:
     if keyed_text:
         _add_query(queries, f"{question} {keyed_text}")
         _add_query(queries, keyed_text)
+        for canonical in _canonical_answer_queries(str(keyed_text)):
+            _add_query(queries, f"{question} {canonical}")
+            _add_query(queries, canonical)
     target = str(item.get("target") or "").strip()
     if target:
         _add_query(queries, f"{question} {target}")
@@ -235,11 +238,16 @@ def _rank_quiz_context_rows(
     options = item.get("options") if isinstance(item.get("options"), dict) else {}
     correct = item.get("correct")
     keyed_text = options.get(correct) if isinstance(correct, str) else None
-    support_terms = _support_terms(item, keyed_text)
+    keyed_terms = _significant_terms(str(keyed_text or ""))
+    target_terms = _significant_terms(str(item.get("target") or ""))
+    question_terms = _significant_terms(str(item.get("question") or ""))
 
     def score(row: dict[str, Any]) -> tuple[int, int, int]:
-        text = str(row.get("text") or row.get("snippet") or "").lower()
-        term_hits = sum(1 for term in support_terms if term in text)
+        text = _normalized_search_text(str(row.get("text") or row.get("snippet") or ""))
+        keyed_hits = _term_hit_count(keyed_terms, text)
+        target_hits = _term_hit_count(target_terms, text)
+        question_hits = _term_hit_count(question_terms, text)
+        term_hits = keyed_hits * 8 + target_hits * 3 + question_hits
         query_hits = len(row_queries.get(int(row["id"]), []))
         chapter_role = int(str(row.get("content_role") or "") == "core")
         return (term_hits, query_hits, chapter_role)
@@ -374,11 +382,29 @@ def _text_supported_by_rows(text: str, rows: list[dict[str, object]]) -> bool:
     terms = _significant_terms(text)
     if not terms:
         return False
-    evidence = " ".join(str(row.get("text") or row.get("snippet") or "").lower() for row in rows)
-    hits = sum(1 for term in terms if term in evidence)
-    if len(terms) == 1:
+    for row in rows:
+        evidence = _normalized_search_text(str(row.get("text") or row.get("snippet") or ""))
+        hits = _term_hit_count(terms, evidence)
+        if _term_supports_answer(len(terms), hits):
+            return True
+    return False
+
+
+def _canonical_answer_queries(text: str) -> list[str]:
+    canonical_terms = _significant_terms(text)
+    compact = " ".join(canonical_terms)
+    original = " ".join(_tokenize_terms(text))
+    if compact and compact != original:
+        return [compact]
+    return []
+
+
+def _term_supports_answer(term_count: int, hits: int) -> bool:
+    if term_count <= 1:
         return hits == 1
-    return hits >= max(1, len(terms) - 1)
+    if term_count <= 3:
+        return hits >= term_count - 1
+    return hits >= max(3, term_count // 3)
 
 
 def _compare_options(context: AgentToolContext, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -552,6 +578,7 @@ def _significant_terms(text: str) -> list[str]:
         "and",
         "as",
         "by",
+        "could",
         "for",
         "in",
         "into",
@@ -564,11 +591,52 @@ def _significant_terms(text: str) -> list[str]:
         "with",
     }
     terms = []
-    for raw in text.lower().replace("&", " ").replace("/", " ").split():
+    for term in _tokenize_terms(text):
+        for canonical in _canonical_term_variants(term):
+            if (
+                len(canonical) >= 4
+                and canonical not in stopwords
+                and canonical not in terms
+            ):
+                terms.append(canonical)
+    return terms
+
+
+def _tokenize_terms(text: str) -> list[str]:
+    normalized = _normalized_search_text(text)
+    terms = []
+    for raw in normalized.split():
         term = "".join(ch for ch in raw if ch.isalnum())
-        if len(term) >= 4 and term not in stopwords and term not in terms:
+        if term and term not in terms:
             terms.append(term)
     return terms
+
+
+def _canonical_term_variants(term: str) -> list[str]:
+    aliases = {
+        "temperence": "temperance",
+    }
+    canonical = aliases.get(term, term)
+    variants = [canonical]
+    if canonical.endswith("ies") and len(canonical) > 5:
+        variants.append(canonical[:-3] + "y")
+    if canonical.endswith("s") and len(canonical) > 4:
+        variants.append(canonical[:-1])
+    return variants
+
+
+def _normalized_search_text(text: str) -> str:
+    return (
+        text.lower()
+        .replace("-\n", "")
+        .replace("- ", "")
+        .replace("&", " ")
+        .replace("/", " ")
+    )
+
+
+def _term_hit_count(terms: list[str], text: str) -> int:
+    return sum(1 for term in terms if term in text)
 
 
 def _plain_tool_payload(value: object) -> dict[str, Any]:

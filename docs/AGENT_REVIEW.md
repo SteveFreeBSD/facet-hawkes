@@ -10,6 +10,11 @@ question-plus-key, retrieval hints, target, and option text. This keeps the
 review useful when a small local model calls tools imperfectly or fails to
 produce a final structured verdict.
 
+Grounding is keyed-answer aware: rows that support the keyed answer are ranked
+above broad question-only matches, PDF line-break hyphenation is normalized, and
+answer terms are canonicalized for simple spelling/plural variants before a
+fallback verdict is accepted.
+
 ## Command
 
 ```bash

@@ -115,6 +115,53 @@ def test_ground_quiz_item_uses_key_and_option_aware_queries(tmp_path):
     assert grounding.result["context_rows"][0]["source_citation"] == "history.pdf p. 2, chunk 2"
 
 
+def test_ground_quiz_item_supports_canonicalized_answer_text(tmp_path):
+    conn = _agent_test_db(tmp_path)
+    quiz = _sample_quiz_with_typo_key()
+    context = AgentToolContext(
+        conn=conn,
+        document_id=1,
+        quiz_items={quiz["questions"][0]["id"]: quiz["questions"][0]},
+        output_dir=tmp_path,
+        allow_web=False,
+        vision_pages="off",
+        model_name="gemma-python",
+        num_predict=256,
+        num_ctx=8192,
+    )
+    registry = build_agent_tool_registry(context)
+
+    grounding = call_agent_tool(registry, "ground_quiz_item", {"item_id": "q3"})
+
+    assert grounding.ok is True
+    assert grounding.result["grounding"]["keyed_answer_supported"] is True
+    assert any("temperance" in query for query in grounding.result["grounding"]["queries_tried"])
+    assert grounding.result["context_rows"][0]["source_citation"] == "history.pdf p. 3, chunk 3"
+
+
+def test_ground_quiz_item_ranks_conceptual_key_support_first(tmp_path):
+    conn = _agent_test_db(tmp_path)
+    quiz = _sample_quiz_with_conceptual_key()
+    context = AgentToolContext(
+        conn=conn,
+        document_id=1,
+        quiz_items={quiz["questions"][0]["id"]: quiz["questions"][0]},
+        output_dir=tmp_path,
+        allow_web=False,
+        vision_pages="off",
+        model_name="gemma-python",
+        num_predict=256,
+        num_ctx=8192,
+    )
+    registry = build_agent_tool_registry(context)
+
+    grounding = call_agent_tool(registry, "ground_quiz_item", {"item_id": "q4"})
+
+    assert grounding.ok is True
+    assert grounding.result["grounding"]["keyed_answer_supported"] is True
+    assert grounding.result["context_rows"][0]["source_citation"] == "history.pdf p. 4, chunk 4"
+
+
 def test_agent_review_writes_reports_and_persists_findings(tmp_path):
     conn = _agent_test_db(tmp_path)
     quiz = _sample_quiz()
@@ -452,6 +499,31 @@ def _agent_test_db(tmp_path, *, db_path=None):
                 char_count=64,
                 source_citation="history.pdf p. 2, chunk 2",
             ),
+            ChunkRecord(
+                document_id=document_id,
+                page_start=3,
+                page_end=3,
+                chunk_index=3,
+                text=(
+                    "The WCTU was founded as a temperance organization, and "
+                    "temperance and the full prohibition of alcohol loomed large."
+                ),
+                char_count=117,
+                source_citation="history.pdf p. 3, chunk 3",
+            ),
+            ChunkRecord(
+                document_id=document_id,
+                page_start=4,
+                page_end=4,
+                chunk_index=4,
+                text=(
+                    "A host of social problems turned Americans toward reform "
+                    "politics. Progressive reformers sought order, efficiency, "
+                    "and national political solutions."
+                ),
+                char_count=146,
+                source_citation="history.pdf p. 4, chunk 4",
+            ),
         ],
     )
     conn.execute("UPDATE chunks SET content_role = 'core', section_label = 'chapter'")
@@ -492,6 +564,52 @@ def _sample_quiz_with_key_only_evidence():
                     "B": "Jacob Riis",
                     "C": "Mark Twain",
                     "D": "Edward Bellamy",
+                },
+                "correct": "B",
+                "source_chunks": [],
+                "source_pages": [],
+            }
+        ],
+    }
+
+
+def _sample_quiz_with_typo_key():
+    return {
+        "version": "external-quiz-v2",
+        "document_id": 1,
+        "questions": [
+            {
+                "id": "q3",
+                "question": "What women's movement eventually led to Prohibition?",
+                "question_type": "multiple_choice",
+                "options": {
+                    "A": "Suffrage",
+                    "B": "Temperence",
+                    "C": "Social Gospel",
+                    "D": "Settlement houses",
+                },
+                "correct": "B",
+                "source_chunks": [],
+                "source_pages": [],
+            }
+        ],
+    }
+
+
+def _sample_quiz_with_conceptual_key():
+    return {
+        "version": "external-quiz-v2",
+        "document_id": 1,
+        "questions": [
+            {
+                "id": "q4",
+                "question": "What belief guided many Progressive reformers?",
+                "question_type": "multiple_choice",
+                "options": {
+                    "A": "Only businesses should lead reform",
+                    "B": "Scientific principles could solve social problems",
+                    "C": "Tradition should be preserved at all costs",
+                    "D": "Government should not intervene in society",
                 },
                 "correct": "B",
                 "source_chunks": [],
