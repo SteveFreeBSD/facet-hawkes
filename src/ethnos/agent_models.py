@@ -34,7 +34,7 @@ FindingSeverity = Literal["info", "low", "medium", "high"]
 class ModelProfile(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    name: Literal["gemma3-local", "gemma3-fast", "hybrid-max"]
+    name: Literal["cpu-local", "review-local", "gemma3-local", "gemma3-fast", "hybrid-max"]
     recommended_model: str
     fallback_model: str | None = None
     num_ctx: int
@@ -45,6 +45,26 @@ class ModelProfile(BaseModel):
 
 
 MODEL_PROFILES: dict[str, ModelProfile] = {
+    "cpu-local": ModelProfile(
+        name="cpu-local",
+        recommended_model="gemma-python",
+        fallback_model=None,
+        num_ctx=8192,
+        num_predict=768,
+        think=False,
+        allow_web_default=False,
+        vision_pages_default="off",
+    ),
+    "review-local": ModelProfile(
+        name="review-local",
+        recommended_model="gemma-python",
+        fallback_model=None,
+        num_ctx=8192,
+        num_predict=1024,
+        think=False,
+        allow_web_default=False,
+        vision_pages_default="off",
+    ),
     "gemma3-local": ModelProfile(
         name="gemma3-local",
         recommended_model="gemma3:12b",
@@ -79,7 +99,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
 
 
 def resolve_model_profile(name: str | None, explicit_model: str | None = None) -> ModelProfile:
-    profile_name = name or "gemma3-local"
+    profile_name = name or "cpu-local"
     try:
         profile = MODEL_PROFILES[profile_name]
     except KeyError as exc:

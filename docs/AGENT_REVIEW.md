@@ -10,8 +10,8 @@ PDF evidence, flag answer-key risks, and write a CTO-ready report.
 uv run ethnos agent-review 2 \
   --quiz benchmarks/history_ch20_canvas.json \
   --output data/runs/history_ch20_agent_review \
-  --model gemma3:12b \
-  --profile gemma3-local
+  --model gemma-python \
+  --profile cpu-local
 ```
 
 Useful options:
@@ -22,9 +22,9 @@ Useful options:
   by a vision-capable model such as Gemma 3.
 - `--max-steps 8`: cap the structured tool loop for each quiz item.
 - `--debug-agent`: write `tool_trace.jsonl` beside the reports.
-- `--model-profile gemma3-local|gemma3-fast|hybrid-max`: choose the model
-  profile and context/output defaults.
-- `--profile cto`: convenience alias for the review-ready `gemma3-local`
+- `--model-profile cpu-local|review-local|gemma3-local|gemma3-fast|hybrid-max`:
+  choose the model profile and context/output defaults.
+- `--profile cto`: convenience alias for the review-ready `review-local`
   profile.
 
 ## Outputs
@@ -40,9 +40,11 @@ Each run is also persisted to SQLite in `agent_runs` and `agent_findings`.
 
 ## Model Profiles
 
-- `gemma3-local`: recommended local profile. Targets `gemma3:12b` with
+- `cpu-local`: tuned for the current CPU-only baseline with `gemma-python`.
+- `review-local`: slightly larger CPU-only review budget with `gemma-python`.
+- `gemma3-local`: optional future profile. Targets `gemma3:12b` with
   `gemma3:4b` as the practical fallback.
-- `gemma3-fast`: smaller local profile for quick checks with `gemma3:4b`.
+- `gemma3-fast`: optional smaller Gemma 3 profile for quick checks.
 - `hybrid-max`: max-capability profile for explicit web/cloud-assisted review.
 
 Existing `gemma-python` workflows remain supported for structure extraction,

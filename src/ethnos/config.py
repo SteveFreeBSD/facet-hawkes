@@ -71,7 +71,7 @@ def load_settings() -> Settings:
         ollama_num_ctx=int(os.getenv("ETHNOS_OLLAMA_NUM_CTX", "8192")),
         ollama_think=parse_ollama_think(os.getenv("ETHNOS_OLLAMA_THINK")),
         agent_model=os.getenv("ETHNOS_AGENT_MODEL"),
-        agent_model_profile=os.getenv("ETHNOS_AGENT_MODEL_PROFILE", "gemma3-local"),
+        agent_model_profile=os.getenv("ETHNOS_AGENT_MODEL_PROFILE", "cpu-local"),
         agent_allow_web=_parse_bool(os.getenv("ETHNOS_AGENT_ALLOW_WEB"), default=False),
         agent_vision_pages=os.getenv("ETHNOS_AGENT_VISION_PAGES", "auto"),
         prompt_path=prompt_path,

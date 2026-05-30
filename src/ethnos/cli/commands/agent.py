@@ -35,7 +35,7 @@ def register(subcommands):
         "--model-profile",
         dest="model_profile",
         choices=sorted([*MODEL_PROFILES, "cto"]),
-        help="Agent model profile. 'cto' is an alias for gemma3-local.",
+        help="Agent model profile. 'cto' is an alias for review-local.",
     )
     parser.add_argument(
         "--allow-web",
@@ -59,7 +59,7 @@ def agent_review_cmd(args) -> int:
     explicit_model = args.model or settings.agent_model
     requested_profile = args.model_profile or settings.agent_model_profile
     if requested_profile == "cto":
-        requested_profile = "gemma3-local"
+        requested_profile = "review-local"
     profile = resolve_model_profile(
         requested_profile,
         explicit_model,

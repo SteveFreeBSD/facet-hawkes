@@ -27,6 +27,10 @@ from ethnos.quiz import load_quiz
 
 
 def test_model_profile_resolution_uses_gemma3_defaults():
+    cpu_profile = resolve_model_profile(None)
+    assert cpu_profile.name == "cpu-local"
+    assert cpu_profile.recommended_model == "gemma-python"
+
     profile = resolve_model_profile("gemma3-local")
 
     assert profile.recommended_model == "gemma3:12b"
@@ -166,6 +170,74 @@ def test_agent_review_writes_reports_and_persists_findings(tmp_path):
     assert (tmp_path / "agent_review" / "agent_review.json").exists()
     assert (tmp_path / "agent_review" / "tool_trace.jsonl").exists()
     assert rows[0]["verdict"] == "key_supported"
+
+
+def test_agent_loop_repairs_item_scoped_tool_arguments(tmp_path):
+    conn = _agent_test_db(tmp_path)
+    quiz = _sample_quiz()
+    quiz_path = tmp_path / "quiz.json"
+    quiz_path.write_text(json.dumps(quiz), encoding="utf-8")
+
+    def fake_structured_chat(**kwargs):
+        messages = kwargs["messages"]
+        if "Tool result:" not in messages[-1]["content"]:
+            parsed = {
+                "tool": "ground_quiz_item",
+                "arguments": {"question_id": "q1"},
+            }
+        else:
+            parsed = {
+                "tool": "finalize_item_review",
+                "arguments": {},
+                "final_review": {
+                    "id": "q1",
+                    "question": "Which group exposed corruption?",
+                    "verdict": "key_supported",
+                    "explanation": "Supported.",
+                },
+            }
+        return type("FakeStructuredResponse", (), {"parsed_json": parsed})()
+
+    report = run_agent_review(
+        conn=conn,
+        document_id=1,
+        quiz=quiz,
+        quiz_path=quiz_path,
+        output_dir=tmp_path / "agent_review",
+        model_name="gemma-python",
+        model_profile=MODEL_PROFILES["cpu-local"],
+        allow_web=False,
+        vision_pages="off",
+        max_steps=2,
+        debug_agent=True,
+        client=object(),
+        structured_chat=fake_structured_chat,
+    )
+    trace = (tmp_path / "agent_review" / "tool_trace.jsonl").read_text(encoding="utf-8")
+
+    assert report.items[0].verdict == "key_supported"
+    assert '"error": null' in trace
+
+
+def test_agent_fallback_can_support_key_from_evidence(tmp_path):
+    conn = _agent_test_db(tmp_path)
+    quiz = _sample_quiz()
+    report = run_agent_review(
+        conn=conn,
+        document_id=1,
+        quiz=quiz,
+        quiz_path=tmp_path / "quiz.json",
+        output_dir=tmp_path / "agent_review",
+        model_name="gemma-python",
+        model_profile=MODEL_PROFILES["cpu-local"],
+        allow_web=False,
+        vision_pages="off",
+        max_steps=1,
+        debug_agent=False,
+        client=None,
+    )
+
+    assert report.items[0].verdict == "key_supported"
 
 
 def test_agent_report_renderer_includes_quality_findings():

@@ -107,6 +107,22 @@ def review_quiz_item(
     messages = _initial_messages(item)
     tool_calls: list[str] = []
     observations: list[dict[str, Any]] = []
+    preflight = call_agent_tool(
+        registry,
+        "ground_quiz_item",
+        {"item_id": item.get("id")},
+    )
+    observations.append(preflight.model_dump(mode="json"))
+    tool_calls.append("ground_quiz_item")
+    _write_trace(
+        trace_path,
+        {
+            "item_id": item.get("id"),
+            "kind": "tool_result",
+            "phase": "preflight",
+            "result": preflight.model_dump(mode="json"),
+        },
+    )
 
     for _step in range(max_steps):
         if client is None:
@@ -127,6 +143,7 @@ def review_quiz_item(
             action = AgentAction.model_validate(parsed_json)
         except ValidationError:
             break
+        action = _repair_item_scoped_action(action, item)
         tool_calls.append(action.tool)
         _write_trace(
             trace_path,
@@ -161,6 +178,24 @@ def review_quiz_item(
         )
 
     return _fallback_review(item, observations, quality_findings, tool_calls)
+
+
+def _repair_item_scoped_action(
+    action: AgentAction,
+    item: dict[str, Any],
+) -> AgentAction:
+    if action.tool not in {"ground_quiz_item", "compare_options"}:
+        return action
+    arguments = dict(action.arguments)
+    item_id = item.get("id")
+    if "item_id" not in arguments:
+        for alias in ("question_id", "id"):
+            if alias in arguments:
+                arguments["item_id"] = arguments[alias]
+                break
+    if "item_id" not in arguments and item_id:
+        arguments["item_id"] = item_id
+    return action.model_copy(update={"arguments": arguments})
 
 
 def write_agent_report(output_dir: Path, report: AgentReviewReport) -> None:
@@ -251,26 +286,99 @@ def _fallback_review(
 ) -> AgentReviewItem:
     grounding = _latest_grounding(observations)
     source_status = grounding.get("source_status") if grounding else None
-    verdict = "source_missing" if source_status in {"ungrounded", "source_missing_in_local_pdf"} else "needs_human_review"
     options = item.get("options") if isinstance(item.get("options"), dict) else {}
     correct = item.get("correct")
+    keyed_text = options.get(correct) if isinstance(correct, str) else None
     evidence = _evidence_from_observations(observations)
+    verdict = _fallback_verdict(
+        source_status=source_status,
+        keyed_option_text=keyed_text,
+        evidence=evidence,
+    )
+    review_reason = None if verdict == "key_supported" else "model_final_review_unavailable"
+    explanation = _fallback_explanation(verdict)
     return AgentReviewItem(
         id=str(item.get("id") or ""),
         question=str(item.get("question") or ""),
         verdict=verdict,
         keyed_option=str(correct) if isinstance(correct, str) else None,
         keyed_option_text=options.get(correct) if isinstance(correct, str) else None,
-        explanation=(
-            "The deterministic agent tools collected available context, but the model "
-            "did not produce a validated final review. This item needs human review."
-        ),
+        explanation=explanation,
         evidence=evidence,
         quality_findings=quality_findings,
         source_status=str(source_status) if source_status else None,
         tool_calls=tool_calls,
-        needs_human_review_reason="model_final_review_unavailable",
+        needs_human_review_reason=review_reason,
     )
+
+
+def _fallback_verdict(
+    *,
+    source_status: object,
+    keyed_option_text: str | None,
+    evidence: list[EvidenceCitation],
+) -> str:
+    if source_status in {"ungrounded", "source_missing_in_local_pdf"}:
+        return "source_missing"
+    if keyed_option_text and _answer_text_supported(keyed_option_text, evidence):
+        return "key_supported"
+    return "needs_human_review"
+
+
+def _fallback_explanation(verdict: str) -> str:
+    if verdict == "key_supported":
+        return (
+            "The model did not produce a validated final review, but deterministic "
+            "retrieval found PDF evidence containing the keyed answer text. Treat "
+            "this as source-supported fallback review."
+        )
+    if verdict == "source_missing":
+        return (
+            "The model did not produce a validated final review, and deterministic "
+            "retrieval did not find usable local PDF evidence for this item."
+        )
+    return (
+        "The deterministic agent tools collected available context, but the model "
+        "did not produce a validated final review. This item needs human review."
+    )
+
+
+def _answer_text_supported(
+    keyed_option_text: str,
+    evidence: list[EvidenceCitation],
+) -> bool:
+    answer_terms = _significant_terms(keyed_option_text)
+    if not answer_terms:
+        return False
+    evidence_text = " ".join(citation.snippet.lower() for citation in evidence)
+    hits = sum(1 for term in answer_terms if term in evidence_text)
+    if len(answer_terms) == 1:
+        return hits == 1
+    return hits >= max(1, len(answer_terms) - 1)
+
+
+def _significant_terms(text: str) -> list[str]:
+    stopwords = {
+        "a",
+        "an",
+        "and",
+        "as",
+        "by",
+        "for",
+        "in",
+        "of",
+        "or",
+        "the",
+        "to",
+        "was",
+        "were",
+    }
+    terms = []
+    for raw in text.lower().replace("&", " ").replace("/", " ").split():
+        term = "".join(ch for ch in raw if ch.isalnum())
+        if len(term) >= 4 and term not in stopwords and term not in terms:
+            terms.append(term)
+    return terms
 
 
 def _merge_review_defaults(
