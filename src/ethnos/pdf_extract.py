@@ -22,7 +22,9 @@ def extract_pdf(path: Path) -> tuple[DocumentRecord, list[PageRecord]]:
     try:
         import fitz
     except ImportError as exc:
-        raise RuntimeError("PyMuPDF is required. Install dependencies with `uv sync`.") from exc
+        raise RuntimeError(
+            "PyMuPDF is required. Install dependencies with `uv sync`."
+        ) from exc
 
     path = path.expanduser().resolve()
     if not path.exists():
@@ -59,4 +61,3 @@ def extract_pdf(path: Path) -> tuple[DocumentRecord, list[PageRecord]]:
             )
 
     return document, pages
-

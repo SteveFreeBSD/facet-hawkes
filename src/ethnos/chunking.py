@@ -120,7 +120,9 @@ def is_heading(line: str) -> bool:
 def _append_page_group(
     chunks: list[ChunkRecord], document: DocumentRecord, pages: list[PageRecord]
 ) -> None:
-    text = "\n\n".join(page.cleaned_text.strip() for page in pages if page.cleaned_text.strip())
+    text = "\n\n".join(
+        page.cleaned_text.strip() for page in pages if page.cleaned_text.strip()
+    )
     _append_chunk(
         chunks,
         document=document,
@@ -147,13 +149,17 @@ def _append_chunk(
             text=text,
             heading=detect_heading(text),
             char_count=len(text),
-            source_citation=_citation(document.filename, page_start, page_end, chunk_index),
+            source_citation=_citation(
+                document.filename, page_start, page_end, chunk_index
+            ),
         )
     )
 
 
 def _citation(filename: str, page_start: int, page_end: int, chunk_index: int) -> str:
-    pages = f"p. {page_start}" if page_start == page_end else f"pp. {page_start}-{page_end}"
+    pages = (
+        f"p. {page_start}" if page_start == page_end else f"pp. {page_start}-{page_end}"
+    )
     return f"{filename} {pages}, chunk {chunk_index}"
 
 
@@ -173,4 +179,3 @@ def _tail_overlap(text: str, overlap_chars: int) -> str:
     if overlap_chars <= 0 or len(text) <= overlap_chars:
         return ""
     return text[-overlap_chars:].strip()
-

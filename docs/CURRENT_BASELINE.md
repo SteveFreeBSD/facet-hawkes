@@ -57,6 +57,7 @@ review baseline.
 Observed on 2026-05-30:
 
 - `uv run ruff check .`: passed.
+- `uv run ruff format --check .`: passed.
 - `uv run python -m compileall -q src tests`: passed.
 - `uv run pytest`: 189 passed.
 - `uv run vulture src tests --min-confidence 80`: clean and enforced in CI.

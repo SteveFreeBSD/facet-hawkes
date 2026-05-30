@@ -120,7 +120,9 @@ def export_study(conn: sqlite3.Connection, document_id: int) -> StudyGuide:
     )
 
 
-def _group_by_source_pages(records: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+def _group_by_source_pages(
+    records: list[dict[str, Any]],
+) -> dict[str, list[dict[str, Any]]]:
     groups: dict[str, list[dict[str, Any]]] = {}
     for record in sorted(records, key=_source_sort_key):
         groups.setdefault(_source_label(record), []).append(record)

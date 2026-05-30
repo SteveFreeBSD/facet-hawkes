@@ -115,7 +115,7 @@ def _mc_item_change(
 
 
 def _mc_retrieval_signature(
-    item: dict[str, object]
+    item: dict[str, object],
 ) -> tuple[tuple[object, ...], tuple[object, ...]]:
     chunks = item.get("selected_chunks", [])
     queries = item.get("retrieval_questions") or item.get("queries_tried", [])

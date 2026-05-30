@@ -116,9 +116,9 @@ def import_canvas_quiz(
             points=_normalize_points(raw_points),
             id_prefix=id_prefix,
         )
-        if item["question_type"] == "matching" and "incomplete_matching_item" in item.get(
-            "warnings", []
-        ):
+        if item[
+            "question_type"
+        ] == "matching" and "incomplete_matching_item" in item.get("warnings", []):
             import_warnings.append(f"{item['id']}: incomplete matching item")
         questions.append(item)
 
@@ -282,7 +282,9 @@ def _is_lms_quiz_boilerplate(line: str) -> bool:
 
 
 def _apply_answer_key(questions: list[dict[str, Any]], answer_key_text: str) -> None:
-    raw_entries = [line.strip() for line in answer_key_text.splitlines() if line.strip()]
+    raw_entries = [
+        line.strip() for line in answer_key_text.splitlines() if line.strip()
+    ]
     if not raw_entries:
         return
     keyed_by_number: dict[int, str] = {}
@@ -302,11 +304,15 @@ def _apply_answer_key(questions: list[dict[str, Any]], answer_key_text: str) -> 
             if label is None:
                 continue
             if label not in question["options"]:
-                raise ValueError(f"Answer key for question {index} uses invalid option {label}")
+                raise ValueError(
+                    f"Answer key for question {index} uses invalid option {label}"
+                )
             question["correct"] = label
         return
     if len(positional_entries) != len(questions):
-        raise ValueError("Answer key text line count must match the imported question count")
+        raise ValueError(
+            "Answer key text line count must match the imported question count"
+        )
     for index, (question, answer_text) in enumerate(
         zip(questions, positional_entries), start=1
     ):
@@ -323,8 +329,12 @@ def _apply_answer_key(questions: list[dict[str, Any]], answer_key_text: str) -> 
         question["correct"] = matches[0]
 
 
-def _apply_choice_answer_key(questions: list[dict[str, Any]], answer_key_text: str) -> None:
-    raw_entries = [line.strip() for line in answer_key_text.splitlines() if line.strip()]
+def _apply_choice_answer_key(
+    questions: list[dict[str, Any]], answer_key_text: str
+) -> None:
+    raw_entries = [
+        line.strip() for line in answer_key_text.splitlines() if line.strip()
+    ]
     if not raw_entries:
         return
     choice_questions = [

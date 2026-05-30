@@ -7,7 +7,9 @@ import sqlite3
 from .db_core import quote_identifier
 
 
-def _normalized_record_counts(conn: sqlite3.Connection, document_id: int) -> dict[str, int]:
+def _normalized_record_counts(
+    conn: sqlite3.Connection, document_id: int
+) -> dict[str, int]:
     counts = {}
     for table in ["chunk_summaries", "topics", "key_terms", "examples", "questions"]:
         table_sql = quote_identifier(table)

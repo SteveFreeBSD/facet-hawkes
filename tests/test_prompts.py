@@ -7,7 +7,9 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_topic_extraction_prompt_keeps_gemma_critical_constraints():
-    prompt = (PROJECT_ROOT / "prompts" / "topic_extraction.md").read_text(encoding="utf-8")
+    prompt = (PROJECT_ROOT / "prompts" / "topic_extraction.md").read_text(
+        encoding="utf-8"
+    )
 
     assert "Return only schema-valid JSON" in prompt
     assert "extra keys" in prompt

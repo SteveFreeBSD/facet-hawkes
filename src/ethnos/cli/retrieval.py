@@ -18,12 +18,16 @@ def retrieve_answer_context(
     section: str | None,
 ):
     return retrieve_with_fallbacks(
-        search_func=lambda doc_id, query, limit, role, section: add_continuation_context_chunks(
-            conn,
-            doc_id,
-            context_chunks(conn, doc_id, query, limit=limit, role=role, section=section),
-            role=role,
-            section=section,
+        search_func=lambda doc_id, query, limit, role, section: (
+            add_continuation_context_chunks(
+                conn,
+                doc_id,
+                context_chunks(
+                    conn, doc_id, query, limit=limit, role=role, section=section
+                ),
+                role=role,
+                section=section,
+            )
         ),
         document_id=document_id,
         question=question,

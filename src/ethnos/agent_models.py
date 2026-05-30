@@ -34,7 +34,9 @@ FindingSeverity = Literal["info", "low", "medium", "high"]
 class ModelProfile(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    name: Literal["cpu-local", "review-local", "gemma3-local", "gemma3-fast", "hybrid-max"]
+    name: Literal[
+        "cpu-local", "review-local", "gemma3-local", "gemma3-fast", "hybrid-max"
+    ]
     recommended_model: str
     fallback_model: str | None = None
     num_ctx: int
@@ -98,13 +100,17 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
 }
 
 
-def resolve_model_profile(name: str | None, explicit_model: str | None = None) -> ModelProfile:
+def resolve_model_profile(
+    name: str | None, explicit_model: str | None = None
+) -> ModelProfile:
     profile_name = name or "cpu-local"
     try:
         profile = MODEL_PROFILES[profile_name]
     except KeyError as exc:
         choices = ", ".join(sorted(MODEL_PROFILES))
-        raise ValueError(f"Unknown model profile {profile_name!r}; choose one of: {choices}") from exc
+        raise ValueError(
+            f"Unknown model profile {profile_name!r}; choose one of: {choices}"
+        ) from exc
     if explicit_model is None:
         return profile
     return profile.model_copy(update={"recommended_model": explicit_model})

@@ -160,7 +160,9 @@ def verify_answer_key_report(
 def audit_keyed_report_item(item: dict[str, object]) -> dict[str, object]:
     status = str(item.get("status") or "")
     source_grounding = (
-        item.get("source_grounding") if isinstance(item.get("source_grounding"), dict) else {}
+        item.get("source_grounding")
+        if isinstance(item.get("source_grounding"), dict)
+        else {}
     )
     audit_status = {
         "correct": "key_supported",

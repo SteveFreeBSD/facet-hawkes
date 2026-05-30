@@ -41,7 +41,9 @@ def select_chunks_for_structure(
     return [_chunk_from_status_row(row) for row in selected]
 
 
-def list_structure_chunk_status(conn: sqlite3.Connection, document_id: int) -> list[dict[str, Any]]:
+def list_structure_chunk_status(
+    conn: sqlite3.Connection, document_id: int
+) -> list[dict[str, Any]]:
     rows = conn.execute(
         """
         WITH latest_output AS (
@@ -94,7 +96,9 @@ def list_structure_chunk_status(conn: sqlite3.Connection, document_id: int) -> l
 def structure_status(conn: sqlite3.Connection, document_id: int) -> dict[str, Any]:
     rows = list_structure_chunk_status(conn, document_id)
     latest_failed = [
-        row for row in rows if row["latest_status"] is not None and row["latest_status"] != "valid"
+        row
+        for row in rows
+        if row["latest_status"] is not None and row["latest_status"] != "valid"
     ]
     never_attempted = [row for row in rows if row["latest_status"] is None]
     valid_outputs = [row for row in rows if row["has_valid_output"]]

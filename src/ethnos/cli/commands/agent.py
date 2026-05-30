@@ -64,8 +64,12 @@ def agent_review_cmd(args) -> int:
         requested_profile,
         explicit_model,
     )
-    allow_web = bool(args.allow_web or settings.agent_allow_web or profile.allow_web_default)
-    vision_pages = args.vision_pages or settings.agent_vision_pages or profile.vision_pages_default
+    allow_web = bool(
+        args.allow_web or settings.agent_allow_web or profile.allow_web_default
+    )
+    vision_pages = (
+        args.vision_pages or settings.agent_vision_pages or profile.vision_pages_default
+    )
     if vision_pages not in {"auto", "off", "on"}:
         raise SystemExit("agent vision pages must be one of auto, off, or on.")
     model_name = explicit_model or profile.recommended_model

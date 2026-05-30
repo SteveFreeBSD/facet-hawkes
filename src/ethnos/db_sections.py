@@ -10,7 +10,10 @@ from .section_presets import SectionPreset
 
 
 def apply_section_preset(
-    conn: sqlite3.Connection, document_id: int, preset: SectionPreset, dry_run: bool = False
+    conn: sqlite3.Connection,
+    document_id: int,
+    preset: SectionPreset,
+    dry_run: bool = False,
 ) -> dict[str, Any]:
     page_counts = _count_section_ranges(
         conn,

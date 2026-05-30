@@ -36,7 +36,10 @@ from ...section_presets import SECTION_LABELS
 
 def register(subcommands):
     ask_parser = add_command(
-        subcommands, "ask", "Answer a question using retrieved local PDF context.", ask_cmd
+        subcommands,
+        "ask",
+        "Answer a question using retrieved local PDF context.",
+        ask_cmd,
     )
     ask_parser.add_argument("document_id", type=int)
     ask_parser.add_argument("question")
@@ -45,14 +48,33 @@ def register(subcommands):
     ask_parser.add_argument("--limit", type=int, default=5)
     ask_parser.add_argument("--chars", type=int, default=1200)
     ask_parser.add_argument("--model", help="Ollama model name.")
-    ask_parser.add_argument("--num-predict", type=int, help="Ollama output token budget for the answer.")
-    ask_parser.add_argument("--num-ctx", type=int, help="Ollama context window token budget.")
-    ask_parser.add_argument("--debug-ollama", action="store_true", help="Print compact Ollama request/response diagnostics.")
-    ask_parser.add_argument("--debug-retrieval", action="store_true", help="Print answer retrieval query attempts.")
-    ask_parser.add_argument("--trace-dir", type=Path, help="Write one local JSON trace file for this answered question.")
+    ask_parser.add_argument(
+        "--num-predict", type=int, help="Ollama output token budget for the answer."
+    )
+    ask_parser.add_argument(
+        "--num-ctx", type=int, help="Ollama context window token budget."
+    )
+    ask_parser.add_argument(
+        "--debug-ollama",
+        action="store_true",
+        help="Print compact Ollama request/response diagnostics.",
+    )
+    ask_parser.add_argument(
+        "--debug-retrieval",
+        action="store_true",
+        help="Print answer retrieval query attempts.",
+    )
+    ask_parser.add_argument(
+        "--trace-dir",
+        type=Path,
+        help="Write one local JSON trace file for this answered question.",
+    )
 
     chat_parser = add_command(
-        subcommands, "chat", "Ask repeated grounded questions in a local terminal loop.", chat_cmd
+        subcommands,
+        "chat",
+        "Ask repeated grounded questions in a local terminal loop.",
+        chat_cmd,
     )
     chat_parser.add_argument("document_id", type=int)
     chat_parser.add_argument("--role", choices=ASK_ROLES, default="core")
@@ -60,26 +82,52 @@ def register(subcommands):
     chat_parser.add_argument("--limit", type=int, default=5)
     chat_parser.add_argument("--chars", type=int, default=1200)
     chat_parser.add_argument("--model", help="Ollama model name.")
-    chat_parser.add_argument("--num-predict", type=int, help="Ollama output token budget for each answer.")
-    chat_parser.add_argument("--num-ctx", type=int, help="Ollama context window token budget.")
-    chat_parser.add_argument("--debug-ollama", action="store_true", help="Print compact Ollama request/response diagnostics.")
-    chat_parser.add_argument("--debug-retrieval", action="store_true", help="Print answer retrieval query attempts.")
-    chat_parser.add_argument("--trace-dir", type=Path, help="Write one local JSON trace file per answered question.")
+    chat_parser.add_argument(
+        "--num-predict", type=int, help="Ollama output token budget for each answer."
+    )
+    chat_parser.add_argument(
+        "--num-ctx", type=int, help="Ollama context window token budget."
+    )
+    chat_parser.add_argument(
+        "--debug-ollama",
+        action="store_true",
+        help="Print compact Ollama request/response diagnostics.",
+    )
+    chat_parser.add_argument(
+        "--debug-retrieval",
+        action="store_true",
+        help="Print answer retrieval query attempts.",
+    )
+    chat_parser.add_argument(
+        "--trace-dir",
+        type=Path,
+        help="Write one local JSON trace file per answered question.",
+    )
 
     trace_parser = add_command(
-        subcommands, "inspect-trace", "Summarize one local ask/chat JSON trace.", inspect_trace_cmd
+        subcommands,
+        "inspect-trace",
+        "Summarize one local ask/chat JSON trace.",
+        inspect_trace_cmd,
     )
     trace_parser.add_argument("trace_path", type=Path)
-    trace_parser.add_argument("--show-answer", action="store_true", help="Print the full stored answer text.")
+    trace_parser.add_argument(
+        "--show-answer", action="store_true", help="Print the full stored answer text."
+    )
 
 
 def ask_cmd(args) -> int:
     settings, conn = open_db(args)
     _validate_answer_options(args, settings)
     _answer_once(
-        settings=settings, conn=conn, document_id=args.document_id,
-        question=args.question, role=args.role, section=args.section,
-        limit=args.limit, chars=args.chars,
+        settings=settings,
+        conn=conn,
+        document_id=args.document_id,
+        question=args.question,
+        role=args.role,
+        section=args.section,
+        limit=args.limit,
+        chars=args.chars,
         model_name=args.model or settings.ollama_model,
         num_predict=answer_num_predict(args, settings),
         num_ctx=ollama_num_ctx(args, settings),
@@ -101,6 +149,7 @@ def chat_cmd(args) -> int:
 
     # Late import to support monkeypatching via "ethnos.cli.create_client"
     from .. import create_client as _create_client
+
     ollama_client = _create_client(settings.ollama_host, settings.ollama_timeout)
     print(f"ethnos chat for document {args.document_id}")
     print(f"model: {model_name}")
@@ -126,17 +175,25 @@ def chat_cmd(args) -> int:
             )
             print()
             previous_retrieval = _answer_once(
-                settings=settings, conn=conn, document_id=args.document_id,
+                settings=settings,
+                conn=conn,
+                document_id=args.document_id,
                 question=question,
                 retrieval_question=followup.rewritten_question or question,
-                role=args.role, section=args.section,
-                limit=args.limit, chars=args.chars,
-                model_name=model_name, num_predict=num_predict, num_ctx=num_ctx,
+                role=args.role,
+                section=args.section,
+                limit=args.limit,
+                chars=args.chars,
+                model_name=model_name,
+                num_predict=num_predict,
+                num_ctx=num_ctx,
                 think=settings.ollama_think,
                 debug_retrieval=args.debug_retrieval,
                 debug_ollama=args.debug_ollama,
                 trace_dir=args.trace_dir,
-                mode="chat", followup=followup, client=ollama_client,
+                mode="chat",
+                followup=followup,
+                client=ollama_client,
             )
             previous_question = question
             print()
@@ -174,8 +231,12 @@ def _answer_once(
     retrieval_question = retrieval_question or question
     selected_role = normalize_answer_role(role)
     retrieval = retrieve_answer_context(
-        conn, document_id=document_id, question=retrieval_question,
-        limit=limit, role=selected_role, section=section,
+        conn,
+        document_id=document_id,
+        question=retrieval_question,
+        limit=limit,
+        role=selected_role,
+        section=section,
     )
     print(f"Question: {question}")
     if debug_retrieval or debug_ollama:
@@ -193,10 +254,18 @@ def _answer_once(
         print("Answer:")
         print(answer_text)
         _maybe_write_answer_trace(
-            trace_dir=trace_dir, document_id=document_id, question=question,
-            retrieval=retrieval, model_name=model_name, num_predict=num_predict,
-            num_ctx=num_ctx, answer_text=answer_text, elapsed_seconds=elapsed,
-            context_found=False, mode=mode, followup=followup,
+            trace_dir=trace_dir,
+            document_id=document_id,
+            question=question,
+            retrieval=retrieval,
+            model_name=model_name,
+            num_predict=num_predict,
+            num_ctx=num_ctx,
+            answer_text=answer_text,
+            elapsed_seconds=elapsed,
+            context_found=False,
+            mode=mode,
+            followup=followup,
             ollama_debug_info=None,
             rewritten_retrieval_question=(
                 retrieval_question if retrieval_question != question else None
@@ -209,14 +278,18 @@ def _answer_once(
     prompt_question = question
     if followup is not None and followup.detected and retrieval_question != question:
         prompt_question = (
-            f"{question}\n"
-            f"Resolved follow-up for retrieval: {retrieval_question}"
+            f"{question}\nResolved follow-up for retrieval: {retrieval_question}"
         )
     prompt = build_answer_prompt(prompt_question, retrieval.rows, max_chars=chars)
     result = _answer_question(
-        prompt=prompt, model_name=model_name,
-        host=settings.ollama_host, timeout=settings.ollama_timeout,
-        num_predict=num_predict, num_ctx=num_ctx, think=think, client=client,
+        prompt=prompt,
+        model_name=model_name,
+        host=settings.ollama_host,
+        timeout=settings.ollama_timeout,
+        num_predict=num_predict,
+        num_ctx=num_ctx,
+        think=think,
+        client=client,
     )
     elapsed = time.monotonic() - started_at
     if debug_ollama:
@@ -227,7 +300,10 @@ def _answer_once(
             "consider increasing --num-predict.",
             flush=True,
         )
-    answer_text = result.raw_response.strip() or "The document context did not contain enough information."
+    answer_text = (
+        result.raw_response.strip()
+        or "The document context did not contain enough information."
+    )
     print()
     print("Answer:")
     print(answer_text)
@@ -235,10 +311,18 @@ def _answer_once(
     print("Sources:")
     _print_context_sources(retrieval.rows)
     _maybe_write_answer_trace(
-        trace_dir=trace_dir, document_id=document_id, question=question,
-        retrieval=retrieval, model_name=model_name, num_predict=num_predict,
-        num_ctx=num_ctx, answer_text=answer_text, elapsed_seconds=elapsed,
-        context_found=True, mode=mode, followup=followup,
+        trace_dir=trace_dir,
+        document_id=document_id,
+        question=question,
+        retrieval=retrieval,
+        model_name=model_name,
+        num_predict=num_predict,
+        num_ctx=num_ctx,
+        answer_text=answer_text,
+        elapsed_seconds=elapsed,
+        context_found=True,
+        mode=mode,
+        followup=followup,
         ollama_debug_info=result.debug_info,
         rewritten_retrieval_question=(
             retrieval_question if retrieval_question != question else None
@@ -246,10 +330,23 @@ def _answer_once(
     )
     return retrieval
 
+
 def _maybe_write_answer_trace(
-    *, trace_dir, document_id, question, retrieval, model_name,
-    num_predict, num_ctx, answer_text, elapsed_seconds, context_found,
-    mode, followup=None, ollama_debug_info=None, rewritten_retrieval_question=None,
+    *,
+    trace_dir,
+    document_id,
+    question,
+    retrieval,
+    model_name,
+    num_predict,
+    num_ctx,
+    answer_text,
+    elapsed_seconds,
+    context_found,
+    mode,
+    followup=None,
+    ollama_debug_info=None,
+    rewritten_retrieval_question=None,
 ) -> Path | None:
     if trace_dir is None:
         return None
@@ -284,8 +381,12 @@ def _maybe_write_answer_trace(
         "context_found": context_found,
         "command_mode": mode,
         "ollama": _trace_ollama_debug(ollama_debug_info),
-        "follow_up_detected": bool(followup.detected) if followup is not None else False,
-        "previous_question": followup.previous_question if followup is not None else None,
+        "follow_up_detected": bool(followup.detected)
+        if followup is not None
+        else False,
+        "previous_question": followup.previous_question
+        if followup is not None
+        else None,
         "previous_topic": followup.previous_topic if followup is not None else None,
         "rewritten_retrieval_question": rewritten_retrieval_question,
     }

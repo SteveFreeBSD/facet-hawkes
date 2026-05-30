@@ -1,4 +1,9 @@
-from ethnos.section_presets import PRESETS, CONTENT_ROLES, SECTION_LABELS, get_section_preset
+from ethnos.section_presets import (
+    PRESETS,
+    CONTENT_ROLES,
+    SECTION_LABELS,
+    get_section_preset,
+)
 
 
 def _assert_contiguous(ranges, *, expected_start: int, expected_end: int) -> None:

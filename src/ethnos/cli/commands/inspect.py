@@ -33,12 +33,20 @@ from ...db import (
     section_label_status,
     structure_status,
 )
-from ...section_presets import CONTENT_ROLES, PRESETS, SECTION_LABELS, get_section_preset
+from ...section_presets import (
+    CONTENT_ROLES,
+    PRESETS,
+    SECTION_LABELS,
+    get_section_preset,
+)
 
 
 def register(subcommands):
     inspect_parser = add_command(
-        subcommands, "inspect-chunk", "Inspect one stored chunk and its extracted records.", inspect_chunk_cmd
+        subcommands,
+        "inspect-chunk",
+        "Inspect one stored chunk and its extracted records.",
+        inspect_chunk_cmd,
     )
     inspect_parser.add_argument("document_id", type=int)
     inspect_parser.add_argument("chunk_id", type=int)
@@ -53,7 +61,9 @@ def register(subcommands):
     page_parser.add_argument("--raw", action="store_true")
     page_parser.add_argument("--limit", type=int, default=2000)
 
-    search_parser = add_command(subcommands, "search", "Search chunks with SQLite FTS5.", search)
+    search_parser = add_command(
+        subcommands, "search", "Search chunks with SQLite FTS5.", search
+    )
     search_parser.add_argument("query")
     search_parser.add_argument("--limit", type=int, default=10)
     search_parser.add_argument("--role", choices=sorted(CONTENT_ROLES))
@@ -65,7 +75,14 @@ def register(subcommands):
     records_parser.add_argument("document_id", type=int)
     records_parser.add_argument(
         "--type",
-        choices=["all", "chunk_summaries", "key_terms", "questions", "topics", "examples"],
+        choices=[
+            "all",
+            "chunk_summaries",
+            "key_terms",
+            "questions",
+            "topics",
+            "examples",
+        ],
         default="all",
     )
     records_parser.add_argument("--role", choices=sorted(CONTENT_ROLES))
@@ -74,19 +91,24 @@ def register(subcommands):
     records_parser.add_argument("--limit", type=int, default=20)
 
     quality_parser = add_command(
-        subcommands, "quality-report", "Summarize assimilation quality and scope.", quality_report_cmd
+        subcommands,
+        "quality-report",
+        "Summarize assimilation quality and scope.",
+        quality_report_cmd,
     )
     quality_parser.add_argument("document_id", type=int)
 
     backfill_parser = add_command(
-        subcommands, "backfill-summaries",
+        subcommands,
+        "backfill-summaries",
         "Backfill normalized chunk summaries from valid model outputs.",
         backfill_summaries_cmd,
     )
     backfill_parser.add_argument("document_id", type=int)
 
     refresh_parser = add_command(
-        subcommands, "refresh-records",
+        subcommands,
+        "refresh-records",
         "Refresh normalized records from latest valid model outputs.",
         refresh_records_cmd,
     )
@@ -106,19 +128,28 @@ def register(subcommands):
     add_command(subcommands, "documents", "List stored documents.", documents_cmd)
 
     status_parser = add_command(
-        subcommands, "structure-status", "Show structured extraction status for a document.", structure_status_cmd
+        subcommands,
+        "structure-status",
+        "Show structured extraction status for a document.",
+        structure_status_cmd,
     )
     status_parser.add_argument("document_id", type=int)
 
     label_parser = add_command(
-        subcommands, "label-sections", "Apply manual section labels to pages and chunks.", label_sections_cmd
+        subcommands,
+        "label-sections",
+        "Apply manual section labels to pages and chunks.",
+        label_sections_cmd,
     )
     label_parser.add_argument("document_id", type=int)
     label_parser.add_argument("--preset", required=True, choices=sorted(PRESETS))
     label_parser.add_argument("--dry-run", action="store_true")
 
     section_status_parser = add_command(
-        subcommands, "section-status", "Show section-label status for a document.", section_status_cmd
+        subcommands,
+        "section-status",
+        "Show section-label status for a document.",
+        section_status_cmd,
     )
     section_status_parser.add_argument("document_id", type=int)
 
@@ -172,10 +203,14 @@ def inspect_page_cmd(args) -> int:
 
 def search(args) -> int:
     _, conn = open_db(args)
-    results = search_chunks(conn, args.query, args.limit, role=args.role, section=args.section)
+    results = search_chunks(
+        conn, args.query, args.limit, role=args.role, section=args.section
+    )
     for result in results:
         print(f"[chunk {result['id']}] {result['source_citation']}")
-        print(f"section: {result['section_label'] or 'unlabeled'} | role: {result['content_role'] or 'unlabeled'}")
+        print(
+            f"section: {result['section_label'] or 'unlabeled'} | role: {result['content_role'] or 'unlabeled'}"
+        )
         print(result["snippet"])
         print()
     return 0
@@ -186,15 +221,20 @@ def records_cmd(args) -> int:
     if args.limit is not None and args.limit < 1:
         raise SystemExit("--limit must be 1 or greater.")
     rows = list_structured_records(
-        conn, args.document_id,
-        record_type=args.type, role=args.role, section=args.section,
-        chunk_id=args.chunk_id, limit=args.limit,
+        conn,
+        args.document_id,
+        record_type=args.type,
+        role=args.role,
+        section=args.section,
+        chunk_id=args.chunk_id,
+        limit=args.limit,
     )
     if not rows:
         print("No records found.")
         return 0
     for row in rows:
         from ..formatting import _print_record
+
         _print_record(row)
     return 0
 
@@ -207,8 +247,12 @@ def quality_report_cmd(args) -> int:
     print(f"  unlabeled pages: {report['sections']['unlabeled_pages']}")
     _print_section_count_summary("Chunks by section/role", report["sections"]["chunks"])
     print(f"  unlabeled chunks: {report['sections']['unlabeled_chunks']}")
-    _print_status_counts("Total model output statuses", report["model_output_status_counts"])
-    _print_status_counts("Latest output statuses", report["latest_output_status_counts"])
+    _print_status_counts(
+        "Total model output statuses", report["model_output_status_counts"]
+    )
+    _print_status_counts(
+        "Latest output statuses", report["latest_output_status_counts"]
+    )
     _print_role_counts("Key terms by role", report["key_terms_by_role"])
     _print_role_counts("Questions by role", report["questions_by_role"])
     print("Top repeated key terms:")
@@ -225,7 +269,9 @@ def quality_report_cmd(args) -> int:
     print(f"Chunk summaries: {report['chunk_summaries']}")
     print(f"Topics: {report['topics']}")
     if report["topics"] < 10:
-        print("  Warning: topics are sparse; do not treat topics as the main structure.")
+        print(
+            "  Warning: topics are sparse; do not treat topics as the main structure."
+        )
     print(f"Examples: {report['examples']}")
     if report["examples"] == 0:
         print("  Warning: no examples were extracted.")
@@ -240,7 +286,10 @@ def backfill_summaries_cmd(args) -> int:
     print(f"  backfilled: {report['backfilled']}")
     print(f"  skipped_invalid: {report['skipped_invalid']}")
     if report["backfilled_chunks"]:
-        print("  chunk ids: " + ", ".join(str(chunk_id) for chunk_id in report["backfilled_chunks"]))
+        print(
+            "  chunk ids: "
+            + ", ".join(str(chunk_id) for chunk_id in report["backfilled_chunks"])
+        )
     if report["errors"]:
         print("  validation errors:")
         for error in report["errors"][:10]:
@@ -261,7 +310,10 @@ def refresh_records_cmd(args) -> int:
     print(f"  refreshed: {report['refreshed']}")
     print(f"  skipped_invalid: {report['skipped_invalid']}")
     if report["refreshed_chunks"]:
-        print("  chunk ids: " + ", ".join(str(chunk_id) for chunk_id in report["refreshed_chunks"]))
+        print(
+            "  chunk ids: "
+            + ", ".join(str(chunk_id) for chunk_id in report["refreshed_chunks"])
+        )
     if report["errors"]:
         print("  validation errors:")
         for error in report["errors"][:10]:
@@ -281,8 +333,12 @@ def context_cmd(args) -> int:
     if args.chars < 1:
         raise SystemExit("--chars must be 1 or greater.")
     rows = context_chunks(
-        conn, args.document_id, args.query,
-        limit=args.limit, role=args.role, section=args.section,
+        conn,
+        args.document_id,
+        args.query,
+        limit=args.limit,
+        role=args.role,
+        section=args.section,
     )
     if not rows:
         print("No context chunks found.")
@@ -292,7 +348,9 @@ def context_cmd(args) -> int:
     for row in rows:
         print()
         print(f"[chunk {row['id']}] {row['source_citation']}")
-        print(f"section: {row['section_label'] or 'unlabeled'} | role: {row['content_role'] or 'unlabeled'}")
+        print(
+            f"section: {row['section_label'] or 'unlabeled'} | role: {row['content_role'] or 'unlabeled'}"
+        )
         print("Snippet:")
         print(row["snippet"])
         print("Context text:")
@@ -315,8 +373,12 @@ def documents_cmd(args) -> int:
     headers = ["id", "filename", "pages", "sha256", "created_at", "source_path"]
     rows = [
         [
-            str(document["id"]), document["filename"], str(document["page_count"]),
-            document["sha256"][:12], document["created_at"] or "", document["source_path"],
+            str(document["id"]),
+            document["filename"],
+            str(document["page_count"]),
+            document["sha256"][:12],
+            document["created_at"] or "",
+            document["source_path"],
         ]
         for document in documents
     ]
@@ -324,7 +386,9 @@ def documents_cmd(args) -> int:
         max(len(headers[index]), *(len(row[index]) for row in rows))
         for index in range(len(headers))
     ]
-    print("  ".join(header.ljust(widths[index]) for index, header in enumerate(headers)))
+    print(
+        "  ".join(header.ljust(widths[index]) for index, header in enumerate(headers))
+    )
     print("  ".join("-" * width for width in widths))
     for row in rows:
         print("  ".join(value.ljust(widths[index]) for index, value in enumerate(row)))
@@ -346,12 +410,22 @@ def structure_status_cmd(args) -> int:
     print(f"  questions: {status['questions']}")
     if status["latest_failed_chunks"]:
         print("  latest failed chunk ids:")
-        print("    " + ", ".join(str(row["chunk_id"]) for row in status["latest_failed_chunks"][:30]))
+        print(
+            "    "
+            + ", ".join(
+                str(row["chunk_id"]) for row in status["latest_failed_chunks"][:30]
+            )
+        )
         if len(status["latest_failed_chunks"]) > 30:
             print(f"    ... {len(status['latest_failed_chunks']) - 30} more")
     if status["never_attempted_chunks"]:
         print("  never attempted chunk ids:")
-        print("    " + ", ".join(str(row["chunk_id"]) for row in status["never_attempted_chunks"][:30]))
+        print(
+            "    "
+            + ", ".join(
+                str(row["chunk_id"]) for row in status["never_attempted_chunks"][:30]
+            )
+        )
         if len(status["never_attempted_chunks"]) > 30:
             print(f"    ... {len(status['never_attempted_chunks']) - 30} more")
     return 0

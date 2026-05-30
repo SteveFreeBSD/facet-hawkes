@@ -51,7 +51,11 @@ from .db_query import (
 )
 from .db_reports import db_info, export_document, quality_report
 from .db_sections import apply_section_preset, section_label_status
-from .db_structure import list_structure_chunk_status, select_chunks_for_structure, structure_status
+from .db_structure import (
+    list_structure_chunk_status,
+    select_chunks_for_structure,
+    structure_status,
+)
 from .db_agent import (
     agent_report_summary,
     create_agent_run,

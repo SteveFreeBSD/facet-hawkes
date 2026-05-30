@@ -30,11 +30,19 @@ def structure_num_predict(args: argparse.Namespace, settings) -> int:
 
 
 def answer_num_predict(args: argparse.Namespace, settings) -> int:
-    return args.num_predict if args.num_predict is not None else settings.ollama_answer_num_predict
+    return (
+        args.num_predict
+        if args.num_predict is not None
+        else settings.ollama_answer_num_predict
+    )
 
 
 def ollama_num_ctx(args: argparse.Namespace, settings) -> int:
-    return args.num_ctx if getattr(args, "num_ctx", None) is not None else settings.ollama_num_ctx
+    return (
+        args.num_ctx
+        if getattr(args, "num_ctx", None) is not None
+        else settings.ollama_num_ctx
+    )
 
 
 def _ollama_done_reason(result) -> str | None:
@@ -71,7 +79,9 @@ def parse_models_arg(value: str) -> list[str]:
     return models
 
 
-def progress_line(model_name: str, question_number: int, total_questions: int, question_id: str) -> str:
+def progress_line(
+    model_name: str, question_number: int, total_questions: int, question_id: str
+) -> str:
     return f"[{model_name}] question {question_number}/{total_questions}: {question_id}"
 
 

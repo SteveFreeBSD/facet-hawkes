@@ -23,4 +23,3 @@ def test_extract_pdf_preserves_pages_and_text(tmp_path):
     assert len(pages) == 1
     assert pages[0].page_number == 1
     assert "Cells convert energy" in pages[0].cleaned_text
-

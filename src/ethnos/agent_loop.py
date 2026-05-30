@@ -17,7 +17,13 @@ from .agent_models import (
     ModelProfile,
     QuestionQualityFinding,
 )
-from .agent_tools import AgentToolContext, build_agent_tool_registry, call_agent_tool
+from .agent_tools import (
+    COMMON_ANSWER_SPELLING_FIXES,
+    AgentToolContext,
+    answer_text_supported_by_rows,
+    build_agent_tool_registry,
+    call_agent_tool,
+)
 from .ollama_client import structured_chat_json
 
 
@@ -296,7 +302,9 @@ def _fallback_review(
         evidence=evidence,
         grounding=grounding,
     )
-    review_reason = None if verdict == "key_supported" else "model_final_review_unavailable"
+    review_reason = (
+        None if verdict == "key_supported" else "model_final_review_unavailable"
+    )
     explanation = _fallback_explanation(verdict)
     return AgentReviewItem(
         id=str(item.get("id") or ""),
@@ -324,7 +332,10 @@ def _fallback_verdict(
         return "source_missing"
     if grounding.get("keyed_answer_supported") is True:
         return "key_supported"
-    if keyed_option_text and _answer_text_supported(keyed_option_text, evidence):
+    if keyed_option_text and answer_text_supported_by_rows(
+        keyed_option_text,
+        [{"text": citation.snippet} for citation in evidence],
+    ):
         return "key_supported"
     return "needs_human_review"
 
@@ -345,44 +356,6 @@ def _fallback_explanation(verdict: str) -> str:
         "The deterministic agent tools collected available context, but the model "
         "did not produce a validated final review. This item needs human review."
     )
-
-
-def _answer_text_supported(
-    keyed_option_text: str,
-    evidence: list[EvidenceCitation],
-) -> bool:
-    answer_terms = _significant_terms(keyed_option_text)
-    if not answer_terms:
-        return False
-    evidence_text = " ".join(citation.snippet.lower() for citation in evidence)
-    hits = sum(1 for term in answer_terms if term in evidence_text)
-    if len(answer_terms) == 1:
-        return hits == 1
-    return hits >= max(1, len(answer_terms) - 1)
-
-
-def _significant_terms(text: str) -> list[str]:
-    stopwords = {
-        "a",
-        "an",
-        "and",
-        "as",
-        "by",
-        "for",
-        "in",
-        "of",
-        "or",
-        "the",
-        "to",
-        "was",
-        "were",
-    }
-    terms = []
-    for raw in text.lower().replace("&", " ").replace("/", " ").split():
-        term = "".join(ch for ch in raw if ch.isalnum())
-        if len(term) >= 4 and term not in stopwords and term not in terms:
-            terms.append(term)
-    return terms
 
 
 def _merge_review_defaults(
@@ -416,7 +389,9 @@ def _latest_grounding(observations: list[dict[str, Any]]) -> dict[str, Any]:
     return {}
 
 
-def _evidence_from_observations(observations: list[dict[str, Any]]) -> list[EvidenceCitation]:
+def _evidence_from_observations(
+    observations: list[dict[str, Any]],
+) -> list[EvidenceCitation]:
     citations: list[EvidenceCitation] = []
     for observation in observations:
         result = observation.get("result")
@@ -432,7 +407,9 @@ def _evidence_from_observations(observations: list[dict[str, Any]]) -> list[Evid
                 EvidenceCitation(
                     source="pdf",
                     chunk_id=row.get("id") if isinstance(row.get("id"), int) else None,
-                    page=row.get("page_start") if isinstance(row.get("page_start"), int) else None,
+                    page=row.get("page_start")
+                    if isinstance(row.get("page_start"), int)
+                    else None,
                     citation=str(row.get("source_citation") or ""),
                     snippet=str(row.get("text") or row.get("snippet") or "")[:500],
                 )
@@ -453,9 +430,7 @@ def _build_report(
 ) -> AgentReviewReport:
     verdict_counts = Counter(item.verdict for item in reviews)
     quality_counts = Counter(
-        finding.finding_type
-        for item in reviews
-        for finding in item.quality_findings
+        finding.finding_type for item in reviews for finding in item.quality_findings
     )
     return AgentReviewReport(
         document_id=document_id,
@@ -473,7 +448,7 @@ def _build_report(
 
 
 def _duplicate_question_findings(
-    items: list[dict[str, Any]]
+    items: list[dict[str, Any]],
 ) -> dict[str, list[QuestionQualityFinding]]:
     grouped: dict[str, list[dict[str, Any]]] = {}
     for item in items:
@@ -495,9 +470,10 @@ def _duplicate_question_findings(
     return findings
 
 
-def _typo_findings(items: list[dict[str, Any]]) -> dict[str, list[QuestionQualityFinding]]:
+def _typo_findings(
+    items: list[dict[str, Any]],
+) -> dict[str, list[QuestionQualityFinding]]:
     findings: dict[str, list[QuestionQualityFinding]] = {}
-    typo_pairs = {"temperence": "Temperance"}
     for item in items:
         option_text = " ".join(
             str(value)
@@ -507,7 +483,7 @@ def _typo_findings(items: list[dict[str, Any]]) -> dict[str, list[QuestionQualit
                 else []
             )
         )
-        for typo, correction in typo_pairs.items():
+        for typo, correction in COMMON_ANSWER_SPELLING_FIXES.items():
             if typo in option_text.lower():
                 findings.setdefault(str(item.get("id")), []).append(
                     QuestionQualityFinding(

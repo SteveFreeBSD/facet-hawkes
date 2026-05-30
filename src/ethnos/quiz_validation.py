@@ -64,7 +64,9 @@ def validate_quiz_item(
             if warning != "incomplete_matching_item":
                 errors.append(f"import warning: {warning}")
 
-    errors.extend(_anchor_errors(conn, document_id, item, require_anchors=require_anchors))
+    errors.extend(
+        _anchor_errors(conn, document_id, item, require_anchors=require_anchors)
+    )
     return errors
 
 
@@ -127,7 +129,9 @@ def _anchor_errors(
             (chunk_id, document_id),
         ).fetchone()
         if row is None:
-            errors.append(f"source chunk {chunk_id} not found for document {document_id}")
+            errors.append(
+                f"source chunk {chunk_id} not found for document {document_id}"
+            )
         else:
             chunk_rows.append(row)
 

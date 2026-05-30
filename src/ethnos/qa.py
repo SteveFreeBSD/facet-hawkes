@@ -307,7 +307,9 @@ def evaluate_answer_quality(
 
     answer_lower = answer_text.lower()
     expected_terms = list(item.get("expected_answer_terms", []))
-    missing_terms = [term for term in expected_terms if term.lower() not in answer_lower]
+    missing_terms = [
+        term for term in expected_terms if term.lower() not in answer_lower
+    ]
     missing_any_groups = [
         group
         for group in expected_any_groups
@@ -322,13 +324,17 @@ def evaluate_answer_quality(
     expected_citations = expected_answer_citations(item)
     citation_hit = None
     if expected_citations:
-        citation_hit = any(citation.lower() in answer_lower for citation in expected_citations)
+        citation_hit = any(
+            citation.lower() in answer_lower for citation in expected_citations
+        )
 
     if forbidden_terms:
         status = "fail"
     else:
-        checks = len(expected_terms) + len(expected_any_groups) + (
-            1 if citation_hit is not None else 0
+        checks = (
+            len(expected_terms)
+            + len(expected_any_groups)
+            + (1 if citation_hit is not None else 0)
         )
         passed = (
             (len(expected_terms) - len(missing_terms))
@@ -435,7 +441,9 @@ def summarize_answer_items(items: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def rank_model_summaries(model_summaries: list[dict[str, Any]]) -> dict[str, Any]:
-    usable = [summary for summary in model_summaries if summary.get("model_error", 0) == 0]
+    usable = [
+        summary for summary in model_summaries if summary.get("model_error", 0) == 0
+    ]
     if not model_summaries:
         return {"best_pass_count": [], "lowest_fail_count": [], "fastest_no_fail": None}
     best_pass = max(summary.get("answer_pass", 0) for summary in model_summaries)
@@ -448,7 +456,9 @@ def rank_model_summaries(model_summaries: list[dict[str, Any]]) -> dict[str, Any
     ]
     fastest = None
     if no_failure:
-        fastest = min(no_failure, key=lambda summary: summary.get("total_elapsed_seconds", 0))
+        fastest = min(
+            no_failure, key=lambda summary: summary.get("total_elapsed_seconds", 0)
+        )
     return {
         "best_pass_count": [
             summary["model"]
@@ -465,7 +475,10 @@ def rank_model_summaries(model_summaries: list[dict[str, Any]]) -> dict[str, Any
 
 
 def _expects_no_context(item: dict[str, Any]) -> bool:
-    return item.get("expected_source_chunks") == [] or item.get("expected_source_pages") == []
+    return (
+        item.get("expected_source_chunks") == []
+        or item.get("expected_source_pages") == []
+    )
 
 
 def _content_tokens(question: str) -> list[str]:

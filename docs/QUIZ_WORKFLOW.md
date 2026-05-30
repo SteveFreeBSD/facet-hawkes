@@ -16,8 +16,9 @@ Recommended chapter workflow:
 4. Benchmark PDF-grounded answers with `quiz-bench`.
 5. Audit the instructor key with `verify-answer-key`.
 
-The MC-only commands remain for older fixtures and comparison reports, but new
-chapter work should use the mixed Canvas and grounding workflow.
+The MC-only commands remain available for dedicated multiple-choice fixtures
+and comparison reports, but new chapter work should use the mixed Canvas and
+grounding workflow.
 
 ## Chapter Fixtures
 
@@ -146,7 +147,7 @@ and `verify-answer-key` pipeline.
 
 ## Compatibility Commands
 
-These commands remain available for older MC-only fixtures:
+These commands remain available for dedicated MC-only fixtures:
 
 - `import-mc-quiz`
 - `review-mc-quiz`
@@ -156,4 +157,4 @@ These commands remain available for older MC-only fixtures:
 - `suggest-mc-anchors`
 
 Prefer mixed quiz commands for new work unless you specifically need an
-old-style MC-only comparison report.
+MC-only comparison report.

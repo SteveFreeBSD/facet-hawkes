@@ -172,4 +172,6 @@ def get_section_preset(name: str) -> SectionPreset:
         return PRESETS[name]
     except KeyError as exc:
         available = ", ".join(sorted(PRESETS))
-        raise ValueError(f"Unknown section preset {name!r}. Available presets: {available}") from exc
+        raise ValueError(
+            f"Unknown section preset {name!r}. Available presets: {available}"
+        ) from exc

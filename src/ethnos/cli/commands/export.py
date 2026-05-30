@@ -11,18 +11,26 @@ from ...export import export_json, export_markdown, export_study
 
 
 def register(subcommands):
-    json_parser = add_command(subcommands, "export-json", "Export document data as JSON.", export_json_cmd)
+    json_parser = add_command(
+        subcommands, "export-json", "Export document data as JSON.", export_json_cmd
+    )
     json_parser.add_argument("document_id", type=int)
     json_parser.add_argument("--output", type=Path)
 
     markdown_parser = add_command(
-        subcommands, "export-markdown", "Export document data as Markdown.", export_markdown_cmd
+        subcommands,
+        "export-markdown",
+        "Export document data as Markdown.",
+        export_markdown_cmd,
     )
     markdown_parser.add_argument("document_id", type=int)
     markdown_parser.add_argument("--output", type=Path)
 
     study_parser = add_command(
-        subcommands, "export-study", "Export a structured Markdown study guide.", export_study_cmd
+        subcommands,
+        "export-study",
+        "Export a structured Markdown study guide.",
+        export_study_cmd,
     )
     study_parser.add_argument("document_id", type=int)
     study_parser.add_argument("--output", type=Path, required=True)

@@ -469,7 +469,9 @@ def _ranked_distractors(
         shared_topic_count = len(record_topics & candidate_topics)
         distance = abs(candidate.chunk_index - record.chunk_index)
         same_section = candidate.section_label == record.section_label
-        answer_overlap = _answer_token_overlap(record.correct_answer, candidate.correct_answer)
+        answer_overlap = _answer_token_overlap(
+            record.correct_answer, candidate.correct_answer
+        )
         scored.append(
             (
                 *_distractor_sort_key(
@@ -548,7 +550,9 @@ def _answer_tokens(value: str) -> set[str]:
 def _record_counts(
     records_by_type: dict[str, list[QuizSourceRecord]], questions: list[dict[str, Any]]
 ) -> dict[str, int]:
-    generated_terms = sum(1 for item in questions if item["source_record_type"] == "key_terms")
+    generated_terms = sum(
+        1 for item in questions if item["source_record_type"] == "key_terms"
+    )
     generated_questions = sum(
         1 for item in questions if item["source_record_type"] == "questions"
     )

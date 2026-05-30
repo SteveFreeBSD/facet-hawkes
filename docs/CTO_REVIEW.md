@@ -46,6 +46,7 @@ authoritative, what was verified, and how future changes should stay aligned.
 Observed on 2026-05-30:
 
 - `uv run ruff check .`: passed.
+- `uv run ruff format --check .`: passed.
 - `uv run python -m compileall -q src tests`: passed.
 - `uv run pytest`: 189 passed.
 - Dead-code scan with Vulture at 80% confidence: clean and enforced in CI.

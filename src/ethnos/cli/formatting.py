@@ -85,7 +85,10 @@ def _print_ollama_debug(chunk_id: int | None, debug_info) -> None:
         return
     print(f"Ollama debug for chunk {chunk_id}:", flush=True)
     print(f"  prompt chars: {debug_info.prompt_char_length}", flush=True)
-    print(f"  schema top-level keys: {', '.join(debug_info.schema_top_level_keys)}", flush=True)
+    print(
+        f"  schema top-level keys: {', '.join(debug_info.schema_top_level_keys)}",
+        flush=True,
+    )
     print(f"  format: {debug_info.format_kind}", flush=True)
     print(f"  num_predict: {debug_info.num_predict}", flush=True)
     print(f"  num_ctx: {debug_info.num_ctx}", flush=True)
@@ -230,7 +233,9 @@ def _print_quiz_preview(
                     print(f"  {label}. {text}{marker}")
         elif question_type == "matching":
             prompts = item.get("matching_prompts") or []
-            print(f"  matching prompts: {len(prompts) if isinstance(prompts, list) else 0}")
+            print(
+                f"  matching prompts: {len(prompts) if isinstance(prompts, list) else 0}"
+            )
             if include_options and isinstance(prompts, list):
                 for prompt in prompts:
                     print(f"  - {prompt}")
@@ -267,12 +272,14 @@ def _print_model_summary(summary: dict) -> None:
     average_seconds = summary.get("average_answer_seconds")
     average_length = summary.get("average_answer_length")
     print(
-        f"    average answer time: "
-        f"{average_seconds:.1f}s" if average_seconds is not None else "    average answer time: n/a"
+        f"    average answer time: {average_seconds:.1f}s"
+        if average_seconds is not None
+        else "    average answer time: n/a"
     )
     print(
-        f"    average answer length: "
-        f"{average_length:.0f} chars" if average_length is not None else "    average answer length: n/a"
+        f"    average answer length: {average_length:.0f} chars"
+        if average_length is not None
+        else "    average answer length: n/a"
     )
 
 
@@ -309,12 +316,18 @@ def _print_retrieval_debug(retrieval) -> None:
                 else "none"
             )
         )
-    print(f"  derived query: {retrieval.queries_tried[0] if retrieval.queries_tried else ''}")
+    print(
+        f"  derived query: {retrieval.queries_tried[0] if retrieval.queries_tried else ''}"
+    )
     print(f"  fallback queries tried: {', '.join(retrieval.queries_tried)}")
     print(f"  selected query: {retrieval.selected_query or 'none'}")
     print(
         "  selected chunks: "
-        + (", ".join(str(row["id"]) for row in retrieval.rows) if retrieval.rows else "none")
+        + (
+            ", ".join(str(row["id"]) for row in retrieval.rows)
+            if retrieval.rows
+            else "none"
+        )
     )
     print(f"  stopped reason: {retrieval.stopped_reason}")
 

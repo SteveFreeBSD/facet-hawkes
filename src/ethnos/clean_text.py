@@ -16,4 +16,3 @@ def clean_page_text(text: str) -> str:
     cleaned = "\n".join(line for line in lines)
     cleaned = _BLANK_LINES_RE.sub("\n\n", cleaned)
     return cleaned.strip()
-

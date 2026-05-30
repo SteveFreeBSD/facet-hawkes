@@ -64,7 +64,9 @@ def save_model_output(
                 chunk_id,
                 raw_prompt,
                 raw_response,
-                json.dumps(parsed_json, sort_keys=True) if parsed_json is not None else None,
+                json.dumps(parsed_json, sort_keys=True)
+                if parsed_json is not None
+                else None,
                 validation_status,
                 validation_error,
             ),
@@ -88,7 +90,9 @@ def save_extraction_result(
         if not persist_study_records:
             return
         for topic in result.topics:
-            source_pages = _record_source_pages(topic.source_pages, fallback_source_pages)
+            source_pages = _record_source_pages(
+                topic.source_pages, fallback_source_pages
+            )
             conn.execute(
                 """
                 INSERT INTO topics (chunk_id, name, summary, confidence, source_pages)
@@ -103,7 +107,9 @@ def save_extraction_result(
                 ),
             )
         for term in result.key_terms:
-            source_pages = _record_source_pages(term.source_pages, fallback_source_pages)
+            source_pages = _record_source_pages(
+                term.source_pages, fallback_source_pages
+            )
             conn.execute(
                 """
                 INSERT INTO key_terms (chunk_id, term, definition, context, source_pages)
@@ -118,7 +124,9 @@ def save_extraction_result(
                 ),
             )
         for example in result.examples:
-            source_pages = _record_source_pages(example.source_pages, fallback_source_pages)
+            source_pages = _record_source_pages(
+                example.source_pages, fallback_source_pages
+            )
             conn.execute(
                 """
                 INSERT INTO examples (chunk_id, title, body, source_pages)
@@ -127,7 +135,9 @@ def save_extraction_result(
                 (chunk_id, example.title, example.body, json.dumps(source_pages)),
             )
         for question in result.questions:
-            source_pages = _record_source_pages(question.source_pages, fallback_source_pages)
+            source_pages = _record_source_pages(
+                question.source_pages, fallback_source_pages
+            )
             conn.execute(
                 """
                 INSERT INTO questions (chunk_id, question, answer, difficulty, source_pages)
@@ -143,7 +153,9 @@ def save_extraction_result(
             )
 
 
-def backfill_chunk_summaries(conn: sqlite3.Connection, document_id: int) -> dict[str, Any]:
+def backfill_chunk_summaries(
+    conn: sqlite3.Connection, document_id: int
+) -> dict[str, Any]:
     rows = conn.execute(
         """
         WITH latest_valid_outputs AS (
@@ -192,7 +204,9 @@ def backfill_chunk_summaries(conn: sqlite3.Connection, document_id: int) -> dict
     return report
 
 
-def refresh_normalized_records(conn: sqlite3.Connection, document_id: int) -> dict[str, Any]:
+def refresh_normalized_records(
+    conn: sqlite3.Connection, document_id: int
+) -> dict[str, Any]:
     rows = conn.execute(
         """
         WITH latest_valid_outputs AS (
@@ -256,12 +270,16 @@ def _chunk_source_pages(conn: sqlite3.Connection, chunk_id: int) -> list[int]:
     return list(range(row["page_start"], row["page_end"] + 1))
 
 
-def _record_source_pages(model_pages: list[int], fallback_pages: list[int]) -> list[int]:
+def _record_source_pages(
+    model_pages: list[int], fallback_pages: list[int]
+) -> list[int]:
     return model_pages if model_pages else fallback_pages
 
 
 def _should_persist_study_records(conn: sqlite3.Connection, chunk_id: int) -> bool:
-    row = conn.execute("SELECT content_role FROM chunks WHERE id = ?", (chunk_id,)).fetchone()
+    row = conn.execute(
+        "SELECT content_role FROM chunks WHERE id = ?", (chunk_id,)
+    ).fetchone()
     if row is None:
         raise ValueError(f"No chunk found with id {chunk_id}")
     return _is_study_content_role(row["content_role"])

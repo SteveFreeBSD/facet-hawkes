@@ -233,7 +233,9 @@ def _ensure_column(
         raise ValueError(f"Unsafe SQL column definition: {column_definition!r}")
     columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table_sql})")}
     if column not in columns:
-        conn.execute(f"ALTER TABLE {table_sql} ADD COLUMN {column_sql} {column_definition}")
+        conn.execute(
+            f"ALTER TABLE {table_sql} ADD COLUMN {column_sql} {column_definition}"
+        )
 
 
 def save_document_pages(
@@ -302,7 +304,9 @@ def save_document_pages(
 
 
 def get_document(conn: sqlite3.Connection, document_id: int) -> DocumentRecord:
-    row = conn.execute("SELECT * FROM documents WHERE id = ?", (document_id,)).fetchone()
+    row = conn.execute(
+        "SELECT * FROM documents WHERE id = ?", (document_id,)
+    ).fetchone()
     if row is None:
         raise ValueError(f"No document found with id {document_id}")
     return DocumentRecord(
@@ -347,7 +351,8 @@ def list_pages(conn: sqlite3.Connection, document_id: int) -> list[PageRecord]:
 
 def list_chunks(conn: sqlite3.Connection, document_id: int) -> list[ChunkRecord]:
     rows = conn.execute(
-        "SELECT * FROM chunks WHERE document_id = ? ORDER BY chunk_index", (document_id,)
+        "SELECT * FROM chunks WHERE document_id = ? ORDER BY chunk_index",
+        (document_id,),
     ).fetchall()
     return [
         ChunkRecord(
@@ -363,6 +368,7 @@ def list_chunks(conn: sqlite3.Connection, document_id: int) -> list[ChunkRecord]
         )
         for row in rows
     ]
+
 
 def _chunk_from_row(row: sqlite3.Row) -> ChunkRecord:
     return ChunkRecord(
@@ -392,7 +398,9 @@ def _chunk_from_status_row(row: dict[str, Any]) -> ChunkRecord:
     )
 
 
-def save_chunks(conn: sqlite3.Connection, document_id: int, chunks: list[ChunkRecord]) -> None:
+def save_chunks(
+    conn: sqlite3.Connection, document_id: int, chunks: list[ChunkRecord]
+) -> None:
     with conn:
         clear_document_outputs(conn, document_id)
         conn.execute("DELETE FROM chunks WHERE document_id = ?", (document_id,))
@@ -416,7 +424,6 @@ def save_chunks(conn: sqlite3.Connection, document_id: int, chunks: list[ChunkRe
                     chunk.source_citation,
                 ),
             )
-
 
 
 def _is_study_content_role(content_role: str | None) -> bool:

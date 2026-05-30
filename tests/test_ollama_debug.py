@@ -80,7 +80,11 @@ def test_response_summary_reports_compact_envelope_fields():
     response = {
         "done": True,
         "done_reason": "stop",
-        "message": {"role": "assistant", "content": "{}", "thinking": "hidden thoughts"},
+        "message": {
+            "role": "assistant",
+            "content": "{}",
+            "thinking": "hidden thoughts",
+        },
         "total_duration": 123,
         "eval_count": 17,
     }
@@ -437,7 +441,10 @@ def test_answer_mc_question_uses_client_and_validates_response():
     assert result.selected_option == "B"
     assert result.validation_status == "valid"
     assert client.kwargs["think"] is False
-    assert client.kwargs["format"]["properties"]["selected_option"]["enum"] == ["A", "B"]
+    assert client.kwargs["format"]["properties"]["selected_option"]["enum"] == [
+        "A",
+        "B",
+    ]
     assert client.kwargs["options"]["num_predict"] == 32
     assert result.debug_info.response_summary["done"] is True
 

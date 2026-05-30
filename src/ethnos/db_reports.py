@@ -23,8 +23,12 @@ def quality_report(conn: sqlite3.Connection, document_id: int) -> dict[str, Any]
         "key_terms_by_role": _normalized_count_by_role(conn, "key_terms", document_id),
         "questions_by_role": _normalized_count_by_role(conn, "questions", document_id),
         "top_repeated_key_terms": _top_repeated_key_terms(conn, document_id),
-        "chunks_with_no_terms_or_questions": _chunks_with_no_terms_or_questions(conn, document_id),
-        "non_core_chunks_with_records": _non_core_chunks_with_records(conn, document_id),
+        "chunks_with_no_terms_or_questions": _chunks_with_no_terms_or_questions(
+            conn, document_id
+        ),
+        "non_core_chunks_with_records": _non_core_chunks_with_records(
+            conn, document_id
+        ),
         "chunk_summaries": record_counts["chunk_summaries"],
         "topics": record_counts["topics"],
         "examples": record_counts["examples"],
@@ -77,7 +81,9 @@ def _normalized_count_by_role(
     return [dict(row) for row in rows]
 
 
-def _top_repeated_key_terms(conn: sqlite3.Connection, document_id: int) -> list[dict[str, Any]]:
+def _top_repeated_key_terms(
+    conn: sqlite3.Connection, document_id: int
+) -> list[dict[str, Any]]:
     rows = conn.execute(
         """
         SELECT LOWER(TRIM(kt.term)) AS term, COUNT(*) AS count
@@ -160,7 +166,9 @@ def export_document(conn: sqlite3.Connection, document_id: int) -> dict[str, Any
     }
 
 
-def _rows(conn: sqlite3.Connection, table: str, document_id: int) -> list[dict[str, Any]]:
+def _rows(
+    conn: sqlite3.Connection, table: str, document_id: int
+) -> list[dict[str, Any]]:
     table_sql = quote_identifier(table)
     rows = conn.execute(
         f"""
@@ -173,8 +181,6 @@ def _rows(conn: sqlite3.Connection, table: str, document_id: int) -> list[dict[s
         (document_id,),
     ).fetchall()
     return [dict(row) for row in rows]
-
-
 
 
 def db_info(conn: sqlite3.Connection) -> dict[str, Any]:

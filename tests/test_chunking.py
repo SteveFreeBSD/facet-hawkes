@@ -80,7 +80,9 @@ def test_chunk_cli_rejects_sizes_that_can_hang(tmp_path):
         ],
     )
 
-    with pytest.raises(SystemExit, match="--overlap-chars must be less than --max-chars"):
+    with pytest.raises(
+        SystemExit, match="--overlap-chars must be less than --max-chars"
+    ):
         main(
             [
                 "--db",

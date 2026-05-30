@@ -49,7 +49,9 @@ def parse_ollama_think(value: str | None) -> OllamaThink:
 def load_settings() -> Settings:
     db_path = Path(os.getenv("ETHNOS_DB_PATH", PROJECT_ROOT / "data" / "ethnos.sqlite"))
     prompt_path = Path(
-        os.getenv("ETHNOS_TOPIC_PROMPT", PROJECT_ROOT / "prompts" / "topic_extraction.md")
+        os.getenv(
+            "ETHNOS_TOPIC_PROMPT", PROJECT_ROOT / "prompts" / "topic_extraction.md"
+        )
     )
     return Settings(
         db_path=db_path,

@@ -10,7 +10,11 @@ from ethnos.agent_models import (
     MODEL_PROFILES,
     resolve_model_profile,
 )
-from ethnos.agent_tools import AgentToolContext, build_agent_tool_registry, call_agent_tool
+from ethnos.agent_tools import (
+    AgentToolContext,
+    build_agent_tool_registry,
+    call_agent_tool,
+)
 from ethnos.cli import main
 from ethnos.db import (
     agent_report_summary,
@@ -111,8 +115,14 @@ def test_ground_quiz_item_uses_key_and_option_aware_queries(tmp_path):
 
     assert grounding.ok is True
     assert grounding.result["grounding"]["keyed_answer_supported"] is True
-    assert any("jacob riis" in query for query in grounding.result["grounding"]["queries_tried"])
-    assert grounding.result["context_rows"][0]["source_citation"] == "history.pdf p. 2, chunk 2"
+    assert any(
+        "jacob riis" in query
+        for query in grounding.result["grounding"]["queries_tried"]
+    )
+    assert (
+        grounding.result["context_rows"][0]["source_citation"]
+        == "history.pdf p. 2, chunk 2"
+    )
 
 
 def test_ground_quiz_item_supports_canonicalized_answer_text(tmp_path):
@@ -135,8 +145,14 @@ def test_ground_quiz_item_supports_canonicalized_answer_text(tmp_path):
 
     assert grounding.ok is True
     assert grounding.result["grounding"]["keyed_answer_supported"] is True
-    assert any("temperance" in query for query in grounding.result["grounding"]["queries_tried"])
-    assert grounding.result["context_rows"][0]["source_citation"] == "history.pdf p. 3, chunk 3"
+    assert any(
+        "temperance" in query
+        for query in grounding.result["grounding"]["queries_tried"]
+    )
+    assert (
+        grounding.result["context_rows"][0]["source_citation"]
+        == "history.pdf p. 3, chunk 3"
+    )
 
 
 def test_ground_quiz_item_ranks_conceptual_key_support_first(tmp_path):
@@ -159,7 +175,10 @@ def test_ground_quiz_item_ranks_conceptual_key_support_first(tmp_path):
 
     assert grounding.ok is True
     assert grounding.result["grounding"]["keyed_answer_supported"] is True
-    assert grounding.result["context_rows"][0]["source_citation"] == "history.pdf p. 4, chunk 4"
+    assert (
+        grounding.result["context_rows"][0]["source_citation"]
+        == "history.pdf p. 4, chunk 4"
+    )
 
 
 def test_agent_review_writes_reports_and_persists_findings(tmp_path):
@@ -232,9 +251,13 @@ def test_agent_review_writes_reports_and_persists_findings(tmp_path):
         output_path=tmp_path / "agent_review",
     )
     save_agent_findings(conn, run_id, report.items)
-    finish_agent_run(conn, run_id, status="succeeded", summary=agent_report_summary(report))
+    finish_agent_run(
+        conn, run_id, status="succeeded", summary=agent_report_summary(report)
+    )
 
-    rows = conn.execute("SELECT * FROM agent_findings WHERE run_id = ?", (run_id,)).fetchall()
+    rows = conn.execute(
+        "SELECT * FROM agent_findings WHERE run_id = ?", (run_id,)
+    ).fetchall()
 
     assert report.verdict_counts == {"key_supported": 1}
     assert (tmp_path / "agent_review" / "agent_review.md").exists()
@@ -387,13 +410,17 @@ def test_agent_review_cli_with_fake_agent(tmp_path, monkeypatch, capsys):
             },
         )()
         output_dir.mkdir(parents=True)
-        (output_dir / "agent_review.md").write_text("# Agent Review\n", encoding="utf-8")
+        (output_dir / "agent_review.md").write_text(
+            "# Agent Review\n", encoding="utf-8"
+        )
         (output_dir / "agent_review.json").write_text("{}", encoding="utf-8")
         return report
 
     monkeypatch.setenv("ETHNOS_DB_PATH", str(db_path))
     monkeypatch.setattr("ethnos.cli.create_client", lambda host, timeout: object())
-    monkeypatch.setattr("ethnos.cli.commands.agent.run_agent_review", fake_run_agent_review)
+    monkeypatch.setattr(
+        "ethnos.cli.commands.agent.run_agent_review", fake_run_agent_review
+    )
 
     exit_code = main(
         [
@@ -440,7 +467,10 @@ def test_history_ch20_agent_quality_acceptance(tmp_path):
     assert report.item_count == 20
     assert by_id["ch20-q015"].quality_findings[0].finding_type == "duplicate_prompt"
     assert by_id["ch20-q020"].quality_findings[0].finding_type == "duplicate_prompt"
-    assert any(finding.finding_type == "typo" for finding in by_id["ch20-q009"].quality_findings)
+    assert any(
+        finding.finding_type == "typo"
+        for finding in by_id["ch20-q009"].quality_findings
+    )
     assert all(
         item.verdict
         in {

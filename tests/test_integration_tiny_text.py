@@ -87,7 +87,9 @@ def test_tiny_text_to_sqlite_and_fts(tmp_path):
 
     results_with_text = search_chunks(conn, "energy", limit=5, include_text=True)
 
-    assert results_with_text[0]["text"] == "Ecology\nFood webs describe energy transfer."
+    assert (
+        results_with_text[0]["text"] == "Ecology\nFood webs describe energy transfer."
+    )
 
 
 def test_list_documents_returns_beginner_visible_fields(tmp_path):
@@ -152,7 +154,9 @@ def test_section_label_columns_exist_after_db_init(tmp_path):
     chunk_columns = {row["name"] for row in conn.execute("PRAGMA table_info(chunks)")}
 
     assert {"section_label", "content_role"}.issubset(page_columns)
-    assert {"section_label", "content_role", "section_confidence"}.issubset(chunk_columns)
+    assert {"section_label", "content_role", "section_confidence"}.issubset(
+        chunk_columns
+    )
 
 
 def test_section_label_dry_run_does_not_write_labels(tmp_path):
@@ -160,7 +164,9 @@ def test_section_label_dry_run_does_not_write_labels(tmp_path):
     init_db(conn)
     document_id = _stored_three_page_document(conn)
 
-    summary = apply_section_preset(conn, document_id, get_section_preset("ethics"), dry_run=True)
+    summary = apply_section_preset(
+        conn, document_id, get_section_preset("ethics"), dry_run=True
+    )
 
     assert summary["pages"] == [
         {"section_label": "front_matter", "content_role": "admin", "count": 3}
@@ -168,12 +174,18 @@ def test_section_label_dry_run_does_not_write_labels(tmp_path):
     assert summary["chunks"] == [
         {"section_label": "front_matter", "content_role": "admin", "count": 3}
     ]
-    assert conn.execute("SELECT COUNT(*) AS count FROM pages WHERE section_label IS NOT NULL").fetchone()[
-        "count"
-    ] == 0
-    assert conn.execute("SELECT COUNT(*) AS count FROM chunks WHERE section_label IS NOT NULL").fetchone()[
-        "count"
-    ] == 0
+    assert (
+        conn.execute(
+            "SELECT COUNT(*) AS count FROM pages WHERE section_label IS NOT NULL"
+        ).fetchone()["count"]
+        == 0
+    )
+    assert (
+        conn.execute(
+            "SELECT COUNT(*) AS count FROM chunks WHERE section_label IS NOT NULL"
+        ).fetchone()["count"]
+        == 0
+    )
 
 
 def test_label_sections_applies_expected_labels(tmp_path):
@@ -231,9 +243,12 @@ def test_label_sections_cli_dry_run_does_not_write_labels(tmp_path, capsys):
     assert exit_code == 0
     assert "Section label dry run for document 1 using preset ethics" in output
     assert "front_matter / admin: 3" in output
-    assert conn.execute("SELECT COUNT(*) AS count FROM pages WHERE section_label IS NOT NULL").fetchone()[
-        "count"
-    ] == 0
+    assert (
+        conn.execute(
+            "SELECT COUNT(*) AS count FROM pages WHERE section_label IS NOT NULL"
+        ).fetchone()["count"]
+        == 0
+    )
 
 
 def test_inspect_chunk_helper_and_cli_output(tmp_path, capsys):
@@ -253,7 +268,16 @@ def test_inspect_chunk_helper_and_cli_output(tmp_path, capsys):
     assert records["chunk_summaries"][0]["summary"] == "Core discussion."
     assert records["key_terms"][0]["term"] == "Evolutionary ethics"
 
-    exit_code = main(["--db", str(db_path), "inspect-chunk", str(document_id), str(chunks[0].id), "--records"])
+    exit_code = main(
+        [
+            "--db",
+            str(db_path),
+            "inspect-chunk",
+            str(document_id),
+            str(chunks[0].id),
+            "--records",
+        ]
+    )
     output = capsys.readouterr().out
 
     assert exit_code == 0
@@ -309,7 +333,16 @@ def test_inspect_page_cli_raw_text_with_limit_preserves_whitespace(tmp_path, cap
     document_id = _stored_page_inspection_document(conn)
 
     exit_code = main(
-        ["--db", str(db_path), "inspect-page", str(document_id), "1", "--raw", "--limit", "12"]
+        [
+            "--db",
+            str(db_path),
+            "inspect-page",
+            str(document_id),
+            "1",
+            "--raw",
+            "--limit",
+            "12",
+        ]
     )
     output = capsys.readouterr().out
 
@@ -325,8 +358,12 @@ def test_search_chunks_filters_by_role_and_section(tmp_path):
     init_db(conn)
     document_id, _ = _stored_labeled_record_document(conn)
 
-    core_results = search_chunks(conn, "evolutionary", document_id=document_id, role="core")
-    admin_results = search_chunks(conn, "evolutionary", document_id=document_id, role="admin")
+    core_results = search_chunks(
+        conn, "evolutionary", document_id=document_id, role="core"
+    )
+    admin_results = search_chunks(
+        conn, "evolutionary", document_id=document_id, role="admin"
+    )
     section_results = search_chunks(
         conn,
         "evolutionary",
@@ -424,7 +461,9 @@ def test_quality_report_summarizes_assimilation_scope(tmp_path):
     ]
     assert {"content_role": "core", "count": 1} in report["key_terms_by_role"]
     assert report["top_repeated_key_terms"] == []
-    assert [row["id"] for row in report["chunks_with_no_terms_or_questions"]] == [chunks[3].id]
+    assert [row["id"] for row in report["chunks_with_no_terms_or_questions"]] == [
+        chunks[3].id
+    ]
     assert report["non_core_chunks_with_records"] == []
     assert report["chunk_summaries"] == 3
 
@@ -477,10 +516,16 @@ def test_question_to_fts_query_removes_question_filler_words():
 
 
 def test_answer_query_candidates_preserve_phrases_and_tune_trolley_questions():
-    assert answer_query_candidates("What is Kantian deontology?")[0] == "kantian deontology"
+    assert (
+        answer_query_candidates("What is Kantian deontology?")[0]
+        == "kantian deontology"
+    )
     assert answer_query_candidates("What is virtue ethics?")[0] == "virtue ethics"
     assert answer_query_candidates("What is natural law?")[0] == "natural law"
-    assert answer_query_candidates("What is social contract theory?")[0] == "social contract theory"
+    assert (
+        answer_query_candidates("What is social contract theory?")[0]
+        == "social contract theory"
+    )
     assert (
         answer_query_candidates("What is methodological ethical naturalism?")[0]
         == "methodological ethical naturalism"
@@ -542,14 +587,18 @@ def test_retrieve_with_fallbacks_tries_looser_queries_until_context_found():
 
 
 def test_comparison_question_detection_and_subquery_extraction():
-    assert detect_comparison_question("How is virtue ethics different from Kantian deontology?")
+    assert detect_comparison_question(
+        "How is virtue ethics different from Kantian deontology?"
+    )
     assert extract_comparison_subqueries(
         "How is virtue ethics different from Kantian deontology?"
     ) == ["virtue ethics", "kantian deontology"]
     assert extract_comparison_subqueries(
         "How does virtue ethics differ from Kantian deontology?"
     ) == ["virtue ethics", "kantian deontology"]
-    assert extract_comparison_subqueries("Compare utilitarianism and Kantian deontology.") == [
+    assert extract_comparison_subqueries(
+        "Compare utilitarianism and Kantian deontology."
+    ) == [
         "utilitarianism",
         "kantian deontology",
     ]
@@ -560,7 +609,9 @@ def test_comparison_question_detection_and_subquery_extraction():
         "natural law",
         "divine command",
     ]
-    assert extract_comparison_subqueries("compare social contract with ethical egoism") == [
+    assert extract_comparison_subqueries(
+        "compare social contract with ethical egoism"
+    ) == [
         "social contract",
         "ethical egoism",
     ]
@@ -720,7 +771,10 @@ def test_chat_followup_detection_and_rewrite_helpers():
     assert detect_chat_followup("How is that different from utilitarianism?")
     assert resolution.detected is True
     assert resolution.previous_topic == "virtue ethics"
-    assert resolution.rewritten_question == "How is virtue ethics different from utilitarianism?"
+    assert (
+        resolution.rewritten_question
+        == "How is virtue ethics different from utilitarianism?"
+    )
 
 
 def test_chat_followup_uses_previous_topic_for_retrieval_and_trace(
@@ -731,7 +785,13 @@ def test_chat_followup_uses_previous_topic_for_retrieval_and_trace(
     conn = connect(db_path)
     init_db(conn)
     document_id, chunks = _stored_labeled_record_document(conn)
-    inputs = iter(["What is evolutionary ethics?", "How is that different from references?", "quit"])
+    inputs = iter(
+        [
+            "What is evolutionary ethics?",
+            "How is that different from references?",
+            "quit",
+        ]
+    )
     calls = []
 
     def fake_input(prompt):
@@ -763,9 +823,15 @@ def test_chat_followup_uses_previous_topic_for_retrieval_and_trace(
 
     assert exit_code == 0
     assert len(calls) == 2
-    assert "Resolved follow-up for retrieval: How is evolutionary ethics different from references?" in calls[1]["prompt"]
+    assert (
+        "Resolved follow-up for retrieval: How is evolutionary ethics different from references?"
+        in calls[1]["prompt"]
+    )
     assert "follow-up detected: True" in output
-    assert "rewritten retrieval question: How is evolutionary ethics different from references?" in output
+    assert (
+        "rewritten retrieval question: How is evolutionary ethics different from references?"
+        in output
+    )
     assert f"chunk {chunks[0].id}: labeled.pdf p. 1, chunk 1" in output
     assert f"chunk {chunks[1].id}: labeled.pdf p. 2, chunk 2" in output
     assert followup_trace["follow_up_detected"] is True
@@ -792,7 +858,13 @@ def test_ask_remains_stateless_for_followup_words(tmp_path, capsys, monkeypatch)
     monkeypatch.setattr("ethnos.cli.answer_question", fake_answer_question)
 
     exit_code = main(
-        ["--db", str(db_path), "ask", str(document_id), "How is that different from references?"]
+        [
+            "--db",
+            str(db_path),
+            "ask",
+            str(document_id),
+            "How is that different from references?",
+        ]
     )
     output = capsys.readouterr().out
 
@@ -818,7 +890,9 @@ def test_ask_cli_uses_core_context_without_real_ollama(tmp_path, capsys, monkeyp
 
     monkeypatch.setattr("ethnos.cli.answer_question", fake_answer_question)
 
-    exit_code = main(["--db", str(db_path), "ask", str(document_id), "evolutionary ethics"])
+    exit_code = main(
+        ["--db", str(db_path), "ask", str(document_id), "evolutionary ethics"]
+    )
     output = capsys.readouterr().out
 
     assert exit_code == 0
@@ -843,7 +917,17 @@ def test_ask_cli_role_all_disables_role_filter(tmp_path, capsys, monkeypatch):
     monkeypatch.setattr("ethnos.cli.answer_question", fake_answer_question)
 
     exit_code = main(
-        ["--db", str(db_path), "ask", str(document_id), "evolutionary", "--role", "all", "--limit", "10"]
+        [
+            "--db",
+            str(db_path),
+            "ask",
+            str(document_id),
+            "evolutionary",
+            "--role",
+            "all",
+            "--limit",
+            "10",
+        ]
     )
     output = capsys.readouterr().out
 
@@ -860,7 +944,9 @@ def test_ask_cli_section_filter_selects_matching_context(tmp_path, capsys, monke
     document_id, chunks = _stored_labeled_record_document(conn)
 
     def fake_answer_question(**kwargs):
-        return AnswerCallResult(raw_prompt=kwargs["prompt"], raw_response="Answered from references.")
+        return AnswerCallResult(
+            raw_prompt=kwargs["prompt"], raw_response="Answered from references."
+        )
 
     monkeypatch.setattr("ethnos.cli.answer_question", fake_answer_question)
 
@@ -996,17 +1082,20 @@ def test_inspect_trace_cmd_summarizes_answer_trace(tmp_path, capsys, monkeypatch
         )
 
     monkeypatch.setattr("ethnos.cli.answer_question", fake_answer_question)
-    assert main(
-        [
-            "--db",
-            str(db_path),
-            "ask",
-            str(document_id),
-            "What is evolutionary ethics?",
-            "--trace-dir",
-            str(trace_dir),
-        ]
-    ) == 0
+    assert (
+        main(
+            [
+                "--db",
+                str(db_path),
+                "ask",
+                str(document_id),
+                "What is evolutionary ethics?",
+                "--trace-dir",
+                str(trace_dir),
+            ]
+        )
+        == 0
+    )
     trace_path = next(trace_dir.glob("*.json"))
     capsys.readouterr()
 
@@ -1064,7 +1153,9 @@ def test_ask_cli_does_not_write_trace_by_default(tmp_path, capsys, monkeypatch):
 
     monkeypatch.setattr("ethnos.cli.answer_question", fake_answer_question)
 
-    exit_code = main(["--db", str(db_path), "ask", str(document_id), "evolutionary ethics"])
+    exit_code = main(
+        ["--db", str(db_path), "ask", str(document_id), "evolutionary ethics"]
+    )
     output = capsys.readouterr().out
 
     assert exit_code == 0
@@ -1100,7 +1191,9 @@ def test_chat_cli_answers_and_writes_trace(tmp_path, capsys, monkeypatch):
         return next(inputs)
 
     def fake_answer_question(**kwargs):
-        return AnswerCallResult(raw_prompt=kwargs["prompt"], raw_response="Chat answered.")
+        return AnswerCallResult(
+            raw_prompt=kwargs["prompt"], raw_response="Chat answered."
+        )
 
     monkeypatch.setattr("builtins.input", fake_input)
     monkeypatch.setattr("ethnos.cli.answer_question", fake_answer_question)
@@ -1152,12 +1245,16 @@ def test_ask_cli_debug_retrieval_shows_query_attempts(tmp_path, capsys, monkeypa
 
     assert exit_code == 0
     assert "Retrieval debug:" in output
-    assert "original question: What does the book say about evolutionary ethics?" in output
+    assert (
+        "original question: What does the book say about evolutionary ethics?" in output
+    )
     assert "derived query: evolutionary ethics" in output
     assert "stopped reason: context_found" in output
 
 
-def test_ask_cli_debug_retrieval_shows_comparison_subqueries(tmp_path, capsys, monkeypatch):
+def test_ask_cli_debug_retrieval_shows_comparison_subqueries(
+    tmp_path, capsys, monkeypatch
+):
     db_path = tmp_path / "ethnos.sqlite"
     conn = connect(db_path)
     init_db(conn)
@@ -1187,7 +1284,10 @@ def test_ask_cli_debug_retrieval_shows_comparison_subqueries(tmp_path, capsys, m
     assert "subqueries: evolutionary ethics, references" in output
     assert "subquery: evolutionary ethics" in output
     assert "subquery: references" in output
-    assert f"merged selected chunks: {chunks[1].id}, {chunks[0].id}, {chunks[2].id}" in output
+    assert (
+        f"merged selected chunks: {chunks[1].id}, {chunks[0].id}, {chunks[2].id}"
+        in output
+    )
 
 
 def test_benchmark_file_loading_and_hit_detection(tmp_path):
@@ -1213,8 +1313,16 @@ def test_benchmark_file_loading_and_hit_detection(tmp_path):
     assert items[0]["id"] == "sample"
     assert items[0]["expected_answer_terms"] == ["evolutionary ethics"]
     assert benchmark_hit(items[0], [row]) is True
-    assert benchmark_hit({"expected_source_chunks": [], "expected_source_pages": []}, []) is True
-    assert benchmark_hit({"expected_source_chunks": [], "expected_source_pages": []}, [row]) is False
+    assert (
+        benchmark_hit({"expected_source_chunks": [], "expected_source_pages": []}, [])
+        is True
+    )
+    assert (
+        benchmark_hit(
+            {"expected_source_chunks": [], "expected_source_pages": []}, [row]
+        )
+        is False
+    )
 
 
 def test_answer_quality_evaluation_pass_partial_fail_and_forbidden_terms():
@@ -1242,7 +1350,9 @@ def test_answer_quality_evaluation_pass_partial_fail_and_forbidden_terms():
         [row],
     )
     failed = evaluate_answer_quality(item, "A thin answer.", [row])
-    forbidden = evaluate_answer_quality(item, "An invented answer about evolutionary ethics.", [row])
+    forbidden = evaluate_answer_quality(
+        item, "An invented answer about evolutionary ethics.", [row]
+    )
 
     assert passed.status == "pass"
     assert passed.citation_hit is True
@@ -1377,9 +1487,21 @@ def test_qa_bench_max_questions_limits_processed_items(tmp_path, capsys):
     benchmark_path.write_text(
         json.dumps(
             [
-                {"id": "one", "question": "evolutionary ethics", "expected_source_chunks": [1]},
-                {"id": "two", "question": "evolutionary ethics", "expected_source_chunks": [1]},
-                {"id": "three", "question": "evolutionary ethics", "expected_source_chunks": [1]},
+                {
+                    "id": "one",
+                    "question": "evolutionary ethics",
+                    "expected_source_chunks": [1],
+                },
+                {
+                    "id": "two",
+                    "question": "evolutionary ethics",
+                    "expected_source_chunks": [1],
+                },
+                {
+                    "id": "three",
+                    "question": "evolutionary ethics",
+                    "expected_source_chunks": [1],
+                },
             ]
         ),
         encoding="utf-8",
@@ -1442,7 +1564,9 @@ def test_qa_bench_limit_remains_retrieved_chunk_limit(tmp_path, capsys):
     output = capsys.readouterr().out
 
     assert exit_code == 0
-    selected_line = next(line for line in output.splitlines() if "selected chunks:" in line)
+    selected_line = next(
+        line for line in output.splitlines() if "selected chunks:" in line
+    )
     selected_chunks = selected_line.split("selected chunks:", 1)[1].strip().split(", ")
     assert len(selected_chunks) == 2
 
@@ -1634,7 +1758,10 @@ def test_qa_bench_model_compare_writes_json_report(tmp_path, capsys, monkeypatch
     assert report["models"] == ["model-a", "missing-model"]
     assert report["model_summaries"][0]["answer_pass"] == 1
     assert report["model_summaries"][1]["model_error"] == 1
-    assert report["models_report"][1]["items"][0]["answer_evaluation"]["status"] == "model_error"
+    assert (
+        report["models_report"][1]["items"][0]["answer_evaluation"]["status"]
+        == "model_error"
+    )
     assert len(created_clients) == 2
     assert seen_clients_by_model["model-a"] is created_clients[0]
     assert seen_clients_by_model["missing-model"] is created_clients[1]
@@ -1740,12 +1867,17 @@ def test_select_chunks_for_structure_retry_failed_and_force(tmp_path):
         validation_error="bad json",
     )
 
-    assert [chunk.chunk_index for chunk in select_chunks_for_structure(conn, document_id)] == [3]
+    assert [
+        chunk.chunk_index for chunk in select_chunks_for_structure(conn, document_id)
+    ] == [3]
     assert [
         chunk.chunk_index
         for chunk in select_chunks_for_structure(conn, document_id, retry_failed=True)
     ] == [2]
-    assert [chunk.chunk_index for chunk in select_chunks_for_structure(conn, document_id, force=True)] == [
+    assert [
+        chunk.chunk_index
+        for chunk in select_chunks_for_structure(conn, document_id, force=True)
+    ] == [
         1,
         2,
         3,
@@ -1757,15 +1889,25 @@ def test_select_chunks_for_structure_defaults_to_core_and_unlabeled_roles(tmp_pa
     init_db(conn)
     document_id, chunks = _stored_labeled_record_document(conn)
 
-    assert [chunk.chunk_index for chunk in select_chunks_for_structure(conn, document_id, force=True)] == [
+    assert [
+        chunk.chunk_index
+        for chunk in select_chunks_for_structure(conn, document_id, force=True)
+    ] == [
         1,
         4,
     ]
     assert [
         chunk.chunk_index
-        for chunk in select_chunks_for_structure(conn, document_id, force=True, all_roles=True)
+        for chunk in select_chunks_for_structure(
+            conn, document_id, force=True, all_roles=True
+        )
     ] == [1, 2, 3, 4]
-    assert select_chunks_for_structure(conn, document_id, chunk_id=chunks[1].id, force=True) == []
+    assert (
+        select_chunks_for_structure(
+            conn, document_id, chunk_id=chunks[1].id, force=True
+        )
+        == []
+    )
     assert [
         chunk.chunk_index
         for chunk in select_chunks_for_structure(
@@ -1801,8 +1943,14 @@ def test_select_chunks_for_structure_requires_matching_document_for_chunk_id(tmp
     stored_chunk = select_chunks_for_structure(conn, document_id)[0]
 
     assert stored_chunk.id is not None
-    assert select_chunks_for_structure(conn, document_id, chunk_id=stored_chunk.id)[0].id == stored_chunk.id
-    assert select_chunks_for_structure(conn, document_id + 1, chunk_id=stored_chunk.id) == []
+    assert (
+        select_chunks_for_structure(conn, document_id, chunk_id=stored_chunk.id)[0].id
+        == stored_chunk.id
+    )
+    assert (
+        select_chunks_for_structure(conn, document_id + 1, chunk_id=stored_chunk.id)
+        == []
+    )
 
 
 def test_structure_status_summarizes_document_progress(tmp_path):
@@ -1923,10 +2071,22 @@ def test_save_extraction_result_falls_back_to_chunk_page_range(tmp_path):
     save_extraction_result(conn, chunk_id, result)
 
     expected = "[1, 2, 3, 4, 5, 6, 7]"
-    assert conn.execute("SELECT source_pages FROM topics").fetchone()["source_pages"] == expected
-    assert conn.execute("SELECT source_pages FROM key_terms").fetchone()["source_pages"] == expected
-    assert conn.execute("SELECT source_pages FROM examples").fetchone()["source_pages"] == expected
-    assert conn.execute("SELECT source_pages FROM questions").fetchone()["source_pages"] == expected
+    assert (
+        conn.execute("SELECT source_pages FROM topics").fetchone()["source_pages"]
+        == expected
+    )
+    assert (
+        conn.execute("SELECT source_pages FROM key_terms").fetchone()["source_pages"]
+        == expected
+    )
+    assert (
+        conn.execute("SELECT source_pages FROM examples").fetchone()["source_pages"]
+        == expected
+    )
+    assert (
+        conn.execute("SELECT source_pages FROM questions").fetchone()["source_pages"]
+        == expected
+    )
 
 
 def test_save_extraction_result_falls_back_to_single_page_chunk(tmp_path):
@@ -1954,7 +2114,10 @@ def test_save_extraction_result_falls_back_to_single_page_chunk(tmp_path):
 
     save_extraction_result(conn, chunk_id, result)
 
-    assert conn.execute("SELECT source_pages FROM topics").fetchone()["source_pages"] == "[12]"
+    assert (
+        conn.execute("SELECT source_pages FROM topics").fetchone()["source_pages"]
+        == "[12]"
+    )
 
 
 def test_save_extraction_result_preserves_valid_model_source_pages(tmp_path):
@@ -1982,7 +2145,10 @@ def test_save_extraction_result_preserves_valid_model_source_pages(tmp_path):
 
     save_extraction_result(conn, chunk_id, result)
 
-    assert conn.execute("SELECT source_pages FROM topics").fetchone()["source_pages"] == "[3]"
+    assert (
+        conn.execute("SELECT source_pages FROM topics").fetchone()["source_pages"]
+        == "[3]"
+    )
 
 
 def test_valid_extraction_rerun_replaces_normalized_rows_for_chunk(tmp_path):
@@ -2062,9 +2228,16 @@ def test_valid_extraction_rerun_replaces_normalized_rows_for_chunk(tmp_path):
         {"chunk_id": chunk_id, "summary": "Second result."}
     ]
     assert conn.execute("SELECT name FROM topics").fetchall()[0]["name"] == "New Topic"
-    assert conn.execute("SELECT COUNT(*) AS count FROM key_terms").fetchone()["count"] == 0
-    assert conn.execute("SELECT title FROM examples").fetchone()["title"] == "New Example"
-    assert conn.execute("SELECT question FROM questions").fetchone()["question"] == "New question?"
+    assert (
+        conn.execute("SELECT COUNT(*) AS count FROM key_terms").fetchone()["count"] == 0
+    )
+    assert (
+        conn.execute("SELECT title FROM examples").fetchone()["title"] == "New Example"
+    )
+    assert (
+        conn.execute("SELECT question FROM questions").fetchone()["question"]
+        == "New question?"
+    )
 
 
 def test_failed_validation_does_not_clear_existing_normalized_rows(tmp_path):
@@ -2117,17 +2290,22 @@ def test_failed_validation_does_not_clear_existing_normalized_rows(tmp_path):
             }
         )
 
-    assert conn.execute("SELECT name FROM topics").fetchone()["name"] == "Existing Topic"
-    assert conn.execute("SELECT question FROM questions").fetchone()["question"] == "Existing question?"
+    assert (
+        conn.execute("SELECT name FROM topics").fetchone()["name"] == "Existing Topic"
+    )
+    assert (
+        conn.execute("SELECT question FROM questions").fetchone()["question"]
+        == "Existing question?"
+    )
 
 
 def test_model_outputs_history_is_preserved_across_normalized_replacement(tmp_path):
     conn = connect(tmp_path / "ethnos.sqlite")
     init_db(conn)
     chunk_id = _stored_chunk(conn, page_start=40, page_end=40)
-    document_id = conn.execute("SELECT document_id FROM chunks WHERE id = ?", (chunk_id,)).fetchone()[
-        "document_id"
-    ]
+    document_id = conn.execute(
+        "SELECT document_id FROM chunks WHERE id = ?", (chunk_id,)
+    ).fetchone()["document_id"]
     first_run_id = create_extraction_run(conn, document_id, "test-model", "prompt")
     second_run_id = create_extraction_run(conn, document_id, "test-model", "prompt")
     save_model_output(
@@ -2190,10 +2368,19 @@ def test_model_outputs_history_is_preserved_across_normalized_replacement(tmp_pa
     save_extraction_result(conn, chunk_id, second)
 
     outputs = conn.execute(
-        "SELECT raw_response FROM model_outputs WHERE chunk_id = ? ORDER BY id", (chunk_id,)
+        "SELECT raw_response FROM model_outputs WHERE chunk_id = ? ORDER BY id",
+        (chunk_id,),
     ).fetchall()
-    assert [row["raw_response"] for row in outputs] == ["first raw response", "second raw response"]
-    assert conn.execute("SELECT COUNT(*) AS count FROM extraction_runs").fetchone()["count"] == 2
+    assert [row["raw_response"] for row in outputs] == [
+        "first raw response",
+        "second raw response",
+    ]
+    assert (
+        conn.execute("SELECT COUNT(*) AS count FROM extraction_runs").fetchone()[
+            "count"
+        ]
+        == 2
+    )
     assert conn.execute("SELECT name FROM topics").fetchone()["name"] == "Second Topic"
 
 
@@ -2280,13 +2467,15 @@ def test_backfill_chunk_summaries_replays_latest_valid_model_output(tmp_path, ca
     assert report["backfilled"] == 1
     assert report["skipped_invalid"] == 0
     assert report["backfilled_chunks"] == [chunk_id]
-    assert conn.execute("SELECT summary FROM chunk_summaries").fetchone()["summary"] == (
-        "Backfilled summary."
+    assert conn.execute("SELECT summary FROM chunk_summaries").fetchone()[
+        "summary"
+    ] == ("Backfilled summary.")
+    assert [
+        row["term"] for row in conn.execute("SELECT term FROM key_terms").fetchall()
+    ] == ["New Term"]
+    assert (
+        conn.execute("SELECT name FROM topics").fetchone()["name"] == "Backfilled Topic"
     )
-    assert [row["term"] for row in conn.execute("SELECT term FROM key_terms").fetchall()] == [
-        "New Term"
-    ]
-    assert conn.execute("SELECT name FROM topics").fetchone()["name"] == "Backfilled Topic"
     assert conn.execute("SELECT question FROM questions").fetchone()["question"] == (
         "What was backfilled?"
     )
@@ -2414,9 +2603,9 @@ def test_empty_response_is_stored_as_empty_response_and_preserves_rows(tmp_path)
     conn = connect(tmp_path / "ethnos.sqlite")
     init_db(conn)
     chunk_id = _stored_chunk(conn, page_start=50, page_end=50)
-    document_id = conn.execute("SELECT document_id FROM chunks WHERE id = ?", (chunk_id,)).fetchone()[
-        "document_id"
-    ]
+    document_id = conn.execute(
+        "SELECT document_id FROM chunks WHERE id = ?", (chunk_id,)
+    ).fetchone()["document_id"]
     existing = ExtractionResult.model_validate(
         {
             "chunk_summary": "Existing result.",
@@ -2450,9 +2639,13 @@ def test_empty_response_is_stored_as_empty_response_and_preserves_rows(tmp_path)
 
     output = conn.execute("SELECT * FROM model_outputs").fetchone()
     assert output["validation_status"] == "empty_response"
-    assert output["validation_error"] == "Ollama returned an empty response body/content"
+    assert (
+        output["validation_error"] == "Ollama returned an empty response body/content"
+    )
     assert output["raw_response"] == ""
-    assert conn.execute("SELECT name FROM topics").fetchone()["name"] == "Existing Topic"
+    assert (
+        conn.execute("SELECT name FROM topics").fetchone()["name"] == "Existing Topic"
+    )
 
 
 def test_export_study_uses_terms_questions_and_source_pages(tmp_path):
@@ -2526,7 +2719,9 @@ def test_export_study_cli_requires_output_and_writes_file(tmp_path):
 
     save_extraction_result(conn, chunk_id, result)
 
-    exit_code = main(["--db", str(db_path), "export-study", "1", "--output", str(output_path)])
+    exit_code = main(
+        ["--db", str(db_path), "export-study", "1", "--output", str(output_path)]
+    )
 
     assert exit_code == 0
     markdown = output_path.read_text(encoding="utf-8")

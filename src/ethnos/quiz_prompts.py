@@ -11,8 +11,12 @@ from .quiz_core import limit_option_text, normalize_options, _normalize_option
 
 
 DEFAULT_MC_PROMPT = Path(__file__).resolve().parents[2] / "prompts" / "mc_answer.md"
-DEFAULT_CHOICE_PROMPT = Path(__file__).resolve().parents[2] / "prompts" / "choice_answer.md"
-DEFAULT_ESSAY_PROMPT = Path(__file__).resolve().parents[2] / "prompts" / "essay_answer.md"
+DEFAULT_CHOICE_PROMPT = (
+    Path(__file__).resolve().parents[2] / "prompts" / "choice_answer.md"
+)
+DEFAULT_ESSAY_PROMPT = (
+    Path(__file__).resolve().parents[2] / "prompts" / "essay_answer.md"
+)
 
 
 def build_mc_prompt(
@@ -197,7 +201,9 @@ def _option_text_supported(option_text: str, context: str) -> bool:
     if len(option_terms) < 3:
         return False
     matched_terms = [
-        term for term in option_terms if re.search(rf"\b{re.escape(term)}\b", context_norm)
+        term
+        for term in option_terms
+        if re.search(rf"\b{re.escape(term)}\b", context_norm)
     ]
     return len(matched_terms) / len(option_terms) >= 0.75
 
@@ -382,9 +388,7 @@ def _targeted_context_text(text: str, max_chars: int, target: str | None) -> str
 def _best_token_window_center(text: str, target: str, max_chars: int) -> int:
     lowered = text.lower()
     tokens = [
-        token
-        for token in re.findall(r"[a-z0-9]+", target.lower())
-        if len(token) > 2
+        token for token in re.findall(r"[a-z0-9]+", target.lower()) if len(token) > 2
     ]
     if not tokens:
         return -1

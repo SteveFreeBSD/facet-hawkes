@@ -7,7 +7,14 @@ import re
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
 
 QUIZ_VERSION = "mc-quiz-v1"
@@ -54,8 +61,12 @@ class ChoiceQuizItem(BaseQuizItem):
 
     @model_validator(mode="after")
     def validate_choice_shape(self):
-        if self.question_type == "true_false" and not is_true_false_options(self.options):
-            raise ValueError("true_false quiz items must use options A=True and B=False")
+        if self.question_type == "true_false" and not is_true_false_options(
+            self.options
+        ):
+            raise ValueError(
+                "true_false quiz items must use options A=True and B=False"
+            )
         if self.correct is not None and self.correct not in self.options:
             raise ValueError("correct option must refer to an available option")
         return self
@@ -72,7 +83,6 @@ class EssayQuizItem(BaseQuizItem):
 
 
 QuizItemModel = ChoiceQuizItem | MatchingQuizItem | EssayQuizItem
-
 
 
 def load_quiz(path: Path) -> dict[str, Any]:
@@ -105,7 +115,11 @@ def normalize_quiz_item(item: Any, index: int) -> dict[str, Any]:
         raise ValueError("Each quiz item must include a non-empty question")
     raw_question_type = item.get("question_type")
     if raw_question_type is None or str(raw_question_type).strip() == "":
-        options = normalize_options(item.get("options")) if item.get("options") is not None else None
+        options = (
+            normalize_options(item.get("options"))
+            if item.get("options") is not None
+            else None
+        )
         question_type = normalize_question_type(raw_question_type, options)
     else:
         raw_type_name = str(raw_question_type).strip().lower().replace("-", "_")
@@ -145,7 +159,9 @@ def normalize_quiz_item(item: Any, index: int) -> dict[str, Any]:
     correct = item.get("correct")
     if correct is not None:
         if question_type not in CHOICE_QUESTION_TYPES:
-            raise ValueError(f"Quiz item {normalized['id']} cannot key a {question_type} item")
+            raise ValueError(
+                f"Quiz item {normalized['id']} cannot key a {question_type} item"
+            )
         correct_label = str(correct).strip().upper()
         if not options or correct_label not in options:
             raise ValueError(f"Quiz item {normalized['id']} has invalid correct option")
@@ -165,11 +181,15 @@ def _validate_typed_quiz_item(item: dict[str, Any]) -> dict[str, Any]:
     elif question_type == "essay":
         model = EssayQuizItem
     else:
-        raise ValueError(f"Quiz item {item.get('id') or '?'} has unsupported question_type")
+        raise ValueError(
+            f"Quiz item {item.get('id') or '?'} has unsupported question_type"
+        )
     try:
         return model.model_validate(item).model_dump(mode="json", exclude_none=True)
     except ValidationError as exc:
-        raise ValueError(f"Quiz item {item.get('id') or '?'} is invalid: {exc}") from exc
+        raise ValueError(
+            f"Quiz item {item.get('id') or '?'} is invalid: {exc}"
+        ) from exc
 
 
 def normalize_question_type(raw_type: Any, options: dict[str, str] | None) -> str:
@@ -190,14 +210,18 @@ def normalize_question_type(raw_type: Any, options: dict[str, str] | None) -> st
 def is_true_false_options(options: dict[str, str]) -> bool:
     return (
         tuple(options) == tuple(TRUE_FALSE_OPTIONS)
-        and _normalize_option(options["A"]) == _normalize_option(TRUE_FALSE_OPTIONS["A"])
-        and _normalize_option(options["B"]) == _normalize_option(TRUE_FALSE_OPTIONS["B"])
+        and _normalize_option(options["A"])
+        == _normalize_option(TRUE_FALSE_OPTIONS["A"])
+        and _normalize_option(options["B"])
+        == _normalize_option(TRUE_FALSE_OPTIONS["B"])
     )
 
 
 def normalize_options(options: Any) -> dict[str, str]:
     if isinstance(options, dict):
-        normalized = {str(key).upper(): str(value).strip() for key, value in options.items()}
+        normalized = {
+            str(key).upper(): str(value).strip() for key, value in options.items()
+        }
     elif isinstance(options, list):
         normalized = {}
         for index, value in enumerate(options):
@@ -220,7 +244,6 @@ def normalize_options(options: Any) -> dict[str, str]:
     if any(not text for text in normalized.values()):
         raise ValueError("Quiz item options must be non-empty")
     return {label: normalized[label] for label in expected_labels}
-
 
 
 def compact_question_with_options(item: dict[str, Any]) -> str:
@@ -252,7 +275,6 @@ def parse_source_pages(raw_pages: Any) -> list[int]:
         except json.JSONDecodeError:
             return []
     return _normalize_int_list(raw_pages)
-
 
 
 def _normalize_option(value: str) -> str:

@@ -6,7 +6,13 @@ from pathlib import Path
 import time
 from collections import Counter
 
-from ..shared import add_command, open_db, structure_num_predict, ollama_num_ctx, _ollama_done_reason
+from ..shared import (
+    add_command,
+    open_db,
+    structure_num_predict,
+    ollama_num_ctx,
+    _ollama_done_reason,
+)
 from ..formatting import format_elapsed, _print_ollama_debug
 
 from ...chunking import build_chunks
@@ -26,14 +32,16 @@ from ...pdf_extract import extract_pdf
 
 
 def register(subcommands):
-    add_command(subcommands, "ingest-pdf", "Extract and store PDF pages.", ingest_pdf).add_argument(
-        "path", type=Path
-    )
-    add_command(subcommands, "extract", "Rerun extraction for a stored document.", extract).add_argument(
-        "document_id", type=int
-    )
+    add_command(
+        subcommands, "ingest-pdf", "Extract and store PDF pages.", ingest_pdf
+    ).add_argument("path", type=Path)
+    add_command(
+        subcommands, "extract", "Rerun extraction for a stored document.", extract
+    ).add_argument("document_id", type=int)
 
-    chunk_parser = add_command(subcommands, "chunk", "Create page-aware chunks.", chunk_document)
+    chunk_parser = add_command(
+        subcommands, "chunk", "Create page-aware chunks.", chunk_document
+    )
     chunk_parser.add_argument("document_id", type=int)
     chunk_parser.add_argument("--target-chars", type=int, default=3000)
     chunk_parser.add_argument("--max-chars", type=int, default=4000)
@@ -45,31 +53,40 @@ def register(subcommands):
     structure_parser.add_argument("document_id", type=int)
     structure_parser.add_argument("--model", help="Ollama model name.")
     structure_parser.add_argument(
-        "--num-predict", type=int, help="Ollama output token budget for structured JSON.",
+        "--num-predict",
+        type=int,
+        help="Ollama output token budget for structured JSON.",
     )
     structure_parser.add_argument(
-        "--num-ctx", type=int, help="Ollama context window token budget.",
+        "--num-ctx",
+        type=int,
+        help="Ollama context window token budget.",
     )
     selection = structure_parser.add_mutually_exclusive_group()
     selection.add_argument("--chunk-id", type=int, help="Process one stored chunk id.")
     selection.add_argument(
-        "--limit", type=int,
+        "--limit",
+        type=int,
         help="Process the first N chunks without a valid stored model output.",
     )
     structure_parser.add_argument(
-        "--debug-ollama", action="store_true",
+        "--debug-ollama",
+        action="store_true",
         help="Print compact Ollama request/response diagnostics.",
     )
     structure_parser.add_argument(
-        "--retry-failed", action="store_true",
+        "--retry-failed",
+        action="store_true",
         help="Process chunks whose latest model output failed.",
     )
     structure_parser.add_argument(
-        "--force", action="store_true",
+        "--force",
+        action="store_true",
         help="Reprocess selected chunks even if they already have valid output.",
     )
     structure_parser.add_argument(
-        "--all-roles", action="store_true",
+        "--all-roles",
+        action="store_true",
         help="Include admin/support chunks instead of the default core-only structure run.",
     )
 
@@ -87,7 +104,9 @@ def extract(args) -> int:
     document = get_document(conn, args.document_id)
     extracted_document, pages = extract_pdf(Path(document.source_path))
     document_id = save_document_pages(conn, extracted_document, pages)
-    print(f"Re-extracted document {document_id}: {extracted_document.filename} ({len(pages)} pages)")
+    print(
+        f"Re-extracted document {document_id}: {extracted_document.filename} ({len(pages)} pages)"
+    )
     return 0
 
 
@@ -106,7 +125,8 @@ def chunk_document(args) -> int:
     document = get_document(conn, args.document_id)
     pages = list_pages(conn, args.document_id)
     chunks = build_chunks(
-        document, pages,
+        document,
+        pages,
         target_chars=args.target_chars,
         max_chars=args.max_chars,
         overlap_chars=args.overlap_chars,
@@ -141,9 +161,13 @@ def structure(args) -> int:
     )
     if not chunks:
         print("No chunks selected.")
-        print("Default structure runs process never-attempted core/unlabeled chunks only.")
+        print(
+            "Default structure runs process never-attempted core/unlabeled chunks only."
+        )
         print("Use --all-roles to include admin/support chunks.")
-        print("Use --retry-failed for chunks whose latest output failed, or --force to reprocess.")
+        print(
+            "Use --retry-failed for chunks whose latest output failed, or --force to reprocess."
+        )
         return 0
 
     chunk_ids = [chunk.id for chunk in chunks if chunk.id is not None]
@@ -154,10 +178,14 @@ def structure(args) -> int:
     print(f"  num_ctx: {num_ctx}", flush=True)
     print(f"  roles: {'all' if args.all_roles else 'core/unlabeled'}", flush=True)
     print(f"  chunks selected: {len(chunks)}", flush=True)
-    print(f"  chunk ids: {', '.join(str(chunk_id) for chunk_id in chunk_ids)}", flush=True)
+    print(
+        f"  chunk ids: {', '.join(str(chunk_id) for chunk_id in chunk_ids)}", flush=True
+    )
     if args.chunk_id is None and args.limit is None:
         print(
-            "  selection: forced full document" if args.force else "  selection: never attempted",
+            "  selection: forced full document"
+            if args.force
+            else "  selection: never attempted",
             flush=True,
         )
     elif args.retry_failed:
@@ -167,6 +195,7 @@ def structure(args) -> int:
 
     # Late import to support monkeypatching via "ethnos.cli.create_client"
     from .. import create_client as _create_client
+
     ollama_client = _create_client(settings.ollama_host, settings.ollama_timeout)
     run_id = create_extraction_run(
         conn,
@@ -184,7 +213,10 @@ def structure(args) -> int:
         if chunk.id is None:
             raise RuntimeError("Stored chunks must have database ids")
         chunk_started_at = time.monotonic()
-        print(f"[{index}/{len(chunks)}] chunk {chunk.id}: {chunk.source_citation}", flush=True)
+        print(
+            f"[{index}/{len(chunks)}] chunk {chunk.id}: {chunk.source_citation}",
+            flush=True,
+        )
         result = extract_chunk(
             chunk=chunk,
             prompt_path=settings.prompt_path,
@@ -201,7 +233,10 @@ def structure(args) -> int:
             _print_ollama_debug(chunk.id, result.debug_info)
         elapsed = time.monotonic() - chunk_started_at
         status_counts[result.validation_status] += 1
-        print(f"  status: {result.validation_status} ({format_elapsed(elapsed)})", flush=True)
+        print(
+            f"  status: {result.validation_status} ({format_elapsed(elapsed)})",
+            flush=True,
+        )
         save_model_output(
             conn,
             run_id=run_id,

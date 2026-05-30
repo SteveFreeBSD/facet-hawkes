@@ -21,6 +21,11 @@ from .qa import RetrievalResult, answer_query_candidates, normalize_answer_role
 from .quiz_validation import validate_quiz_item as _validate_quiz_item
 
 
+COMMON_ANSWER_SPELLING_FIXES = {
+    "temperence": "Temperance",
+}
+
+
 class AgentTool(Protocol):
     def __call__(self, arguments: dict[str, Any]) -> AgentToolResult: ...
 
@@ -62,7 +67,9 @@ def build_agent_tool_registry(context: AgentToolContext) -> dict[str, AgentTool]
         "vision_inspect_page": lambda args: _tool_result(
             "vision_inspect_page", _vision_inspect_page(context, args)
         ),
-        "web_search": lambda args: _tool_result("web_search", _web_search(context, args)),
+        "web_search": lambda args: _tool_result(
+            "web_search", _web_search(context, args)
+        ),
         "web_fetch": lambda args: _tool_result("web_fetch", _web_fetch(context, args)),
     }
 
@@ -107,7 +114,9 @@ def _search_pdf(context: AgentToolContext, arguments: dict[str, Any]) -> dict[st
     }
 
 
-def _inspect_chunk(context: AgentToolContext, arguments: dict[str, Any]) -> dict[str, Any]:
+def _inspect_chunk(
+    context: AgentToolContext, arguments: dict[str, Any]
+) -> dict[str, Any]:
     chunk_id = _required_int(arguments, "chunk_id")
     inspected = inspect_chunk(context.conn, context.document_id, chunk_id)
     records = chunk_records(context.conn, chunk_id)
@@ -116,7 +125,9 @@ def _inspect_chunk(context: AgentToolContext, arguments: dict[str, Any]) -> dict
     return {"chunk": chunk, "counts": inspected["counts"], "records": records}
 
 
-def _inspect_page(context: AgentToolContext, arguments: dict[str, Any]) -> dict[str, Any]:
+def _inspect_page(
+    context: AgentToolContext, arguments: dict[str, Any]
+) -> dict[str, Any]:
     page_number = _required_int(arguments, "page_number")
     page = inspect_page(context.conn, context.document_id, page_number)
     page["raw_text"] = _clip(str(page.get("raw_text") or ""), 1800)
@@ -134,7 +145,7 @@ def _ground_quiz_item(
     retrieval = _retrieve_quiz_item_context(
         context,
         item,
-        limit=_positive_int(arguments.get("limit"), default=5),
+        limit=limit,
         role=role,
         section=section,
     )
@@ -150,7 +161,9 @@ def _ground_quiz_item(
     )
     return {
         "grounding": record,
-        "context_rows": [_compact_chunk_row(row, text_chars=900) for row in retrieval.rows[:limit]],
+        "context_rows": [
+            _compact_chunk_row(row, text_chars=900) for row in retrieval.rows[:limit]
+        ],
     }
 
 
@@ -255,19 +268,6 @@ def _rank_quiz_context_rows(
     return sorted(rows, key=score, reverse=True)
 
 
-def _support_terms(item: dict[str, Any], keyed_text: str | None) -> list[str]:
-    terms = []
-    for value in (
-        str(item.get("target") or ""),
-        str(item.get("question") or ""),
-        keyed_text or "",
-    ):
-        for term in _significant_terms(value):
-            if term not in terms:
-                terms.append(term)
-    return terms
-
-
 def _add_query(queries: list[str], query: str) -> None:
     compact = " ".join(query.split())
     if compact and compact not in queries:
@@ -323,14 +323,19 @@ def _build_source_grounding_record(
         "queries_tried": retrieval.queries_tried,
         "evidence_summary": _grounding_evidence_summary(
             context_rows,
-            str(item.get("target") or retrieval.selected_query or item.get("question") or ""),
+            str(
+                item.get("target")
+                or retrieval.selected_query
+                or item.get("question")
+                or ""
+            ),
             chars,
         ),
         "validation_errors": validation_errors,
         "warnings": warnings,
         "keyed_option": keyed_option,
         "keyed_option_text": keyed_option_text,
-        "keyed_answer_supported": _text_supported_by_rows(
+        "keyed_answer_supported": answer_text_supported_by_rows(
             str(keyed_option_text or ""),
             context_rows,
         ),
@@ -378,12 +383,14 @@ def _grounding_evidence_summary(
     return compact[start:end].strip()
 
 
-def _text_supported_by_rows(text: str, rows: list[dict[str, object]]) -> bool:
+def answer_text_supported_by_rows(text: str, rows: list[dict[str, object]]) -> bool:
     terms = _significant_terms(text)
     if not terms:
         return False
     for row in rows:
-        evidence = _normalized_search_text(str(row.get("text") or row.get("snippet") or ""))
+        evidence = _normalized_search_text(
+            str(row.get("text") or row.get("snippet") or "")
+        )
         hits = _term_hit_count(terms, evidence)
         if _term_supports_answer(len(terms), hits):
             return True
@@ -407,7 +414,9 @@ def _term_supports_answer(term_count: int, hits: int) -> bool:
     return hits >= max(3, term_count // 3)
 
 
-def _compare_options(context: AgentToolContext, arguments: dict[str, Any]) -> dict[str, Any]:
+def _compare_options(
+    context: AgentToolContext, arguments: dict[str, Any]
+) -> dict[str, Any]:
     item = _quiz_item(context, arguments)
     options = item.get("options") if isinstance(item.get("options"), dict) else {}
     correct = item.get("correct")
@@ -482,7 +491,9 @@ def _vision_inspect_page(
         messages=[
             {
                 "role": "user",
-                "content": str(arguments.get("prompt") or "Inspect this PDF page image."),
+                "content": str(
+                    arguments.get("prompt") or "Inspect this PDF page image."
+                ),
             }
         ],
         schema=schema,
@@ -613,10 +624,7 @@ def _tokenize_terms(text: str) -> list[str]:
 
 
 def _canonical_term_variants(term: str) -> list[str]:
-    aliases = {
-        "temperence": "temperance",
-    }
-    canonical = aliases.get(term, term)
+    canonical = COMMON_ANSWER_SPELLING_FIXES.get(term, term).lower()
     variants = [canonical]
     if canonical.endswith("ies") and len(canonical) > 5:
         variants.append(canonical[:-3] + "y")

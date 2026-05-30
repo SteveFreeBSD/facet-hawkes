@@ -368,7 +368,9 @@ def create_client(host: str, timeout: float) -> object:
     try:
         from ollama import Client
     except ImportError as exc:
-        raise RuntimeError("The ollama Python package is required. Install with `uv sync`.") from exc
+        raise RuntimeError(
+            "The ollama Python package is required. Install with `uv sync`."
+        ) from exc
 
     return Client(host=host, timeout=timeout)
 
@@ -688,7 +690,9 @@ def _validate_mc_response(
             debug_info=debug_info,
         )
 
-    selected_option = parsed.get("selected_option") if isinstance(parsed, dict) else None
+    selected_option = (
+        parsed.get("selected_option") if isinstance(parsed, dict) else None
+    )
     if not isinstance(selected_option, str):
         return MCAnswerResult(
             raw_prompt=prompt,
@@ -700,11 +704,7 @@ def _validate_mc_response(
         )
     selected_option = selected_option.strip().upper()
     if selected_option not in allowed_options:
-        validation_status = (
-            "invalid_option"
-            if selected_option
-            else "validation_error"
-        )
+        validation_status = "invalid_option" if selected_option else "validation_error"
         return MCAnswerResult(
             raw_prompt=prompt,
             raw_response=raw_response,
@@ -742,7 +742,9 @@ def _validate_choice_response(
             selected_option=None,
             evidence=None,
             source_citations=[],
-            validation_status="empty_response" if not raw_response.strip() else "invalid_json",
+            validation_status="empty_response"
+            if not raw_response.strip()
+            else "invalid_json",
             validation_error=base,
             debug_info=debug_info,
         )
@@ -815,7 +817,9 @@ def _validate_essay_response(
             rubric=[],
             source_citations=[],
             limitations=[],
-            validation_status="empty_response" if not raw_response.strip() else "invalid_json",
+            validation_status="empty_response"
+            if not raw_response.strip()
+            else "invalid_json",
             validation_error=base,
             debug_info=debug_info,
         )
@@ -967,13 +971,14 @@ def _essay_answer_schema() -> dict:
 
 def _repair_prompt(original_prompt: str) -> str:
     return (
-        original_prompt
-        + "\n\nIMPORTANT: Your previous response was not valid JSON. "
+        original_prompt + "\n\nIMPORTANT: Your previous response was not valid JSON. "
         "Return ONLY valid JSON matching the schema. No Markdown fences, no commentary."
     )
 
 
-def _debug_info(prompt: str, schema: dict, num_predict: int, num_ctx: int) -> OllamaDebugInfo:
+def _debug_info(
+    prompt: str, schema: dict, num_predict: int, num_ctx: int
+) -> OllamaDebugInfo:
     return OllamaDebugInfo(
         prompt_char_length=len(prompt),
         schema_top_level_keys=sorted(schema.keys()),
