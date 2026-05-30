@@ -294,6 +294,7 @@ def _fallback_review(
         source_status=source_status,
         keyed_option_text=keyed_text,
         evidence=evidence,
+        grounding=grounding,
     )
     review_reason = None if verdict == "key_supported" else "model_final_review_unavailable"
     explanation = _fallback_explanation(verdict)
@@ -317,9 +318,12 @@ def _fallback_verdict(
     source_status: object,
     keyed_option_text: str | None,
     evidence: list[EvidenceCitation],
+    grounding: dict[str, Any],
 ) -> str:
     if source_status in {"ungrounded", "source_missing_in_local_pdf"}:
         return "source_missing"
+    if grounding.get("keyed_answer_supported") is True:
+        return "key_supported"
     if keyed_option_text and _answer_text_supported(keyed_option_text, evidence):
         return "key_supported"
     return "needs_human_review"

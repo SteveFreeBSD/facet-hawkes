@@ -4,6 +4,12 @@ Agent Review is the model-driven review layer for Ethnos. It lets a local or
 hybrid Ollama model inspect quiz items with deterministic Ethnos tools, cite
 PDF evidence, flag answer-key risks, and write a CTO-ready report.
 
+The CPU-local path does not depend on the model to do all the work. Each item
+gets deterministic preflight grounding first, using the question, keyed answer,
+question-plus-key, retrieval hints, target, and option text. This keeps the
+review useful when a small local model calls tools imperfectly or fails to
+produce a final structured verdict.
+
 ## Command
 
 ```bash
@@ -47,8 +53,9 @@ Each run is also persisted to SQLite in `agent_runs` and `agent_findings`.
 - `gemma3-fast`: optional smaller Gemma 3 profile for quick checks.
 - `hybrid-max`: max-capability profile for explicit web/cloud-assisted review.
 
-Existing `gemma-python` workflows remain supported for structure extraction,
-Q&A, and quiz benchmarking. Agent Review is the Gemma 3 upgrade path.
+Existing `gemma-python` workflows remain the CPU-only baseline for structure
+extraction, Q&A, quiz benchmarking, and Agent Review. Gemma 3 profiles are
+optional future profiles for hosts where they are practical.
 
 ## Review Meaning
 
@@ -63,3 +70,16 @@ Verdicts:
 Quality findings are separate from verdicts. For example, History chapter 20
 flags the repeated New Freedom prompt and the `Temperence` spelling while still
 preserving the keyed answers.
+
+For CPU-only hosts, prefer:
+
+```bash
+uv run ethnos agent-review 2 \
+  --quiz benchmarks/history_ch20_canvas.json \
+  --output data/runs/history_ch20_agent_review_cpu \
+  --model gemma-python \
+  --profile cto \
+  --vision-pages off \
+  --max-steps 1 \
+  --debug-agent
+```

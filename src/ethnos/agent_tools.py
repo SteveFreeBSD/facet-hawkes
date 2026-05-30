@@ -17,7 +17,7 @@ from .db import (
     inspect_page,
     search_chunks,
 )
-from .qa import normalize_answer_role, retrieve_with_fallbacks
+from .qa import RetrievalResult, answer_query_candidates, normalize_answer_role
 from .quiz_validation import validate_quiz_item as _validate_quiz_item
 
 
@@ -128,31 +128,17 @@ def _ground_quiz_item(
     context: AgentToolContext, arguments: dict[str, Any]
 ) -> dict[str, Any]:
     item = _quiz_item(context, arguments)
-    question = str(item.get("question") or "")
     role = normalize_answer_role(str(arguments.get("role") or "core"))
     section = arguments.get("section")
-    retrieval = retrieve_with_fallbacks(
-        search_func=lambda doc_id, query, limit, role, section: add_continuation_context_chunks(
-            context.conn,
-            doc_id,
-            context_chunks(
-                context.conn,
-                doc_id,
-                query,
-                limit=limit,
-                role=role,
-                section=section,
-            ),
-            role=role,
-            section=section,
-        ),
-        document_id=context.document_id,
-        question=question,
+    limit = _positive_int(arguments.get("limit"), default=5)
+    retrieval = _retrieve_quiz_item_context(
+        context,
+        item,
         limit=_positive_int(arguments.get("limit"), default=5),
         role=role,
         section=section,
     )
-    retrieval_questions = [question, *[str(value) for value in item.get("retrieval_questions", [])]]
+    retrieval_questions = _quiz_item_retrieval_queries(item)
     record = _build_source_grounding_record(
         context.conn,
         document_id=context.document_id,
@@ -164,8 +150,120 @@ def _ground_quiz_item(
     )
     return {
         "grounding": record,
-        "context_rows": [_compact_chunk_row(row, text_chars=900) for row in retrieval.rows],
+        "context_rows": [_compact_chunk_row(row, text_chars=900) for row in retrieval.rows[:limit]],
     }
+
+
+def _retrieve_quiz_item_context(
+    context: AgentToolContext,
+    item: dict[str, Any],
+    *,
+    limit: int,
+    role: str | None,
+    section: str | None,
+) -> RetrievalResult:
+    queries = _quiz_item_retrieval_queries(item)
+    rows_by_id: dict[int, dict[str, Any]] = {}
+    row_queries: dict[int, list[str]] = {}
+    tried: list[str] = []
+    for query in queries:
+        for candidate in answer_query_candidates(query):
+            if candidate in tried:
+                continue
+            tried.append(candidate)
+            rows = add_continuation_context_chunks(
+                context.conn,
+                context.document_id,
+                context_chunks(
+                    context.conn,
+                    context.document_id,
+                    candidate,
+                    limit=limit,
+                    role=role,
+                    section=section,
+                ),
+                role=role,
+                section=section,
+            )
+            for row in rows:
+                chunk_id = int(row["id"])
+                if chunk_id not in rows_by_id:
+                    rows_by_id[chunk_id] = row
+                row_queries.setdefault(chunk_id, []).append(candidate)
+    ranked_rows = _rank_quiz_context_rows(item, list(rows_by_id.values()), row_queries)
+    selected_query = None
+    if ranked_rows:
+        selected_query = ", ".join(row_queries.get(int(ranked_rows[0]["id"]), [])[:3])
+    return RetrievalResult(
+        original_question=str(item.get("question") or ""),
+        queries_tried=tried,
+        selected_query=selected_query,
+        rows=ranked_rows[:limit],
+        stopped_reason="context_found" if ranked_rows else "no_context",
+    )
+
+
+def _quiz_item_retrieval_queries(item: dict[str, Any]) -> list[str]:
+    question = str(item.get("question") or "").strip()
+    options = item.get("options") if isinstance(item.get("options"), dict) else {}
+    correct = item.get("correct")
+    keyed_text = options.get(correct) if isinstance(correct, str) else None
+    queries: list[str] = []
+    _add_query(queries, question)
+    if keyed_text:
+        _add_query(queries, f"{question} {keyed_text}")
+        _add_query(queries, keyed_text)
+    target = str(item.get("target") or "").strip()
+    if target:
+        _add_query(queries, f"{question} {target}")
+        _add_query(queries, target)
+    for value in item.get("retrieval_questions", []):
+        _add_query(queries, str(value))
+    for label, option_text in options.items():
+        if isinstance(correct, str) and label == correct:
+            continue
+        _add_query(queries, f"{question} {option_text}")
+        _add_query(queries, str(option_text))
+    return queries
+
+
+def _rank_quiz_context_rows(
+    item: dict[str, Any],
+    rows: list[dict[str, Any]],
+    row_queries: dict[int, list[str]],
+) -> list[dict[str, Any]]:
+    options = item.get("options") if isinstance(item.get("options"), dict) else {}
+    correct = item.get("correct")
+    keyed_text = options.get(correct) if isinstance(correct, str) else None
+    support_terms = _support_terms(item, keyed_text)
+
+    def score(row: dict[str, Any]) -> tuple[int, int, int]:
+        text = str(row.get("text") or row.get("snippet") or "").lower()
+        term_hits = sum(1 for term in support_terms if term in text)
+        query_hits = len(row_queries.get(int(row["id"]), []))
+        chapter_role = int(str(row.get("content_role") or "") == "core")
+        return (term_hits, query_hits, chapter_role)
+
+    return sorted(rows, key=score, reverse=True)
+
+
+def _support_terms(item: dict[str, Any], keyed_text: str | None) -> list[str]:
+    terms = []
+    for value in (
+        str(item.get("target") or ""),
+        str(item.get("question") or ""),
+        keyed_text or "",
+    ):
+        for term in _significant_terms(value):
+            if term not in terms:
+                terms.append(term)
+    return terms
+
+
+def _add_query(queries: list[str], query: str) -> None:
+    compact = " ".join(query.split())
+    if compact and compact not in queries:
+        queries.append(compact)
 
 
 def _build_source_grounding_record(
@@ -195,6 +293,11 @@ def _build_source_grounding_record(
         validation_errors=validation_errors,
         context_rows=context_rows,
     )
+    keyed_option = item.get("correct")
+    options = item.get("options") if isinstance(item.get("options"), dict) else {}
+    keyed_option_text = (
+        options.get(keyed_option) if isinstance(keyed_option, str) else None
+    )
     source_chunks = [row["id"] for row in context_rows]
     source_citations = [str(row["source_citation"]) for row in context_rows]
     return {
@@ -217,7 +320,12 @@ def _build_source_grounding_record(
         ),
         "validation_errors": validation_errors,
         "warnings": warnings,
-        "keyed_option": item.get("correct"),
+        "keyed_option": keyed_option,
+        "keyed_option_text": keyed_option_text,
+        "keyed_answer_supported": _text_supported_by_rows(
+            str(keyed_option_text or ""),
+            context_rows,
+        ),
         "source_missing_note": item.get("source_missing_note")
         or item.get("external_source_note"),
     }
@@ -260,6 +368,17 @@ def _grounding_evidence_summary(
     start = max(index - chars // 2, 0)
     end = min(len(compact), start + chars)
     return compact[start:end].strip()
+
+
+def _text_supported_by_rows(text: str, rows: list[dict[str, object]]) -> bool:
+    terms = _significant_terms(text)
+    if not terms:
+        return False
+    evidence = " ".join(str(row.get("text") or row.get("snippet") or "").lower() for row in rows)
+    hits = sum(1 for term in terms if term in evidence)
+    if len(terms) == 1:
+        return hits == 1
+    return hits >= max(1, len(terms) - 1)
 
 
 def _compare_options(context: AgentToolContext, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -424,6 +543,32 @@ def _clip(text: str, max_chars: int) -> str:
     if len(compact) <= max_chars:
         return compact
     return compact[: max_chars - 3].rstrip() + "..."
+
+
+def _significant_terms(text: str) -> list[str]:
+    stopwords = {
+        "a",
+        "an",
+        "and",
+        "as",
+        "by",
+        "for",
+        "in",
+        "into",
+        "of",
+        "or",
+        "the",
+        "to",
+        "was",
+        "were",
+        "with",
+    }
+    terms = []
+    for raw in text.lower().replace("&", " ").replace("/", " ").split():
+        term = "".join(ch for ch in raw if ch.isalnum())
+        if len(term) >= 4 and term not in stopwords and term not in terms:
+            terms.append(term)
+    return terms
 
 
 def _plain_tool_payload(value: object) -> dict[str, Any]:

@@ -91,6 +91,30 @@ def test_agent_tool_registry_dispatches_pdf_tools(tmp_path):
     assert web.result["status"] == "blocked"
 
 
+def test_ground_quiz_item_uses_key_and_option_aware_queries(tmp_path):
+    conn = _agent_test_db(tmp_path)
+    quiz = _sample_quiz_with_key_only_evidence()
+    context = AgentToolContext(
+        conn=conn,
+        document_id=1,
+        quiz_items={quiz["questions"][0]["id"]: quiz["questions"][0]},
+        output_dir=tmp_path,
+        allow_web=False,
+        vision_pages="off",
+        model_name="gemma-python",
+        num_predict=256,
+        num_ctx=8192,
+    )
+    registry = build_agent_tool_registry(context)
+
+    grounding = call_agent_tool(registry, "ground_quiz_item", {"item_id": "q2"})
+
+    assert grounding.ok is True
+    assert grounding.result["grounding"]["keyed_answer_supported"] is True
+    assert any("jacob riis" in query for query in grounding.result["grounding"]["queries_tried"])
+    assert grounding.result["context_rows"][0]["source_citation"] == "history.pdf p. 2, chunk 2"
+
+
 def test_agent_review_writes_reports_and_persists_findings(tmp_path):
     conn = _agent_test_db(tmp_path)
     quiz = _sample_quiz()
@@ -418,7 +442,16 @@ def _agent_test_db(tmp_path, *, db_path=None):
                 text="Muckrakers were investigative journalists who exposed corruption.",
                 char_count=68,
                 source_citation="history.pdf p. 1, chunk 1",
-            )
+            ),
+            ChunkRecord(
+                document_id=document_id,
+                page_start=2,
+                page_end=2,
+                chunk_index=2,
+                text="Jacob Riis photographed tenement housing to expose urban poverty.",
+                char_count=64,
+                source_citation="history.pdf p. 2, chunk 2",
+            ),
         ],
     )
     conn.execute("UPDATE chunks SET content_role = 'core', section_label = 'chapter'")
@@ -438,6 +471,29 @@ def _sample_quiz():
                 "question_type": "multiple_choice",
                 "options": {"A": "Muckrakers", "B": "Industrialists"},
                 "correct": "A",
+                "source_chunks": [],
+                "source_pages": [],
+            }
+        ],
+    }
+
+
+def _sample_quiz_with_key_only_evidence():
+    return {
+        "version": "external-quiz-v2",
+        "document_id": 1,
+        "questions": [
+            {
+                "id": "q2",
+                "question": "Which author used images to expose urban poverty?",
+                "question_type": "multiple_choice",
+                "options": {
+                    "A": "Upton Sinclair",
+                    "B": "Jacob Riis",
+                    "C": "Mark Twain",
+                    "D": "Edward Bellamy",
+                },
+                "correct": "B",
                 "source_chunks": [],
                 "source_pages": [],
             }
