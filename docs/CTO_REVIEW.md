@@ -15,6 +15,7 @@ authoritative, what was verified, and how future changes should stay aligned.
 - Host-specific facts: [`hosts/`](hosts/).
 - Environment defaults: [`.env.example`](../.env.example) and
   [`src/ethnos/config.py`](../src/ethnos/config.py).
+- Curated GitHub-facing outputs: [`examples/`](../examples/).
 
 ## Repo Shape
 

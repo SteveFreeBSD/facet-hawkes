@@ -105,6 +105,9 @@ The current CPU-local history chapter 20 probe reports `20` supported keyed
 answers, `17` pass items, and `3` inspect items: the two duplicate New Freedom
 prompts and the `Temperence` spelling note.
 
+A compact checked-in example is available at
+[`examples/history_ch20_agent_review_summary.md`](../examples/history_ch20_agent_review_summary.md).
+
 For CPU-only hosts, prefer:
 
 ```bash

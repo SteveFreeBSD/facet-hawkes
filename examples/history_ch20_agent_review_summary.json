@@ -1,0 +1,49 @@
+{
+  "document": "history.pdf",
+  "document_id": 2,
+  "model": "gemma-python",
+  "model_profile": "review-local",
+  "quiz": "benchmarks/history_ch20_canvas.json",
+  "result": {
+    "evidence_strength_counts": {
+      "direct": 8,
+      "partial": 5,
+      "strong": 7
+    },
+    "item_count": 20,
+    "priority_counts": {
+      "inspect": 3,
+      "pass": 17
+    },
+    "quality_counts": {
+      "duplicate_prompt": 2,
+      "typo": 1
+    },
+    "verdict_counts": {
+      "key_supported": 20
+    }
+  },
+  "review_queue": [
+    {
+      "evidence_strength": "direct",
+      "item_id": "ch20-q009",
+      "priority": "inspect",
+      "reason": "Option text contains 'Temperence'; intended spelling is 'Temperance'.",
+      "verdict": "key_supported"
+    },
+    {
+      "evidence_strength": "partial",
+      "item_id": "ch20-q015",
+      "priority": "inspect",
+      "reason": "Duplicate prompt also appears as ch20-q020; the keyed answer is supported.",
+      "verdict": "key_supported"
+    },
+    {
+      "evidence_strength": "partial",
+      "item_id": "ch20-q020",
+      "priority": "inspect",
+      "reason": "Duplicate prompt also appears as ch20-q015; the keyed answer is supported.",
+      "verdict": "key_supported"
+    }
+  ]
+}

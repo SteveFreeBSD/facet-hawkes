@@ -1,7 +1,7 @@
 [project]
 name = "ethnos"
 version = "0.1.0"
-description = "Local-first PDF-to-knowledge pipeline for structured course notes."
+description = "Local-first PDF study, quiz, and agent-review system with auditable Ollama workflows."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

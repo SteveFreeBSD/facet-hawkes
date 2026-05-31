@@ -1,17 +1,60 @@
 # ethnos
 
-`ethnos` is a local-first PDF-to-knowledge pipeline for course material. It turns human-readable PDFs into structured, searchable records while preserving the raw inputs, source page metadata, chunk boundaries, prompts, and raw model outputs.
+`ethnos` is a local-first AI study and review system for PDF course material.
+It ingests source PDFs, builds structured searchable knowledge, answers
+questions with cited local context, imports real Canvas/LMS quizzes, benchmarks
+model performance, audits answer keys, and produces CTO-ready Agent Review
+reports.
 
-The project intentionally starts with simple foundations:
+The design goal is deliberately serious: every model-facing claim should be
+traceable back to local source text, every transformation should be inspectable,
+and every report should separate model behavior from source quality.
+
+## Why It Stands Out
+
+- **Local-first by default**: SQLite, FTS5, PyMuPDF, Pydantic v2, and Ollama
+  run on the workstation without sending course material to a hosted service.
+- **Auditable model outputs**: prompts, raw responses, validation status,
+  normalized records, source pages, citations, and traces are preserved.
+- **Agent Review**: quiz items are reviewed with deterministic PDF tools,
+  evidence strength, confidence scoring, distractor audit, quality findings, and
+  pass/inspect/fix priorities.
+- **Real quiz workflows**: Canvas-style mixed quizzes, answer keys, true/false,
+  essays, incomplete matching items, generated quizzes, source grounding, and
+  benchmark reports all use one coherent pipeline.
+- **CPU-aware model strategy**: the current baseline is tuned for
+  `gemma-python` on CPU-only local hardware; heavier Gemma 3/hybrid profiles are
+  optional, explicit, and documented.
+- **Review-ready engineering**: `src/` layout, modular CLI commands, Pydantic
+  schemas, SQLite WAL/FTS5, safe SQL identifiers, centralized Ollama client,
+  retry backoff, formatter/linter/dead-code checks, and 189 passing tests.
+
+## Flagship Result
+
+The checked-in History chapter 20 example shows the current Agent Review story:
+
+```text
+20 quiz items reviewed
+20 keyed answers source-supported
+17 pass
+3 inspect
+0 fix
+quality findings: duplicate_prompt 2, typo 1
+evidence strength: direct 8, strong 7, partial 5
+```
+
+See [`examples/history_ch20_agent_review_summary.md`](examples/history_ch20_agent_review_summary.md)
+for the compact review artifact.
+
+## Core Stack
 
 - `uv` for project and dependency management
+- Python `>=3.11` with a `src/` package layout
 - PyMuPDF for PDF text extraction
-- Pydantic v2 for validation and JSON schema
-- SQLite and FTS5 for local storage and search
-- Ollama for local structured extraction, grounded Q&A, and agent review
-
-The default path is local-first. Agent Review can use explicit hybrid web/cloud
-tools only when enabled by the operator.
+- Pydantic v2 for schemas and JSON validation
+- SQLite with WAL and FTS5 for local storage/search
+- Ollama Python client for structured local model calls
+- Ruff, pytest, compileall, and Vulture for verification
 
 ## Setup
 
@@ -24,6 +67,28 @@ uv sync --extra dev
 The app has sensible local defaults in code. When a host needs explicit
 settings, copy [`.env.example`](.env.example) to `.env` and edit only the values
 that differ on that machine.
+
+## Quick Demo
+
+Run a source-grounded review over the included History chapter 20 quiz:
+
+```bash
+uv run ethnos agent-review 2 \
+  --quiz benchmarks/history_ch20_canvas.json \
+  --output data/runs/history_ch20_agent_review_cpu \
+  --model gemma-python \
+  --profile cto \
+  --vision-pages off \
+  --max-steps 1 \
+  --debug-agent
+```
+
+The generated report writes:
+
+- `agent_review.md`: human-readable review queue
+- `agent_review.json`: structured verdicts, confidence, evidence strength,
+  distractor audit, and quality findings
+- `tool_trace.jsonl`: optional tool/action trace when `--debug-agent` is set
 
 ## Basic Use
 
@@ -180,16 +245,18 @@ uv run ethnos inspect-trace data/runs/<trace-file>.json --show-answer
 The full quiz workflow is documented in
 [`docs/QUIZ_WORKFLOW.md`](docs/QUIZ_WORKFLOW.md).
 
-The project baseline, migration checklist, performance guide, and host profiles
-are documented in:
+The project baseline, Agent Review design, migration checklist, performance
+guide, and host profiles are documented in:
 
 - [`docs/CTO_REVIEW.md`](docs/CTO_REVIEW.md)
 - [`docs/CURRENT_BASELINE.md`](docs/CURRENT_BASELINE.md)
+- [`docs/AGENT_REVIEW.md`](docs/AGENT_REVIEW.md)
 - [`docs/MIGRATION.md`](docs/MIGRATION.md)
 - [`docs/OLLAMA_TROUBLESHOOTING.md`](docs/OLLAMA_TROUBLESHOOTING.md)
 - [`docs/PERFORMANCE_TUNING.md`](docs/PERFORMANCE_TUNING.md)
 - [`docs/TRACE_DEBUGGING.md`](docs/TRACE_DEBUGGING.md)
 - [`docs/hosts/`](docs/hosts/)
+- [`examples/`](examples/)
 
 Run the local retrieval-only benchmark without calling Ollama:
 
@@ -426,7 +493,6 @@ For connection failures, empty responses, length cutoffs, and invalid JSON, see
 [docs/OLLAMA_TROUBLESHOOTING.md](docs/OLLAMA_TROUBLESHOOTING.md).
 
 The current local database baseline includes `ethics.pdf` and `history.pdf`.
-Both documents have valid latest structured output for every chunk. `ethics.pdf`
-is fully section-labeled with zero non-core key terms/questions; `history.pdf`
-is structured but still unlabeled, so label it before relying on role-filtered
-retrieval or non-core quality checks.
+Both documents have valid latest structured output for every chunk and complete
+section labels. Non-core chunks are summary-only, so role-filtered retrieval and
+quality reports stay focused on study material.
