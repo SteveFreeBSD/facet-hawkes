@@ -224,6 +224,17 @@ def init_db(conn: sqlite3.Connection) -> None:
     _ensure_column(conn, "chunks", "section_confidence", "REAL")
 
 
+def rebuild_fts_index(conn: sqlite3.Connection) -> dict[str, int]:
+    """Rebuild the external-content FTS5 index for stored chunks."""
+
+    with conn:
+        conn.execute("INSERT INTO chunks_fts(chunks_fts) VALUES('rebuild')")
+    return {
+        "chunks": int(conn.execute("SELECT COUNT(*) FROM chunks").fetchone()[0]),
+        "fts_rows": int(conn.execute("SELECT COUNT(*) FROM chunks_fts").fetchone()[0]),
+    }
+
+
 def _ensure_column(
     conn: sqlite3.Connection, table: str, column: str, column_definition: str
 ) -> None:

@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 from ..quiz_validation import validate_quiz_item as _validate_quiz_item
+from ..text_utils import compact_text
 
 
 def build_source_grounding_record(
@@ -206,7 +207,7 @@ def anchor_snippet(text: str, target: str, max_chars: int) -> str:
     target = target.strip()
     index = compact.lower().find(target.lower()) if target else -1
     if index < 0:
-        return compact[: max_chars - 3].rstrip() + "..."
+        return compact_text(compact, max_chars)
     half_window = max((max_chars - len(target)) // 2, 0)
     start = max(index - half_window, 0)
     end = min(len(compact), start + max_chars)

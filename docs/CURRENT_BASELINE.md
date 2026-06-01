@@ -54,12 +54,12 @@ review baseline.
 
 ## Verification Snapshot
 
-Observed on 2026-05-30:
+Observed on 2026-06-01:
 
 - `uv run ruff check .`: passed.
 - `uv run ruff format --check .`: passed.
 - `uv run python -m compileall -q src tests`: passed.
-- `uv run pytest`: 189 passed.
+- `uv run pytest`: 194 passed.
 - `uv run vulture src tests --min-confidence 80`: clean and enforced in CI.
 - CPU-local Agent Review deterministic probe for `history_ch20_canvas.json`:
   `20` keyed answers supported, `17` pass items, `3` inspect items, and the

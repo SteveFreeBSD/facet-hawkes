@@ -26,6 +26,7 @@ from ..formatting import (
 from ..retrieval import retrieve_answer_context
 
 from ...config import OllamaThink
+from ...ollama_client import OllamaClientProtocol
 from ...qa import (
     build_answer_prompt,
     normalize_answer_role,
@@ -222,7 +223,7 @@ def _answer_once(
     trace_dir: Path | None,
     mode: str,
     followup=None,
-    client: object | None = None,
+    client: OllamaClientProtocol | None = None,
 ):
     # Late import to support monkeypatching via "ethnos.cli.answer_question"
     from .. import answer_question as _answer_question

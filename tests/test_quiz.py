@@ -1543,6 +1543,7 @@ def test_mc_bench_cli_scores_keyed_and_unkeyed_items(tmp_path, capsys, monkeypat
 
     assert exit_code == 0
     assert len(calls) == 2
+    assert calls[0]["think"] is False
     assert report["keyed_total"] == 1
     assert report["scored_total"] == 1
     assert report["correct_count"] == 1

@@ -15,6 +15,7 @@ from .quiz_core import (
     parse_source_pages,
     _normalize_option,
 )
+from .text_utils import ANSWER_TOKEN_STOPWORDS
 
 
 @dataclass(frozen=True)
@@ -530,20 +531,10 @@ def _answer_token_overlap(left: str, right: str) -> int:
 
 
 def _answer_tokens(value: str) -> set[str]:
-    stopwords = {
-        "and",
-        "are",
-        "because",
-        "that",
-        "the",
-        "their",
-        "this",
-        "with",
-    }
     return {
         token
         for token in _normalize_option(value).replace("-", " ").split()
-        if len(token) > 4 and token not in stopwords
+        if len(token) > 4 and token not in ANSWER_TOKEN_STOPWORDS
     }
 
 

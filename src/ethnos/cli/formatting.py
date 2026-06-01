@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 
+from ..text_utils import compact_text
+
 
 def format_elapsed(seconds: float) -> str:
     if seconds < 60:
@@ -13,10 +15,7 @@ def format_elapsed(seconds: float) -> str:
 
 
 def preview_text(text: str, max_chars: int) -> str:
-    compact = " ".join(text.split())
-    if len(compact) <= max_chars:
-        return compact
-    return compact[: max_chars - 3].rstrip() + "..."
+    return compact_text(text, max_chars)
 
 
 def limit_display_text(text: str, max_chars: int) -> str:

@@ -37,8 +37,10 @@ Useful options:
 - `--allow-web`: enable Ollama web search/fetch tools for explicitly hybrid
   review runs.
 - `--vision-pages auto|off|on`: allow rendered PDF page images to be inspected
-  by a vision-capable model such as Gemma 3.
+  by a vision-capable model such as Gemma 4.
 - `--max-steps 8`: cap the structured tool loop for each quiz item.
+- `--item-timeout 120`: cap total wall time for one quiz item before falling
+  back to deterministic review. `0` disables the cap.
 - `--debug-agent`: write `tool_trace.jsonl` beside the reports.
 - `--model-profile cpu-local|review-local|gemma3-local|gemma3-fast|hybrid-max`:
   choose the model profile and context/output defaults.
@@ -61,14 +63,17 @@ Each run is also persisted to SQLite in `agent_runs` and `agent_findings`.
 
 - `cpu-local`: tuned for the current CPU-only baseline with `gemma-python`.
 - `review-local`: slightly larger CPU-only review budget with `gemma-python`.
-- `gemma3-local`: optional future profile. Targets `gemma3:12b` with
-  `gemma3:4b` as the practical fallback.
-- `gemma3-fast`: optional smaller Gemma 3 profile for quick checks.
+- `gemma3-local`: compatibility profile from the original Agent Review plan.
+  It remains available for older local experiments, but it is no longer the
+  preferred new-model target.
+- `gemma3-fast`: compatibility profile for smaller Gemma 3 checks.
 - `hybrid-max`: max-capability profile for explicit web/cloud-assisted review.
 
 Existing `gemma-python` workflows remain the CPU-only baseline for structure
-extraction, Q&A, quiz benchmarking, and Agent Review. Gemma 3 profiles are
-optional future profiles for hosts where they are practical.
+extraction, Q&A, quiz benchmarking, and Agent Review. The current
+`gemma-python` alias is Gemma 4 based; new capability work should evaluate
+Gemma 4 edge/workstation candidates or explicit hybrid profiles against the same
+benchmarks before changing defaults.
 
 ## Review Meaning
 

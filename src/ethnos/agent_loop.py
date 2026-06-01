@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import json
+import signal
+import threading
 from collections import Counter
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Callable
 
@@ -25,10 +28,11 @@ from .agent_tools import (
     build_agent_tool_registry,
     call_agent_tool,
 )
-from .ollama_client import structured_chat_json
+from .ollama_client import OllamaClientProtocol, structured_chat_json
 
 
 StructuredChat = Callable[..., object]
+ProgressCallback = Callable[[int, int, dict[str, Any]], None]
 
 
 def run_agent_review(
@@ -43,9 +47,11 @@ def run_agent_review(
     allow_web: bool,
     vision_pages: str,
     max_steps: int,
+    item_timeout: float | None,
     debug_agent: bool,
-    client: object | None,
+    client: OllamaClientProtocol | None,
     structured_chat: StructuredChat = structured_chat_json,
+    progress: ProgressCallback | None = None,
 ) -> AgentReviewReport:
     items = quiz["questions"]
     quiz_items = {str(item["id"]): item for item in items}
@@ -67,24 +73,47 @@ def run_agent_review(
     output_dir.mkdir(parents=True, exist_ok=True)
     trace_path = output_dir / "tool_trace.jsonl" if debug_agent else None
     reviews = []
-    for item in items:
+    for index, item in enumerate(items, start=1):
+        if progress is not None:
+            progress(index, len(items), item)
         quality_findings = [
             *duplicate_findings.get(str(item["id"]), []),
             *typo_findings.get(str(item["id"]), []),
         ]
-        reviews.append(
-            review_quiz_item(
+        try:
+            with _item_timeout(item_timeout):
+                review = review_quiz_item(
+                    item=item,
+                    registry=registry,
+                    model_name=model_name,
+                    model_profile=model_profile,
+                    max_steps=max_steps,
+                    client=client,
+                    structured_chat=structured_chat,
+                    quality_findings=quality_findings,
+                    trace_path=trace_path,
+                )
+        except AgentItemTimeout:
+            timeout_finding = QuestionQualityFinding(
+                severity="medium",
+                finding_type="agent_item_timeout",
+                message=(
+                    f"Agent review exceeded the per-item timeout "
+                    f"of {item_timeout:g} seconds and used deterministic fallback."
+                ),
+            )
+            review = review_quiz_item(
                 item=item,
                 registry=registry,
                 model_name=model_name,
                 model_profile=model_profile,
-                max_steps=max_steps,
-                client=client,
+                max_steps=0,
+                client=None,
                 structured_chat=structured_chat,
-                quality_findings=quality_findings,
+                quality_findings=[*quality_findings, timeout_finding],
                 trace_path=trace_path,
             )
-        )
+        reviews.append(review)
     report = _build_report(
         document_id=document_id,
         quiz_path=quiz_path,
@@ -99,6 +128,36 @@ def run_agent_review(
     return report
 
 
+class AgentItemTimeout(TimeoutError):
+    """Raised when one Agent Review item exceeds its total time budget."""
+
+
+@contextmanager
+def _item_timeout(seconds: float | None):
+    if (
+        seconds is None
+        or seconds <= 0
+        or not hasattr(signal, "SIGALRM")
+        or threading.current_thread() is not threading.main_thread()
+    ):
+        yield
+        return
+
+    def _handle_timeout(_signum, _frame):
+        raise AgentItemTimeout
+
+    previous_handler = signal.getsignal(signal.SIGALRM)
+    previous_timer = signal.setitimer(signal.ITIMER_REAL, seconds)
+    signal.signal(signal.SIGALRM, _handle_timeout)
+    try:
+        yield
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous_handler)
+        if previous_timer[0] > 0:
+            signal.setitimer(signal.ITIMER_REAL, *previous_timer)
+
+
 def review_quiz_item(
     *,
     item: dict[str, Any],
@@ -106,7 +165,7 @@ def review_quiz_item(
     model_name: str,
     model_profile: ModelProfile,
     max_steps: int,
-    client: object | None,
+    client: OllamaClientProtocol | None,
     structured_chat: StructuredChat,
     quality_findings: list[QuestionQualityFinding],
     trace_path: Path | None,
@@ -158,7 +217,8 @@ def review_quiz_item(
         )
         if action.tool == "finalize_item_review":
             final = action.final_review
-            assert final is not None
+            if final is None:
+                break
             evidence = _evidence_from_observations(observations)
             return _merge_review_defaults(
                 item,

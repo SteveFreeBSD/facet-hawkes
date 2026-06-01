@@ -26,6 +26,7 @@ from ethnos.db import (
     list_structured_records,
     quality_report,
     refresh_normalized_records,
+    rebuild_fts_index,
     search_chunks,
     section_label_status,
     select_chunks_for_structure,
@@ -90,6 +91,11 @@ def test_tiny_text_to_sqlite_and_fts(tmp_path):
     assert (
         results_with_text[0]["text"] == "Ecology\nFood webs describe energy transfer."
     )
+
+    rebuild_summary = rebuild_fts_index(conn)
+
+    assert rebuild_summary == {"chunks": 1, "fts_rows": 1}
+    assert search_chunks(conn, "energy", limit=5)[0]["id"] == results[0]["id"]
 
 
 def test_list_documents_returns_beginner_visible_fields(tmp_path):
@@ -1177,6 +1183,28 @@ def test_chat_cli_exits_on_quit_without_ollama(tmp_path, capsys, monkeypatch):
     assert exit_code == 0
     assert f"ethnos chat for document {document_id}" in output
     assert "model: gemma-python" in output
+
+
+def test_chat_cli_exits_cleanly_on_keyboard_interrupt_during_answer(
+    tmp_path, capsys, monkeypatch
+):
+    db_path = tmp_path / "ethnos.sqlite"
+    conn = connect(db_path)
+    init_db(conn)
+    document_id, _ = _stored_labeled_record_document(conn)
+
+    monkeypatch.setattr("builtins.input", lambda prompt: "What is evolutionary ethics?")
+
+    def fake_answer_question(**kwargs):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr("ethnos.cli.answer_question", fake_answer_question)
+
+    exit_code = main(["--db", str(db_path), "chat", str(document_id)])
+    output = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert "Exiting." in output
 
 
 def test_chat_cli_answers_and_writes_trace(tmp_path, capsys, monkeypatch):

@@ -8,12 +8,13 @@ import time
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import Callable, Literal
+from typing import Any, Callable, Protocol
 
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import ValidationError
 
 from .config import OllamaThink
 from .models import ChunkRecord, ExtractionResult
+from .prompt_cache import read_prompt_template
 
 
 @dataclass(frozen=True)
@@ -30,6 +31,10 @@ class OllamaDebugInfo:
 class OllamaChatResult:
     content: str
     response_summary: dict
+
+
+class OllamaClientProtocol(Protocol):
+    def chat(self, **kwargs: Any) -> Any: ...
 
 
 @dataclass(frozen=True)
@@ -95,20 +100,9 @@ class EssayAnswerResult:
     debug_info: OllamaDebugInfo | None = None
 
 
-class MCSelection(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    selected_option: Literal["A", "B", "C", "D"]
-
-
 def load_prompt(prompt_path: Path, chunk: ChunkRecord) -> str:
-    template = _prompt_template(prompt_path)
+    template = read_prompt_template(prompt_path)
     return template.format(source_citation=chunk.source_citation, chunk_text=chunk.text)
-
-
-@lru_cache(maxsize=16)
-def _prompt_template(prompt_path: Path) -> str:
-    return prompt_path.read_text(encoding="utf-8")
 
 
 def extract_chunk(
@@ -122,7 +116,7 @@ def extract_chunk(
     retries: int = 1,
     debug_ollama: bool = False,
     think: OllamaThink = False,
-    client: object | None = None,
+    client: OllamaClientProtocol | None = None,
     retry_sleep: Callable[[float], None] = time.sleep,
 ) -> StructuredCallResult:
     prompt = load_prompt(prompt_path, chunk)
@@ -201,7 +195,7 @@ def answer_question(
     num_predict: int,
     num_ctx: int,
     think: OllamaThink = False,
-    client: object | None = None,
+    client: OllamaClientProtocol | None = None,
 ) -> AnswerCallResult:
     client = client if client is not None else create_client(host, timeout)
     chat_result = _chat_plain(
@@ -235,7 +229,8 @@ def answer_mc_question(
     num_predict: int,
     num_ctx: int,
     allowed_options: list[str] | tuple[str, ...] | None = None,
-    client: object | None = None,
+    client: OllamaClientProtocol | None = None,
+    think: OllamaThink = False,
 ) -> MCAnswerResult:
     allowed_options = _normalize_allowed_options(allowed_options)
     schema = _mc_selection_schema(allowed_options)
@@ -249,6 +244,7 @@ def answer_mc_question(
             model_name=model_name,
             num_predict=num_predict,
             num_ctx=num_ctx,
+            think=think,
         )
     except Exception as exc:  # Ollama/httpx exceptions vary by version.
         return MCAnswerResult(
@@ -280,7 +276,8 @@ def answer_choice_question(
     num_predict: int,
     num_ctx: int,
     allowed_options: list[str] | tuple[str, ...] | None = None,
-    client: object | None = None,
+    client: OllamaClientProtocol | None = None,
+    think: OllamaThink = False,
 ) -> ChoiceAnswerResult:
     allowed_options = _normalize_allowed_options(allowed_options)
     schema = _choice_answer_schema(allowed_options)
@@ -294,6 +291,7 @@ def answer_choice_question(
             model_name=model_name,
             num_predict=num_predict,
             num_ctx=num_ctx,
+            think=think,
         )
     except Exception as exc:
         return ChoiceAnswerResult(
@@ -326,7 +324,8 @@ def answer_essay_question(
     timeout: float,
     num_predict: int,
     num_ctx: int,
-    client: object | None = None,
+    client: OllamaClientProtocol | None = None,
+    think: OllamaThink = False,
 ) -> EssayAnswerResult:
     schema = _essay_answer_schema()
     debug_info = _debug_info(prompt, schema, num_predict, num_ctx)
@@ -339,6 +338,7 @@ def answer_essay_question(
             model_name=model_name,
             num_predict=num_predict,
             num_ctx=num_ctx,
+            think=think,
         )
     except Exception as exc:
         return EssayAnswerResult(
@@ -364,7 +364,7 @@ def answer_essay_question(
     return _validate_essay_response(prompt, chat_result.content, debug_info)
 
 
-def create_client(host: str, timeout: float) -> object:
+def create_client(host: str, timeout: float) -> OllamaClientProtocol:
     try:
         from ollama import Client
     except ImportError as exc:
@@ -376,7 +376,7 @@ def create_client(host: str, timeout: float) -> object:
 
 
 def _chat(
-    client: object,
+    client: OllamaClientProtocol,
     prompt: str,
     schema: dict,
     model_name: str,
@@ -391,7 +391,7 @@ def _chat(
 
 
 def _chat_plain(
-    client: object,
+    client: OllamaClientProtocol,
     prompt: str,
     model_name: str,
     num_predict: int,
@@ -405,22 +405,25 @@ def _chat_plain(
 
 
 def _chat_mc(
-    client: object,
+    client: OllamaClientProtocol,
     prompt: str,
     schema: dict,
     model_name: str,
     num_predict: int,
     num_ctx: int,
+    think: OllamaThink = False,
 ) -> OllamaChatResult:
     return _do_chat(
         client,
-        _mc_chat_request_kwargs(model_name, prompt, schema, num_predict, num_ctx),
+        _mc_chat_request_kwargs(
+            model_name, prompt, schema, num_predict, num_ctx, think
+        ),
     )
 
 
 def structured_chat_json(
     *,
-    client: object,
+    client: OllamaClientProtocol,
     model_name: str,
     messages: list[dict],
     schema: dict,
@@ -485,7 +488,7 @@ def _messages_with_images(messages: list[dict], images: list[str] | None) -> lis
     return copied
 
 
-def _do_chat(client: object, request_kwargs: dict) -> OllamaChatResult:
+def _do_chat(client: OllamaClientProtocol, request_kwargs: dict) -> OllamaChatResult:
     response = client.chat(**request_kwargs)
     envelope = _plain_response(response)
     message = _plain_message(envelope.get("message") or {})
@@ -569,9 +572,14 @@ def _answer_chat_request_kwargs(
 
 
 def _mc_chat_request_kwargs(
-    model_name: str, prompt: str, schema: dict, num_predict: int, num_ctx: int
+    model_name: str,
+    prompt: str,
+    schema: dict,
+    num_predict: int,
+    num_ctx: int,
+    think: OllamaThink = False,
 ) -> dict:
-    return {
+    request = {
         "model": model_name,
         "messages": [
             {
@@ -585,8 +593,9 @@ def _mc_chat_request_kwargs(
         ],
         "format": schema,
         "options": _ollama_options(num_predict, num_ctx),
-        "think": False,
     }
+    _add_think_option(request, think)
+    return request
 
 
 def _add_think_option(request: dict, think: OllamaThink) -> None:

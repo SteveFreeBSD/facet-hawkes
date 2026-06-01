@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import re
-from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+from .prompt_cache import read_prompt_template
 from .quiz_core import limit_option_text, normalize_options, _normalize_option
+from .text_utils import GUIDANCE_STOPWORDS
 
 
 DEFAULT_MC_PROMPT = Path(__file__).resolve().parents[2] / "prompts" / "mc_answer.md"
@@ -26,7 +27,7 @@ def build_mc_prompt(
     max_chars: int,
     prompt_path: Path = DEFAULT_MC_PROMPT,
 ) -> str:
-    template = _prompt_template(prompt_path)
+    template = read_prompt_template(prompt_path)
     options = "\n".join(
         f"{label}. {text}" for label, text in normalize_options(item["options"]).items()
     )
@@ -56,7 +57,7 @@ def build_choice_prompt(
     max_chars: int,
     prompt_path: Path = DEFAULT_CHOICE_PROMPT,
 ) -> str:
-    template = _prompt_template(prompt_path)
+    template = read_prompt_template(prompt_path)
     options = "\n".join(
         f"{label}. {text}" for label, text in normalize_options(item["options"]).items()
     )
@@ -214,27 +215,10 @@ def _guidance_normalized_text(text: str) -> str:
 
 
 def _guidance_significant_terms(text: str) -> list[str]:
-    stopwords = {
-        "about",
-        "above",
-        "also",
-        "being",
-        "both",
-        "from",
-        "into",
-        "that",
-        "their",
-        "there",
-        "these",
-        "this",
-        "through",
-        "under",
-        "with",
-    }
     return [
         token
         for token in _guidance_normalized_text(text).split()
-        if len(token) >= 4 and token not in stopwords
+        if len(token) >= 4 and token not in GUIDANCE_STOPWORDS
     ]
 
 
@@ -316,7 +300,7 @@ def build_essay_prompt(
     max_chars: int,
     prompt_path: Path = DEFAULT_ESSAY_PROMPT,
 ) -> str:
-    template = _prompt_template(prompt_path)
+    template = read_prompt_template(prompt_path)
     target = item.get("target") or ""
     context_target = target or item.get("_context_target") or ""
     source_citation = item.get("source_citation") or ""
@@ -332,11 +316,6 @@ def build_essay_prompt(
         source_citation=source_citation,
         context=context,
     )
-
-
-@lru_cache(maxsize=16)
-def _prompt_template(prompt_path: Path) -> str:
-    return prompt_path.read_text(encoding="utf-8")
 
 
 def build_mc_context(

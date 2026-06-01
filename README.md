@@ -22,12 +22,12 @@ and every report should separate model behavior from source quality.
 - **Real quiz workflows**: Canvas-style mixed quizzes, answer keys, true/false,
   essays, incomplete matching items, generated quizzes, source grounding, and
   benchmark reports all use one coherent pipeline.
-- **CPU-aware model strategy**: the current baseline is tuned for
-  `gemma-python` on CPU-only local hardware; heavier Gemma 3/hybrid profiles are
-  optional, explicit, and documented.
+- **CPU-aware model strategy**: the current baseline is tuned for the
+  Gemma 4 based `gemma-python` alias on CPU-only local hardware; heavier local
+  or hybrid profiles are optional, explicit, and benchmark-gated.
 - **Review-ready engineering**: `src/` layout, modular CLI commands, Pydantic
   schemas, SQLite WAL/FTS5, safe SQL identifiers, centralized Ollama client,
-  retry backoff, formatter/linter/dead-code checks, and 189 passing tests.
+  retry backoff, formatter/linter/dead-code checks, and 194 passing tests.
 
 ## Flagship Result
 
@@ -188,6 +188,12 @@ Summarize the shape and quality of the assimilated data without calling Ollama:
 uv run ethnos section-status 1
 uv run ethnos structure-status 1
 uv run ethnos quality-report 1
+```
+
+Rebuild the local SQLite FTS5 search index if recovery is ever needed:
+
+```bash
+uv run ethnos rebuild-fts
 ```
 
 Show retrieval-ready context for a query without asking a model:

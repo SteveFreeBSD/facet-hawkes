@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import sys
 
 from ..shared import add_command, open_db
 
@@ -48,12 +49,20 @@ def register(subcommands):
         help="Allow rendered PDF page image inspection with a vision model.",
     )
     parser.add_argument("--max-steps", type=int, default=8)
+    parser.add_argument(
+        "--item-timeout",
+        type=float,
+        default=0,
+        help="Maximum seconds for one quiz item before deterministic fallback; 0 disables.",
+    )
     parser.add_argument("--debug-agent", action="store_true")
 
 
 def agent_review_cmd(args) -> int:
     if args.max_steps < 1:
         raise SystemExit("--max-steps must be 1 or greater.")
+    if args.item_timeout < 0:
+        raise SystemExit("--item-timeout must be 0 or greater.")
     settings, conn = open_db(args)
     get_document(conn, args.document_id)
     explicit_model = args.model or settings.agent_model
@@ -78,6 +87,7 @@ def agent_review_cmd(args) -> int:
         "allow_web": allow_web,
         "vision_pages": vision_pages,
         "max_steps": args.max_steps,
+        "item_timeout": args.item_timeout,
         "debug_agent": args.debug_agent,
         "model_profile": profile.name,
     }
@@ -105,8 +115,10 @@ def agent_review_cmd(args) -> int:
             allow_web=allow_web,
             vision_pages=vision_pages,
             max_steps=args.max_steps,
+            item_timeout=args.item_timeout or None,
             debug_agent=args.debug_agent,
             client=client,
+            progress=_agent_review_progress,
         )
         save_agent_findings(conn, run_id, report.items)
         summary = agent_report_summary(report)
@@ -130,3 +142,8 @@ def agent_review_cmd(args) -> int:
     print(f"  verdicts: {json.dumps(report.verdict_counts, sort_keys=True)}")
     print(f"  quality findings: {json.dumps(report.quality_counts, sort_keys=True)}")
     return 0
+
+
+def _agent_review_progress(index: int, total: int, item: dict[str, object]) -> None:
+    item_id = item.get("id") or index
+    print(f"agent-review item {index}/{total}: {item_id}", file=sys.stderr, flush=True)

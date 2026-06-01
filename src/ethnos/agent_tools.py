@@ -19,6 +19,7 @@ from .db import (
 )
 from .qa import RetrievalResult, answer_query_candidates, normalize_answer_role
 from .quiz_validation import validate_quiz_item as _validate_quiz_item
+from .text_utils import CORE_STOPWORDS, compact_text
 
 
 COMMON_ANSWER_SPELLING_FIXES = {
@@ -673,42 +674,21 @@ def _compact_chunk_row(row: dict[str, Any], *, text_chars: int) -> dict[str, Any
         "section_label": row.get("section_label"),
         "content_role": row.get("content_role"),
         "snippet": row.get("snippet"),
-        "text": _clip(str(row.get("text") or ""), text_chars),
+        "text": compact_text(row.get("text") or "", text_chars),
     }
 
 
 def _clip(text: str, max_chars: int) -> str:
-    compact = " ".join(text.split())
-    if len(compact) <= max_chars:
-        return compact
-    return compact[: max_chars - 3].rstrip() + "..."
+    return compact_text(text, max_chars)
 
 
 def _significant_terms(text: str) -> list[str]:
-    stopwords = {
-        "a",
-        "an",
-        "and",
-        "as",
-        "by",
-        "could",
-        "for",
-        "in",
-        "into",
-        "of",
-        "or",
-        "the",
-        "to",
-        "was",
-        "were",
-        "with",
-    }
     terms = []
     for term in _tokenize_terms(text):
         for canonical in _canonical_term_variants(term):
             if (
                 len(canonical) >= 4
-                and canonical not in stopwords
+                and canonical not in CORE_STOPWORDS
                 and canonical not in terms
             ):
                 terms.append(canonical)

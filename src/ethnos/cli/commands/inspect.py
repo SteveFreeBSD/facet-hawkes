@@ -28,6 +28,7 @@ from ...db import (
     list_documents,
     list_structured_records,
     quality_report,
+    rebuild_fts_index,
     refresh_normalized_records,
     search_chunks,
     section_label_status,
@@ -125,6 +126,12 @@ def register(subcommands):
     context_parser.add_argument("--chars", type=int, default=900)
 
     add_command(subcommands, "db-info", "Show local database counts.", db_info_cmd)
+    add_command(
+        subcommands,
+        "rebuild-fts",
+        "Rebuild the SQLite FTS5 chunk search index.",
+        rebuild_fts_cmd,
+    )
     add_command(subcommands, "documents", "List stored documents.", documents_cmd)
 
     status_parser = add_command(
@@ -361,6 +368,13 @@ def context_cmd(args) -> int:
 def db_info_cmd(args) -> int:
     _, conn = open_db(args)
     print(json.dumps(db_info(conn), indent=2, sort_keys=True))
+    return 0
+
+
+def rebuild_fts_cmd(args) -> int:
+    _, conn = open_db(args)
+    summary = rebuild_fts_index(conn)
+    print(json.dumps(summary, indent=2, sort_keys=True))
     return 0
 
 

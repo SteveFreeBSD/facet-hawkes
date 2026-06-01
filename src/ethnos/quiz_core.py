@@ -16,6 +16,8 @@ from pydantic import (
     model_validator,
 )
 
+from .text_utils import compact_text
+
 
 QUIZ_VERSION = "mc-quiz-v1"
 EXTERNAL_QUIZ_VERSION = "external-mc-v1"
@@ -260,10 +262,7 @@ def compact_question_with_options(item: dict[str, Any]) -> str:
 
 
 def limit_option_text(text: str, max_chars: int) -> str:
-    compact = " ".join(str(text).split())
-    if len(compact) <= max_chars:
-        return compact
-    return compact[: max_chars - 3].rstrip() + "..."
+    return compact_text(text, max_chars)
 
 
 def parse_source_pages(raw_pages: Any) -> list[int]:

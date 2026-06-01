@@ -32,6 +32,7 @@ from ethnos.ollama_client import (
     _validate_essay_response,
     _validate_mc_response,
 )
+from ethnos.prompt_cache import read_prompt_template
 from ethnos.models import ChunkRecord, ExtractionResult
 
 
@@ -147,6 +148,18 @@ def test_extract_chunk_uses_exponential_backoff_between_retries(tmp_path):
     assert result.validation_status == "invalid_json"
     assert sleeps == [0.5, 1.0]
     assert _retry_delay_seconds(4) == 4.0
+
+
+def test_prompt_template_cache_invalidates_when_file_changes(tmp_path):
+    prompt_path = tmp_path / "prompt.md"
+    prompt_path.write_text("First {value}", encoding="utf-8")
+
+    first = read_prompt_template(prompt_path)
+    prompt_path.write_text("Second {value}", encoding="utf-8")
+    second = read_prompt_template(prompt_path)
+
+    assert first == "First {value}"
+    assert second == "Second {value}"
 
 
 def test_print_ollama_debug_outputs_request_and_response_summary(capsys):
@@ -313,7 +326,7 @@ def test_answer_chat_request_uses_plain_text_and_context_without_thinking():
     assert "stream" not in kwargs
 
 
-def test_mc_chat_request_uses_json_schema_and_forces_think_false():
+def test_mc_chat_request_uses_json_schema_and_defaults_think_false():
     schema = {"type": "object", "properties": {"selected_option": {"enum": ["A", "B"]}}}
 
     kwargs = _mc_chat_request_kwargs(
@@ -328,6 +341,21 @@ def test_mc_chat_request_uses_json_schema_and_forces_think_false():
     assert kwargs["options"] == {"temperature": 0, "num_predict": 32, "num_ctx": 8192}
     assert kwargs["think"] is False
     assert "stream" not in kwargs
+
+
+def test_mc_chat_request_can_omit_think():
+    schema = {"type": "object", "properties": {"selected_option": {"enum": ["A", "B"]}}}
+
+    kwargs = _mc_chat_request_kwargs(
+        "gemma-python",
+        "mc prompt",
+        schema,
+        num_predict=32,
+        num_ctx=8192,
+        think=None,
+    )
+
+    assert "think" not in kwargs
 
 
 def test_ollama_options_can_include_env_thread_count(monkeypatch):
@@ -447,6 +475,30 @@ def test_answer_mc_question_uses_client_and_validates_response():
     ]
     assert client.kwargs["options"]["num_predict"] == 32
     assert result.debug_info.response_summary["done"] is True
+
+
+def test_answer_mc_question_forwards_think_setting():
+    class FakeClient:
+        def chat(self, **kwargs):
+            self.kwargs = kwargs
+            return {"message": {"content": '{"selected_option":"A"}'}, "done": True}
+
+    client = FakeClient()
+
+    result = answer_mc_question(
+        prompt="prompt",
+        model_name="gemma-python",
+        host="http://localhost:11434",
+        timeout=30,
+        num_predict=32,
+        num_ctx=8192,
+        allowed_options=["A", "B"],
+        client=client,
+        think="medium",
+    )
+
+    assert result.validation_status == "valid"
+    assert client.kwargs["think"] == "medium"
 
 
 def test_answer_mc_question_reports_request_failure():

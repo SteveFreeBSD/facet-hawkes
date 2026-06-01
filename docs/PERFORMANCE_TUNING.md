@@ -44,7 +44,10 @@ on `caspian`.
 
 `ETHNOS_OLLAMA_THINK=false` is the tuned default for the current local Gemma
 alias. Use `auto` to omit the `think` field entirely, or `true`, `low`,
-`medium`, or `high` only in controlled model/version tests.
+`medium`, or `high` only in controlled model/version tests. Ollama supports a
+`think` request field for thinking-capable models, while some model families
+also document model-specific thinking controls; benchmark before adopting any
+thinking mode as a project default.
 
 ## Ollama Service Override
 
@@ -96,6 +99,11 @@ gemma-python:latest
 
 `erosion` has extra experimental local models, but they are not required for the
 repo baseline and should not be treated as dependencies.
+
+The current `gemma-python` alias is Gemma 4 based. It remains the source of
+truth because it is the measured CPU-local model, not because it is the largest
+or newest model available. New Gemma 4 variants should be evaluated as
+benchmarked candidates, not silently substituted into review runs.
 
 ## Benchmark Protocol
 
@@ -220,12 +228,12 @@ Capture the current state before any changes and record it in
 
 ### Phase 2: Ollama Upgrade Evaluation
 
-- As of 2026-05-21, local `caspian` and `erosion` are on Ollama 0.24.0, which
-  is the current stable baseline. The tracked Python client is `ollama==0.6.2`,
-  the current stable Python client release.
-- Ollama 0.30.0-rc22 is a pre-release with a new llama.cpp architecture. Treat
-  it as experimental until it proves faster and stable under the same
-  benchmarks.
+- As of 2026-06-01, local `caspian` and `erosion` are on Ollama 0.24.0, which
+  is the current stable project baseline and matches the latest upstream
+  release checked for this review. The tracked Python client is `ollama==0.6.2`
+  in `uv.lock`.
+- Treat release candidates, nightly builds, and architecture rewrites as
+  experimental until they prove faster and stable under the same benchmarks.
 - Do not replace the current install in place. Prefer a side-by-side run or
   temporary binary test, then compare results against the baseline.
 - Gate adoption on equal-or-better accuracy and reduced elapsed time.
@@ -305,6 +313,121 @@ benchmarking because some changes trade CPU work for fewer I/O calls.
 
 Document any applied change and re-run the MC + mixed benchmarks before
 declaring a new baseline.
+
+## Getting More From gemma-python
+
+These recommendations target answer quality and reliability without switching
+to a larger or slower model. They are ordered by expected impact. Bug fixes
+referenced here are documented in [`CODE_REVIEW.md`](CODE_REVIEW.md). Treat the
+items below as benchmark candidates; adopt them only after they preserve
+accuracy, validity, and review trace quality.
+
+Upstream references checked on 2026-06-01:
+
+- [Ollama structured outputs](https://docs.ollama.com/capabilities/structured-outputs)
+  support JSON schema/Pydantic validation through the `format` field.
+- [Ollama tool calling](https://docs.ollama.com/capabilities/tool-calling)
+  supports multi-turn agent loops with tool results fed back into chat history.
+- [Ollama vision](https://docs.ollama.com/capabilities/vision) models accept
+  images alongside text, and structured outputs can be combined with vision.
+- [Ollama web search/fetch](https://docs.ollama.com/capabilities/web-search)
+  exists as an explicit cloud/API-backed capability.
+- [Gemma 4 on Ollama](https://ollama.com/library/gemma4) and
+  [Google's Gemma docs](https://ai.google.dev/gemma/docs) now present Gemma 4
+  as the current Gemma family, with edge-sized E2B/E4B variants, long context,
+  multimodal inputs, and model-specific thinking notes.
+
+### Expand deterministic pre-processing
+
+The strongest leverage with a small model is doing reasoning before the prompt.
+The existing `_negative_option_guidance`, `_both_option_guidance`, and
+`_percentage_complement_guidance` helpers in
+[`quiz_prompts.py`](../src/ethnos/quiz_prompts.py) already do this well.
+Candidates for expansion:
+
+- **Chronological questions**: Detect date patterns (`\b\d{4}\b`) in retrieved
+  context and inject ordering guidance. Pure string matching, no model needed.
+- **Definition-matching questions**: Compute token-overlap scores between each
+  option text and the retrieved context near the target, then inject hit counts
+  as guidance. Extends the existing `_option_text_supported` pattern.
+- **Enumeration/list questions**: Pre-scan retrieved context for each option's
+  text and inject hit/miss counts when the question asks "which of the
+  following."
+
+### Reduce the format tax on complex schemas
+
+Grammar-constrained decoding on small models can trade reasoning quality for
+structural validity. The MC schema (`{"selected_option": "A"}`) is lightweight.
+The choice and essay schemas are heavier (3 and 5 required fields).
+
+For accuracy benchmarks, consider a two-stage approach:
+
+1. Use the simple MC schema to get the answer with minimal format overhead.
+2. Only request evidence/citations in a follow-up constrained call when needed.
+
+This applies mainly to `mc-bench` where evidence is not scored. `quiz-bench`
+already needs the full choice response shape.
+
+### Context budget refinements
+
+Current defaults are `--chars 300` for MC bench and `--chars 900` for mixed.
+
+- **Sentence-boundary clipping**: `_targeted_context_text` clips at character
+  offsets. Adjusting the window start/end to the nearest sentence boundary
+  (`. ` or `\n`) gives the model cleaner input at the same character budget.
+- **Context deduplication**: Multiple retrieved chunks may contain overlapping
+  text from chunking overlap. A lightweight dedupe pass (skip a chunk if most
+  of its significant terms already appear in selected chunks) improves
+  information density per context character.
+
+### Error-aware retries
+
+The current `_repair_prompt` appends a generic "your previous response was not
+valid JSON" message. With grammar-based sampling, JSON syntax errors are rare.
+The more likely failures are Pydantic `ValidationError` (correct JSON, wrong
+content).
+
+Making the repair prompt aware of the specific validation error tells the model
+what to fix:
+
+```python
+def _repair_prompt(original_prompt, validation_error=None):
+    if validation_error:
+        return (
+            original_prompt
+            + f"\n\nYour response had valid JSON but failed validation: "
+            + f"{validation_error}\nFix the specific issue."
+        )
+    return original_prompt + "\n\nReturn ONLY valid JSON matching the schema."
+```
+
+### Agent deterministic fallback improvements
+
+The deterministic fallback already scores 17/20 pass on the History chapter 20
+fixture with zero LLM calls. Two extensions:
+
+- **Key-terms cross-reference**: If the keyed answer text matches a
+  `key_terms` record in the database, use it as evidence directly. A SQL lookup
+  is faster and more reliable than an FTS search.
+- **Distractor plausibility scoring**: Check whether distractor terms appear
+  anywhere in the document (not just retrieved chunks). A distractor present in
+  a different chapter is `plausible_but_wrong`; one absent everywhere is
+  `not_discussed`.
+
+### num_predict right-sizing
+
+For MC questions with the simple `{"selected_option": "A"}` schema, the
+response is usually 20-30 characters. The default 768 tokens (`cpu-local`) is
+generous. Testing `num_predict=128` for MC-only runs is reasonable, but adopt it
+only if the benchmark keeps accuracy, invalid-response count, and no-context
+count unchanged.
+
+### Pre-compile comparison regex patterns
+
+The 12 regex patterns in `qa.py` `extract_comparison_subqueries` are
+recompiled on every call. Pre-compiling them as module-level constants is a
+free improvement. Already noted in the Code-Level Micro-Optimizations section
+above.
 
 ## Host Profiles
 

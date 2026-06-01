@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
 
 from ethnos.agent_loop import render_agent_review_markdown, run_agent_review
@@ -241,6 +242,7 @@ def test_agent_review_writes_reports_and_persists_findings(tmp_path):
         allow_web=False,
         vision_pages="off",
         max_steps=3,
+        item_timeout=None,
         debug_agent=True,
         client=object(),
         structured_chat=fake_structured_chat,
@@ -315,6 +317,7 @@ def test_agent_loop_repairs_item_scoped_tool_arguments(tmp_path):
         allow_web=False,
         vision_pages="off",
         max_steps=2,
+        item_timeout=None,
         debug_agent=True,
         client=object(),
         structured_chat=fake_structured_chat,
@@ -342,11 +345,44 @@ def test_agent_fallback_can_support_key_from_evidence(tmp_path):
         allow_web=False,
         vision_pages="off",
         max_steps=1,
+        item_timeout=None,
         debug_agent=False,
         client=None,
     )
 
     assert report.items[0].verdict == "key_supported"
+
+
+def test_agent_review_item_timeout_uses_deterministic_fallback(tmp_path):
+    conn = _agent_test_db(tmp_path)
+    quiz = _sample_quiz()
+
+    def slow_structured_chat(**kwargs):
+        time.sleep(0.05)
+
+    report = run_agent_review(
+        conn=conn,
+        document_id=1,
+        quiz=quiz,
+        quiz_path=tmp_path / "quiz.json",
+        output_dir=tmp_path / "agent_review",
+        model_name="gemma-python",
+        model_profile=MODEL_PROFILES["cpu-local"],
+        allow_web=False,
+        vision_pages="off",
+        max_steps=1,
+        item_timeout=0.01,
+        debug_agent=False,
+        client=object(),
+        structured_chat=slow_structured_chat,
+    )
+
+    item = report.items[0]
+    assert item.verdict == "key_supported"
+    assert any(
+        finding.finding_type == "agent_item_timeout"
+        for finding in item.quality_findings
+    )
 
 
 def test_agent_report_renderer_includes_quality_findings():
@@ -478,6 +514,7 @@ def test_history_ch20_agent_quality_acceptance(tmp_path):
         allow_web=False,
         vision_pages="off",
         max_steps=1,
+        item_timeout=None,
         debug_agent=False,
         client=None,
     )

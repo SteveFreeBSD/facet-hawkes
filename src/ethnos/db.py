@@ -21,12 +21,9 @@ from .db_core import (
     list_chunks,
     list_documents,
     list_pages,
+    rebuild_fts_index,
     save_chunks,
     save_document_pages,
-    _chunk_from_row,
-    _chunk_from_status_row,
-    _ensure_column,
-    _is_study_content_role,
 )
 from .db_outputs import (
     backfill_chunk_summaries,
@@ -35,10 +32,6 @@ from .db_outputs import (
     refresh_normalized_records,
     save_extraction_result,
     save_model_output,
-    _chunk_source_pages,
-    _delete_normalized_chunk_records,
-    _record_source_pages,
-    _should_persist_study_records,
 )
 from .db_query import (
     add_continuation_context_chunks,
@@ -88,6 +81,7 @@ __all__ = [
     "list_structure_chunk_status",
     "list_structured_records",
     "quality_report",
+    "rebuild_fts_index",
     "refresh_normalized_records",
     "save_chunks",
     "save_document_pages",
@@ -98,12 +92,4 @@ __all__ = [
     "section_label_status",
     "select_chunks_for_structure",
     "structure_status",
-    "_chunk_from_row",
-    "_chunk_from_status_row",
-    "_chunk_source_pages",
-    "_delete_normalized_chunk_records",
-    "_ensure_column",
-    "_is_study_content_role",
-    "_record_source_pages",
-    "_should_persist_study_records",
 ]

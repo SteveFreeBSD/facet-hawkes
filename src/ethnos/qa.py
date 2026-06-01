@@ -6,61 +6,12 @@ import json
 from pathlib import Path
 import re
 from dataclasses import dataclass, field
-from functools import lru_cache
 from typing import Any
 
+from .prompt_cache import read_prompt_template
+from .text_utils import QUESTION_STOPWORDS, compact_text
 
 DEFAULT_ANSWER_PROMPT = Path(__file__).resolve().parents[2] / "prompts" / "answer.md"
-QUESTION_STOPWORDS = {
-    "a",
-    "an",
-    "and",
-    "are",
-    "about",
-    "best",
-    "book",
-    "can",
-    "define",
-    "definition",
-    "describe",
-    "did",
-    "do",
-    "does",
-    "explain",
-    "for",
-    "from",
-    "give",
-    "handle",
-    "how",
-    "idea",
-    "ideas",
-    "in",
-    "is",
-    "it",
-    "main",
-    "matches",
-    "mean",
-    "means",
-    "me",
-    "of",
-    "on",
-    "say",
-    "the",
-    "that",
-    "text",
-    "they",
-    "this",
-    "those",
-    "tell",
-    "to",
-    "used",
-    "what",
-    "when",
-    "where",
-    "which",
-    "who",
-    "why",
-}
 WEAKER_FALLBACK_TERMS = {
     "approach",
     "case",
@@ -138,14 +89,9 @@ def build_answer_prompt(
     max_chars: int,
     prompt_path: Path = DEFAULT_ANSWER_PROMPT,
 ) -> str:
-    template = _prompt_template(prompt_path)
+    template = read_prompt_template(prompt_path)
     context = build_answer_context(context_rows, max_chars)
     return template.format(question=question, context=context)
-
-
-@lru_cache(maxsize=16)
-def _prompt_template(prompt_path: Path) -> str:
-    return prompt_path.read_text(encoding="utf-8")
 
 
 def normalize_answer_role(role: str) -> str | None:
@@ -730,7 +676,4 @@ def _retrieve_single_with_fallbacks(
 
 
 def _preview_text(text: str, max_chars: int) -> str:
-    compact = " ".join(text.split())
-    if len(compact) <= max_chars:
-        return compact
-    return compact[: max_chars - 3].rstrip() + "..."
+    return compact_text(text, max_chars)

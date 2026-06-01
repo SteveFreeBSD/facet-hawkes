@@ -1185,6 +1185,7 @@ def quiz_bench_cmd(args) -> int:
                 num_ctx=num_ctx,
                 allowed_options=tuple(item["options"].keys()),
                 client=ollama_client,
+                think=settings.ollama_think,
             )
             answer_elapsed = time.monotonic() - answer_started_at
             selected_option = result.selected_option
@@ -1237,6 +1238,7 @@ def quiz_bench_cmd(args) -> int:
                 num_predict=num_predict,
                 num_ctx=num_ctx,
                 client=ollama_client,
+                think=settings.ollama_think,
             )
             answer_elapsed = time.monotonic() - answer_started_at
             validation_status = result.validation_status
@@ -1474,6 +1476,7 @@ def mc_bench_cmd(args) -> int:
                 num_ctx=num_ctx,
                 allowed_options=tuple(item["options"].keys()),
                 client=ollama_client,
+                think=settings.ollama_think,
             )
             answer_elapsed = time.monotonic() - answer_started_at
             selected_option = result.selected_option
