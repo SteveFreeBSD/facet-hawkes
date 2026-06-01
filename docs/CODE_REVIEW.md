@@ -1,6 +1,6 @@
 # Code Review
 
-Findings from code review on 2026-06-01. Baseline: 194 tests passing,
+Findings from code review on 2026-06-01. Baseline: 201 tests passing,
 ruff/vulture clean, `gemma-python` on `caspian`. The findings below are source
 verified against the current tree; upstream Ollama/Gemma references were checked
 on 2026-06-01.

@@ -32,6 +32,7 @@ from ...qa import (
     normalize_answer_role,
     resolve_chat_followup,
 )
+from ...qa_agent import run_agentic_qa
 from ...section_presets import SECTION_LABELS
 
 
@@ -70,6 +71,17 @@ def register(subcommands):
         type=Path,
         help="Write one local JSON trace file for this answered question.",
     )
+    ask_parser.add_argument(
+        "--agentic",
+        action="store_true",
+        help="Use opt-in agentic local-PDF search/inspect before answering.",
+    )
+    ask_parser.add_argument(
+        "--agent-max-steps",
+        type=int,
+        default=4,
+        help="Maximum agentic Q&A tool-loop steps when --agentic is used.",
+    )
 
     chat_parser = add_command(
         subcommands,
@@ -104,6 +116,17 @@ def register(subcommands):
         type=Path,
         help="Write one local JSON trace file per answered question.",
     )
+    chat_parser.add_argument(
+        "--agentic",
+        action="store_true",
+        help="Use opt-in agentic local-PDF search/inspect before answering.",
+    )
+    chat_parser.add_argument(
+        "--agent-max-steps",
+        type=int,
+        default=4,
+        help="Maximum agentic Q&A tool-loop steps when --agentic is used.",
+    )
 
     trace_parser = add_command(
         subcommands,
@@ -120,6 +143,7 @@ def register(subcommands):
 def ask_cmd(args) -> int:
     settings, conn = open_db(args)
     _validate_answer_options(args, settings)
+    _validate_agentic_options(args)
     _answer_once(
         settings=settings,
         conn=conn,
@@ -137,6 +161,8 @@ def ask_cmd(args) -> int:
         debug_ollama=args.debug_ollama,
         trace_dir=args.trace_dir,
         mode="ask",
+        agentic=args.agentic,
+        agent_max_steps=args.agent_max_steps,
     )
     return 0
 
@@ -144,6 +170,7 @@ def ask_cmd(args) -> int:
 def chat_cmd(args) -> int:
     settings, conn = open_db(args)
     _validate_answer_options(args, settings)
+    _validate_agentic_options(args)
     model_name = args.model or settings.ollama_model
     num_predict = answer_num_predict(args, settings)
     num_ctx = ollama_num_ctx(args, settings)
@@ -195,6 +222,8 @@ def chat_cmd(args) -> int:
                 mode="chat",
                 followup=followup,
                 client=ollama_client,
+                agentic=args.agentic,
+                agent_max_steps=args.agent_max_steps,
             )
             previous_question = question
             print()
@@ -224,6 +253,8 @@ def _answer_once(
     mode: str,
     followup=None,
     client: OllamaClientProtocol | None = None,
+    agentic: bool = False,
+    agent_max_steps: int = 4,
 ):
     # Late import to support monkeypatching via "ethnos.cli.answer_question"
     from .. import answer_question as _answer_question
@@ -231,6 +262,83 @@ def _answer_once(
     started_at = time.monotonic()
     retrieval_question = retrieval_question or question
     selected_role = normalize_answer_role(role)
+    agentic_trace = None
+    if agentic:
+        prompt_question = question
+        if (
+            followup is not None
+            and followup.detected
+            and retrieval_question != question
+        ):
+            prompt_question = (
+                f"{question}\nResolved follow-up for retrieval: {retrieval_question}"
+            )
+        if client is None:
+            from .. import create_client as _create_client
+
+            client = _create_client(settings.ollama_host, settings.ollama_timeout)
+        agent_result = run_agentic_qa(
+            conn=conn,
+            document_id=document_id,
+            question=prompt_question,
+            output_dir=trace_dir or Path("."),
+            model_name=model_name,
+            num_predict=num_predict,
+            num_ctx=num_ctx,
+            think=think,
+            role=role,
+            section=section,
+            limit=limit,
+            chars=chars,
+            max_steps=agent_max_steps,
+            client=client,
+        )
+        agentic_trace = agent_result.trace
+        if agent_result.finalized:
+            elapsed = time.monotonic() - started_at
+            print(f"Question: {question}")
+            if debug_retrieval or debug_ollama:
+                if followup is not None:
+                    _print_followup_debug(followup)
+                if retrieval_question != question:
+                    print(f"Retrieval question: {retrieval_question}")
+                print("Agentic Q&A: finalized")
+            print()
+            if agent_result.retrieval.rows:
+                print("Selected context chunks:")
+                _print_context_sources(agent_result.retrieval.rows)
+            else:
+                print("Selected context chunks: none")
+            print()
+            print("Answer:")
+            print(agent_result.answer_text)
+            print()
+            print("Sources:")
+            if agent_result.retrieval.rows:
+                _print_context_sources(agent_result.retrieval.rows)
+            else:
+                print("none")
+            _maybe_write_answer_trace(
+                trace_dir=trace_dir,
+                document_id=document_id,
+                question=question,
+                retrieval=agent_result.retrieval,
+                model_name=model_name,
+                num_predict=num_predict,
+                num_ctx=num_ctx,
+                answer_text=agent_result.answer_text,
+                elapsed_seconds=elapsed,
+                context_found=bool(agent_result.retrieval.rows),
+                mode=mode,
+                followup=followup,
+                ollama_debug_info=agent_result.debug_info,
+                rewritten_retrieval_question=(
+                    retrieval_question if retrieval_question != question else None
+                ),
+                agentic_trace=agentic_trace,
+            )
+            return agent_result.retrieval
+
     retrieval = retrieve_answer_context(
         conn,
         document_id=document_id,
@@ -271,6 +379,7 @@ def _answer_once(
             rewritten_retrieval_question=(
                 retrieval_question if retrieval_question != question else None
             ),
+            agentic_trace=agentic_trace,
         )
         return retrieval
 
@@ -328,6 +437,7 @@ def _answer_once(
         rewritten_retrieval_question=(
             retrieval_question if retrieval_question != question else None
         ),
+        agentic_trace=agentic_trace,
     )
     return retrieval
 
@@ -348,6 +458,7 @@ def _maybe_write_answer_trace(
     followup=None,
     ollama_debug_info=None,
     rewritten_retrieval_question=None,
+    agentic_trace=None,
 ) -> Path | None:
     if trace_dir is None:
         return None
@@ -391,6 +502,8 @@ def _maybe_write_answer_trace(
         "previous_topic": followup.previous_topic if followup is not None else None,
         "rewritten_retrieval_question": rewritten_retrieval_question,
     }
+    if agentic_trace is not None:
+        trace["agentic"] = agentic_trace
     path.write_text(json.dumps(trace, indent=2, sort_keys=True), encoding="utf-8")
     print()
     print(f"Trace: {path}")
@@ -446,6 +559,16 @@ def inspect_trace_cmd(args) -> int:
     if trace.get("follow_up_detected"):
         previous = trace.get("previous_question") or "(unknown)"
         print(f"Follow-up detected: yes, previous question: {previous}")
+    agentic = trace.get("agentic")
+    if isinstance(agentic, dict):
+        fallback = agentic.get("fallback_reason")
+        status = agentic.get("source_status") or "fallback"
+        print(
+            "Agentic Q&A: "
+            f"steps={len(agentic.get('actions') or [])}, "
+            f"source_status={status}, "
+            f"fallback={fallback or 'none'}"
+        )
     chunks = trace.get("selected_chunks") or []
     print(f"Selected chunks: {len(chunks)}")
     for chunk in chunks:
@@ -491,3 +614,8 @@ def _print_trace_ollama_summary(ollama: dict | None) -> None:
 
 def _yes_no(value: bool) -> str:
     return "yes" if value else "no"
+
+
+def _validate_agentic_options(args) -> None:
+    if args.agent_max_steps < 1:
+        raise SystemExit("--agent-max-steps must be 1 or greater.")

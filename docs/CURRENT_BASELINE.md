@@ -31,6 +31,9 @@ hardening work, start with [`CTO_REVIEW.md`](CTO_REVIEW.md).
   terms/questions; admin/support material is summary-only.
 - `ask` works with local Ollama retrieval context.
 - `chat` works with the same retrieval and answer path.
+- `ask` and `chat` support opt-in Agentic Q&A with local-PDF search/inspect
+  tools, quiet terminal output, trace details when requested, and fixed Q&A
+  fallback.
 - `ask` and `chat` can write local JSON traces with `--trace-dir`.
 - `inspect-trace` summarizes local answer traces without calling Ollama.
 - Comparison-aware retrieval works for retrieval-only benchmark cases.
@@ -59,7 +62,7 @@ Observed on 2026-06-01:
 - `uv run ruff check .`: passed.
 - `uv run ruff format --check .`: passed.
 - `uv run python -m compileall -q src tests`: passed.
-- `uv run pytest`: 194 passed.
+- `uv run pytest`: 201 passed.
 - `uv run vulture src tests --min-confidence 80`: clean and enforced in CI.
 - CPU-local Agent Review deterministic probe for `history_ch20_canvas.json`:
   `20` keyed answers supported, `17` pass items, `3` inspect items, and the

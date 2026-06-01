@@ -19,6 +19,9 @@ and every report should separate model behavior from source quality.
 - **Agent Review**: quiz items are reviewed with deterministic PDF tools,
   evidence strength, confidence scoring, distractor audit, quality findings, and
   pass/inspect/fix priorities.
+- **Agentic Q&A**: `ask` and `chat` can opt into a local-PDF tool loop that
+  searches and inspects evidence before answering, with fixed Q&A preserved as
+  the fast baseline.
 - **Real quiz workflows**: Canvas-style mixed quizzes, answer keys, true/false,
   essays, incomplete matching items, generated quizzes, source grounding, and
   benchmark reports all use one coherent pipeline.
@@ -27,7 +30,7 @@ and every report should separate model behavior from source quality.
   or hybrid profiles are optional, explicit, and benchmark-gated.
 - **Review-ready engineering**: `src/` layout, modular CLI commands, Pydantic
   schemas, SQLite WAL/FTS5, safe SQL identifiers, centralized Ollama client,
-  retry backoff, formatter/linter/dead-code checks, and 194 passing tests.
+  retry backoff, formatter/linter/dead-code checks, and 201 passing tests.
 
 ## Flagship Result
 
@@ -210,12 +213,18 @@ uv run ethnos ask 1 "What is methodological ethical naturalism?"
 uv run ethnos ask 1 "What are the main ideas in evolutionary ethics?" --limit 4
 uv run ethnos ask 1 "Tell me about the accessibility checklist" --role all --limit 3
 uv run ethnos ask 1 "What is virtue ethics?" --trace-dir data/runs
+uv run ethnos ask 1 "What is virtue ethics?" --agentic --trace-dir data/runs
 ```
 
 `ask` uses local Ollama only. It retrieves FTS5 context first, defaults to
 `--role core`, sends only the selected context and question to the model, and
 does not mutate the database. Use `--role all` to search across all labeled
 roles.
+
+Use `--agentic` when you want adaptive local-PDF Q&A. Agentic mode lets the
+model call read-only tools (`search_pdf`, `inspect_chunk`, and `inspect_page`)
+for up to `--agent-max-steps 4` turns before answering. If it cannot finalize,
+Ethnos falls back to the fixed Q&A path.
 
 The current default working model is `gemma-python`, with temperature `0`, an
 answer budget from `ETHNOS_OLLAMA_ANSWER_NUM_PREDICT` (`1536` by default), and
@@ -232,6 +241,7 @@ Start a simple local terminal loop with the same retrieval and answer path:
 ```bash
 uv run ethnos chat 1
 uv run ethnos chat 1 --role core --limit 4 --trace-dir data/runs
+uv run ethnos chat 1 --agentic --trace-dir data/runs
 ```
 
 In chat mode, type a question and press Enter. Type `quit`, `exit`, or `:q` to
@@ -257,6 +267,7 @@ guide, and host profiles are documented in:
 - [`docs/CTO_REVIEW.md`](docs/CTO_REVIEW.md)
 - [`docs/CURRENT_BASELINE.md`](docs/CURRENT_BASELINE.md)
 - [`docs/AGENT_REVIEW.md`](docs/AGENT_REVIEW.md)
+- [`docs/AGENTIC_QA.md`](docs/AGENTIC_QA.md)
 - [`docs/MIGRATION.md`](docs/MIGRATION.md)
 - [`docs/OLLAMA_TROUBLESHOOTING.md`](docs/OLLAMA_TROUBLESHOOTING.md)
 - [`docs/PERFORMANCE_TUNING.md`](docs/PERFORMANCE_TUNING.md)

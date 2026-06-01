@@ -11,6 +11,7 @@ authoritative, what was verified, and how future changes should stay aligned.
 - Ollama troubleshooting: [`OLLAMA_TROUBLESHOOTING.md`](OLLAMA_TROUBLESHOOTING.md).
 - Suspicious answer debugging: [`TRACE_DEBUGGING.md`](TRACE_DEBUGGING.md).
 - Agentic model review: [`AGENT_REVIEW.md`](AGENT_REVIEW.md).
+- Agentic Q&A: [`AGENTIC_QA.md`](AGENTIC_QA.md).
 - Code review and bug findings: [`CODE_REVIEW.md`](CODE_REVIEW.md).
 - Migration procedure: [`MIGRATION.md`](MIGRATION.md).
 - Host-specific facts: [`hosts/`](hosts/).
@@ -44,6 +45,10 @@ authoritative, what was verified, and how future changes should stay aligned.
   deterministic Ethnos tools, inspect PDF evidence, critique answer keys, score
   evidence strength/confidence, audit distractors, and emit auditable
   Markdown/JSON review queues.
+- Agentic Q&A brings the same local-PDF tool-loop idea to `ask` and `chat` as
+  an opt-in mode. It can call read-only search/inspect tools before answering,
+  writes trace details when requested, and falls back to fixed Q&A if the loop
+  cannot finalize.
 
 ## Current Verification
 
@@ -52,7 +57,7 @@ Observed on 2026-06-01:
 - `uv run ruff check .`: passed.
 - `uv run ruff format --check .`: passed.
 - `uv run python -m compileall -q src tests`: passed.
-- `uv run pytest`: 194 passed.
+- `uv run pytest`: 201 passed.
 - Dead-code scan with Vulture at 80% confidence: clean and enforced in CI.
 - CPU-local Agent Review probe for History chapter 20: `20` keyed answers
   supported, `17` pass items, `3` inspect items, duplicate prompt and spelling

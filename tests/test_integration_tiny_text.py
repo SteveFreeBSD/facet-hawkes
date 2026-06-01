@@ -36,6 +36,7 @@ from ethnos.models import ChunkRecord, DocumentRecord, ExtractionResult, PageRec
 from ethnos.export import export_json, export_study
 from ethnos.ollama_client import AnswerCallResult, OllamaDebugInfo
 from ethnos.qa import (
+    RetrievalResult,
     answer_query_candidates,
     benchmark_hit,
     build_answer_prompt,
@@ -51,6 +52,7 @@ from ethnos.qa import (
     retrieve_with_fallbacks,
     summarize_answer_items,
 )
+from ethnos.qa_agent import QAAgentResult
 from ethnos.section_presets import get_section_preset
 
 
@@ -1059,6 +1061,51 @@ def test_ask_cli_writes_trace_when_requested(tmp_path, capsys, monkeypatch):
     assert trace["answer_text"].startswith("Evolutionary ethics is answered")
 
 
+def test_ask_cli_agentic_answers_and_writes_trace(tmp_path, capsys, monkeypatch):
+    db_path = tmp_path / "ethnos.sqlite"
+    trace_dir = tmp_path / "runs" / "answers"
+    conn = connect(db_path)
+    init_db(conn)
+    document_id, chunks = _stored_labeled_record_document(conn)
+    calls = []
+
+    def fake_run_agentic_qa(**kwargs):
+        calls.append(kwargs)
+        return _fake_agentic_qa_result(
+            question=kwargs["question"],
+            chunk=chunks[0],
+            answer_text="Agentic answer from inspected evidence.",
+        )
+
+    monkeypatch.setattr("ethnos.cli.commands.ask.run_agentic_qa", fake_run_agentic_qa)
+    monkeypatch.setattr("ethnos.cli.create_client", lambda host, timeout: object())
+
+    exit_code = main(
+        [
+            "--db",
+            str(db_path),
+            "ask",
+            str(document_id),
+            "What is evolutionary ethics?",
+            "--agentic",
+            "--trace-dir",
+            str(trace_dir),
+        ]
+    )
+    output = capsys.readouterr().out
+    traces = list(trace_dir.glob("*.json"))
+    trace = json.loads(traces[0].read_text(encoding="utf-8"))
+
+    assert exit_code == 0
+    assert len(calls) == 1
+    assert calls[0]["max_steps"] == 4
+    assert "Agentic answer from inspected evidence." in output
+    assert "tool_results" not in output
+    assert trace["agentic"]["engine"] == "structured_json"
+    assert trace["agentic"]["fallback_reason"] is None
+    assert trace["selected_chunks"][0]["chunk_id"] == chunks[0].id
+
+
 def test_inspect_trace_cmd_summarizes_answer_trace(tmp_path, capsys, monkeypatch):
     db_path = tmp_path / "ethnos.sqlite"
     trace_dir = tmp_path / "runs"
@@ -1117,6 +1164,49 @@ def test_inspect_trace_cmd_summarizes_answer_trace(tmp_path, capsys, monkeypatch
     assert "Ollama: format=plain_text" in output
     assert "done_reason=stop" in output
     assert "Answer chars: 32" in output
+
+
+def test_inspect_trace_cmd_summarizes_agentic_block(tmp_path, capsys, monkeypatch):
+    db_path = tmp_path / "ethnos.sqlite"
+    trace_dir = tmp_path / "runs"
+    conn = connect(db_path)
+    init_db(conn)
+    document_id, chunks = _stored_labeled_record_document(conn)
+
+    def fake_run_agentic_qa(**kwargs):
+        return _fake_agentic_qa_result(
+            question=kwargs["question"],
+            chunk=chunks[0],
+            answer_text="Agentic answer.",
+        )
+
+    monkeypatch.setattr("ethnos.cli.commands.ask.run_agentic_qa", fake_run_agentic_qa)
+    monkeypatch.setattr("ethnos.cli.create_client", lambda host, timeout: object())
+    assert (
+        main(
+            [
+                "--db",
+                str(db_path),
+                "ask",
+                str(document_id),
+                "What is evolutionary ethics?",
+                "--agentic",
+                "--trace-dir",
+                str(trace_dir),
+            ]
+        )
+        == 0
+    )
+    trace_path = next(trace_dir.glob("*.json"))
+    capsys.readouterr()
+
+    exit_code = main(["inspect-trace", str(trace_path)])
+    output = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert (
+        "Agentic Q&A: steps=1, source_status=source_supported, fallback=none" in output
+    )
 
 
 def test_inspect_trace_cmd_can_show_full_answer(tmp_path, capsys):
@@ -1246,6 +1336,45 @@ def test_chat_cli_answers_and_writes_trace(tmp_path, capsys, monkeypatch):
     assert len(traces) == 1
     assert trace["command_mode"] == "chat"
     assert trace["context_found"] is True
+
+
+def test_chat_cli_agentic_preserves_followup_rewrite(tmp_path, capsys, monkeypatch):
+    db_path = tmp_path / "ethnos.sqlite"
+    conn = connect(db_path)
+    init_db(conn)
+    document_id, chunks = _stored_labeled_record_document(conn)
+    inputs = iter(
+        [
+            "What is evolutionary ethics?",
+            "How is that different from references?",
+            "quit",
+        ]
+    )
+    calls = []
+
+    def fake_input(prompt):
+        return next(inputs)
+
+    def fake_run_agentic_qa(**kwargs):
+        calls.append(kwargs)
+        return _fake_agentic_qa_result(
+            question=kwargs["question"],
+            chunk=chunks[0],
+            answer_text="Agentic chat answered.",
+        )
+
+    monkeypatch.setattr("builtins.input", fake_input)
+    monkeypatch.setattr("ethnos.cli.commands.ask.run_agentic_qa", fake_run_agentic_qa)
+    monkeypatch.setattr("ethnos.cli.create_client", lambda host, timeout: object())
+
+    exit_code = main(["--db", str(db_path), "chat", str(document_id), "--agentic"])
+    output = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert len(calls) == 2
+    assert "Agentic chat answered." in output
+    assert "Resolved follow-up for retrieval:" in calls[1]["question"]
+    assert "evolutionary ethics" in calls[1]["question"]
 
 
 def test_ask_cli_debug_retrieval_shows_query_attempts(tmp_path, capsys, monkeypatch):
@@ -2934,6 +3063,56 @@ def _stored_labeled_record_document(conn):
     save_extraction_result(conn, chunks[1].id, support_result)
     save_extraction_result(conn, chunks[2].id, admin_result)
     return document_id, chunks
+
+
+def _fake_agentic_qa_result(
+    *, question: str, chunk: ChunkRecord, answer_text: str
+) -> QAAgentResult:
+    row = {
+        "id": chunk.id,
+        "document_id": chunk.document_id,
+        "chunk_index": chunk.chunk_index,
+        "page_start": chunk.page_start,
+        "page_end": chunk.page_end,
+        "source_citation": chunk.source_citation,
+        "section_label": getattr(chunk, "section_label", None) or "chapter_content",
+        "content_role": getattr(chunk, "content_role", None) or "core",
+        "text": chunk.text,
+    }
+    return QAAgentResult(
+        finalized=True,
+        answer_text=answer_text,
+        retrieval=RetrievalResult(
+            original_question=question,
+            queries_tried=["evolutionary ethics"],
+            selected_query="evolutionary ethics",
+            rows=[row],
+            stopped_reason="agentic_finalized",
+        ),
+        trace={
+            "enabled": True,
+            "engine": "structured_json",
+            "max_steps": 4,
+            "allowed_tools": ["inspect_chunk", "inspect_page", "search_pdf"],
+            "actions": [
+                {
+                    "tool": "finalize_answer",
+                    "arguments": {},
+                    "final_answer": {
+                        "answer": answer_text,
+                        "citations": [chunk.source_citation],
+                        "evidence_chunk_ids": [chunk.id],
+                        "evidence_pages": [chunk.page_start],
+                        "confidence_score": 0.9,
+                        "source_status": "source_supported",
+                    },
+                }
+            ],
+            "tool_results": [],
+            "fallback_reason": None,
+            "source_status": "source_supported",
+        },
+    )
 
 
 def _stored_three_page_document(conn) -> int:
