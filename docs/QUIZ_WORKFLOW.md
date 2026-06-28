@@ -11,8 +11,8 @@ extraction, incomplete, invalidly anchored, or ungrounded.
 Recommended chapter workflow:
 
 1. Import a Canvas chapter quiz with `import-chapter-quiz`.
-2. Build source-grounding records with `ground-quiz`.
-3. Validate the quiz shape with `validate-quiz`.
+2. Validate the quiz shape and anchors with `validate-quiz`.
+3. Build source-grounding records with `ground-quiz`.
 4. Benchmark PDF-grounded answers with `quiz-bench`.
 5. Audit the instructor key with `verify-answer-key`.
 
@@ -39,6 +39,9 @@ uv run ethnos import-chapter-quiz ethics 3
 
 `import-chapter-quiz` writes normalized JSON only after the import and manifest
 contract pass. It fails loudly instead of clobbering a known-good fixture.
+Questions that explicitly request multiple responses, such as “select two,”
+are rejected because `external-quiz-v2` currently represents one keyed choice
+per item.
 
 ## Source Grounding
 
@@ -57,8 +60,8 @@ Grounding statuses:
 - `pdf_grounded`: anchored source chunks/citation validate against the PDF.
 - `retrieved_candidate`: no explicit anchor, but retrieval found PDF context.
 - `source_missing_in_local_pdf`: the item is tagged `external_source_item`
-  for backward-compatible fixture import, but the current local PDF extraction
-  does not contain enough source text to score it as grounded.
+  because the current local PDF extraction does not contain enough source text
+  to score it as grounded.
 - `incomplete`: the item is incomplete, such as missing matching pairs.
 - `invalid_anchor`: anchor metadata exists but does not validate.
 - `ungrounded`: no usable PDF source was found.
@@ -80,6 +83,10 @@ uv run ethnos validate-quiz 1 \
 Use `--strict-complete` when incomplete matching items or other import warnings
 should fail validation.
 
+An item tagged `external_source_item` is exempt from required anchor fields
+because its source is explicitly absent from the local PDF. Any anchor fields
+that are present are still validated.
+
 ## Benchmarking
 
 `quiz-bench` answers mixed quizzes from retrieved PDF context:
@@ -90,6 +97,15 @@ uv run ethnos quiz-bench 1 \
   --output data/runs/ethics_ch3_key_check.json \
   --options-retrieval
 ```
+
+With `--output`, the report is written atomically after every completed item.
+If the process is interrupted, rerun the identical command with `--resume`.
+Resume validates the document, quiz, model, item order, and run configuration
+before continuing. `verify-answer-key` refuses incomplete checkpoints.
+
+When a quiz item has validated `source_chunks`, those anchors are the complete
+model context. Retrieval queries and candidates remain in diagnostics, but
+unrelated retrieved chunks are not mixed into the answer prompt.
 
 It reports:
 
@@ -106,6 +122,11 @@ Each benchmark item includes a `source_grounding` record so downstream tools can
 distinguish a likely wrong key from missing local PDF source material.
 Benchmark summaries separate `grounded accuracy` from `source coverage`; this
 keeps model correctness and source availability honest.
+
+When an instructor key is known but conflicts with the available PDF evidence,
+set `key_review_status` to `disputed` in the manifest override and explain the
+issue in `instructor_key_note`. The item remains visible in instructor-key
+agreement and key-audit findings, but is excluded from grounded accuracy.
 
 ## Answer-Key Audit
 

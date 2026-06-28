@@ -21,6 +21,7 @@ overrides needed for source anchors or retrieval hints.
 | 1 | `ethics_ch1_canvas_raw.txt` | `ethics_ch1_canvas_answer_key.txt` | `ethics_ch1_canvas.json` | Keyed choice quiz. |
 | 2 | `ethics_ch2_canvas_raw.txt` | none yet | `ethics_ch2_canvas.json` | Mixed quiz with unkeyed choice items, one incomplete matching item, and essay prompts. |
 | 3 | `ethics_ch3_canvas_raw.txt` | `ethics_ch3_canvas_answer_key.txt` | `ethics_ch3_canvas.json` | Keyed choice quiz with manifest source anchors. |
+| 5 | `ethics_ch5_canvas_raw.txt` | `ethics_ch5_canvas_answer_key.txt` | `ethics_ch5_canvas.json` | Keyed utilitarianism quiz; nine items are PDF-anchored and question 1 is explicitly external-source. |
 
 ## One-Command Import
 
@@ -32,16 +33,26 @@ The normalized JSON is written only after validation and manifest checks pass.
 Use manifest `item_overrides` to attach source anchors, retrieval questions,
 warning tags, or notes without hand-editing the normalized JSON.
 
-Chapter 3 question 9 is tagged `external_source_item` for backward-compatible
-fixture import, but the review meaning is `source_missing_in_local_pdf`: the
-St. Catherine/Maxentius source text is not present in the current local
-`ethics.pdf` extraction. Quiz benchmarking reports it as source coverage
-missing instead of counting it as a model error or a PDF no-context failure.
+Chapter 3 question 9 is tagged `external_source_item`, with review status
+`source_missing_in_local_pdf`: the St. Catherine/Maxentius source text is not
+present in the current local `ethics.pdf` extraction. Quiz benchmarking reports
+it as source coverage missing instead of counting it as a model error or a PDF
+no-context failure.
+
+Chapter 5 question 1 is also tagged `external_source_item`: the exact “needs of
+the many” wording is associated with *Star Trek* and is absent from the local
+PDF, while the instructor key identifies Jeremy Bentham. Questions 2–10 are
+anchored to chapter 5 source chunks. Question 9 is keyed as “both a and b”; the
+PDF directly supports the beer comparison but does not literally call *Hamlet*
+boring, so it is marked `key_review_status: disputed`. It remains in
+instructor-key agreement and audit results but is excluded from grounded
+accuracy.
 
 ```bash
 uv run ethnos import-chapter-quiz ethics 1
 uv run ethnos import-chapter-quiz ethics 2
 uv run ethnos import-chapter-quiz ethics 3
+uv run ethnos import-chapter-quiz ethics 5
 ```
 
 Use `--review` when you want the full keyed/unkeyed item listing after import.
@@ -71,6 +82,13 @@ uv run ethnos import-canvas-quiz benchmarks/ethics_ch3_canvas_raw.txt \
   --document-id 1 \
   --title "Quiz CH 3" \
   --id-prefix ch3-q
+
+uv run ethnos import-canvas-quiz benchmarks/ethics_ch5_canvas_raw.txt \
+  --answer-key benchmarks/ethics_ch5_canvas_answer_key.txt \
+  --output benchmarks/ethics_ch5_canvas.json \
+  --document-id 1 \
+  --title "Ethics Chapter 5 Quiz" \
+  --id-prefix ch5-q
 ```
 
 ## Validation
@@ -79,6 +97,7 @@ uv run ethnos import-canvas-quiz benchmarks/ethics_ch3_canvas_raw.txt \
 uv run ethnos validate-quiz 1 --quiz benchmarks/ethics_ch1_canvas.json
 uv run ethnos validate-quiz 1 --quiz benchmarks/ethics_ch2_canvas.json
 uv run ethnos validate-quiz 1 --quiz benchmarks/ethics_ch3_canvas.json
+uv run ethnos validate-quiz 1 --quiz benchmarks/ethics_ch5_canvas.json --require-anchors
 ```
 
 ## Source Grounding

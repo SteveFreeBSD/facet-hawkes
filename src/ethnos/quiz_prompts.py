@@ -98,6 +98,9 @@ def build_choice_question_guidance(
     both_guidance = _both_option_guidance(item, context_rows)
     if both_guidance:
         guidance.append(both_guidance)
+    all_guidance = _all_option_guidance(item, context_rows)
+    if all_guidance:
+        guidance.append(all_guidance)
     purpose_guidance = _purpose_option_guidance(item, context_rows)
     if purpose_guidance:
         guidance.append(purpose_guidance)
@@ -157,6 +160,40 @@ def _both_option_guidance(
         return (
             f"The context supports multiple individual options ({', '.join(supported)}). "
             f"Because option {both_label} is a 'Both' answer, select option {both_label}."
+        )
+    return None
+
+
+def _all_option_guidance(
+    item: dict[str, Any], context_rows: list[dict[str, Any]]
+) -> str | None:
+    options = normalize_options(item.get("options") or {})
+    context = _choice_guidance_context(context_rows)
+    if not options or not context:
+        return None
+    all_options = [
+        (label, text)
+        for label, text in options.items()
+        if re.search(r"\ball(?:\s+of\s+the)?\s+above\b", text, flags=re.IGNORECASE)
+    ]
+    if not all_options:
+        return None
+    individual_options = [
+        (label, text)
+        for label, text in options.items()
+        if not re.search(r"\b(?:both|neither|none|all)\b", text, flags=re.IGNORECASE)
+    ]
+    supported = [
+        label
+        for label, text in individual_options
+        if _option_text_supported(text, context)
+    ]
+    if len(individual_options) >= 2 and len(supported) == len(individual_options):
+        all_label = all_options[0][0]
+        return (
+            f"The context supports every individual option ({', '.join(supported)}). "
+            f"Because option {all_label} is an 'All of the above' answer, "
+            f"select option {all_label}."
         )
     return None
 

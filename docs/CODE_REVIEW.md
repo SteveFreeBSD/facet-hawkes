@@ -1,9 +1,8 @@
 # Code Review
 
-Findings from code review on 2026-06-01. Baseline: 201 tests passing,
-ruff/vulture clean, `gemma-python` on `caspian`. The findings below are source
-verified against the current tree; upstream Ollama/Gemma references were checked
-on 2026-06-01.
+Findings from code reviews through 2026-06-27. The full test suite passes,
+Ruff/Vulture are clean, and `gemma-python` remains the `caspian` baseline. The
+findings below are source-verified against the current tree.
 
 For model-level optimization recommendations that stay on `gemma-python`, see
 the "Getting More From gemma-python" section in
@@ -168,6 +167,41 @@ cover the full model/tool loop and allow deterministic fallback for that item.
 receive an `agent_item_timeout` quality finding and continue through
 deterministic fallback.
 
+### Quiz benchmark interruption lost completed work
+
+Status: fixed.
+
+`quiz-bench` previously wrote its report only after the final item. An interrupt
+during a CPU-heavy run discarded every completed answer and surfaced a raw
+traceback.
+
+**Fix applied**: Reports now use atomic per-item checkpoints. `--resume`
+continues only when the document, quiz, model, item prefix, and run configuration
+match. `verify-answer-key` rejects incomplete checkpoints.
+
+### Anchored quiz prompts included unrelated retrieval candidates
+
+Status: fixed.
+
+Explicit source chunks were prioritized but unrelated FTS candidates were still
+appended to the model context. Sparse questions could therefore receive correct
+anchored evidence alongside distracting text from another chapter.
+
+**Fix applied**: Validated source chunks are now the complete model context for
+anchored items. Retrieval candidates remain available in diagnostics.
+
+### Multiple-response output lacked key and scoring support
+
+Status: hardened.
+
+An experimental response shape accepted several selected labels while the quiz
+schema and scoring path still represented one correct label. This could score a
+partial match as correct.
+
+**Fix applied**: The incomplete response shape was removed. Validation now
+rejects explicit “select/choose/pick two/all” prompts until a first-class
+multiple-response item type, list-valued keys, and set-based scoring are added.
+
 ## Review Checklist
 
 Use this list when addressing findings:
@@ -187,3 +221,7 @@ Use this list when addressing findings:
 - [x] Add prompt-template cache invalidation for long-running tuning sessions.
 - [x] Add graceful shutdown regression coverage for the interactive `chat` loop.
 - [x] Add per-item timeout for the full Agent Review model/tool loop.
+- [x] Add atomic `quiz-bench` checkpoints and compatible resume validation.
+- [x] Keep anchored quiz prompts free of unrelated retrieval candidates.
+- [x] Reject unsupported multiple-response quiz items instead of mis-scoring
+      them.

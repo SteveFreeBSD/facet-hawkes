@@ -169,6 +169,150 @@
           ]
         }
       }
+    },
+    "5": {
+      "title": "Ethics Chapter 5 Quiz",
+      "expected_questions": 10,
+      "expected_total_points": 10,
+      "expected_keyed_choices": 10,
+      "expected_question_types": {
+        "multiple_choice": 10
+      },
+      "allowed_warnings": [
+        "external_source_item"
+      ],
+      "notes": "Imported from instructor-provided Canvas text and answer key. Question 1 uses a Star Trek quotation but the instructor key identifies Jeremy Bentham. Question 9 is keyed as both a and b even though the local PDF directly supports only the beer comparison.",
+      "item_overrides": {
+        "ch5-q001": {
+          "source_missing_note": "The exact quotation is associated with Star Trek and does not appear in the local ethics.pdf. The instructor identifies Jeremy Bentham as the intended answer.",
+          "warnings": [
+            "external_source_item"
+          ]
+        },
+        "ch5-q002": {
+          "target": "desirability, exhaustiveness, and impartiality",
+          "source_chunks": [
+            55,
+            56
+          ],
+          "source_pages": [
+            65,
+            66
+          ],
+          "source_citation": "ethics.pdf p. 65, chunk 55",
+          "retrieval_questions": [
+            "Mill principle of utility desirability exhaustiveness impartiality"
+          ]
+        },
+        "ch5-q003": {
+          "target": "increase net utility",
+          "source_chunks": [
+            52
+          ],
+          "source_pages": [
+            63
+          ],
+          "source_citation": "ethics.pdf p. 63, chunk 52",
+          "retrieval_questions": [
+            "utilitarians concern increase net utility"
+          ]
+        },
+        "ch5-q004": {
+          "target": "actual consequence utilitarians",
+          "source_chunks": [
+            53
+          ],
+          "source_pages": [
+            64
+          ],
+          "source_citation": "ethics.pdf p. 64, chunk 53",
+          "retrieval_questions": [
+            "actual consequence utilitarians moral rightness actual consequences"
+          ]
+        },
+        "ch5-q005": {
+          "target": "foreseeable consequence utilitarians",
+          "source_chunks": [
+            53
+          ],
+          "source_pages": [
+            64
+          ],
+          "source_citation": "ethics.pdf p. 64, chunk 53",
+          "retrieval_questions": [
+            "foreseeable consequence utilitarians moral rightness foreseeable possible consequences"
+          ]
+        },
+        "ch5-q006": {
+          "target": "act utilitarianism",
+          "source_chunks": [
+            53
+          ],
+          "source_pages": [
+            64
+          ],
+          "source_citation": "ethics.pdf p. 64, chunk 53",
+          "retrieval_questions": [
+            "act utilitarians action produces the most utility morally right action"
+          ]
+        },
+        "ch5-q007": {
+          "target": "rule utilitarianism",
+          "source_chunks": [
+            52,
+            53
+          ],
+          "source_pages": [
+            63,
+            64
+          ],
+          "source_citation": "ethics.pdf p. 63, chunk 52",
+          "retrieval_questions": [
+            "rule utilitarianism following accepted rules produces the most good"
+          ]
+        },
+        "ch5-q008": {
+          "target": "felicific calculus",
+          "source_chunks": [
+            56
+          ],
+          "source_pages": [
+            66
+          ],
+          "source_citation": "ethics.pdf p. 66, chunk 56",
+          "retrieval_questions": [
+            "felicific calculus objectively comparing any two pleasures"
+          ]
+        },
+        "ch5-q009": {
+          "instructor_key_note": "The instructor key is C (both a and b). The local PDF explicitly concludes that Bentham's calculus favors drinking the pint over reading Hamlet, but it does not literally call Hamlet boring; a source-grounded benchmark may therefore flag this key for inspection.",
+          "key_review_status": "disputed",
+          "target": "drinking a pint of beer",
+          "source_chunks": [
+            56
+          ],
+          "source_pages": [
+            66
+          ],
+          "source_citation": "ethics.pdf p. 66, chunk 56",
+          "retrieval_questions": [
+            "Bentham conclusion Hamlet pint beer happier longer"
+          ]
+        },
+        "ch5-q010": {
+          "target": "not all pleasures are equal",
+          "source_chunks": [
+            57
+          ],
+          "source_pages": [
+            67
+          ],
+          "source_citation": "ethics.pdf p. 67, chunk 57",
+          "retrieval_questions": [
+            "Mill Hamlet beer higher lower pleasures human dissatisfied pig satisfied"
+          ]
+        }
+      }
     }
   }
 }

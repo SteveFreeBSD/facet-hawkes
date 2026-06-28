@@ -13,6 +13,159 @@
       },
       "allowed_warnings": [],
       "notes": "Chapter 20 is a keyed Canvas multiple-choice quiz. Questions 15 and 20 intentionally repeat the Woodrow Wilson New Freedom prompt with different option order."
+    },
+    "22": {
+      "title": "Quiz CH 22",
+      "expected_questions": 20,
+      "expected_total_points": 100,
+      "expected_keyed_choices": 20,
+      "expected_question_types": {
+        "multiple_choice": 20
+      },
+      "allowed_warnings": [],
+      "notes": "Chapter 22 is a keyed Canvas multiple-choice quiz for The New Era. All items are anchored to the chapter source span.",
+      "item_overrides": {
+        "ch22-q001": {
+          "target": "return to normalcy",
+          "source_chunks": [157],
+          "source_pages": [174, 175, 176, 177],
+          "source_citation": "history.pdf pp. 174-177, chunk 57",
+          "retrieval_questions": ["Harding return to normalcy"]
+        },
+        "ch22-q002": {
+          "target": "lease government land in Wyoming to oil companies",
+          "source_chunks": [158],
+          "source_pages": [178, 179, 180],
+          "source_citation": "history.pdf pp. 178-180, chunk 58",
+          "retrieval_questions": ["Teapot Dome government land oil companies"]
+        },
+        "ch22-q003": {
+          "target": "accounted for 90 percent of household expenditures",
+          "source_chunks": [159],
+          "source_pages": [181, 182, 183],
+          "source_citation": "history.pdf pp. 181-183, chunk 59",
+          "retrieval_questions": ["women 90 percent household expenditures"]
+        },
+        "ch22-q004": {
+          "target": "consumer expenditures",
+          "source_chunks": [159],
+          "source_pages": [181, 182, 183],
+          "source_citation": "history.pdf pp. 181-183, chunk 59",
+          "retrieval_questions": ["easy credit consumer expenditures increased"]
+        },
+        "ch22-q005": {
+          "target": "popular culture in the 1920s",
+          "source_chunks": [159],
+          "source_pages": [181, 182, 183],
+          "source_citation": "history.pdf pp. 181-183, chunk 59",
+          "retrieval_questions": ["popular culture 1920s escape"]
+        },
+        "ch22-q006": {
+          "target": "figure of the flapper",
+          "source_chunks": [161],
+          "source_pages": [187, 188, 189],
+          "source_citation": "history.pdf pp. 187-189, chunk 61",
+          "retrieval_questions": ["flapper rejected Victorian values modesty"]
+        },
+        "ch22-q007": {
+          "target": "Great Migration",
+          "source_chunks": [162],
+          "source_pages": [190, 191, 192],
+          "source_citation": "history.pdf pp. 190-192, chunk 62",
+          "retrieval_questions": ["Great Migration New York black population 1910 1930"]
+        },
+        "ch22-q008": {
+          "target": "shipping company called the Black Star Line",
+          "source_chunks": [163],
+          "source_pages": [193, 194, 195],
+          "source_citation": "history.pdf pp. 193-195, chunk 63",
+          "retrieval_questions": ["Marcus Garvey Black Star Line return to Africa"]
+        },
+        "ch22-q009": {
+          "target": "restricted to 2 percent",
+          "source_chunks": [164],
+          "source_pages": [196, 197, 198],
+          "source_citation": "history.pdf pp. 196-198, chunk 64",
+          "retrieval_questions": ["National Origins Act restricted 2 percent"]
+        },
+        "ch22-q010": {
+          "target": "The Fundamentals",
+          "source_chunks": [164],
+          "source_pages": [196, 197, 198],
+          "source_citation": "history.pdf pp. 196-198, chunk 64",
+          "retrieval_questions": ["Lyman Milton Stewart The Fundamentals"]
+        },
+        "ch22-q011": {
+          "target": "most commonly, the Roaring Twenties",
+          "source_chunks": [158],
+          "source_pages": [178, 179, 180],
+          "source_citation": "history.pdf pp. 178-180, chunk 58",
+          "retrieval_questions": ["1920s most commonly Roaring Twenties"]
+        },
+        "ch22-q012": {
+          "target": "Harlem Renaissance was manifested in theater, art, and music",
+          "source_chunks": [163],
+          "source_pages": [193, 194, 195],
+          "source_citation": "history.pdf pp. 193-195, chunk 63",
+          "retrieval_questions": ["Harlem Renaissance theater art music culture"]
+        },
+        "ch22-q013": {
+          "target": "creation and evolution",
+          "source_chunks": [164],
+          "source_pages": [196, 197, 198],
+          "source_citation": "history.pdf pp. 196-198, chunk 64",
+          "retrieval_questions": ["Scopes trial creation evolution fundamentalism science"]
+        },
+        "ch22-q014": {
+          "target": "white supremacist organization",
+          "source_chunks": [165],
+          "source_pages": [199, 200, 201],
+          "source_citation": "history.pdf pp. 199-201, chunk 65",
+          "retrieval_questions": ["Ku Klux Klan nativism racial intolerance immigrants"]
+        },
+        "ch22-q015": {
+          "target": "country-of-origin quotas through the National Origins Act",
+          "source_chunks": [164],
+          "source_pages": [196, 197, 198],
+          "source_citation": "history.pdf pp. 196-198, chunk 64",
+          "retrieval_questions": ["Immigration Act 1924 national quotas restrict immigration"]
+        },
+        "ch22-q016": {
+          "target": "automobile industry",
+          "source_chunks": [159],
+          "source_pages": [181, 182, 183],
+          "source_citation": "history.pdf pp. 181-183, chunk 59",
+          "retrieval_questions": ["automobile mass consumption personal freedom 1920s"]
+        },
+        "ch22-q017": {
+          "target": "Harding signed",
+          "source_chunks": [158],
+          "source_pages": [178, 179, 180],
+          "source_citation": "history.pdf pp. 178-180, chunk 58",
+          "retrieval_questions": ["Harding pro-business policies 1920s"]
+        },
+        "ch22-q018": {
+          "target": "first ever nonstop solo flight",
+          "source_chunks": [161],
+          "source_pages": [187, 188, 189],
+          "source_citation": "history.pdf pp. 187-189, chunk 61",
+          "retrieval_questions": ["Charles Lindbergh first solo nonstop Atlantic flight"]
+        },
+        "ch22-q019": {
+          "target": "radicals and immigrants",
+          "source_chunks": [163],
+          "source_pages": [193, 194, 195],
+          "source_citation": "history.pdf pp. 193-195, chunk 63",
+          "retrieval_questions": ["Sacco Vanzetti fears radicals immigrants"]
+        },
+        "ch22-q020": {
+          "target": "speakeasies spawned by Prohibition",
+          "source_chunks": [161],
+          "source_pages": [187, 188, 189],
+          "source_citation": "history.pdf pp. 187-189, chunk 61",
+          "retrieval_questions": ["Prohibition bootlegging illegal speakeasies consequence"]
+        }
+      }
     }
   }
 }

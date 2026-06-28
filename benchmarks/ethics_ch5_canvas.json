@@ -1,0 +1,262 @@
+{
+  "document_id": 1,
+  "generated_count": 10,
+  "import_warnings": [],
+  "questions": [
+    {
+      "correct": "D",
+      "id": "ch5-q001",
+      "options": {
+        "A": "Aristotle",
+        "B": "Bernie Madoff",
+        "C": "John Stuart Mill",
+        "D": "Jeremy Bentham"
+      },
+      "points": 1,
+      "position": 1,
+      "question": "Who said \"The needs of the many outweigh the needs of the few?\"",
+      "question_type": "multiple_choice",
+      "source_chunks": [],
+      "source_missing_note": "The exact quotation is associated with Star Trek and does not appear in the local ethics.pdf. The instructor identifies Jeremy Bentham as the intended answer.",
+      "source_pages": [],
+      "warnings": [
+        "external_source_item"
+      ]
+    },
+    {
+      "correct": "D",
+      "id": "ch5-q002",
+      "options": {
+        "A": "Desirability",
+        "B": "Exhaustiveness",
+        "C": "Impartiality",
+        "D": "All of the above"
+      },
+      "points": 1,
+      "position": 2,
+      "question": "Which three principles does utility rely upon?",
+      "question_type": "multiple_choice",
+      "retrieval_questions": [
+        "Mill principle of utility desirability exhaustiveness impartiality"
+      ],
+      "source_chunks": [
+        55,
+        56
+      ],
+      "source_citation": "ethics.pdf p. 65, chunk 55",
+      "source_pages": [
+        65,
+        66
+      ],
+      "target": "desirability, exhaustiveness, and impartiality"
+    },
+    {
+      "correct": "A",
+      "id": "ch5-q003",
+      "options": {
+        "A": "Utilitarianism",
+        "B": "Deontology",
+        "C": "Natural Law Theory",
+        "D": "Divine Command Theory"
+      },
+      "points": 1,
+      "position": 3,
+      "question": "Which theory is concerned with increasing net utility?",
+      "question_type": "multiple_choice",
+      "retrieval_questions": [
+        "utilitarians concern increase net utility"
+      ],
+      "source_chunks": [
+        52
+      ],
+      "source_citation": "ethics.pdf p. 63, chunk 52",
+      "source_pages": [
+        63
+      ],
+      "target": "increase net utility"
+    },
+    {
+      "correct": "A",
+      "id": "ch5-q004",
+      "options": {
+        "A": "Actual Consequence Utilitarian",
+        "B": "Foreseeable Consequence Utilitarian",
+        "C": "Act Utilitarian",
+        "D": "Rule Utilitarian"
+      },
+      "points": 1,
+      "position": 4,
+      "question": "Which theory bases the evaluation of the moral rightness and wrongness of action on consequences of the actions?",
+      "question_type": "multiple_choice",
+      "retrieval_questions": [
+        "actual consequence utilitarians moral rightness actual consequences"
+      ],
+      "source_chunks": [
+        53
+      ],
+      "source_citation": "ethics.pdf p. 64, chunk 53",
+      "source_pages": [
+        64
+      ],
+      "target": "actual consequence utilitarians"
+    },
+    {
+      "correct": "B",
+      "id": "ch5-q005",
+      "options": {
+        "A": "Actual Consequence Utilitarian",
+        "B": "Foreseeable Consequence Utilitarian",
+        "C": "Act Utilitarian",
+        "D": "Rule Utilitarian"
+      },
+      "points": 1,
+      "position": 5,
+      "question": "Which theory bases the evaluation of moral rightness and wrongness of actions of possible consequences of actions?",
+      "question_type": "multiple_choice",
+      "retrieval_questions": [
+        "foreseeable consequence utilitarians moral rightness foreseeable possible consequences"
+      ],
+      "source_chunks": [
+        53
+      ],
+      "source_citation": "ethics.pdf p. 64, chunk 53",
+      "source_pages": [
+        64
+      ],
+      "target": "foreseeable consequence utilitarians"
+    },
+    {
+      "correct": "C",
+      "id": "ch5-q006",
+      "options": {
+        "A": "Actual Consequence Utilitarian",
+        "B": "Foreseeable Consequence Utilitarian",
+        "C": "Act Utilitarian",
+        "D": "Rule Utilitarian"
+      },
+      "points": 1,
+      "position": 6,
+      "question": "Which theory chooses the action that produces the most utility as the morally right action?",
+      "question_type": "multiple_choice",
+      "retrieval_questions": [
+        "act utilitarians action produces the most utility morally right action"
+      ],
+      "source_chunks": [
+        53
+      ],
+      "source_citation": "ethics.pdf p. 64, chunk 53",
+      "source_pages": [
+        64
+      ],
+      "target": "act utilitarianism"
+    },
+    {
+      "correct": "D",
+      "id": "ch5-q007",
+      "options": {
+        "A": "Actual Consequence Utilitarian",
+        "B": "Possible Consequence Utilitarian",
+        "C": "Act Utilitarian",
+        "D": "Rule Utilitarian"
+      },
+      "points": 1,
+      "position": 7,
+      "question": "Which theory state that following the rules leads to the greatest good?",
+      "question_type": "multiple_choice",
+      "retrieval_questions": [
+        "rule utilitarianism following accepted rules produces the most good"
+      ],
+      "source_chunks": [
+        52,
+        53
+      ],
+      "source_citation": "ethics.pdf p. 63, chunk 52",
+      "source_pages": [
+        63,
+        64
+      ],
+      "target": "rule utilitarianism"
+    },
+    {
+      "correct": "B",
+      "id": "ch5-q008",
+      "options": {
+        "A": "A mathematical science",
+        "B": "A way of objectively comparing any two pleasure's we might encounter",
+        "C": "A false narrative",
+        "D": "None of the above"
+      },
+      "points": 1,
+      "position": 8,
+      "question": "What is Felicific Calculus?",
+      "question_type": "multiple_choice",
+      "retrieval_questions": [
+        "felicific calculus objectively comparing any two pleasures"
+      ],
+      "source_chunks": [
+        56
+      ],
+      "source_citation": "ethics.pdf p. 66, chunk 56",
+      "source_pages": [
+        66
+      ],
+      "target": "felicific calculus"
+    },
+    {
+      "correct": "C",
+      "id": "ch5-q009",
+      "instructor_key_note": "The instructor key is C (both a and b). The local PDF explicitly concludes that Bentham's calculus favors drinking the pint over reading Hamlet, but it does not literally call Hamlet boring; a source-grounded benchmark may therefore flag this key for inspection.",
+      "key_review_status": "disputed",
+      "options": {
+        "A": "Hamlet is boring",
+        "B": "Better to drink a pint as it makes you happier, longer",
+        "C": "both a and b",
+        "D": "None of the above"
+      },
+      "points": 1,
+      "position": 9,
+      "question": "What is Bentham's conclusion regarding Hamlet?",
+      "question_type": "multiple_choice",
+      "retrieval_questions": [
+        "Bentham conclusion Hamlet pint beer happier longer"
+      ],
+      "source_chunks": [
+        56
+      ],
+      "source_citation": "ethics.pdf p. 66, chunk 56",
+      "source_pages": [
+        66
+      ],
+      "target": "drinking a pint of beer"
+    },
+    {
+      "correct": "D",
+      "id": "ch5-q010",
+      "options": {
+        "A": "There are higher pleasures",
+        "B": "Better a human dissatisfied that a pig satisfied",
+        "C": "Beer is a lower pleasure",
+        "D": "All of the above"
+      },
+      "points": 1,
+      "position": 10,
+      "question": "What is Mill's conclusion regarding Hamlet?",
+      "question_type": "multiple_choice",
+      "retrieval_questions": [
+        "Mill Hamlet beer higher lower pleasures human dissatisfied pig satisfied"
+      ],
+      "source_chunks": [
+        57
+      ],
+      "source_citation": "ethics.pdf p. 67, chunk 57",
+      "source_pages": [
+        67
+      ],
+      "target": "not all pleasures are equal"
+    }
+  ],
+  "source": "canvas_pasted_text",
+  "title": "Ethics Chapter 5 Quiz",
+  "total_points": 10,
+  "version": "external-quiz-v2"
+}

@@ -4,32 +4,33 @@
 
 ## Snapshot
 
-Observed on 2026-05-20:
+Observed on 2026-06-27:
 
 | Area | Value |
 |---|---|
-| OS/kernel | CachyOS, Linux `7.0.9-1-cachyos` x86_64 |
+| OS/kernel | CachyOS, Linux `7.1.1-2-cachyos` x86_64 |
 | CPU | AMD Ryzen Embedded V1756B with Radeon Vega Gfx |
 | Cores/threads | 4 cores / 8 threads |
 | Memory | 62 GiB RAM, 62 GiB zram swap |
 | GPU for Ollama | Integrated Radeon Vega present; Ollama currently runs CPU-only |
-| Ollama | 0.24.0, active systemd service |
+| Ollama | 0.30.10, active systemd service |
 | Ollama service env | `OLLAMA_FLASH_ATTENTION=1`, `OLLAMA_MLOCK=1`, `OLLAMA_KEEP_ALIVE=30m` |
 | Memlock | `LimitMEMLOCK=infinity` |
 | Required model | `gemma-python:latest` |
 | Installed models | Only `gemma-python:latest` |
 
-## Inventory (2026-05-20)
+## Inventory (2026-06-27)
 
-- `ollama --version`: 0.24.0.
+- `ollama --version`: 0.30.10.
 - `ollama list`: `gemma-python:latest` (7.2 GB).
-- `ollama ps`: no active models resident.
+- `ollama ps`: `gemma-python:latest` running CPU-only with context `8192`
+  during verification.
 - `systemctl show`: active/running, `LimitMEMLOCK=infinity`, environment line
 	includes `OLLAMA_FLASH_ATTENTION` and `OLLAMA_MLOCK` (see service override).
-- `uname -r`: `7.0.9-1-cachyos`.
+- `uname -r`: `7.1.1-2-cachyos`.
 - CPU governor: `schedutil`.
-- `swapon --show`: `/dev/zram0` 62.2 GiB, 1.1 MiB used.
-- `free -h`: 62 GiB total, 7.6 GiB used, 54 GiB available.
+- `swapon --show`: `/dev/zram0` 62.2 GiB with negligible use.
+- `free -h`: 62 GiB total, 47 GiB available during the snapshot.
 
 ## Current Tuning Decision
 

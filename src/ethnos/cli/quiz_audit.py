@@ -147,6 +147,9 @@ def verify_answer_key_report(
             audit_items, "source_missing_in_local_pdf"
         ),
         "invalid_response_count": audit_status_count(audit_items, "invalid_response"),
+        "disputed_key_count": sum(
+            item.get("key_review_status") == "disputed" for item in audit_items
+        ),
     }
     return {
         "report": str(report_path),
@@ -188,6 +191,8 @@ def audit_keyed_report_item(item: dict[str, object]) -> dict[str, object]:
         "source_status": source_grounding.get("source_status"),
         "keyed_option": item.get("correct"),
         "keyed_option_text": item.get("correct_option_text"),
+        "key_review_status": item.get("key_review_status"),
+        "instructor_key_note": item.get("instructor_key_note"),
         "selected_option": item.get("selected_option"),
         "selected_option_text": item.get("selected_option_text"),
         "evidence": answer.get("evidence") if isinstance(answer, dict) else None,

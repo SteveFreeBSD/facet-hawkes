@@ -17,6 +17,7 @@ from ethnos.db import (
 )
 from ethnos.models import ChunkRecord, DocumentRecord, ExtractionResult, PageRecord
 from ethnos.ollama_client import ChoiceAnswerResult, EssayAnswerResult, MCAnswerResult
+from ethnos.qa import RetrievalResult
 from ethnos.quiz import (
     ChoiceQuizItem,
     EssayQuizItem,
@@ -828,7 +829,9 @@ def test_ground_quiz_cli_writes_source_grounding_records(tmp_path, capsys):
     assert report["items"][1]["source_status"] == "retrieved_candidate"
     assert report["items"][1]["source_chunks"]
     assert report["items"][2]["source_status"] == "source_missing_in_local_pdf"
+    assert report["items"][2]["source_chunks"] == []
     assert report["items"][3]["source_status"] == "incomplete"
+    assert report["items"][3]["source_chunks"] == []
     assert "q1: pdf_grounded" in text
     assert "q3: source_missing_in_local_pdf" in text
 
@@ -975,6 +978,116 @@ def test_quiz_bench_answers_unkeyed_choice_drafts_essay_and_skips_incomplete_mat
     assert "skipped source-missing: 1" in text
 
 
+def test_quiz_bench_checkpoints_interrupts_and_resumes(tmp_path, capsys, monkeypatch):
+    db_path = tmp_path / "ethnos.sqlite"
+    quiz_path = tmp_path / "quiz.json"
+    report_path = tmp_path / "report.json"
+    conn = connect(db_path)
+    init_db(conn)
+    document_id = _stored_quiz_document(conn)
+    quiz_path.write_text(
+        json.dumps(
+            {
+                "version": "external-quiz-v2",
+                "questions": [
+                    {
+                        "id": "q1",
+                        "question": "What does virtue ethics emphasize?",
+                        "question_type": "multiple_choice",
+                        "options": {"A": "Rules", "B": "Character"},
+                        "correct": "B",
+                        "retrieval_questions": ["virtue ethics"],
+                    },
+                    {
+                        "id": "q2",
+                        "question": "Which answer repeats the source?",
+                        "question_type": "multiple_choice",
+                        "options": {"A": "Rules", "B": "Character"},
+                        "correct": "A",
+                        "key_review_status": "disputed",
+                        "instructor_key_note": "The instructor key is disputed.",
+                        "retrieval_questions": ["virtue ethics"],
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    calls = 0
+
+    def interrupt_second_answer(**kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise KeyboardInterrupt
+        return ChoiceAnswerResult(
+            raw_prompt=kwargs["prompt"],
+            raw_response='{"selected_option":"B"}',
+            selected_option="B",
+            evidence="The context supports character.",
+            source_citations=["quiz.pdf p. 1, chunk 1"],
+            validation_status="valid",
+            validation_error=None,
+        )
+
+    monkeypatch.setattr("ethnos.cli.create_client", lambda host, timeout: object())
+    monkeypatch.setattr("ethnos.cli.answer_choice_question", interrupt_second_answer)
+    command = [
+        "--db",
+        str(db_path),
+        "quiz-bench",
+        str(document_id),
+        "--quiz",
+        str(quiz_path),
+        "--output",
+        str(report_path),
+    ]
+
+    assert main(command) == 130
+    interrupted_text = capsys.readouterr().out
+    checkpoint = json.loads(report_path.read_text(encoding="utf-8"))
+
+    assert checkpoint["complete"] is False
+    assert checkpoint["processed_total"] == 1
+    assert checkpoint["items"][0]["id"] == "q1"
+    assert "checkpoint preserved" in interrupted_text
+    with pytest.raises(SystemExit, match="incomplete quiz benchmark"):
+        main(["verify-answer-key", str(report_path)])
+
+    resumed_calls = 0
+
+    def resumed_answer(**kwargs):
+        nonlocal resumed_calls
+        resumed_calls += 1
+        return ChoiceAnswerResult(
+            raw_prompt=kwargs["prompt"],
+            raw_response='{"selected_option":"B"}',
+            selected_option="B",
+            evidence="The context supports character.",
+            source_citations=["quiz.pdf p. 1, chunk 1"],
+            validation_status="valid",
+            validation_error=None,
+        )
+
+    monkeypatch.setattr("ethnos.cli.answer_choice_question", resumed_answer)
+
+    assert main([*command, "--resume"]) == 0
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+
+    assert resumed_calls == 1
+    assert report["complete"] is True
+    assert report["processed_total"] == 2
+    assert report["correct_count"] == 1
+    assert report["scored_total"] == 1
+    assert report["accuracy"] == 1.0
+    assert report["instructor_key_agreement_count"] == 1
+    assert report["instructor_key_agreement_total"] == 2
+    assert report["instructor_key_agreement"] == 0.5
+    assert report["disputed_key_count"] == 1
+    assert report["items"][1]["status"] == "incorrect"
+    assert report["items"][1]["scoring_eligible"] is False
+
+
 def test_import_mc_quiz_cli_writes_external_json(tmp_path, capsys):
     output = tmp_path / "nested" / "quiz.json"
 
@@ -1116,6 +1229,87 @@ def test_validate_mc_quiz_cli_fails_missing_required_anchor(tmp_path, capsys):
     assert "Validation failed" in text
     assert "missing target" in text
     assert "missing source_chunks" in text
+
+
+def test_validate_mc_quiz_allows_declared_external_source_without_anchor(
+    tmp_path, capsys
+):
+    db_path = tmp_path / "ethnos.sqlite"
+    quiz_path = tmp_path / "quiz.json"
+    conn = connect(db_path)
+    init_db(conn)
+    document_id = _stored_quiz_document(conn)
+    quiz_path.write_text(
+        json.dumps(
+            {
+                "questions": [
+                    {
+                        "id": "q1",
+                        "question": "Which instructor-only answer is intended?",
+                        "options": {"A": "One", "B": "Two"},
+                        "correct": "B",
+                        "warnings": ["external_source_item"],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    exit_code = main(
+        [
+            "--db",
+            str(db_path),
+            "validate-mc-quiz",
+            str(document_id),
+            "--quiz",
+            str(quiz_path),
+            "--require-anchors",
+        ]
+    )
+    text = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert "q1: ok" in text
+    assert "Validation passed" in text
+
+
+def test_validate_quiz_rejects_unsupported_multiple_response_item(tmp_path, capsys):
+    db_path = tmp_path / "ethnos.sqlite"
+    quiz_path = tmp_path / "quiz.json"
+    conn = connect(db_path)
+    init_db(conn)
+    document_id = _stored_quiz_document(conn)
+    quiz_path.write_text(
+        json.dumps(
+            {
+                "questions": [
+                    {
+                        "id": "q1",
+                        "question": "Select two principles.",
+                        "question_type": "multiple_choice",
+                        "options": {"A": "One", "B": "Two", "C": "Three"},
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    exit_code = main(
+        [
+            "--db",
+            str(db_path),
+            "validate-quiz",
+            str(document_id),
+            "--quiz",
+            str(quiz_path),
+        ]
+    )
+    text = capsys.readouterr().out
+
+    assert exit_code == 1
+    assert "multiple-response choice items are not supported" in text
 
 
 def test_validate_quiz_requires_existing_document(tmp_path):
@@ -1430,6 +1624,31 @@ def test_choice_question_guidance_handles_both_option_with_paraphrased_support()
     assert "select option c" in guidance.lower()
 
 
+def test_choice_question_guidance_handles_all_of_the_above():
+    item = {
+        "question": "Which principles support Mill's argument?",
+        "options": {
+            "A": "Desirability",
+            "B": "Exhaustiveness",
+            "C": "Impartiality",
+            "D": "All of the above",
+        },
+    }
+    rows = [
+        {
+            "text": (
+                "Mill derives the principle of utility from three considerations: "
+                "desirability, exhaustiveness, and impartiality."
+            )
+        }
+    ]
+
+    guidance = build_choice_question_guidance(item, rows)
+
+    assert "supports every individual option (A, B, C)" in guidance
+    assert "select option d" in guidance.lower()
+
+
 def test_choice_question_guidance_handles_dawes_act_purpose():
     item = {
         "question": "The Dawes Act (1887) aimed to:",
@@ -1666,6 +1885,31 @@ def test_mc_context_adds_missing_generated_source_chunk(tmp_path):
     assert rows[0]["source_citation"] == item["source_citation"]
 
 
+def test_quiz_source_context_excludes_retrieval_noise_when_anchored(tmp_path):
+    conn = connect(tmp_path / "ethnos.sqlite")
+    init_db(conn)
+    document_id = _stored_quiz_document(conn)
+    anchored = conn.execute(
+        "SELECT id, source_citation FROM chunks WHERE document_id = ? AND chunk_index = 1",
+        (document_id,),
+    ).fetchone()
+    retrieved = _context_row(999, "Unrelated retrieved context.")
+
+    rows = _add_quiz_source_context(
+        conn,
+        document_id,
+        [retrieved],
+        {
+            "source_chunks": [anchored["id"]],
+            "source_citation": anchored["source_citation"],
+        },
+        role="core",
+        section=None,
+    )
+
+    assert [row["id"] for row in rows] == [anchored["id"]]
+
+
 def test_quiz_source_context_keeps_anchors_even_when_role_filtered(tmp_path):
     conn = connect(tmp_path / "ethnos.sqlite")
     init_db(conn)
@@ -1829,6 +2073,88 @@ def test_mc_bench_uses_external_retrieval_queries(tmp_path, monkeypatch):
     assert report["items"][0]["retrieval_questions"] == [
         "What is it?",
         "virtue ethics",
+    ]
+
+
+def test_mc_bench_options_retrieval_augments_existing_context(tmp_path, monkeypatch):
+    db_path = tmp_path / "ethnos.sqlite"
+    quiz_path = tmp_path / "quiz.json"
+    report_path = tmp_path / "report.json"
+    conn = connect(db_path)
+    init_db(conn)
+    document_id = _stored_quiz_document(conn)
+    quiz = {
+        "questions": [
+            {
+                "id": "q1",
+                "question": "Which option is best?",
+                "options": {
+                    "A": "Virtue ethics",
+                    "B": "Social contract theory",
+                },
+                "correct": "A",
+            }
+        ]
+    }
+    quiz_path.write_text(json.dumps(quiz), encoding="utf-8")
+    retrieval_calls = []
+
+    def fake_retrieve_mc_context(_conn, **kwargs):
+        query = kwargs["question"]
+        retrieval_calls.append(query)
+        if "Virtue ethics" in query:
+            rows = [_context_row(2, "Virtue ethics emphasizes character.")]
+        else:
+            rows = [_context_row(1, "Social contract theory emphasizes agreements.")]
+        return RetrievalResult(
+            original_question=query,
+            queries_tried=[query],
+            selected_query=query,
+            rows=rows,
+            stopped_reason="context_found",
+        )
+
+    monkeypatch.setattr(
+        "ethnos.cli.commands.quiz._retrieve_mc_context", fake_retrieve_mc_context
+    )
+    monkeypatch.setattr("ethnos.cli.create_client", lambda host, timeout: object())
+    monkeypatch.setattr(
+        "ethnos.cli.answer_mc_question",
+        lambda **kwargs: MCAnswerResult(
+            raw_prompt=kwargs["prompt"],
+            raw_response='{"selected_option":"A"}',
+            selected_option="A",
+            validation_status="valid",
+            validation_error=None,
+        ),
+    )
+
+    assert (
+        main(
+            [
+                "--db",
+                str(db_path),
+                "mc-bench",
+                str(document_id),
+                "--quiz",
+                str(quiz_path),
+                "--output",
+                str(report_path),
+                "--options-retrieval",
+            ]
+        )
+        == 0
+    )
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+
+    assert retrieval_calls == [
+        "Which option is best?",
+        "Which option is best? Virtue ethics Social contract theory",
+    ]
+    assert report["items"][0]["selected_chunks"] == [2, 1]
+    assert report["items"][0]["retrieval_questions"] == [
+        "Which option is best?",
+        "Which option is best? Virtue ethics Social contract theory",
     ]
 
 
@@ -2005,6 +2331,8 @@ def test_verify_answer_key_flags_conflicts_and_unresolved_items(tmp_path, capsys
                         "selected_option_text": "That sin affects our moral life but not our rational life",
                         "correct": "D",
                         "correct_option_text": "None of the above",
+                        "key_review_status": "disputed",
+                        "instructor_key_note": "The instructor key conflicts with the PDF.",
                         "answer": {
                             "evidence": "The text says sin affects moral life but not rational life.",
                             "source_citations": ["ethics.pdf p. 49, chunk 36"],
@@ -2052,6 +2380,7 @@ def test_verify_answer_key_flags_conflicts_and_unresolved_items(tmp_path, capsys
     assert audit["keyed_item_count"] == 4
     assert audit["key_supported_count"] == 1
     assert audit["key_conflict_candidate_count"] == 1
+    assert audit["disputed_key_count"] == 1
     assert audit["source_missing_count"] == 1
     assert audit["external_source_count"] == 1
     assert audit["no_pdf_context_count"] == 1
@@ -2059,6 +2388,7 @@ def test_verify_answer_key_flags_conflicts_and_unresolved_items(tmp_path, capsys
     assert audit["items"][2]["audit_status"] == "source_missing_in_local_pdf"
     assert audit["items"][1]["selected_option"] == "B"
     assert audit["items"][1]["keyed_option"] == "D"
+    assert audit["items"][1]["key_review_status"] == "disputed"
     assert "q8: key_conflict_candidate" in text
     assert "source missing in local PDF: 1" in text
     assert (
@@ -2082,6 +2412,22 @@ def _keyed_choice_count(items: list[dict[str, object]]) -> int:
         if item.get("question_type") in {"multiple_choice", "true_false"}
         and "correct" in item
     )
+
+
+def _context_row(chunk_id: int, text: str) -> dict[str, object]:
+    return {
+        "id": chunk_id,
+        "document_id": 1,
+        "chunk_index": chunk_id,
+        "page_start": chunk_id,
+        "page_end": chunk_id,
+        "source_citation": f"quiz.pdf p. {chunk_id}, chunk {chunk_id}",
+        "section_label": "chapter_content",
+        "content_role": "core",
+        "snippet": text,
+        "score": 0.0,
+        "text": text,
+    }
 
 
 def _stored_quiz_document(conn) -> int:

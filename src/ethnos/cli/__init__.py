@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
 from .commands import agent as agent_commands
@@ -56,7 +57,11 @@ def main(argv: list[str] | None = None) -> int:
     if not hasattr(args, "handler"):
         parser.print_help()
         return 2
-    return args.handler(args)
+    try:
+        return args.handler(args)
+    except KeyboardInterrupt:
+        print("\nInterrupted.", file=sys.stderr)
+        return 130
 
 
 __all__ = [

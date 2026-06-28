@@ -228,10 +228,9 @@ Capture the current state before any changes and record it in
 
 ### Phase 2: Ollama Upgrade Evaluation
 
-- As of 2026-06-01, local `caspian` and `erosion` are on Ollama 0.24.0, which
-  is the current stable project baseline and matches the latest upstream
-  release checked for this review. The tracked Python client is `ollama==0.6.2`
-  in `uv.lock`.
+- As of 2026-06-27, `caspian` is on Ollama 0.30.10. The last recorded
+  `erosion` snapshot is 0.24.0 and must be rechecked on-host before comparison.
+  The tracked Python client remains `ollama==0.6.2` in `uv.lock`.
 - Treat release candidates, nightly builds, and architecture rewrites as
   experimental until they prove faster and stable under the same benchmarks.
 - Do not replace the current install in place. Prefer a side-by-side run or
@@ -322,7 +321,7 @@ referenced here are documented in [`CODE_REVIEW.md`](CODE_REVIEW.md). Treat the
 items below as benchmark candidates; adopt them only after they preserve
 accuracy, validity, and review trace quality.
 
-Upstream references checked on 2026-06-01:
+Upstream references checked on 2026-06-27:
 
 - [Ollama structured outputs](https://docs.ollama.com/capabilities/structured-outputs)
   support JSON schema/Pydantic validation through the `format` field.

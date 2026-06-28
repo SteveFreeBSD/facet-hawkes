@@ -37,7 +37,13 @@ hardening work, start with [`CTO_REVIEW.md`](CTO_REVIEW.md).
 - `ask` and `chat` can write local JSON traces with `--trace-dir`.
 - `inspect-trace` summarizes local answer traces without calling Ollama.
 - Comparison-aware retrieval works for retrieval-only benchmark cases.
-- Chat follow-up and continuation context appears to be present.
+- Chat follow-up and continuation context is covered by regression tests.
+- Mixed quiz benchmarks atomically checkpoint after every item and can resume
+  compatible interrupted runs.
+- Validated quiz anchors are authoritative model context; retrieval candidates
+  remain diagnostic rather than polluting anchored prompts.
+- Disputed instructor keys are audited separately and excluded from
+  PDF-grounded accuracy without being hidden from instructor-key agreement.
 
 ## Working Model
 
@@ -57,14 +63,18 @@ review baseline.
 
 ## Verification Snapshot
 
-Observed on 2026-06-01:
+Observed on 2026-06-27:
 
 - `uv run ruff check .`: passed.
 - `uv run ruff format --check .`: passed.
 - `uv run python -m compileall -q src tests`: passed.
-- `uv run pytest`: 201 passed.
+- `uv run pytest -q`: full suite passed.
 - `uv run vulture src tests --min-confidence 80`: clean and enforced in CI.
-- CPU-local Agent Review deterministic probe for `history_ch20_canvas.json`:
+
+Last recorded model-backed checks, not rerun during the 2026-06-27
+deterministic hardening pass:
+
+- CPU-local Agent Review probe for `history_ch20_canvas.json`:
   `20` keyed answers supported, `17` pass items, `3` inspect items, and the
   duplicate prompt plus `Temperence` quality findings preserved.
 - `uv run ethnos ask 1 "What is virtue ethics?" --limit 2 --num-predict 256 --debug-ollama`:
@@ -108,10 +118,10 @@ Use this list when validating a host or reviewing a change set:
 
 ## Smoke Checks
 
-These checks are safe to run inside Codex for baseline verification:
+These checks are deterministic or read-only and safe for baseline verification:
 
 ```bash
-python -m compileall -q src tests
+uv run python -m compileall -q src tests
 uv run pytest -q
 uv run ethnos documents
 uv run ethnos db-info
@@ -125,9 +135,10 @@ uv run ethnos qa-bench 1 --benchmark benchmarks/ethics_qa.json --no-ask
 git status --short
 ```
 
-## Expensive Commands To Avoid Inside Codex
+## Expensive Commands To Run Intentionally
 
-Do not run these during baseline stabilization unless explicitly requested:
+These mutate processed data or perform long model runs. Run them only when
+their cost and output location are intentional:
 
 ```bash
 uv run ethnos qa-bench 1 --benchmark benchmarks/ethics_qa.json --ask
@@ -136,9 +147,9 @@ uv run ethnos structure 1 --retry-failed
 uv run ethnos structure 1 --all-roles
 ```
 
-Also avoid long Ollama benchmarks, multi-model comparisons, PDF re-extraction,
-structured re-extraction, and product-feature experiments during baseline
-stabilization.
+Long Ollama benchmarks, multi-model comparisons, PDF re-extraction, and
+structured re-extraction should always write inspectable outputs under
+`data/runs/`.
 
 ## Local Database Recovery
 
@@ -161,8 +172,8 @@ The `structure` step is expensive because it calls Ollama. The baseline keeps
 valid model outputs and summaries for every chunk, so exact recovery uses
 `--all-roles`; normalized key terms/questions are still persisted only for core
 chunks. Omit `--all-roles` when you intentionally want a cheaper core-only
-rebuild. Do not run long structure passes inside Codex during baseline
-stabilization unless explicitly requested.
+rebuild. Do not run long structure passes during baseline stabilization unless
+the rebuild is intentional.
 
 `history.pdf` can be rebuilt the same way:
 
@@ -184,4 +195,9 @@ committed.
 
 ## Next Sensible Project Areas
 
-- Tighten tests around chat continuation behavior.
+- Add an explicit multiple-response quiz type with list-valued answer keys and
+  set-based scoring before accepting Canvas “select two/all” items.
+- Add retrieval-confidence thresholds or chapter bounds for unanchored quiz
+  candidates.
+- Add a single orchestration command for import, validation, grounding,
+  benchmark, and key audit.

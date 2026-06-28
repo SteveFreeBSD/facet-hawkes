@@ -45,7 +45,7 @@ from ..quiz_manifest import (
 )
 
 from ...db import context_chunks, get_document
-from ...qa import normalize_answer_role, retrieve_with_fallbacks
+from ...qa import RetrievalResult, normalize_answer_role, retrieve_with_fallbacks
 from ...quiz import (
     build_choice_prompt,
     build_essay_prompt,
@@ -226,7 +226,7 @@ def register(subcommands):
     validate_mc_parser.add_argument(
         "--require-anchors",
         action="store_true",
-        help="Require target, source_chunks, source_pages, and source_citation on every item.",
+        help="Require anchor fields unless an item is declared external-source.",
     )
 
     suggest_mc_parser = add_command(
@@ -265,7 +265,7 @@ def register(subcommands):
     validate_quiz_parser.add_argument(
         "--require-anchors",
         action="store_true",
-        help="Require target, source_chunks, source_pages, and source_citation on every item.",
+        help="Require anchor fields unless an item is declared external-source.",
     )
     validate_quiz_parser.add_argument(
         "--strict-complete",
@@ -285,6 +285,11 @@ def register(subcommands):
     quiz_bench_parser.add_argument("--limit", type=int, default=3)
     quiz_bench_parser.add_argument("--chars", type=int, default=900)
     quiz_bench_parser.add_argument("--output", type=Path)
+    quiz_bench_parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Resume an incomplete checkpoint from --output.",
+    )
     quiz_bench_parser.add_argument("--role", choices=ASK_ROLES, default="core")
     quiz_bench_parser.add_argument("--section", choices=sorted(SECTION_LABELS))
     quiz_bench_parser.add_argument("--options-retrieval", action="store_true")
@@ -403,6 +408,12 @@ def verify_answer_key_cmd(args) -> int:
         report = load_quiz_bench_report(args.report)
     except ValueError as exc:
         raise SystemExit(str(exc)) from exc
+    if report.get("complete") is False:
+        raise SystemExit(
+            "Cannot verify an incomplete quiz benchmark "
+            f"({report.get('processed_total', 0)}/{report.get('total', '?')} items). "
+            "Resume quiz-bench first."
+        )
     audit = verify_answer_key_report(report, report_path=args.report)
 
     print("Answer key verification")
@@ -415,6 +426,7 @@ def verify_answer_key_cmd(args) -> int:
     print(f"  no PDF context: {audit['no_pdf_context_count']}")
     print(f"  source missing in local PDF: {audit['source_missing_count']}")
     print(f"  invalid responses: {audit['invalid_response_count']}")
+    print(f"  disputed keys: {audit['disputed_key_count']}")
     print()
 
     findings = [
@@ -485,18 +497,15 @@ def ground_quiz_cmd(args) -> int:
             role=selected_role,
             section=args.section,
         )
-        if (
-            not retrieval.rows
-            and args.options_retrieval
-            and str(item.get("question_type") or "multiple_choice")
-            in {"multiple_choice", "true_false"}
-        ):
-            option_query = compact_question_with_options(item)
-            retrieval_questions.append(option_query)
-            retrieval = _retrieve_mc_context(
+        if args.options_retrieval and str(
+            item.get("question_type") or "multiple_choice"
+        ) in {"multiple_choice", "true_false"}:
+            retrieval, retrieval_questions = _with_option_aware_retrieval(
                 conn,
                 document_id=args.document_id,
-                question=option_query,
+                item=item,
+                retrieval=retrieval,
+                retrieval_questions=retrieval_questions,
                 limit=args.limit,
                 role=selected_role,
                 section=args.section,
@@ -1042,6 +1051,8 @@ def _add_selected_option_provenance(
 
 def quiz_bench_cmd(args) -> int:
     settings, conn = open_db(args)
+    if args.resume and args.output is None:
+        raise SystemExit("--resume requires --output.")
     if args.limit < 1:
         raise SystemExit("--limit must be 1 or greater.")
     if args.chars < 1:
@@ -1065,23 +1076,66 @@ def quiz_bench_cmd(args) -> int:
     model_name = args.model or settings.ollama_model
     started_at = time.monotonic()
     ollama_client = None
-    report_items = []
-    keyed_total = correct_count = scored_total = no_context_count = invalid_count = 0
-    answered_unscored_count = drafted_count = skipped_incomplete_count = 0
-    skipped_source_missing_count = 0
+    run_config = {
+        "limit": args.limit,
+        "chars": args.chars,
+        "role": selected_role,
+        "section": args.section,
+        "options_retrieval": args.options_retrieval,
+        "max_questions": args.max_questions,
+        "num_predict": num_predict,
+        "num_ctx": num_ctx,
+    }
+    report_items: list[dict[str, object]] = []
+    previous_elapsed = 0.0
+    if args.resume:
+        if not args.output.exists():
+            raise SystemExit(f"Resume checkpoint not found: {args.output}")
+        try:
+            checkpoint = load_quiz_bench_report(args.output)
+            report_items, previous_elapsed = _validate_quiz_bench_resume(
+                checkpoint,
+                document_id=args.document_id,
+                quiz_path=args.quiz,
+                model_name=model_name,
+                items=items,
+                run_config=run_config,
+            )
+        except ValueError as exc:
+            raise SystemExit(str(exc)) from exc
 
     print("Quiz benchmark")
     print(f"  document id: {args.document_id}")
     print(f"  quiz: {args.quiz}")
     print(f"  model: {model_name}")
     print(f"  questions: {len(items)}")
+    if report_items:
+        print(f"  resumed: {len(report_items)}/{len(items)} items")
     print()
 
-    for index, item in enumerate(items, start=1):
+    if len(report_items) == len(items):
+        print("Quiz benchmark already complete; nothing to resume.")
+        return 0
+
+    if args.output:
+        _write_quiz_bench_report(
+            args.output,
+            document_id=args.document_id,
+            quiz_path=args.quiz,
+            model_name=model_name,
+            items=items,
+            report_items=report_items,
+            run_config=run_config,
+            elapsed_seconds=previous_elapsed,
+        )
+
+    for index, item in enumerate(
+        items[len(report_items) :], start=len(report_items) + 1
+    ):
         item_started_at = time.monotonic()
         question_type = str(item.get("question_type") or "multiple_choice")
         keyed = question_type in {"multiple_choice", "true_false"} and "correct" in item
-        keyed_total += int(keyed)
+        disputed_key = item.get("key_review_status") == "disputed"
         selected_option = None
         validation_status = None
         validation_error = None
@@ -1096,17 +1150,16 @@ def quiz_bench_cmd(args) -> int:
             role=selected_role,
             section=args.section,
         )
-        if (
-            not retrieval.rows
-            and args.options_retrieval
-            and question_type in {"multiple_choice", "true_false"}
-        ):
-            option_query = compact_question_with_options(item)
-            retrieval_questions.append(option_query)
-            retrieval = _retrieve_mc_context(
+        if args.options_retrieval and question_type in {
+            "multiple_choice",
+            "true_false",
+        }:
+            retrieval, retrieval_questions = _with_option_aware_retrieval(
                 conn,
                 document_id=args.document_id,
-                question=option_query,
+                item=item,
+                retrieval=retrieval,
+                retrieval_questions=retrieval_questions,
                 limit=args.limit,
                 role=selected_role,
                 section=args.section,
@@ -1141,20 +1194,17 @@ def quiz_bench_cmd(args) -> int:
 
         if "external_source_item" in item.get("warnings", []):
             status = "skipped_source_missing"
-            skipped_source_missing_count += 1
             print("  status: skipped_source_missing")
         elif question_type == "matching" and "incomplete_matching_item" in item.get(
             "warnings", []
         ):
             status = "skipped_incomplete"
-            skipped_incomplete_count += 1
             print("  status: skipped_incomplete")
         elif question_type == "matching":
             status = "skipped_matching"
             print("  status: skipped_matching")
         elif not context_rows:
             status = "no_context"
-            no_context_count += 1
             print("  status: no_context")
         elif question_type in {"multiple_choice", "true_false"}:
             prompt_item = {
@@ -1176,17 +1226,26 @@ def quiz_bench_cmd(args) -> int:
             # Late import to support monkeypatching
             from .. import answer_choice_question as _answer_choice
 
-            result = _answer_choice(
-                prompt=prompt,
-                model_name=model_name,
-                host=settings.ollama_host,
-                timeout=settings.ollama_timeout,
-                num_predict=num_predict,
-                num_ctx=num_ctx,
-                allowed_options=tuple(item["options"].keys()),
-                client=ollama_client,
-                think=settings.ollama_think,
-            )
+            try:
+                result = _answer_choice(
+                    prompt=prompt,
+                    model_name=model_name,
+                    host=settings.ollama_host,
+                    timeout=settings.ollama_timeout,
+                    num_predict=num_predict,
+                    num_ctx=num_ctx,
+                    allowed_options=tuple(item["options"].keys()),
+                    client=ollama_client,
+                    think=settings.ollama_think,
+                )
+            except KeyboardInterrupt:
+                print()
+                print(
+                    f"Quiz benchmark interrupted; checkpoint preserved at {args.output}"
+                    if args.output
+                    else "Quiz benchmark interrupted; no --output checkpoint was requested."
+                )
+                return 130
             answer_elapsed = time.monotonic() - answer_started_at
             selected_option = result.selected_option
             validation_status = result.validation_status
@@ -1200,18 +1259,16 @@ def quiz_bench_cmd(args) -> int:
                 _print_ollama_debug(None, result.debug_info)
             if result.validation_status != "valid":
                 status = "invalid_response"
-                invalid_count += 1
             elif keyed:
-                scored_total += 1
                 is_correct = result.selected_option == item["correct"]
-                correct_count += int(is_correct)
                 status = "correct" if is_correct else "incorrect"
             else:
                 status = "answered_unscored"
-                answered_unscored_count += 1
             print(f"  selected option: {selected_option or 'none'}")
             if keyed:
                 print(f"  correct option: {item['correct']}")
+                if disputed_key:
+                    print("  scoring: excluded from grounded accuracy (disputed key)")
             print(f"  validation: {validation_status}")
             print(f"  status: {status}")
         elif question_type == "essay":
@@ -1230,16 +1287,25 @@ def quiz_bench_cmd(args) -> int:
                 )
             from .. import answer_essay_question as _answer_essay
 
-            result = _answer_essay(
-                prompt=prompt,
-                model_name=model_name,
-                host=settings.ollama_host,
-                timeout=settings.ollama_timeout,
-                num_predict=num_predict,
-                num_ctx=num_ctx,
-                client=ollama_client,
-                think=settings.ollama_think,
-            )
+            try:
+                result = _answer_essay(
+                    prompt=prompt,
+                    model_name=model_name,
+                    host=settings.ollama_host,
+                    timeout=settings.ollama_timeout,
+                    num_predict=num_predict,
+                    num_ctx=num_ctx,
+                    client=ollama_client,
+                    think=settings.ollama_think,
+                )
+            except KeyboardInterrupt:
+                print()
+                print(
+                    f"Quiz benchmark interrupted; checkpoint preserved at {args.output}"
+                    if args.output
+                    else "Quiz benchmark interrupted; no --output checkpoint was requested."
+                )
+                return 130
             answer_elapsed = time.monotonic() - answer_started_at
             validation_status = result.validation_status
             validation_error = result.validation_error
@@ -1255,10 +1321,8 @@ def quiz_bench_cmd(args) -> int:
                 _print_ollama_debug(None, result.debug_info)
             if result.validation_status == "valid":
                 status = "drafted"
-                drafted_count += 1
             else:
                 status = "invalid_response"
-                invalid_count += 1
             print(f"  validation: {validation_status}")
             print(f"  status: {status}")
         else:
@@ -1277,6 +1341,9 @@ def quiz_bench_cmd(args) -> int:
             "options": options,
             "warnings": item.get("warnings", []),
             "target": item.get("target"),
+            "key_review_status": item.get("key_review_status"),
+            "instructor_key_note": item.get("instructor_key_note"),
+            "scoring_eligible": bool(keyed and not disputed_key),
             "selected_option": selected_option,
             "selected_option_text": options.get(selected_option)
             if selected_option
@@ -1305,11 +1372,37 @@ def quiz_bench_cmd(args) -> int:
             report_item["matching_prompts"] = item.get("matching_prompts", [])
             report_item["matching_pairs"] = item.get("matching_pairs", [])
         report_items.append(report_item)
+        if args.output:
+            _write_quiz_bench_report(
+                args.output,
+                document_id=args.document_id,
+                quiz_path=args.quiz,
+                model_name=model_name,
+                items=items,
+                report_items=report_items,
+                run_config=run_config,
+                elapsed_seconds=previous_elapsed + (time.monotonic() - started_at),
+            )
 
     elapsed = time.monotonic() - started_at
-    accuracy = correct_count / scored_total if scored_total else None
-    source_covered_total = len(items) - skipped_source_missing_count
-    source_coverage = source_covered_total / len(items) if items else None
+    elapsed_total = previous_elapsed + elapsed
+    counts = _quiz_bench_counts(report_items)
+    keyed_total = counts["keyed_total"]
+    scored_total = counts["scored_total"]
+    correct_count = counts["correct_count"]
+    accuracy = counts["accuracy"]
+    instructor_key_agreement_total = counts["instructor_key_agreement_total"]
+    instructor_key_agreement_count = counts["instructor_key_agreement_count"]
+    instructor_key_agreement = counts["instructor_key_agreement"]
+    disputed_key_count = counts["disputed_key_count"]
+    source_covered_total = counts["source_covered_total"]
+    source_coverage = counts["source_coverage"]
+    answered_unscored_count = counts["answered_unscored_count"]
+    drafted_count = counts["drafted_count"]
+    skipped_incomplete_count = counts["skipped_incomplete_count"]
+    skipped_source_missing_count = counts["skipped_source_missing_count"]
+    no_context_count = counts["no_context_count"]
+    invalid_count = counts["invalid_response_count"]
     print("Quiz benchmark summary:")
     print(f"  total: {len(items)}")
     print(f"  keyed total: {keyed_total}")
@@ -1321,6 +1414,14 @@ def quiz_bench_cmd(args) -> int:
         else "  grounded accuracy: n/a"
     )
     print(
+        "  instructor-key agreement: "
+        f"{instructor_key_agreement_count}/{instructor_key_agreement_total} "
+        f"({instructor_key_agreement:.1%})"
+        if instructor_key_agreement is not None
+        else "  instructor-key agreement: n/a"
+    )
+    print(f"  disputed keys excluded from grounded accuracy: {disputed_key_count}")
+    print(
         f"  source coverage: {source_covered_total}/{len(items)} ({source_coverage:.1%})"
         if source_coverage is not None
         else "  source coverage: n/a"
@@ -1331,37 +1432,158 @@ def quiz_bench_cmd(args) -> int:
     print(f"  skipped source-missing: {skipped_source_missing_count}")
     print(f"  no-context cases: {no_context_count}")
     print(f"  invalid responses: {invalid_count}")
-    print(f"  elapsed: {format_elapsed(elapsed)}")
+    print(f"  elapsed: {format_elapsed(elapsed_total)}")
 
     if args.output:
-        report = {
-            "document_id": args.document_id,
-            "quiz": str(args.quiz),
-            "model": model_name,
-            "total": len(items),
-            "keyed_total": keyed_total,
-            "scored_total": scored_total,
-            "correct_count": correct_count,
-            "accuracy": accuracy,
-            "grounded_accuracy": accuracy,
-            "source_covered_total": source_covered_total,
-            "source_coverage": source_coverage,
-            "answered_unscored_count": answered_unscored_count,
-            "drafted_count": drafted_count,
-            "skipped_incomplete_count": skipped_incomplete_count,
-            "skipped_source_missing_count": skipped_source_missing_count,
-            "skipped_external_source_count": skipped_source_missing_count,
-            "no_context_count": no_context_count,
-            "invalid_response_count": invalid_count,
-            "elapsed_seconds": elapsed,
-            "items": report_items,
-        }
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(
-            json.dumps(report, indent=2, sort_keys=True), encoding="utf-8"
+        _write_quiz_bench_report(
+            args.output,
+            document_id=args.document_id,
+            quiz_path=args.quiz,
+            model_name=model_name,
+            items=items,
+            report_items=report_items,
+            run_config=run_config,
+            elapsed_seconds=elapsed_total,
         )
         print(f"  wrote report: {args.output}")
     return 0
+
+
+def _quiz_bench_counts(report_items: list[dict[str, object]]) -> dict[str, object]:
+    statuses = [str(item.get("status") or "") for item in report_items]
+    key_comparisons = [
+        item
+        for item in report_items
+        if str(item.get("status") or "") in {"correct", "incorrect"}
+    ]
+    scoring_eligible = [
+        item for item in key_comparisons if item.get("scoring_eligible") is not False
+    ]
+    scored_total = len(scoring_eligible)
+    correct_count = sum(item.get("status") == "correct" for item in scoring_eligible)
+    instructor_key_agreement_total = len(key_comparisons)
+    instructor_key_agreement_count = sum(
+        item.get("status") == "correct" for item in key_comparisons
+    )
+    processed_total = len(report_items)
+    skipped_source_missing_count = statuses.count("skipped_source_missing")
+    source_covered_total = processed_total - skipped_source_missing_count
+    return {
+        "processed_total": processed_total,
+        "keyed_total": sum("correct" in item for item in report_items),
+        "scored_total": scored_total,
+        "correct_count": correct_count,
+        "accuracy": correct_count / scored_total if scored_total else None,
+        "instructor_key_agreement_total": instructor_key_agreement_total,
+        "instructor_key_agreement_count": instructor_key_agreement_count,
+        "instructor_key_agreement": (
+            instructor_key_agreement_count / instructor_key_agreement_total
+            if instructor_key_agreement_total
+            else None
+        ),
+        "disputed_key_count": sum(
+            item.get("key_review_status") == "disputed" for item in report_items
+        ),
+        "source_covered_total": source_covered_total,
+        "source_coverage": (
+            source_covered_total / processed_total if processed_total else None
+        ),
+        "answered_unscored_count": statuses.count("answered_unscored"),
+        "drafted_count": statuses.count("drafted"),
+        "skipped_incomplete_count": statuses.count("skipped_incomplete"),
+        "skipped_source_missing_count": skipped_source_missing_count,
+        "no_context_count": statuses.count("no_context"),
+        "invalid_response_count": statuses.count("invalid_response"),
+    }
+
+
+def _write_quiz_bench_report(
+    output_path: Path,
+    *,
+    document_id: int,
+    quiz_path: Path,
+    model_name: str,
+    items: list[dict[str, object]],
+    report_items: list[dict[str, object]],
+    run_config: dict[str, object],
+    elapsed_seconds: float,
+) -> None:
+    counts = _quiz_bench_counts(report_items)
+    report = {
+        "version": "quiz-bench-v1",
+        "complete": len(report_items) == len(items),
+        "document_id": document_id,
+        "quiz": str(quiz_path),
+        "model": model_name,
+        "total": len(items),
+        "processed_total": len(report_items),
+        "expected_keyed_total": sum(
+            str(item.get("question_type") or "multiple_choice")
+            in {"multiple_choice", "true_false"}
+            and "correct" in item
+            for item in items
+        ),
+        **counts,
+        "grounded_accuracy": counts["accuracy"],
+        "skipped_external_source_count": counts["skipped_source_missing_count"],
+        "elapsed_seconds": elapsed_seconds,
+        "run_config": run_config,
+        "items": report_items,
+    }
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path = output_path.with_suffix(output_path.suffix + ".tmp")
+    temporary_path.write_text(
+        json.dumps(report, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    temporary_path.replace(output_path)
+
+
+def _validate_quiz_bench_resume(
+    checkpoint: dict[str, object],
+    *,
+    document_id: int,
+    quiz_path: Path,
+    model_name: str,
+    items: list[dict[str, object]],
+    run_config: dict[str, object],
+) -> tuple[list[dict[str, object]], float]:
+    if checkpoint.get("version") != "quiz-bench-v1":
+        raise ValueError("Resume requires a quiz-bench-v1 checkpoint.")
+    expected = {
+        "document_id": document_id,
+        "quiz": str(quiz_path),
+        "model": model_name,
+        "total": len(items),
+        "run_config": run_config,
+    }
+    mismatches = [
+        field for field, value in expected.items() if checkpoint.get(field) != value
+    ]
+    if mismatches:
+        raise ValueError(
+            "Resume checkpoint does not match this run: " + ", ".join(mismatches)
+        )
+    raw_report_items = checkpoint.get("items")
+    if not isinstance(raw_report_items, list) or not all(
+        isinstance(item, dict) for item in raw_report_items
+    ):
+        raise ValueError("Resume checkpoint items must be a list of objects.")
+    report_items = list(raw_report_items)
+    if checkpoint.get("processed_total") != len(report_items):
+        raise ValueError("Resume checkpoint processed_total does not match its items.")
+    if checkpoint.get("complete") is not (len(report_items) == len(items)):
+        raise ValueError("Resume checkpoint complete flag is inconsistent.")
+    expected_ids = [str(item["id"]) for item in items[: len(report_items)]]
+    checkpoint_ids = [str(item.get("id") or "") for item in report_items]
+    if checkpoint_ids != expected_ids:
+        raise ValueError(
+            "Resume checkpoint items are not a contiguous prefix of the quiz."
+        )
+    elapsed_seconds = checkpoint.get("elapsed_seconds")
+    if not isinstance(elapsed_seconds, (int, float)) or elapsed_seconds < 0:
+        raise ValueError("Resume checkpoint elapsed_seconds must be non-negative.")
+    return report_items, float(elapsed_seconds)
 
 
 def mc_bench_cmd(args) -> int:
@@ -1407,13 +1629,13 @@ def mc_bench_cmd(args) -> int:
             role=selected_role,
             section=args.section,
         )
-        if not retrieval.rows and args.options_retrieval:
-            option_query = compact_question_with_options(item)
-            retrieval_questions.append(option_query)
-            retrieval = _retrieve_mc_context(
+        if args.options_retrieval:
+            retrieval, retrieval_questions = _with_option_aware_retrieval(
                 conn,
                 document_id=args.document_id,
-                question=option_query,
+                item=item,
+                retrieval=retrieval,
+                retrieval_questions=retrieval_questions,
                 limit=args.limit,
                 role=selected_role,
                 section=args.section,
@@ -1675,6 +1897,57 @@ def _retrieve_quiz_context_for_item(
     return retrieval, retrieval_questions
 
 
+def _with_option_aware_retrieval(
+    conn,
+    *,
+    document_id: int,
+    item: dict[str, object],
+    retrieval: RetrievalResult,
+    retrieval_questions: list[str],
+    limit: int,
+    role: str | None,
+    section: str | None,
+) -> tuple[RetrievalResult, list[str]]:
+    option_query = compact_question_with_options(item)
+    retrieval_questions = _dedupe_quiz_queries([*retrieval_questions, option_query])
+    option_retrieval = _retrieve_mc_context(
+        conn,
+        document_id=document_id,
+        question=option_query,
+        limit=limit,
+        role=role,
+        section=section,
+    )
+    return _merge_option_retrieval(retrieval, option_retrieval), retrieval_questions
+
+
+def _merge_option_retrieval(
+    retrieval: RetrievalResult, option_retrieval: RetrievalResult
+) -> RetrievalResult:
+    rows = []
+    seen = set()
+    for row in [*option_retrieval.rows, *retrieval.rows]:
+        row_id = int(row["id"])
+        if row_id in seen:
+            continue
+        seen.add(row_id)
+        rows.append(row)
+
+    selected_queries = _dedupe_quiz_queries(
+        [option_retrieval.selected_query or "", retrieval.selected_query or ""]
+    )
+    queries_tried = _dedupe_quiz_queries(
+        [*retrieval.queries_tried, *option_retrieval.queries_tried]
+    )
+    return RetrievalResult(
+        original_question=retrieval.original_question,
+        queries_tried=queries_tried,
+        selected_query=" | ".join(selected_queries) if selected_queries else None,
+        rows=rows,
+        stopped_reason="context_found" if rows else "no_context",
+    )
+
+
 def _quiz_retrieval_report_questions(item: dict[str, object]) -> list[str]:
     return _dedupe_quiz_queries(
         [
@@ -1710,6 +1983,12 @@ def _add_quiz_source_context(
     role: str | None,
     section: str | None,
 ) -> list[dict]:
+    warnings = item.get("warnings")
+    if isinstance(warnings, list) and {
+        "external_source_item",
+        "incomplete_matching_item",
+    }.intersection(warnings):
+        return []
     source_chunks = []
     for chunk_id in item.get("source_chunks", []):
         try:
@@ -1744,5 +2023,4 @@ def _add_quiz_source_context(
     ).fetchall()
     by_id = {int(row["id"]): dict(row) for row in source_rows}
     anchored = [by_id[chunk_id] for chunk_id in source_chunks if chunk_id in by_id]
-    seen = {int(row["id"]) for row in anchored}
-    return anchored + [row for row in rows if int(row["id"]) not in seen]
+    return anchored

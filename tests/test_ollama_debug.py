@@ -7,9 +7,11 @@ from ethnos.cli import (
     _print_ollama_debug,
     answer_num_predict,
     build_parser,
+    main,
     ollama_num_ctx,
     structure_num_predict,
 )
+from ethnos.cli.commands import inspect as inspect_commands
 from ethnos.config import load_settings, parse_ollama_think
 from ethnos.ollama_client import (
     MCAnswerResult,
@@ -75,6 +77,16 @@ def test_mc_bench_parser_uses_measured_short_context_default():
     )
 
     assert args.chars == 300
+
+
+def test_cli_handles_unexpected_keyboard_interrupt(monkeypatch, capsys):
+    def interrupted(_args):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(inspect_commands, "documents_cmd", interrupted)
+
+    assert main(["documents"]) == 130
+    assert "Interrupted." in capsys.readouterr().err
 
 
 def test_response_summary_reports_compact_envelope_fields():

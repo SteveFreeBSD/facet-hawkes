@@ -63,10 +63,9 @@ Each run is also persisted to SQLite in `agent_runs` and `agent_findings`.
 
 - `cpu-local`: tuned for the current CPU-only baseline with `gemma-python`.
 - `review-local`: slightly larger CPU-only review budget with `gemma-python`.
-- `gemma3-local`: compatibility profile from the original Agent Review plan.
-  It remains available for older local experiments, but it is no longer the
-  preferred new-model target.
-- `gemma3-fast`: compatibility profile for smaller Gemma 3 checks.
+- `gemma3-local`: optional 12B-class Gemma 3 profile for explicit model
+  comparisons; it is not a baseline fallback.
+- `gemma3-fast`: optional smaller Gemma 3 comparison profile.
 - `hybrid-max`: max-capability profile for explicit web/cloud-assisted review.
 
 Existing `gemma-python` workflows remain the CPU-only baseline for structure

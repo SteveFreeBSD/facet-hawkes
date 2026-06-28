@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import sqlite3
 from typing import Any
 
@@ -41,6 +42,11 @@ def validate_quiz_item(
     errors = []
     if require_key and "correct" not in item:
         errors.append("missing correct answer")
+    key_review_status = item.get("key_review_status")
+    if key_review_status not in {None, "confirmed", "disputed"}:
+        errors.append("key_review_status must be confirmed or disputed")
+    if key_review_status == "disputed" and "correct" not in item:
+        errors.append("disputed keys must include a correct answer")
     question_type = str(item.get("question_type") or "multiple_choice")
     allowed = allowed_types or QUIZ_TYPES
     if question_type not in allowed:
@@ -53,6 +59,11 @@ def validate_quiz_item(
         options = item.get("options")
         if not isinstance(options, dict) or len(options) < 2:
             errors.append("multiple_choice items must include at least 2 options")
+        if _looks_like_unsupported_multiple_response(str(item.get("question") or "")):
+            errors.append(
+                "multiple-response choice items are not supported; "
+                "split the item or add explicit schema support"
+            )
     if question_type == "matching":
         prompts = item.get("matching_prompts")
         if not isinstance(prompts, list) or not prompts:
@@ -68,6 +79,17 @@ def validate_quiz_item(
         _anchor_errors(conn, document_id, item, require_anchors=require_anchors)
     )
     return errors
+
+
+def _looks_like_unsupported_multiple_response(question: str) -> bool:
+    return bool(
+        re.search(
+            r"\b(?:select|choose|pick)\s+(?:all(?:\s+that\s+apply)?|"
+            r"(?:the\s+)?(?:two|three|2|3))\b",
+            question,
+            flags=re.IGNORECASE,
+        )
+    )
 
 
 def normalize_review_text(value: str) -> str:
@@ -109,7 +131,11 @@ def _anchor_errors(
 ) -> list[str]:
     errors: list[str] = []
     anchor_fields = ("target", "source_chunks", "source_pages", "source_citation")
-    if require_anchors:
+    warnings = item.get("warnings")
+    external_source_item = (
+        isinstance(warnings, list) and "external_source_item" in warnings
+    )
+    if require_anchors and not external_source_item:
         for field in anchor_fields:
             if not item.get(field):
                 errors.append(f"missing {field}")

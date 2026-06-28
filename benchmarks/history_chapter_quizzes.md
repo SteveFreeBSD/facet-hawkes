@@ -16,12 +16,15 @@ workflow aligned with ethics and leaves room for mixed Canvas quizzes later.
 | Chapter | Raw | Key | Imported | Notes |
 | --- | --- | --- | --- | --- |
 | 20 | `history_ch20_canvas_raw.txt` | `history_ch20_canvas_answer_key.txt` | `history_ch20_canvas.json` | Keyed choice quiz. Questions 15 and 20 intentionally repeat the New Freedom prompt with different option order. |
+| 22 | `history_ch22_canvas_raw.txt` | `history_ch22_canvas_answer_key.txt` | `history_ch22_canvas.json` | Keyed choice quiz covering the New Era; all 20 items have manifest source anchors. |
 
 ## Import And Validate
 
 ```bash
 uv run ethnos import-chapter-quiz history 20
+uv run ethnos import-chapter-quiz history 22
 uv run ethnos validate-quiz 2 --quiz benchmarks/history_ch20_canvas.json
+uv run ethnos validate-quiz 2 --quiz benchmarks/history_ch22_canvas.json --require-anchors
 ```
 
 Use `--review` on the import command when you want the keyed item listing in

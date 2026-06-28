@@ -1,6 +1,7 @@
 # erosion
 
-`erosion` is the current local development host.
+`erosion` is a secondary development host. This profile is a historical
+snapshot; verify it on-host before using it for current benchmark claims.
 
 ## Snapshot
 

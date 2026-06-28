@@ -30,7 +30,8 @@ and every report should separate model behavior from source quality.
   or hybrid profiles are optional, explicit, and benchmark-gated.
 - **Review-ready engineering**: `src/` layout, modular CLI commands, Pydantic
   schemas, SQLite WAL/FTS5, safe SQL identifiers, centralized Ollama client,
-  retry backoff, formatter/linter/dead-code checks, and 201 passing tests.
+  retry backoff, and CI-enforced formatting, lint, dead-code, compile, and test
+  checks.
 
 ## Flagship Result
 
@@ -371,7 +372,19 @@ uv run ethnos quiz-bench 1 \
 
 `quiz-bench` scores keyed MC/true-false items, answers unkeyed choice items
 without counting them toward accuracy, drafts source-grounded essay answers with
-rubrics, and skips incomplete matching items without calling Ollama.
+rubrics, and skips incomplete matching items without calling Ollama. When
+`--output` is provided, it atomically checkpoints after every item. Resume an
+interrupted run with the same arguments plus `--resume`; answer-key verification
+rejects incomplete checkpoints.
+
+Items with `key_review_status: disputed` still report agreement or conflict with
+the instructor key, but are excluded from PDF-grounded accuracy. Reports keep
+grounded accuracy and instructor-key agreement as separate metrics.
+
+Multiple-response questions such as “select two” are rejected during validation
+because the current fixture schema supports one keyed choice per item. Split
+those questions or add explicit multi-answer schema and scoring support before
+benchmarking them.
 
 For a quick key audit before spending any Ollama time, use the generic review
 command:
@@ -387,6 +400,10 @@ uv run ethnos validate-quiz 1 \
   --quiz benchmarks/ethics_ch1_mc.json \
   --require-anchors
 ```
+
+Validated source anchors are authoritative answer context. Retrieval still runs
+for diagnostics, but unrelated retrieved chunks are not appended to an anchored
+item’s model prompt.
 
 For a newly imported quiz, get no-Ollama source-anchor suggestions before editing
 the quiz JSON:
@@ -463,6 +480,17 @@ storage policy, without calling Ollama:
 
 ```bash
 uv run ethnos refresh-records 1
+```
+
+Less-frequent maintenance and inspection commands remain supported:
+
+```bash
+uv run ethnos extract 1
+uv run ethnos inspect-page 1 45
+uv run ethnos backfill-summaries 1
+uv run ethnos export-json 1 --output data/processed/ethics.json
+uv run ethnos review-mc-quiz benchmarks/ethics_ch1_mc.json
+uv run ethnos validate-mc-quiz 1 --quiz benchmarks/ethics_ch1_mc.json
 ```
 
 The default database path is `data/ethnos.sqlite`. You can override it:

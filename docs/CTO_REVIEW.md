@@ -22,7 +22,7 @@ authoritative, what was verified, and how future changes should stay aligned.
 ## Repo Shape
 
 - Python uses a `src/` layout with package code under [`src/ethnos`](../src/ethnos).
-- The public interface is a CLI, not a web API. There are 39 registered
+- The public interface is a CLI, not a web API. There are 40 registered
   subcommands and no FastAPI/Flask route layer.
 - Core storage is SQLite with FTS5. [`db.py`](../src/ethnos/db.py) is the public
   facade; implementation is split across `db_core`, `db_sections`,
@@ -52,13 +52,17 @@ authoritative, what was verified, and how future changes should stay aligned.
 
 ## Current Verification
 
-Observed on 2026-06-01:
+Observed on 2026-06-27:
 
 - `uv run ruff check .`: passed.
 - `uv run ruff format --check .`: passed.
 - `uv run python -m compileall -q src tests`: passed.
-- `uv run pytest`: 201 passed.
+- `uv run pytest -q`: full suite passed.
 - Dead-code scan with Vulture at 80% confidence: clean and enforced in CI.
+
+Last recorded model-backed checks, not rerun during the 2026-06-27
+deterministic hardening pass:
+
 - CPU-local Agent Review probe for History chapter 20: `20` keyed answers
   supported, `17` pass items, `3` inspect items, duplicate prompt and spelling
   findings preserved.
@@ -68,7 +72,7 @@ Observed on 2026-06-01:
 
 ## Ollama Position
 
-- Local Ollama service: 0.24.0, active systemd service.
+- Local `caspian` Ollama service: 0.30.10, active systemd service.
 - Installed baseline model: `gemma-python:latest`.
 - Python dependency: `ollama==0.6.2` in `uv.lock`.
 - Stable baseline: keep `ETHNOS_OLLAMA_THINK=false`, `num_ctx=8192`, and
@@ -77,15 +81,16 @@ Observed on 2026-06-01:
   `true`, `low`, `medium`, and `high` are accepted for controlled experiments
   with newer thinking models.
 - Model policy: `gemma-python` is the review baseline and is currently a
-  Gemma 4 based local alias. Gemma 3 profile names remain as compatibility
-  scaffolding in the CLI, but new model work should evaluate Gemma 4 candidates
-  or explicit hybrid/cloud profiles by benchmark.
+  Gemma 4 based local alias. Named Gemma 3 profiles are optional benchmark
+  configurations, not fallbacks silently used by the baseline. New model work
+  should evaluate Gemma 4 candidates or explicit hybrid/cloud profiles by
+  benchmark.
 - Upgrade policy: treat release candidates, nightly builds, and architecture
   rewrites as experimental until they beat the current benchmark without
   accuracy or validity regressions.
-- Upstream references checked on 2026-06-01:
+- Upstream references last checked on 2026-06-27:
   [Ollama releases](https://github.com/ollama/ollama/releases),
-  [Ollama REST API](https://github.com/ollama/ollama/blob/main/docs/api.md),
+  [Ollama API](https://docs.ollama.com/api),
   [ollama-python v0.6.2](https://github.com/ollama/ollama-python/releases/tag/v0.6.2),
   [structured outputs](https://docs.ollama.com/capabilities/structured-outputs),
   [tool calling](https://docs.ollama.com/capabilities/tool-calling),
