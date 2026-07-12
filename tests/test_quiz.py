@@ -891,6 +891,142 @@ def test_ground_quiz_cli_writes_source_grounding_records(tmp_path, capsys):
     assert "q3: source_missing_in_local_pdf" in text
 
 
+def test_quiz_pipeline_validates_and_grounds_without_benchmark(tmp_path, capsys):
+    db_path = tmp_path / "ethnos.sqlite"
+    quiz_path = tmp_path / "quiz.json"
+    grounding_path = tmp_path / "grounding.json"
+    conn = connect(db_path)
+    init_db(conn)
+    document_id = _stored_quiz_document(conn)
+    quiz_path.write_text(
+        json.dumps(
+            {
+                "version": "external-quiz-v2",
+                "questions": [
+                    {
+                        "id": "q1",
+                        "question": "What does virtue ethics emphasize?",
+                        "question_type": "multiple_choice",
+                        "options": {"A": "Rules", "B": "Character"},
+                        "correct": "B",
+                        "target": "Virtue ethics",
+                        "source_chunks": [1],
+                        "source_pages": [1],
+                        "source_citation": "quiz.pdf p. 1, chunk 1",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    exit_code = main(
+        [
+            "--db",
+            str(db_path),
+            "quiz-pipeline",
+            str(document_id),
+            "--quiz",
+            str(quiz_path),
+            "--require-anchors",
+            "--grounding-output",
+            str(grounding_path),
+            "--fail-unresolved",
+        ]
+    )
+    text = capsys.readouterr().out
+    grounding = json.loads(grounding_path.read_text(encoding="utf-8"))
+
+    assert exit_code == 0
+    assert grounding["counts"] == {"pdf_grounded": 1}
+    assert "== validate ==" in text
+    assert "== ground ==" in text
+    assert "benchmark: skipped" in text
+
+
+def test_quiz_pipeline_runs_benchmark_and_key_audit(tmp_path, capsys, monkeypatch):
+    db_path = tmp_path / "ethnos.sqlite"
+    quiz_path = tmp_path / "quiz.json"
+    grounding_path = tmp_path / "grounding.json"
+    report_path = tmp_path / "report.json"
+    audit_path = tmp_path / "audit.json"
+    conn = connect(db_path)
+    init_db(conn)
+    document_id = _stored_quiz_document(conn)
+    quiz_path.write_text(
+        json.dumps(
+            {
+                "version": "external-quiz-v2",
+                "questions": [
+                    {
+                        "id": "q1",
+                        "question": "What does virtue ethics emphasize?",
+                        "question_type": "multiple_choice",
+                        "options": {"A": "Rules", "B": "Character"},
+                        "correct": "B",
+                        "target": "Virtue ethics",
+                        "source_chunks": [1],
+                        "source_pages": [1],
+                        "source_citation": "quiz.pdf p. 1, chunk 1",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr("ethnos.cli.create_client", lambda host, timeout: object())
+    monkeypatch.setattr(
+        "ethnos.cli.answer_choice_question",
+        lambda **kwargs: ChoiceAnswerResult(
+            raw_prompt=kwargs["prompt"],
+            raw_response=json.dumps(
+                {
+                    "selected_option": "B",
+                    "evidence": "Virtue ethics emphasizes character and habits.",
+                    "source_citations": ["quiz.pdf p. 1, chunk 1"],
+                }
+            ),
+            selected_option="B",
+            evidence="Virtue ethics emphasizes character and habits.",
+            source_citations=["quiz.pdf p. 1, chunk 1"],
+            validation_status="valid",
+            validation_error=None,
+        ),
+    )
+
+    exit_code = main(
+        [
+            "--db",
+            str(db_path),
+            "quiz-pipeline",
+            str(document_id),
+            "--quiz",
+            str(quiz_path),
+            "--require-anchors",
+            "--grounding-output",
+            str(grounding_path),
+            "--bench-output",
+            str(report_path),
+            "--key-audit-output",
+            str(audit_path),
+        ]
+    )
+    text = capsys.readouterr().out
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    audit = json.loads(audit_path.read_text(encoding="utf-8"))
+
+    assert exit_code == 0
+    assert report["complete"] is True
+    assert report["correct_count"] == 1
+    assert report["source_covered_total"] == 1
+    assert audit["key_supported_count"] == 1
+    assert audit["key_conflict_candidate_count"] == 0
+    assert "== benchmark ==" in text
+    assert "== key audit ==" in text
+    assert "Pipeline complete" in text
+
+
 def test_quiz_bench_answers_unkeyed_choice_drafts_essay_and_skips_incomplete_matching(
     tmp_path, capsys, monkeypatch
 ):

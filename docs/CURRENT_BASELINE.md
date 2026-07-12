@@ -223,5 +223,5 @@ committed.
   set-based scoring before accepting Canvas “select two/all” items.
 - Add retrieval-confidence thresholds or chapter bounds for unanchored quiz
   candidates.
-- Add a single orchestration command for import, validation, grounding,
-  benchmark, and key audit.
+- Extend `quiz-pipeline` with an import mode if raw Canvas/LMS text should be
+  accepted directly instead of starting from an already-normalized quiz JSON.

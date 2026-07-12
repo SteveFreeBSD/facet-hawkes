@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import time
 from pathlib import Path
@@ -316,6 +317,70 @@ def register(subcommands):
         type=int,
         default=1,
         help="Retry a choice response that is invalid or inconsistent with its evidence.",
+    )
+
+    quiz_pipeline_parser = add_command(
+        subcommands,
+        "quiz-pipeline",
+        "Run quiz validation, grounding, optional benchmark, and key audit.",
+        quiz_pipeline_cmd,
+    )
+    quiz_pipeline_parser.add_argument("document_id", type=int)
+    quiz_pipeline_parser.add_argument("--quiz", type=Path, required=True)
+    quiz_pipeline_parser.add_argument("--max-questions", type=int)
+    quiz_pipeline_parser.add_argument("--limit", type=int, default=3)
+    quiz_pipeline_parser.add_argument("--chars", type=int, default=900)
+    quiz_pipeline_parser.add_argument("--role", choices=ASK_ROLES, default="core")
+    quiz_pipeline_parser.add_argument("--section", choices=sorted(SECTION_LABELS))
+    quiz_pipeline_parser.add_argument("--options-retrieval", action="store_true")
+    quiz_pipeline_parser.add_argument(
+        "--require-anchors",
+        action="store_true",
+        help="Require anchor fields unless an item is declared external-source.",
+    )
+    quiz_pipeline_parser.add_argument(
+        "--strict-complete",
+        action="store_true",
+        help="Treat incomplete items and other import warnings as errors.",
+    )
+    quiz_pipeline_parser.add_argument(
+        "--grounding-output",
+        type=Path,
+        help="Write the source-grounding report.",
+    )
+    quiz_pipeline_parser.add_argument(
+        "--fail-unresolved",
+        action="store_true",
+        help="Exit nonzero when grounding finds unresolved local PDF source status.",
+    )
+    quiz_pipeline_parser.add_argument(
+        "--bench-output",
+        type=Path,
+        help="Run quiz-bench and write this benchmark report.",
+    )
+    quiz_pipeline_parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Resume an incomplete quiz-bench checkpoint from --bench-output.",
+    )
+    quiz_pipeline_parser.add_argument("--model", help="Ollama model name.")
+    quiz_pipeline_parser.add_argument("--num-predict", type=int)
+    quiz_pipeline_parser.add_argument("--num-ctx", type=int)
+    quiz_pipeline_parser.add_argument(
+        "--answer-retries",
+        type=int,
+        default=1,
+        help="Retry a choice response that is invalid or inconsistent with its evidence.",
+    )
+    quiz_pipeline_parser.add_argument(
+        "--key-audit-output",
+        type=Path,
+        help="Write the answer-key audit after a successful benchmark.",
+    )
+    quiz_pipeline_parser.add_argument(
+        "--skip-key-audit",
+        action="store_true",
+        help="Skip verify-answer-key after quiz-bench.",
     )
 
     import_chapter_parser = add_command(
@@ -1600,6 +1665,106 @@ def quiz_bench_cmd(args) -> int:
         )
         print(f"  wrote report: {args.output}")
     return 0
+
+
+def quiz_pipeline_cmd(args) -> int:
+    if args.resume and args.bench_output is None:
+        raise SystemExit("--resume requires --bench-output.")
+    if args.skip_key_audit and args.key_audit_output is not None:
+        raise SystemExit("--skip-key-audit cannot be combined with --key-audit-output.")
+
+    print("Quiz pipeline")
+    print(f"  document id: {args.document_id}")
+    print(f"  quiz: {args.quiz}")
+    print(f"  benchmark: {'yes' if args.bench_output else 'no'}")
+    print()
+
+    validate_args = argparse.Namespace(
+        db=args.db,
+        document_id=args.document_id,
+        quiz=args.quiz,
+        max_questions=args.max_questions,
+        require_anchors=args.require_anchors,
+        strict_complete=args.strict_complete,
+    )
+    code = _run_quiz_pipeline_step("validate", validate_quiz_cmd, validate_args)
+    if code:
+        return code
+
+    ground_args = argparse.Namespace(
+        db=args.db,
+        document_id=args.document_id,
+        quiz=args.quiz,
+        output=args.grounding_output,
+        max_questions=args.max_questions,
+        limit=args.limit,
+        chars=args.chars,
+        role=args.role,
+        section=args.section,
+        options_retrieval=args.options_retrieval,
+        fail_unresolved=args.fail_unresolved,
+    )
+    code = _run_quiz_pipeline_step("ground", ground_quiz_cmd, ground_args)
+    if code:
+        return code
+
+    if args.bench_output is None:
+        print("Pipeline complete")
+        print("  benchmark: skipped")
+        return 0
+
+    bench_args = argparse.Namespace(
+        db=args.db,
+        document_id=args.document_id,
+        quiz=args.quiz,
+        max_questions=args.max_questions,
+        item_ids=[],
+        limit=args.limit,
+        chars=args.chars,
+        output=args.bench_output,
+        resume=args.resume,
+        role=args.role,
+        section=args.section,
+        options_retrieval=args.options_retrieval,
+        debug_ollama=False,
+        debug_retrieval=False,
+        model=args.model,
+        num_predict=args.num_predict,
+        num_ctx=args.num_ctx,
+        answer_retries=args.answer_retries,
+    )
+    code = _run_quiz_pipeline_step("benchmark", quiz_bench_cmd, bench_args)
+    if code:
+        return code
+
+    if args.skip_key_audit:
+        print("Pipeline complete")
+        print("  key audit: skipped")
+        return 0
+
+    audit_args = argparse.Namespace(
+        report=args.bench_output,
+        output=args.key_audit_output,
+    )
+    code = _run_quiz_pipeline_step("key audit", verify_answer_key_cmd, audit_args)
+    if code:
+        return code
+
+    print("Pipeline complete")
+    return 0
+
+
+def _run_quiz_pipeline_step(
+    name: str,
+    handler,
+    args: argparse.Namespace,
+) -> int:
+    print(f"== {name} ==")
+    code = handler(args)
+    print()
+    if code:
+        print(f"Pipeline stopped after {name}: exit {code}")
+    return code
 
 
 def _quiz_bench_counts(report_items: list[dict[str, object]]) -> dict[str, object]:

@@ -22,19 +22,20 @@ Observed result:
 - `ruff format --check`: 58 files already formatted.
 - `compileall`: passed.
 - `vulture`: clean.
-- `pytest`: 211 passed.
+- `pytest`: 215 passed.
 - `git diff --check`: passed.
 - `uv sync --frozen --extra dev`: checked 21 packages.
 
-## Include These New Files
+## Reviewer Files In Scope
 
-These untracked files are intentional and should be staged with the merge:
+These committed files are intentional review artifacts:
 
 - `benchmarks/history_ch25_canvas_raw.txt`
 - `benchmarks/history_ch25_canvas_answer_key.txt`
 - `benchmarks/history_ch25_canvas.json`
 - `docs/hosts/caspian-optimization-report-2026-07-11.md`
 - `docs/MERGE_READINESS.md`
+- `docs/QUIZ_WORKFLOW.md`
 
 The Chapter 25 fixture was validated with:
 
@@ -101,6 +102,12 @@ Mixed validation on the same host profile:
 - q0005 regression check:
   `data/runs/perf-caspian-bpfland-mixed-q0005-after-20260711.json` selected B
   with `source_status=pdf_grounded` and no validation errors.
+
+Pipeline smoke on the same quiz:
+
+- Command:
+  `uv run ethnos quiz-pipeline 1 --quiz data/runs/perf-quiz-medium-20-current.json --require-anchors --grounding-output data/runs/perf-caspian-pipeline-grounding-20260711.json --fail-unresolved`
+- Result: validation passed, 20/20 `pdf_grounded`, unresolved 0.
 
 The `data/runs/` reports are local runtime artifacts and remain ignored by git.
 The committed documentation records their summaries and paths for reviewer

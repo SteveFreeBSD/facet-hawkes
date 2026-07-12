@@ -16,6 +16,23 @@ Recommended chapter workflow:
 4. Benchmark PDF-grounded answers with `quiz-bench`.
 5. Audit the instructor key with `verify-answer-key`.
 
+For an already-imported quiz JSON, `quiz-pipeline` runs steps 2 through 5 in
+order and stops at the first failed step:
+
+```bash
+uv run ethnos quiz-pipeline 1 \
+  --quiz benchmarks/ethics_ch3_canvas.json \
+  --require-anchors \
+  --grounding-output data/runs/ethics_ch3_grounding.json \
+  --bench-output data/runs/ethics_ch3_key_check.json \
+  --key-audit-output data/runs/ethics_ch3_key_audit.json \
+  --options-retrieval
+```
+
+Omit `--bench-output` for the cheap validation plus grounding pass. Use
+`--resume` with the same command when the benchmark checkpoint exists and needs
+to continue.
+
 The MC-only commands remain available for dedicated multiple-choice fixtures
 and comparison reports, but new chapter work should use the mixed Canvas and
 grounding workflow.
