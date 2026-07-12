@@ -106,10 +106,12 @@ Current winner: `scx_bpfland` Auto, `schedutil`, and
 
 Mixed validation on the winning host profile:
 `quiz-bench --chars 900` wrote
-`data/runs/perf-caspian-bpfland-mixed-warm-20260711.json`, with 19/20 grounded
-accuracy, zero no-context cases, and zero invalid responses. The single miss
-was q0005 with `source_status=invalid_anchor`, so it is tracked as a benchmark
-content/context issue rather than a scheduler failure.
+`data/runs/perf-caspian-bpfland-mixed-fixed-20260711.json`, with 20/20
+grounded accuracy, 20/20 PDF-grounded source coverage, zero no-context cases,
+zero invalid responses, and zero answer retries. The prior q0005 miss was
+resolved by accepting structured key-term source-record anchors and using unique
+option provenance guidance; the focused q0005 check is
+`data/runs/perf-caspian-bpfland-mixed-q0005-after-20260711.json`.
 
 Rollback notes:
 

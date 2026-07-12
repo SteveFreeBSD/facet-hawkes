@@ -92,11 +92,15 @@ Primary MC reference:
 
 Mixed validation on the same host profile:
 
-- `data/runs/perf-caspian-bpfland-mixed-warm-20260711.json`
-- 19/20 grounded accuracy.
+- `data/runs/perf-caspian-bpfland-mixed-fixed-20260711.json`
+- 20/20 grounded accuracy.
+- 20/20 PDF-grounded source coverage.
 - 0 invalid responses.
 - 0 no-context cases.
-- Single miss: q0005, `source_status=invalid_anchor`.
+- 0 answer retries.
+- q0005 regression check:
+  `data/runs/perf-caspian-bpfland-mixed-q0005-after-20260711.json` selected B
+  with `source_status=pdf_grounded` and no validation errors.
 
 The `data/runs/` reports are local runtime artifacts and remain ignored by git.
 The committed documentation records their summaries and paths for reviewer
@@ -124,5 +128,6 @@ Start here:
 - `scx_bpfland` Auto is only a small but repeatable win over the hot-control
   default scheduler on the MC benchmark.
 - Fixed `ETHNOS_OLLAMA_NUM_THREAD=4` and `6` are much slower on this host.
-- The mixed benchmark miss is documented as an invalid-anchor/content issue, not
-  a scheduler or system tuning failure.
+- The former q0005 mixed benchmark miss was a quiz grounding issue, not a
+  scheduler or system tuning failure. It is fixed by accepting structured
+  key-term source-record anchors and by using unique option provenance guidance.

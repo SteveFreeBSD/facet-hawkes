@@ -251,13 +251,22 @@ Comparison reports:
 
 Mixed validation on the winning host profile:
 
-- `perf-caspian-bpfland-mixed-warm-20260711.json`
+- `perf-caspian-bpfland-mixed-fixed-20260711.json`
 - `quiz-bench --chars 900`
-- Grounded accuracy: 19/20 (95.0%)
-- Source coverage: 18/20 (90.0%)
+- Grounded accuracy: 20/20 (100.0%)
+- PDF-grounded source coverage: 20/20 (100.0%)
 - Invalid responses: 0
 - No-context cases: 0
-- Single miss: q0005, `source_status=invalid_anchor`
+- Answer retries: 0
+
+The prior `perf-caspian-bpfland-mixed-warm-20260711.json` run missed q0005
+with `source_status=invalid_anchor`. That was a benchmark grounding issue rather
+than a scheduler issue: the stored `key_terms` record for `normative ethics`
+validly points at chunk 10, while the chunk text phrases it as the
+`"normative" or "prescriptive"` side of philosophical ethics. The validator now
+accepts matching structured key-term source-record anchors, and mixed prompts
+use unique option provenance guidance when one option maps to the requested
+source record.
 
 ### 4. CPU governor/profile benchmark
 

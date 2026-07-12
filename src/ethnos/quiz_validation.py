@@ -176,7 +176,15 @@ def _anchor_errors(
     target = str(item.get("target") or "").strip()
     if target and chunk_rows:
         source_text = normalize_review_text(" ".join(row["text"] for row in chunk_rows))
-        if not target_text_found(target, source_text):
+        if not target_text_found(
+            target, source_text
+        ) and not _source_record_matches_anchor(
+            conn,
+            document_id,
+            item,
+            chunk_ids,
+            target,
+        ):
             errors.append("target phrase not found in source_chunks text")
     source_citation = str(item.get("source_citation") or "").strip()
     if source_citation and chunk_rows:
@@ -184,3 +192,35 @@ def _anchor_errors(
         if source_citation not in citations:
             errors.append("source_citation does not match any source_chunks citation")
     return errors
+
+
+def _source_record_matches_anchor(
+    conn: sqlite3.Connection,
+    document_id: int,
+    item: dict[str, Any],
+    chunk_ids: list[object],
+    target: str,
+) -> bool:
+    source_record_type = str(item.get("source_record_type") or "").strip()
+    if source_record_type != "key_terms":
+        return False
+    try:
+        source_record_id = int(item.get("source_record_id"))
+        normalized_chunk_ids = {int(chunk_id) for chunk_id in chunk_ids}
+    except (TypeError, ValueError):
+        return False
+    if not normalized_chunk_ids:
+        return False
+    row = conn.execute(
+        """
+        SELECT kt.chunk_id, kt.term
+        FROM key_terms kt
+        JOIN chunks c ON c.id = kt.chunk_id
+        WHERE kt.id = ? AND c.document_id = ?
+        """,
+        (source_record_id, document_id),
+    ).fetchone()
+    if row is None or int(row["chunk_id"]) not in normalized_chunk_ids:
+        return False
+    term = str(row["term"] or "")
+    return normalize_review_text(target) == normalize_review_text(term)

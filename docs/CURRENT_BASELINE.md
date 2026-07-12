@@ -104,8 +104,9 @@ Host-level performance profile on `caspian` as of 2026-07-11:
   `data/runs/perf-caspian-bpfland-auto-repeat-20260711-mc.json`, 20/20,
   38.947 seconds, zero invalid responses, zero no-context cases.
 - Mixed validation:
-  `data/runs/perf-caspian-bpfland-mixed-warm-20260711.json`, 19/20 grounded
-  accuracy, zero invalid responses, zero no-context cases.
+  `data/runs/perf-caspian-bpfland-mixed-fixed-20260711.json`, 20/20 grounded
+  accuracy, 20/20 PDF-grounded source coverage, zero invalid responses, zero
+  no-context cases, zero answer retries.
 - Reboot validation on 2026-07-11 confirmed `scx_bpfland` Auto,
   `vm.min_free_kbytes=262144`, and the Ollama 24-hour keepalive profile all
   returned after restart.

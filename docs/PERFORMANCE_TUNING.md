@@ -318,7 +318,11 @@ default_mode = "Auto"
 The direct `performance` governor, `scx_lavd` Gaming, `scx_flash` LowLatency,
 and fixed `ETHNOS_OLLAMA_NUM_THREAD=4/6` did not beat the winning profile.
 Mixed validation on the winning profile is recorded in
-`data/runs/perf-caspian-bpfland-mixed-warm-20260711.json`.
+`data/runs/perf-caspian-bpfland-mixed-fixed-20260711.json`: 20/20 grounded
+accuracy, 20/20 PDF-grounded source coverage, zero invalid responses, zero
+no-context cases, and zero answer retries. The earlier q0005 miss in
+`perf-caspian-bpfland-mixed-warm-20260711.json` was resolved by structured
+key-term source-record anchor validation and unique option provenance guidance.
 
 ### Phase 6: Selection and Roll-In
 

@@ -103,6 +103,9 @@ def build_choice_question_guidance(
         guidance.append(all_guidance)
     has_compound_answer = _has_compound_answer_option(item)
     if not has_compound_answer:
+        source_guidance = _source_record_option_guidance(item)
+        if source_guidance:
+            guidance.append(source_guidance)
         target_guidance = _target_option_guidance(item)
         if target_guidance:
             guidance.append(target_guidance)
@@ -128,6 +131,32 @@ def recommended_choice_from_guidance(
         )
     }
     return recommendations.pop() if len(recommendations) == 1 else None
+
+
+def _source_record_option_guidance(item: dict[str, Any]) -> str | None:
+    source_record_type = item.get("source_record_type")
+    source_record_id = item.get("source_record_id")
+    option_sources = item.get("option_sources")
+    if (
+        not source_record_type
+        or source_record_id is None
+        or not isinstance(option_sources, dict)
+    ):
+        return None
+    supported = [
+        str(label)
+        for label, source in option_sources.items()
+        if isinstance(source, dict)
+        and source.get("source_record_type") == source_record_type
+        and source.get("source_record_id") == source_record_id
+    ]
+    if len(supported) != 1:
+        return None
+    label = supported[0]
+    return (
+        f"Source metadata anchors option {label} to the requested source record. "
+        f"Select option {label}."
+    )
 
 
 def _negative_option_guidance(

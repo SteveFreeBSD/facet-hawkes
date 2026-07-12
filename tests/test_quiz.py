@@ -36,7 +36,7 @@ from ethnos.quiz import (
     QuizGenerationDiagnostics,
     recommended_choice_from_guidance,
 )
-from ethnos.quiz_validation import target_text_found
+from ethnos.quiz_validation import target_text_found, validate_mc_quiz_item
 
 
 def test_generate_quiz_uses_terms_by_default_and_is_reproducible(tmp_path):
@@ -106,6 +106,51 @@ def test_target_anchor_accepts_slash_alias_present_as_or_phrase():
         "Moral Philosophy/Ethics",
         "Moral philosophy or ethics is concerned with critical examination.",
     )
+
+
+def test_validate_anchor_accepts_matching_key_term_source_record(tmp_path):
+    conn = connect(tmp_path / "ethnos.sqlite")
+    init_db(conn)
+    document_id = _stored_quiz_document(conn)
+    row = conn.execute(
+        """
+        SELECT kt.id, kt.chunk_id, kt.term, kt.definition, kt.source_pages, c.source_citation
+        FROM key_terms kt
+        JOIN chunks c ON c.id = kt.chunk_id
+        WHERE kt.term = 'Virtue ethics'
+        """
+    ).fetchone()
+    conn.execute(
+        "UPDATE chunks SET text = ? WHERE id = ?",
+        (
+            "This approach emphasizes character, habits, and moral virtues.",
+            row["chunk_id"],
+        ),
+    )
+    item = {
+        "question": "Which definition best matches Virtue ethics in this text?",
+        "question_type": "multiple_choice",
+        "options": {
+            "A": "An ethical approach that emphasizes character, habits, and moral virtues.",
+            "B": "An ethical approach that judges actions by consequences and overall utility.",
+        },
+        "correct": "A",
+        "source_record_type": "key_terms",
+        "source_record_id": row["id"],
+        "target": row["term"],
+        "source_chunks": [row["chunk_id"]],
+        "source_pages": parse_source_pages(row["source_pages"]),
+        "source_citation": row["source_citation"],
+    }
+
+    errors = validate_mc_quiz_item(
+        conn,
+        document_id,
+        item,
+        require_anchors=True,
+    )
+
+    assert errors == []
 
 
 def test_generate_quiz_supports_questions_source_and_option_cap(tmp_path):
@@ -1822,6 +1867,32 @@ def test_choice_question_guidance_uses_unique_anchor_target_without_compound_opt
 
     assert "anchored target phrase uniquely supports option D" in guidance
     assert recommended_choice_from_guidance(item, []) == "D"
+
+
+def test_choice_question_guidance_uses_unique_source_record_option():
+    item = {
+        "question": "Which definition best matches normative ethics in this text?",
+        "source_record_type": "key_terms",
+        "source_record_id": 1025,
+        "target": "normative ethics",
+        "options": {
+            "A": "The descriptive study of moral deliberation.",
+            "B": "The side of philosophical ethics that examines cases for moral principles.",
+            "C": "The abstract study of ethical thinking as such.",
+            "D": "The process of critical examination regarding moral questions.",
+        },
+        "option_sources": {
+            "A": {"source_record_type": "key_terms", "source_record_id": 1024},
+            "B": {"source_record_type": "key_terms", "source_record_id": 1025},
+            "C": {"source_record_type": "key_terms", "source_record_id": 1026},
+            "D": {"source_record_type": "questions", "source_record_id": 2101},
+        },
+    }
+
+    guidance = build_choice_question_guidance(item, [])
+
+    assert "Source metadata anchors option B" in guidance
+    assert recommended_choice_from_guidance(item, []) == "B"
 
 
 def test_choice_question_guidance_handles_dawes_act_purpose():
