@@ -40,8 +40,12 @@ hardening work, start with [`CTO_REVIEW.md`](CTO_REVIEW.md).
 - Chat follow-up and continuation context is covered by regression tests.
 - Mixed quiz benchmarks atomically checkpoint after every item and can resume
   compatible interrupted runs.
+- Mixed quiz benchmarks support targeted `--item-id` subsets and retain bounded
+  consistency-retry attempts and reasons in their reports.
 - Validated quiz anchors are authoritative model context; retrieval candidates
   remain diagnostic rather than polluting anchored prompts.
+- Compound choice guidance covers “All of the above” and Canvas “All possible
+  answers” variants only when each individual option is source-supported.
 - Disputed instructor keys are audited separately and excluded from
   PDF-grounded accuracy without being hidden from instructor-key agreement.
 
@@ -85,7 +89,26 @@ The current MC-only benchmark default is `mc-bench --chars 300`, with
 `ETHNOS_OLLAMA_NUM_CTX=8192` and `ETHNOS_OLLAMA_NUM_THREAD` unset. The value is
 based on the measured `caspian` benchmark ladder in the performance guide.
 Mixed `quiz-bench` still uses `--chars 900` for essay drafts and broader answer
-context.
+context. It performs one bounded consistency retry by default; repeat
+`--item-id` for cheap follow-up runs or use `--answer-retries 0` for a strict
+one-call timing baseline.
+
+Host-level performance profile on `caspian` as of 2026-07-11:
+
+- Ollama 0.31.1 with `OLLAMA_KEEP_ALIVE=24h`, flash attention, mlock, and
+  memlock infinity.
+- `vm.min_free_kbytes=262144`.
+- `scx_bpfland` Auto through enabled `scx_loader.service`.
+- CPU governor remains `schedutil`.
+- Current MC timing reference:
+  `data/runs/perf-caspian-bpfland-auto-repeat-20260711-mc.json`, 20/20,
+  38.947 seconds, zero invalid responses, zero no-context cases.
+- Mixed validation:
+  `data/runs/perf-caspian-bpfland-mixed-warm-20260711.json`, 19/20 grounded
+  accuracy, zero invalid responses, zero no-context cases.
+- Reboot validation on 2026-07-11 confirmed `scx_bpfland` Auto,
+  `vm.min_free_kbytes=262144`, and the Ollama 24-hour keepalive profile all
+  returned after restart.
 
 The structure prompt is intentionally compact. Schema `title` metadata is kept
 because removing it caused Gemma to omit required example fields in smoke tests.

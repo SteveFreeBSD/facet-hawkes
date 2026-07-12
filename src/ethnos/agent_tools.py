@@ -18,7 +18,10 @@ from .db import (
     search_chunks,
 )
 from .qa import RetrievalResult, answer_query_candidates, normalize_answer_role
-from .quiz_validation import validate_quiz_item as _validate_quiz_item
+from .quiz_validation import (
+    INCOMPLETE_ITEM_WARNINGS,
+    validate_quiz_item as _validate_quiz_item,
+)
 from .text_utils import CORE_STOPWORDS, compact_text
 
 
@@ -364,7 +367,7 @@ def _source_status_for_item(
 ) -> str:
     if "external_source_item" in warnings:
         return "source_missing_in_local_pdf"
-    if "incomplete_matching_item" in warnings:
+    if INCOMPLETE_ITEM_WARNINGS.intersection(warnings):
         return "incomplete"
     if validation_errors:
         return "invalid_anchor"

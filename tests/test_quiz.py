@@ -34,6 +34,7 @@ from ethnos.quiz import (
     normalize_quiz,
     parse_source_pages,
     QuizGenerationDiagnostics,
+    recommended_choice_from_guidance,
 )
 from ethnos.quiz_validation import target_text_found
 
@@ -795,6 +796,13 @@ def test_ground_quiz_cli_writes_source_grounding_records(tmp_path, capsys):
                         "matching_prompts": ["Material Cause"],
                         "warnings": ["incomplete_matching_item"],
                     },
+                    {
+                        "id": "q5",
+                        "question": "Which damaged export option is complete?",
+                        "question_type": "multiple_choice",
+                        "options": {"A": "Complete", "B": "Trunc"},
+                        "warnings": ["incomplete_item"],
+                    },
                 ],
             }
         ),
@@ -822,9 +830,9 @@ def test_ground_quiz_cli_writes_source_grounding_records(tmp_path, capsys):
         "pdf_grounded": 1,
         "retrieved_candidate": 1,
         "source_missing_in_local_pdf": 1,
-        "incomplete": 1,
+        "incomplete": 2,
     }
-    assert report["unresolved_count"] == 1
+    assert report["unresolved_count"] == 2
     assert report["items"][0]["source_status"] == "pdf_grounded"
     assert report["items"][1]["source_status"] == "retrieved_candidate"
     assert report["items"][1]["source_chunks"]
@@ -832,6 +840,8 @@ def test_ground_quiz_cli_writes_source_grounding_records(tmp_path, capsys):
     assert report["items"][2]["source_chunks"] == []
     assert report["items"][3]["source_status"] == "incomplete"
     assert report["items"][3]["source_chunks"] == []
+    assert report["items"][4]["source_status"] == "incomplete"
+    assert report["items"][4]["source_chunks"] == []
     assert "q1: pdf_grounded" in text
     assert "q3: source_missing_in_local_pdf" in text
 
@@ -884,6 +894,16 @@ def test_quiz_bench_answers_unkeyed_choice_drafts_essay_and_skips_incomplete_mat
                         },
                         "correct": "B",
                         "warnings": ["external_source_item"],
+                    },
+                    {
+                        "id": "q5",
+                        "question": "Which damaged export option is complete?",
+                        "question_type": "multiple_choice",
+                        "options": {
+                            "A": "Complete",
+                            "B": "Trunc",
+                        },
+                        "warnings": ["incomplete_item"],
                     },
                 ],
             }
@@ -957,11 +977,11 @@ def test_quiz_bench_answers_unkeyed_choice_drafts_essay_and_skips_incomplete_mat
     assert calls == {"choice": 1, "essay": 1}
     assert report["answered_unscored_count"] == 1
     assert report["drafted_count"] == 1
-    assert report["skipped_incomplete_count"] == 1
+    assert report["skipped_incomplete_count"] == 2
     assert report["skipped_source_missing_count"] == 1
     assert report["skipped_external_source_count"] == 1
-    assert report["source_covered_total"] == 3
-    assert report["source_coverage"] == 0.75
+    assert report["source_covered_total"] == 2
+    assert report["source_coverage"] == 0.4
     assert report["items"][0]["status"] == "answered_unscored"
     assert (
         report["items"][0]["source_grounding"]["source_status"] == "retrieved_candidate"
@@ -971,10 +991,11 @@ def test_quiz_bench_answers_unkeyed_choice_drafts_essay_and_skips_incomplete_mat
     assert report["items"][1]["answer"]["rubric"] == ["Mentions character"]
     assert report["items"][2]["status"] == "skipped_incomplete"
     assert report["items"][3]["status"] == "skipped_source_missing"
+    assert report["items"][4]["status"] == "skipped_incomplete"
     assert "answered unscored: 1" in text
     assert "essays drafted: 1" in text
     assert "grounded accuracy: n/a" in text
-    assert "source coverage: 3/4 (75.0%)" in text
+    assert "source coverage: 2/5 (40.0%)" in text
     assert "skipped source-missing: 1" in text
 
 
@@ -1086,6 +1107,115 @@ def test_quiz_bench_checkpoints_interrupts_and_resumes(tmp_path, capsys, monkeyp
     assert report["disputed_key_count"] == 1
     assert report["items"][1]["status"] == "incorrect"
     assert report["items"][1]["scoring_eligible"] is False
+
+
+def test_quiz_bench_filters_item_ids_and_retries_evidence_option_mismatch(
+    tmp_path, capsys, monkeypatch
+):
+    db_path = tmp_path / "ethnos.sqlite"
+    quiz_path = tmp_path / "quiz.json"
+    report_path = tmp_path / "report.json"
+    conn = connect(db_path)
+    init_db(conn)
+    document_id = _stored_quiz_document(conn)
+    quiz_path.write_text(
+        json.dumps(
+            {
+                "version": "external-quiz-v2",
+                "questions": [
+                    {
+                        "id": "q1",
+                        "question": "Unused question?",
+                        "question_type": "multiple_choice",
+                        "options": {"A": "Rules", "B": "Character"},
+                        "correct": "A",
+                        "retrieval_questions": ["virtue ethics"],
+                    },
+                    {
+                        "id": "q2",
+                        "question": "What does virtue ethics emphasize?",
+                        "question_type": "multiple_choice",
+                        "options": {"A": "Rules", "B": "Character"},
+                        "correct": "B",
+                        "retrieval_questions": ["virtue ethics"],
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    calls = 0
+
+    def mismatched_then_correct(**kwargs):
+        nonlocal calls
+        calls += 1
+        selected = "A" if calls == 1 else "B"
+        return ChoiceAnswerResult(
+            raw_prompt=kwargs["prompt"],
+            raw_response=json.dumps(
+                {
+                    "selected_option": selected,
+                    "evidence": "Virtue ethics emphasizes character and practiced habits.",
+                    "source_citations": ["quiz.pdf p. 1, chunk 1"],
+                }
+            ),
+            selected_option=selected,
+            evidence="Virtue ethics emphasizes character and practiced habits.",
+            source_citations=["quiz.pdf p. 1, chunk 1"],
+            validation_status="valid",
+            validation_error=None,
+        )
+
+    monkeypatch.setattr("ethnos.cli.create_client", lambda host, timeout: object())
+    monkeypatch.setattr(
+        "ethnos.cli.answer_choice_question",
+        mismatched_then_correct,
+    )
+
+    exit_code = main(
+        [
+            "--db",
+            str(db_path),
+            "quiz-bench",
+            str(document_id),
+            "--quiz",
+            str(quiz_path),
+            "--item-id",
+            "q2",
+            "--output",
+            str(report_path),
+        ]
+    )
+    text = capsys.readouterr().out
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+
+    assert exit_code == 0
+    assert calls == 2
+    assert report["total"] == 1
+    assert report["run_config"]["item_ids"] == ["q2"]
+    assert report["retried_item_count"] == 1
+    assert report["answer_retry_count"] == 1
+    assert report["items"][0]["id"] == "q2"
+    assert report["items"][0]["status"] == "correct"
+    assert report["items"][0]["answer_attempt_count"] == 2
+    assert report["items"][0]["answer_attempts"][0]["selected_option"] == "A"
+    assert report["items"][0]["answer_attempts"][1]["selected_option"] == "B"
+    assert "retrying answer" in text
+    assert "selected item ids: q2" in text
+
+    with pytest.raises(SystemExit, match="Unknown --item-id"):
+        main(
+            [
+                "--db",
+                str(db_path),
+                "quiz-bench",
+                str(document_id),
+                "--quiz",
+                str(quiz_path),
+                "--item-id",
+                "missing",
+            ]
+        )
 
 
 def test_import_mc_quiz_cli_writes_external_json(tmp_path, capsys):
@@ -1647,6 +1777,51 @@ def test_choice_question_guidance_handles_all_of_the_above():
 
     assert "supports every individual option (A, B, C)" in guidance
     assert "select option d" in guidance.lower()
+
+
+def test_choice_question_guidance_handles_all_possible_answers_and_paraphrases():
+    item = {
+        "question": "Which statement describes early Cold War religion?",
+        "options": {
+            "A": "The Pledge of Allegiance was modified in 1954",
+            "B": "All possible answers",
+            "C": "Anti-Catholicism and Anti-Semitism declined in the United States",
+            "D": "Americans attended church at higher rates than in any time in American history",
+        },
+    }
+    rows = [
+        {
+            "text": (
+                "Americans attended church at higher rates than in any time in "
+                "American history. The Pledge of Allegiance was altered in 1954. "
+                "Gone was the overt anti-Catholic and anti-Semitic language of the past."
+            )
+        }
+    ]
+
+    guidance = build_choice_question_guidance(item, rows)
+
+    assert "supports every individual option (A, C, D)" in guidance
+    assert "select option b" in guidance.lower()
+    assert recommended_choice_from_guidance(item, rows) == "B"
+
+
+def test_choice_question_guidance_uses_unique_anchor_target_without_compound_option():
+    item = {
+        "question": 'Why was it called the "Cold War?"',
+        "target": "never a hot direct shooting war",
+        "options": {
+            "A": "It happened in a cold climate",
+            "B": "Relations were cold",
+            "C": "Stalin was iced out",
+            "D": "It was not a shooting war",
+        },
+    }
+
+    guidance = build_choice_question_guidance(item, [])
+
+    assert "anchored target phrase uniquely supports option D" in guidance
+    assert recommended_choice_from_guidance(item, []) == "D"
 
 
 def test_choice_question_guidance_handles_dawes_act_purpose():
@@ -2383,6 +2558,7 @@ def test_verify_answer_key_flags_conflicts_and_unresolved_items(tmp_path, capsys
     assert audit["disputed_key_count"] == 1
     assert audit["source_missing_count"] == 1
     assert audit["external_source_count"] == 1
+    assert audit["incomplete_count"] == 0
     assert audit["no_pdf_context_count"] == 1
     assert audit["items"][1]["audit_status"] == "key_conflict_candidate"
     assert audit["items"][2]["audit_status"] == "source_missing_in_local_pdf"

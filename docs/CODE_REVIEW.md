@@ -179,6 +179,22 @@ traceback.
 continues only when the document, quiz, model, item prefix, and run configuration
 match. `verify-answer-key` rejects incomplete checkpoints.
 
+### Quiz follow-up required full reruns and accepted inconsistent evidence
+
+Status: fixed.
+
+`quiz-bench` previously required rerunning the full quiz after a small number of
+model misses. It also accepted schema-valid answers whose evidence was truncated
+or described a different option than the emitted label, and compound guidance
+recognized “All of the above” but not Canvas variants such as “All possible
+answers.”
+
+**Fix applied**: Repeatable `--item-id` filtering creates complete targeted
+reports, while one bounded consistency retry checks validation, citations,
+source-derived recommendations, and evidence/label agreement. Reports retain all
+attempts and retry reasons. Compound guidance now covers the supported “All”
+wording variants without consulting the instructor key.
+
 ### Anchored quiz prompts included unrelated retrieval candidates
 
 Status: fixed.
@@ -222,6 +238,9 @@ Use this list when addressing findings:
 - [x] Add graceful shutdown regression coverage for the interactive `chat` loop.
 - [x] Add per-item timeout for the full Agent Review model/tool loop.
 - [x] Add atomic `quiz-bench` checkpoints and compatible resume validation.
+- [x] Add targeted quiz reruns and bounded evidence/selection retries with
+      attempt diagnostics.
+- [x] Recognize supported Canvas “All possible answers” compound variants.
 - [x] Keep anchored quiz prompts free of unrelated retrieval candidates.
 - [x] Reject unsupported multiple-response quiz items instead of mis-scoring
       them.

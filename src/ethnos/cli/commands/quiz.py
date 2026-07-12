@@ -45,6 +45,8 @@ from ..quiz_manifest import (
 )
 
 from ...db import context_chunks, get_document
+from ...agent_tools import answer_support_details
+from ...ollama_client import ChoiceAnswerResult
 from ...qa import RetrievalResult, normalize_answer_role, retrieve_with_fallbacks
 from ...quiz import (
     build_choice_prompt,
@@ -55,9 +57,12 @@ from ...quiz import (
     import_canvas_quiz,
     import_lms_mc_quiz,
     load_quiz,
+    recommended_choice_from_guidance,
 )
 from ...quiz_compare import compare_mc_bench_reports, load_mc_bench_report
 from ...quiz_validation import (
+    INCOMPLETE_ITEM_WARNINGS,
+    is_incomplete_item,
     normalize_review_text as _normalize_review_text,
     validate_mc_quiz_item as _validate_mc_quiz_item,
     validate_quiz_item as _validate_quiz_item,
@@ -270,7 +275,7 @@ def register(subcommands):
     validate_quiz_parser.add_argument(
         "--strict-complete",
         action="store_true",
-        help="Treat incomplete matching items and other import warnings as errors.",
+        help="Treat incomplete items and other import warnings as errors.",
     )
 
     quiz_bench_parser = add_command(
@@ -282,6 +287,14 @@ def register(subcommands):
     quiz_bench_parser.add_argument("document_id", type=int)
     quiz_bench_parser.add_argument("--quiz", type=Path, required=True)
     quiz_bench_parser.add_argument("--max-questions", type=int)
+    quiz_bench_parser.add_argument(
+        "--item-id",
+        dest="item_ids",
+        action="append",
+        default=[],
+        metavar="ID",
+        help="Benchmark only this quiz item ID; repeat for multiple items.",
+    )
     quiz_bench_parser.add_argument("--limit", type=int, default=3)
     quiz_bench_parser.add_argument("--chars", type=int, default=900)
     quiz_bench_parser.add_argument("--output", type=Path)
@@ -298,6 +311,12 @@ def register(subcommands):
     quiz_bench_parser.add_argument("--model", help="Ollama model name.")
     quiz_bench_parser.add_argument("--num-predict", type=int)
     quiz_bench_parser.add_argument("--num-ctx", type=int)
+    quiz_bench_parser.add_argument(
+        "--answer-retries",
+        type=int,
+        default=1,
+        help="Retry a choice response that is invalid or inconsistent with its evidence.",
+    )
 
     import_chapter_parser = add_command(
         subcommands,
@@ -325,7 +344,7 @@ def register(subcommands):
     import_chapter_parser.add_argument(
         "--strict-complete",
         action="store_true",
-        help="Treat incomplete matching items and other import warnings as errors.",
+        help="Treat incomplete items and other import warnings as errors.",
     )
     import_chapter_parser.add_argument(
         "--review",
@@ -425,6 +444,7 @@ def verify_answer_key_cmd(args) -> int:
     print(f"  conflict candidates: {audit['key_conflict_candidate_count']}")
     print(f"  no PDF context: {audit['no_pdf_context_count']}")
     print(f"  source missing in local PDF: {audit['source_missing_count']}")
+    print(f"  incomplete: {audit['incomplete_count']}")
     print(f"  invalid responses: {audit['invalid_response_count']}")
     print(f"  disputed keys: {audit['disputed_key_count']}")
     print()
@@ -1049,6 +1069,89 @@ def _add_selected_option_provenance(
     report_item["selected_distractor_source_citation"] = source.get("source_citation")
 
 
+def _select_quiz_benchmark_items(
+    questions: list[dict[str, object]],
+    *,
+    max_questions: int | None,
+    item_ids: list[str],
+) -> list[dict[str, object]]:
+    if not item_ids:
+        return limit_benchmark_items(questions, max_questions)
+    requested = list(dict.fromkeys(str(item_id) for item_id in item_ids))
+    by_id = {str(item.get("id") or ""): item for item in questions}
+    missing = [item_id for item_id in requested if item_id not in by_id]
+    if missing:
+        raise SystemExit("Unknown --item-id value(s): " + ", ".join(missing))
+    return [item for item in questions if str(item.get("id") or "") in requested]
+
+
+def _choice_response_retry_reason(
+    result: ChoiceAnswerResult,
+    *,
+    item: dict[str, object],
+    context_rows: list[dict[str, object]],
+) -> str | None:
+    if result.validation_status != "valid":
+        return (
+            f"response validation failed ({result.validation_status}): "
+            f"{result.validation_error or 'unknown error'}"
+        )
+    recommended = recommended_choice_from_guidance(item, context_rows)
+    if recommended and result.selected_option != recommended:
+        return (
+            f"selected option {result.selected_option} conflicts with "
+            f"source-derived guidance to select option {recommended}"
+        )
+    options = item.get("options")
+    if (
+        not result.selected_option
+        or not isinstance(options, dict)
+        or result.selected_option not in options
+    ):
+        return None
+    evidence = str(result.evidence or "").strip()
+    selected_support = answer_support_details(
+        str(options[result.selected_option]),
+        [{"text": evidence}],
+    )
+    selected_confidence = float(selected_support["confidence_score"])
+    if len(evidence.split()) < 6 and selected_confidence < 0.72:
+        return "evidence is too short to justify the selected option"
+    alternative_confidence = max(
+        (
+            float(
+                answer_support_details(str(text), [{"text": evidence}])[
+                    "confidence_score"
+                ]
+            )
+            for label, text in options.items()
+            if label != result.selected_option
+        ),
+        default=0.0,
+    )
+    if selected_confidence <= 0.35 and alternative_confidence >= 0.72:
+        return "evidence does not support the selected option wording"
+    if not result.source_citations:
+        return "response did not include a source citation"
+    return None
+
+
+def _choice_retry_prompt(
+    prompt: str,
+    *,
+    result: ChoiceAnswerResult,
+    reason: str,
+) -> str:
+    prior_evidence = str(result.evidence or "").strip() or "(none)"
+    return (
+        f"{prompt}\n\nRETRY REQUIRED: {reason}. "
+        f"The previous evidence was: {prior_evidence!r}. "
+        "Re-evaluate every option from the supplied context. Ensure the selected "
+        "letter matches the option described by your evidence, and return complete "
+        "schema-valid JSON."
+    )
+
+
 def quiz_bench_cmd(args) -> int:
     settings, conn = open_db(args)
     if args.resume and args.output is None:
@@ -1059,6 +1162,10 @@ def quiz_bench_cmd(args) -> int:
         raise SystemExit("--chars must be 1 or greater.")
     if args.max_questions is not None and args.max_questions < 1:
         raise SystemExit("--max-questions must be 1 or greater.")
+    if args.max_questions is not None and args.item_ids:
+        raise SystemExit("--max-questions cannot be combined with --item-id.")
+    if args.answer_retries < 0:
+        raise SystemExit("--answer-retries must be 0 or greater.")
     num_predict = (
         args.num_predict
         if args.num_predict is not None
@@ -1071,7 +1178,12 @@ def quiz_bench_cmd(args) -> int:
         raise SystemExit("--num-ctx must be 1 or greater.")
 
     quiz = load_quiz(args.quiz)
-    items = limit_benchmark_items(quiz["questions"], args.max_questions)
+    item_ids = list(dict.fromkeys(args.item_ids))
+    items = _select_quiz_benchmark_items(
+        quiz["questions"],
+        max_questions=args.max_questions,
+        item_ids=item_ids,
+    )
     selected_role = normalize_answer_role(args.role)
     model_name = args.model or settings.ollama_model
     started_at = time.monotonic()
@@ -1083,6 +1195,8 @@ def quiz_bench_cmd(args) -> int:
         "section": args.section,
         "options_retrieval": args.options_retrieval,
         "max_questions": args.max_questions,
+        "item_ids": item_ids,
+        "answer_retries": args.answer_retries,
         "num_predict": num_predict,
         "num_ctx": num_ctx,
     }
@@ -1109,6 +1223,8 @@ def quiz_bench_cmd(args) -> int:
     print(f"  quiz: {args.quiz}")
     print(f"  model: {model_name}")
     print(f"  questions: {len(items)}")
+    if item_ids:
+        print(f"  selected item ids: {', '.join(item_ids)}")
     if report_items:
         print(f"  resumed: {len(report_items)}/{len(items)} items")
     print()
@@ -1142,6 +1258,8 @@ def quiz_bench_cmd(args) -> int:
         raw_response = ""
         answer_elapsed = None
         answer_payload: dict[str, object] = {}
+        answer_attempts: list[dict[str, object]] = []
+        answer_retry_reasons: list[str] = []
         retrieval, retrieval_questions = _retrieve_quiz_context_for_item(
             conn,
             document_id=args.document_id,
@@ -1195,9 +1313,7 @@ def quiz_bench_cmd(args) -> int:
         if "external_source_item" in item.get("warnings", []):
             status = "skipped_source_missing"
             print("  status: skipped_source_missing")
-        elif question_type == "matching" and "incomplete_matching_item" in item.get(
-            "warnings", []
-        ):
+        elif is_incomplete_item(item):
             status = "skipped_incomplete"
             print("  status: skipped_incomplete")
         elif question_type == "matching":
@@ -1226,18 +1342,48 @@ def quiz_bench_cmd(args) -> int:
             # Late import to support monkeypatching
             from .. import answer_choice_question as _answer_choice
 
+            attempt_prompt = prompt
             try:
-                result = _answer_choice(
-                    prompt=prompt,
-                    model_name=model_name,
-                    host=settings.ollama_host,
-                    timeout=settings.ollama_timeout,
-                    num_predict=num_predict,
-                    num_ctx=num_ctx,
-                    allowed_options=tuple(item["options"].keys()),
-                    client=ollama_client,
-                    think=settings.ollama_think,
-                )
+                for attempt in range(args.answer_retries + 1):
+                    result = _answer_choice(
+                        prompt=attempt_prompt,
+                        model_name=model_name,
+                        host=settings.ollama_host,
+                        timeout=settings.ollama_timeout,
+                        num_predict=num_predict,
+                        num_ctx=num_ctx,
+                        allowed_options=tuple(item["options"].keys()),
+                        client=ollama_client,
+                        think=settings.ollama_think,
+                    )
+                    answer_attempts.append(
+                        {
+                            "attempt": attempt + 1,
+                            "selected_option": result.selected_option,
+                            "validation_status": result.validation_status,
+                            "validation_error": result.validation_error,
+                            "evidence": result.evidence,
+                            "source_citations": result.source_citations,
+                            "raw_response": result.raw_response,
+                        }
+                    )
+                    retry_reason = _choice_response_retry_reason(
+                        result,
+                        item=item,
+                        context_rows=context_rows,
+                    )
+                    if retry_reason is None or attempt == args.answer_retries:
+                        break
+                    answer_retry_reasons.append(retry_reason)
+                    print(
+                        f"  retrying answer ({attempt + 1}/{args.answer_retries}): "
+                        f"{retry_reason}"
+                    )
+                    attempt_prompt = _choice_retry_prompt(
+                        prompt,
+                        result=result,
+                        reason=retry_reason,
+                    )
             except KeyboardInterrupt:
                 print()
                 print(
@@ -1357,6 +1503,9 @@ def quiz_bench_cmd(args) -> int:
             "source_grounding": source_grounding,
             "raw_response": raw_response,
             "answer": answer_payload,
+            "answer_attempt_count": len(answer_attempts),
+            "answer_retry_reasons": answer_retry_reasons,
+            "answer_attempts": answer_attempts,
             "timings": {
                 "item_seconds": item_elapsed,
                 "answer_seconds": answer_elapsed,
@@ -1403,6 +1552,8 @@ def quiz_bench_cmd(args) -> int:
     skipped_source_missing_count = counts["skipped_source_missing_count"]
     no_context_count = counts["no_context_count"]
     invalid_count = counts["invalid_response_count"]
+    retried_item_count = counts["retried_item_count"]
+    answer_retry_count = counts["answer_retry_count"]
     print("Quiz benchmark summary:")
     print(f"  total: {len(items)}")
     print(f"  keyed total: {keyed_total}")
@@ -1432,6 +1583,8 @@ def quiz_bench_cmd(args) -> int:
     print(f"  skipped source-missing: {skipped_source_missing_count}")
     print(f"  no-context cases: {no_context_count}")
     print(f"  invalid responses: {invalid_count}")
+    print(f"  retried items: {retried_item_count}")
+    print(f"  answer retries: {answer_retry_count}")
     print(f"  elapsed: {format_elapsed(elapsed_total)}")
 
     if args.output:
@@ -1467,7 +1620,12 @@ def _quiz_bench_counts(report_items: list[dict[str, object]]) -> dict[str, objec
     )
     processed_total = len(report_items)
     skipped_source_missing_count = statuses.count("skipped_source_missing")
-    source_covered_total = processed_total - skipped_source_missing_count
+    source_covered_total = sum(
+        isinstance(item.get("source_grounding"), dict)
+        and item["source_grounding"].get("source_status")
+        in {"pdf_grounded", "retrieved_candidate"}
+        for item in report_items
+    )
     return {
         "processed_total": processed_total,
         "keyed_total": sum("correct" in item for item in report_items),
@@ -1494,6 +1652,14 @@ def _quiz_bench_counts(report_items: list[dict[str, object]]) -> dict[str, objec
         "skipped_source_missing_count": skipped_source_missing_count,
         "no_context_count": statuses.count("no_context"),
         "invalid_response_count": statuses.count("invalid_response"),
+        "retried_item_count": sum(
+            bool(item.get("answer_retry_reasons")) for item in report_items
+        ),
+        "answer_retry_count": sum(
+            len(item.get("answer_retry_reasons", []))
+            for item in report_items
+            if isinstance(item.get("answer_retry_reasons"), list)
+        ),
     }
 
 
@@ -1986,7 +2152,7 @@ def _add_quiz_source_context(
     warnings = item.get("warnings")
     if isinstance(warnings, list) and {
         "external_source_item",
-        "incomplete_matching_item",
+        *INCOMPLETE_ITEM_WARNINGS,
     }.intersection(warnings):
         return []
     source_chunks = []

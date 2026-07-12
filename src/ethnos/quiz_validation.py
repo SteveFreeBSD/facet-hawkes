@@ -9,6 +9,14 @@ from typing import Any
 
 CHOICE_TYPES = {"multiple_choice", "true_false"}
 QUIZ_TYPES = {"multiple_choice", "true_false", "matching", "essay"}
+INCOMPLETE_ITEM_WARNINGS = {"incomplete_item", "incomplete_matching_item"}
+
+
+def is_incomplete_item(item: dict[str, object]) -> bool:
+    warnings = item.get("warnings")
+    return isinstance(warnings, list) and bool(
+        INCOMPLETE_ITEM_WARNINGS.intersection(warnings)
+    )
 
 
 def validate_mc_quiz_item(
@@ -68,11 +76,15 @@ def validate_quiz_item(
         prompts = item.get("matching_prompts")
         if not isinstance(prompts, list) or not prompts:
             errors.append("matching items must include matching_prompts")
-        if strict_complete and "incomplete_matching_item" in item.get("warnings", []):
-            errors.append("incomplete matching item")
+    if strict_complete and is_incomplete_item(item):
+        errors.append(
+            "incomplete matching item"
+            if "incomplete_matching_item" in item.get("warnings", [])
+            else "incomplete item"
+        )
     if strict_complete:
         for warning in item.get("warnings", []):
-            if warning != "incomplete_matching_item":
+            if warning not in INCOMPLETE_ITEM_WARNINGS:
                 errors.append(f"import warning: {warning}")
 
     errors.extend(
@@ -132,10 +144,10 @@ def _anchor_errors(
     errors: list[str] = []
     anchor_fields = ("target", "source_chunks", "source_pages", "source_citation")
     warnings = item.get("warnings")
-    external_source_item = (
-        isinstance(warnings, list) and "external_source_item" in warnings
+    anchor_exempt = isinstance(warnings, list) and bool(
+        {"external_source_item", *INCOMPLETE_ITEM_WARNINGS}.intersection(warnings)
     )
-    if require_anchors and not external_source_item:
+    if require_anchors and not anchor_exempt:
         for field in anchor_fields:
             if not item.get(field):
                 errors.append(f"missing {field}")

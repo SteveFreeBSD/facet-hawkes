@@ -5,7 +5,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from ..quiz_validation import validate_quiz_item as _validate_quiz_item
+from ..quiz_validation import (
+    INCOMPLETE_ITEM_WARNINGS,
+    validate_quiz_item as _validate_quiz_item,
+)
 from ..text_utils import compact_text
 
 
@@ -76,7 +79,7 @@ def source_status_for_item(
 ) -> str:
     if "external_source_item" in warnings:
         return "source_missing_in_local_pdf"
-    if "incomplete_matching_item" in warnings:
+    if INCOMPLETE_ITEM_WARNINGS.intersection(warnings):
         return "incomplete"
     if validation_errors:
         return "invalid_anchor"
@@ -146,6 +149,7 @@ def verify_answer_key_report(
         "external_source_count": audit_status_count(
             audit_items, "source_missing_in_local_pdf"
         ),
+        "incomplete_count": audit_status_count(audit_items, "incomplete"),
         "invalid_response_count": audit_status_count(audit_items, "invalid_response"),
         "disputed_key_count": sum(
             item.get("key_review_status") == "disputed" for item in audit_items
@@ -174,6 +178,7 @@ def audit_keyed_report_item(item: dict[str, object]) -> dict[str, object]:
         "no_context": "no_pdf_context",
         "skipped_external_source": "source_missing_in_local_pdf",
         "skipped_source_missing": "source_missing_in_local_pdf",
+        "skipped_incomplete": "incomplete",
         "invalid_response": "invalid_response",
     }.get(status, "unclassified")
     answer = item.get("answer") if isinstance(item.get("answer"), dict) else {}

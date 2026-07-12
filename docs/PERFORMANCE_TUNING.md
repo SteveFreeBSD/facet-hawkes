@@ -15,8 +15,14 @@ Operational failures belong in
 - Use `mc-bench --chars 300` for MC-only timing and comparison runs.
 - Use `quiz-bench --chars 900` for mixed quizzes so essay drafts have more
   source context.
+- Use repeated `quiz-bench --item-id ID` arguments for follow-up runs instead
+  of repeating a complete CPU benchmark. The default single consistency retry
+  applies only to responses that fail validation or evidence/selection checks;
+  use `--answer-retries 0` for a strict one-call baseline.
 - Keep the Ollama service override small: flash attention, mlock, and memlock
   infinity. Add keep-alive on hosts where repeated local runs benefit from it.
+- On `caspian`, keep the host-level scheduler profile at `scx_bpfland` Auto
+  through `scx_loader.service`; CPU governors remain `schedutil`.
 
 These values reflect the measured `caspian` benchmark and still fit the faster
 local `erosion` host. Re-test before changing defaults globally.
@@ -39,8 +45,8 @@ ETHNOS_OLLAMA_NUM_THREAD=
 ```
 
 `ETHNOS_OLLAMA_NUM_THREAD` is intentionally blank. Ollama's default scheduler
-was faster than fixed `4` or `6` thread settings in the measured MC benchmark
-on `caspian`.
+was much faster than fixed `4` or `6` thread settings in the measured MC
+benchmark on `caspian`, including the 2026-07-11 retest on Ollama 0.31.1.
 
 `ETHNOS_OLLAMA_THINK=false` is the tuned default for the current local Gemma
 alias. Use `auto` to omit the `think` field entirely, or `true`, `low`,
@@ -57,21 +63,21 @@ The common systemd drop-in path is:
 /etc/systemd/system/ollama.service.d/override.conf
 ```
 
-Recommended baseline:
+Recommended benchmark profile:
 
 ```ini
 [Service]
 Environment="OLLAMA_FLASH_ATTENTION=1"
 Environment="OLLAMA_MLOCK=1"
+Environment="OLLAMA_KEEP_ALIVE=24h"
 LimitMEMLOCK=infinity
 ```
 
-For a workstation or benchmark host where repeated runs happen close together,
-also add:
-
-```ini
-Environment="OLLAMA_KEEP_ALIVE=30m"
-```
+`OLLAMA_KEEP_ALIVE=24h` keeps the model resident for repeated benchmark and
+work sessions. On a 64 GiB host with one 7.2 GB model, this leaves >50 GiB
+free for page cache, desktop apps, and the OS. For a dedicated benchmark day,
+use `-1` (indefinite) instead. For a shared or resource-constrained host,
+`30m` is still reasonable.
 
 Apply and inspect:
 
@@ -218,17 +224,41 @@ Capture the current state before any changes and record it in
 - Kernel variant and CPU governor (CachyOS kernel flavor, scheduler notes).
 - Memory pressure (swap/zram usage, sustained swap activity).
 
+### Phase 0b: System Profile (once per host)
+
+Apply a reversible sysctl for free-page reserve:
+
+```text
+# /etc/sysctl.d/99-ethnos-caspian.conf
+vm.min_free_kbytes = 262144
+```
+
+This raises the kernel's free-page reserve from the default (~90 MB on 64 GiB)
+to 256 MB (~0.4% of RAM). It gives the kernel more headroom for atomic
+allocations while Ollama mlocks a 7.2 GB model. Apply with
+`sudo sysctl --system` and verify with `sysctl vm.min_free_kbytes`.
+
+Rollback: `sudo rm /etc/sysctl.d/99-ethnos-caspian.conf && sudo sysctl --system`.
+
 ### Phase 1: Baseline (lock a reference)
 
+- Confirm the model is warm (`ollama ps` shows `gemma-python:latest` loaded).
+- Close browser, editor, and video work for a clean CPU test.
 - Run `mc-bench --chars 300` and `quiz-bench --chars 900` using the current
   defaults.
 - Save reports under `data/runs/` and note elapsed seconds, average answer
   seconds, accuracy, and no-context count.
-- Record whether the model was already loaded in `ollama ps` at run start.
+- This warm-model, default-scheduler baseline is the reference every subsequent
+  test must beat.
+
+2026-07-11 note: on `caspian`, the first warm run was a poor timing reference
+because the later hot-control run was an order of magnitude faster. Use the
+hot-control run as the scheduler comparison baseline:
+`data/runs/perf-caspian-schedutil-hot-control-20260711-mc.json`.
 
 ### Phase 2: Ollama Upgrade Evaluation
 
-- As of 2026-06-27, `caspian` is on Ollama 0.30.10. The last recorded
+- As of 2026-07-11, `caspian` is on Ollama 0.31.1. The last recorded
   `erosion` snapshot is 0.24.0 and must be rechecked on-host before comparison.
   The tracked Python client remains `ollama==0.6.2` in `uv.lock`.
 - Treat release candidates, nightly builds, and architecture rewrites as
@@ -255,7 +285,8 @@ Verify the baseline service override remains effective:
 - `OLLAMA_FLASH_ATTENTION=1`
 - `OLLAMA_MLOCK=1`
 - `LimitMEMLOCK=infinity`
-- `OLLAMA_KEEP_ALIVE=30m` on hosts running repeated local benchmarks
+- `OLLAMA_KEEP_ALIVE=24h` on hosts running repeated local benchmarks (or `-1`
+  for dedicated benchmark days)
 
 Confirm there are no mlock warnings and that model reloads are minimized.
 
@@ -270,6 +301,24 @@ bottleneck:
   rollback path.
 - Do not adjust swappiness, THP, or other VM knobs without data showing memory
   pressure or paging as the limiting factor.
+
+2026-07-11 `caspian` result: `scx_bpfland` Auto was selected and made
+boot-persistent with `/etc/scx_loader.toml`:
+
+```toml
+default_sched = "scx_bpfland"
+default_mode = "Auto"
+```
+
+`scx_loader.service` is enabled. The winning MC reports were:
+
+- `data/runs/perf-caspian-bpfland-auto-warm-20260711-mc.json`
+- `data/runs/perf-caspian-bpfland-auto-repeat-20260711-mc.json`
+
+The direct `performance` governor, `scx_lavd` Gaming, `scx_flash` LowLatency,
+and fixed `ETHNOS_OLLAMA_NUM_THREAD=4/6` did not beat the winning profile.
+Mixed validation on the winning profile is recorded in
+`data/runs/perf-caspian-bpfland-mixed-warm-20260711.json`.
 
 ### Phase 6: Selection and Roll-In
 

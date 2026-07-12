@@ -62,6 +62,7 @@ from .quiz_prompts import (
     build_essay_prompt,
     build_mc_context,
     build_mc_prompt,
+    recommended_choice_from_guidance,
 )
 
 __all__ = [
@@ -106,6 +107,7 @@ __all__ = [
     "normalize_quiz",
     "normalize_quiz_item",
     "parse_source_pages",
+    "recommended_choice_from_guidance",
     "_filter_ambiguous_broad_terms",
     "_normalize_int",
     "_normalize_int_list",

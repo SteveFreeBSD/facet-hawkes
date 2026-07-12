@@ -62,7 +62,9 @@ Grounding statuses:
 - `source_missing_in_local_pdf`: the item is tagged `external_source_item`
   because the current local PDF extraction does not contain enough source text
   to score it as grounded.
-- `incomplete`: the item is incomplete, such as missing matching pairs.
+- `incomplete`: the item is tagged `incomplete_item` or
+  `incomplete_matching_item`, such as a truncated Canvas export or missing
+  matching pairs.
 - `invalid_anchor`: anchor metadata exists but does not validate.
 - `ungrounded`: no usable PDF source was found.
 
@@ -80,12 +82,13 @@ uv run ethnos validate-quiz 1 \
   --require-anchors
 ```
 
-Use `--strict-complete` when incomplete matching items or other import warnings
-should fail validation.
+Use `--strict-complete` when incomplete items or other import warnings should
+fail validation.
 
-An item tagged `external_source_item` is exempt from required anchor fields
-because its source is explicitly absent from the local PDF. Any anchor fields
-that are present are still validated.
+Items tagged `external_source_item`, `incomplete_item`, or
+`incomplete_matching_item` are exempt from required anchor fields because they
+cannot be evaluated as complete PDF-grounded questions. Any anchor fields that
+are present are still validated.
 
 ## Benchmarking
 
@@ -103,16 +106,45 @@ If the process is interrupted, rerun the identical command with `--resume`.
 Resume validates the document, quiz, model, item order, and run configuration
 before continuing. `verify-answer-key` refuses incomplete checkpoints.
 
+Choice answers receive one bounded consistency retry by default. A retry occurs
+when the response is invalid, omits citations, conflicts with deterministic
+source guidance, or provides evidence that does not support its selected
+letter. The report records `answer_attempts`, `answer_attempt_count`, and
+`answer_retry_reasons`; summary fields report retried items and total retries.
+Use `--answer-retries 0` to disable retries.
+
+For a cheap follow-up after a full run, repeat `--item-id` to benchmark only the
+items that need another pass:
+
+```bash
+uv run ethnos quiz-bench 2 \
+  --quiz benchmarks/history_ch25_canvas.json \
+  --item-id ch25-q001 \
+  --item-id ch25-q008 \
+  --item-id ch25-q009 \
+  --output data/runs/history_ch25-targeted.json \
+  --options-retrieval
+```
+
+Targeted reports are complete reports for their selected subset and can be
+passed directly to `verify-answer-key`. `--item-id` and `--max-questions` are
+mutually exclusive.
+
 When a quiz item has validated `source_chunks`, those anchors are the complete
 model context. Retrieval queries and candidates remain in diagnostics, but
 unrelated retrieved chunks are not mixed into the answer prompt.
+
+Source-derived guidance handles negative questions, anchored target phrases,
+percentage complements, and compound options. “All of the above,” “All possible
+answers,” and “All of the possible answers” are equivalent compound forms; the
+compound label is recommended only when every individual option is supported.
 
 It reports:
 
 - `correct` / `incorrect` for keyed choice items.
 - `answered_unscored` for unkeyed choice items.
 - `drafted` for essays.
-- `skipped_incomplete` for incomplete matching items.
+- `skipped_incomplete` for incomplete items.
 - `skipped_source_missing` for items whose quiz source cannot be found in the
   current local PDF extraction.
 - `no_context` when PDF retrieval fails.
@@ -121,7 +153,9 @@ It reports:
 Each benchmark item includes a `source_grounding` record so downstream tools can
 distinguish a likely wrong key from missing local PDF source material.
 Benchmark summaries separate `grounded accuracy` from `source coverage`; this
-keeps model correctness and source availability honest.
+keeps model correctness and source availability honest. Source coverage counts
+only `pdf_grounded` and `retrieved_candidate` items; incomplete and
+source-missing items are excluded.
 
 When an instructor key is known but conflicts with the available PDF evidence,
 set `key_review_status` to `disputed` in the manifest override and explain the
@@ -145,6 +179,8 @@ Audit statuses:
 - `no_pdf_context`: no source context was found, so the key cannot be judged.
 - `source_missing_in_local_pdf`: the key may be correct, but the current local
   PDF extraction does not provide source text to judge it.
+- `incomplete`: the keyed item was skipped because the imported question is
+  incomplete.
 - `invalid_response`: model output was not valid enough to judge the key.
 - `unclassified`: any remaining status that needs human review.
 

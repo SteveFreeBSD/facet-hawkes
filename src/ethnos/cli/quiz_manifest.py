@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from ..quiz_validation import is_incomplete_item
 from ..quiz_validation import validate_quiz_item as _validate_quiz_item
 
 
@@ -219,17 +220,14 @@ def chapter_quiz_unresolved_notes(quiz: dict[str, object]) -> list[str]:
         for item in questions
         if isinstance(item, dict) and item.get("question_type") == "essay"
     )
-    incomplete_matching = sum(
-        1
-        for item in questions
-        if isinstance(item, dict)
-        and "incomplete_matching_item" in item.get("warnings", [])
+    incomplete_items = sum(
+        1 for item in questions if isinstance(item, dict) and is_incomplete_item(item)
     )
     notes = []
     if unkeyed_choices:
         notes.append(f"{unkeyed_choices} choice item(s) are unkeyed.")
     if essays:
         notes.append(f"{essays} essay prompt(s) require rubric/model review.")
-    if incomplete_matching:
-        notes.append(f"{incomplete_matching} matching item(s) are incomplete.")
+    if incomplete_items:
+        notes.append(f"{incomplete_items} item(s) are incomplete.")
     return notes

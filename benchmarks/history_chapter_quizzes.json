@@ -166,6 +166,161 @@
           "retrieval_questions": ["Prohibition bootlegging illegal speakeasies consequence"]
         }
       }
+    },
+    "25": {
+      "title": "Quiz CH 25",
+      "expected_questions": 20,
+      "expected_total_points": 100,
+      "expected_keyed_choices": 20,
+      "expected_question_types": {
+        "multiple_choice": 20
+      },
+      "allowed_warnings": [],
+      "notes": "Chapter 25 is a keyed Canvas multiple-choice quiz for The Cold War. All 20 items are anchored to the relevant source spans. The instructor key for Question 8 is retained but disputed because the PDF supports a different option.",
+      "item_overrides": {
+        "ch25-q001": {
+          "target": "never a “hot,” direct shooting war",
+          "source_chunks": [190],
+          "source_pages": [271, 272, 273],
+          "source_citation": "history.pdf pp. 271-273, chunk 90",
+          "retrieval_questions": ["why called Cold War not direct shooting war"]
+        },
+        "ch25-q002": {
+          "target": "announced $400 million in aid to Greece and Turkey",
+          "source_chunks": [191],
+          "source_pages": [274, 275, 276],
+          "source_citation": "history.pdf pp. 274-276, chunk 91",
+          "retrieval_questions": ["1947 United States Greece Turkey 400 million aid"]
+        },
+        "ch25-q003": {
+          "target": "designed to rebuild Western Europe, open markets",
+          "source_chunks": [191],
+          "source_pages": [274, 275, 276],
+          "source_citation": "history.pdf pp. 274-276, chunk 91",
+          "retrieval_questions": ["Marshall Plan rebuild Western Europe markets capitalist democracies"]
+        },
+        "ch25-q004": {
+          "target": "On the eve of American involvement in World War II, on August 14, 1941",
+          "source_chunks": [190],
+          "source_pages": [271, 272, 273],
+          "source_citation": "history.pdf pp. 271-273, chunk 90",
+          "retrieval_questions": ["Atlantic Charter August 1941 before United States entered World War II"]
+        },
+        "ch25-q005": {
+          "target": "George Kennan",
+          "source_chunks": [190],
+          "source_pages": [271, 272, 273],
+          "source_citation": "history.pdf pp. 271-273, chunk 90",
+          "retrieval_questions": ["George Kennan policy containment Long Telegram"]
+        },
+        "ch25-q006": {
+          "target": "public insubordination",
+          "source_chunks": [192],
+          "source_pages": [277, 278, 279],
+          "source_citation": "history.pdf pp. 277-279, chunk 92",
+          "retrieval_questions": ["Truman dismissed MacArthur public insubordination"]
+        },
+        "ch25-q007": {
+          "target": "list of 205",
+          "source_chunks": [194],
+          "source_pages": [283, 284, 285],
+          "source_citation": "history.pdf pp. 283-285, chunk 94",
+          "retrieval_questions": ["McCarthy list 205 Secretary of State government officials"]
+        },
+        "ch25-q008": {
+          "target": "American policy dictated alliances with colonial regimes",
+          "source_chunks": [198],
+          "source_pages": [294, 295, 296],
+          "source_citation": "history.pdf pp. 294-296, chunk 98",
+          "retrieval_questions": ["United States decolonization alliances European colonial regimes Cold War"],
+          "key_review_status": "disputed",
+          "instructor_key_note": "The instructor key selects D, which says the United States did not act one way or another during decolonization. The PDF instead says American policy allied with colonial regimes when confronting anticolonial movements, directly supporting B."
+        },
+        "ch25-q009": {
+          "target": "higher rates than in any time in American history",
+          "source_chunks": [196],
+          "source_pages": [288, 289, 290],
+          "source_citation": "history.pdf pp. 288-290, chunk 96",
+          "retrieval_questions": ["early Cold War church attendance Pledge Allegiance anti-Catholicism anti-Semitism"]
+        },
+        "ch25-q010": {
+          "target": "England/France/Italy",
+          "source_chunks": [191],
+          "source_pages": [274, 275, 276],
+          "source_citation": "history.pdf pp. 274-276, chunk 91",
+          "retrieval_questions": ["NATO founding members England France Italy Sweden"]
+        },
+        "ch25-q011": {
+          "target": "global political and ideological struggle",
+          "source_chunks": [190],
+          "source_pages": [271, 272, 273],
+          "source_citation": "history.pdf pp. 271-273, chunk 90",
+          "retrieval_questions": ["Cold War competing ideological geopolitical goals United States Soviet Union"]
+        },
+        "ch25-q012": {
+          "target": "to support free peoples . . . resisting attempted subjugation",
+          "source_chunks": [191],
+          "source_pages": [274, 275, 276],
+          "source_citation": "history.pdf pp. 274-276, chunk 91",
+          "retrieval_questions": ["Truman Doctrine support nations resisting communism Soviet influence"]
+        },
+        "ch25-q013": {
+          "target": "McCarthy’s claims won him fame and fueled the ongoing “red scare.”",
+          "source_chunks": [194],
+          "source_pages": [283, 284, 285],
+          "source_citation": "history.pdf pp. 283-285, chunk 94",
+          "retrieval_questions": ["McCarthy national prominence accusations communist sympathies limited evidence"]
+        },
+        "ch25-q014": {
+          "target": "deployed its own troops to the Korean Peninsula",
+          "source_chunks": [192],
+          "source_pages": [277, 278, 279],
+          "source_citation": "history.pdf pp. 277-279, chunk 92",
+          "retrieval_questions": ["Korean War United States military force contain communism"]
+        },
+        "ch25-q015": {
+          "target": "the Soviet Union agreed to remove its missiles from Cuba",
+          "source_chunks": [211],
+          "source_pages": [330, 331, 332],
+          "source_citation": "history.pdf pp. 330-332, chunk 111",
+          "retrieval_questions": ["Kennedy Cuban Missile Crisis remove Soviet missiles avoid nuclear war"]
+        },
+        "ch25-q016": {
+          "target": "mutually assured destruction (MAD)",
+          "source_chunks": [193],
+          "source_pages": [280, 281, 282],
+          "source_citation": "history.pdf pp. 280-282, chunk 93",
+          "retrieval_questions": ["mutually assured destruction both superpowers nuclear deterrence"]
+        },
+        "ch25-q017": {
+          "target": "Sputnik 1, the world’s first human-made satellite",
+          "source_chunks": [193],
+          "source_pages": [280, 281, 282],
+          "source_citation": "history.pdf pp. 280-282, chunk 93",
+          "retrieval_questions": ["Space Race technological military ideological rivalry Sputnik NASA"]
+        },
+        "ch25-q018": {
+          "target": "one country after another would fall to communism",
+          "source_chunks": [197],
+          "source_pages": [291, 292, 293],
+          "source_citation": "history.pdf pp. 291-293, chunk 97",
+          "retrieval_questions": ["Vietnam domino theory neighboring countries fall communism"]
+        },
+        "ch25-q019": {
+          "target": "Gorbachev’s proposed reforms unraveled the decaying Soviet system",
+          "source_chunks": [241],
+          "source_pages": [416, 417, 418],
+          "source_citation": "history.pdf pp. 416-418, chunk 141",
+          "retrieval_questions": ["end Cold War Soviet reforms internal instability Gorbachev"]
+        },
+        "ch25-q020": {
+          "target": "granting President Johnson the authority to deploy",
+          "source_chunks": [215, 221],
+          "source_pages": [342, 343, 344, 359, 360, 361],
+          "source_citation": "history.pdf pp. 342-344, chunk 115",
+          "retrieval_questions": ["Cold War expansion presidential authority military interventions limited congressional approval"]
+        }
+      }
     }
   }
 }

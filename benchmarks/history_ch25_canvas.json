@@ -1,0 +1,557 @@
+{
+  "document_id": 2,
+  "generated_count": 20,
+  "import_warnings": [],
+  "questions": [
+    {
+      "correct": "D",
+      "id": "ch25-q001",
+      "options": {
+        "A": "it took place in a cold climate",
+        "B": "relations between the USSR and the US were cold",
+        "C": "Stalin believe he was being iced out",
+        "D": "it was not a shooting war"
+      },
+      "points": 5,
+      "position": 1,
+      "question": "Why was it called the \"Cold War?\"",
+      "question_type": "multiple_choice",
+      "retrieval_questions": [
+        "why called Cold War not direct shooting war"
+      ],
+      "source_chunks": [
+        190
+      ],
+      "source_citation": "history.pdf pp. 271-273, chunk 90",
+      "source_pages": [
+        271,
+        272,
+        273
+      ],
+      "target": "never a \u201chot,\u201d direct shooting war"
+    },
+    {
+      "correct": "C",
+      "id": "ch25-q002",
+      "options": {
+        "A": "The United States sent military advisers to train anti-communist forces in both countries",
+        "B": "The United States actively intervened in Greece but not in Turkey",
+        "C": "The United States sent $400 million to both nations to be used in resisting communism",
+        "D": "The United States established long range missiles in these nations, capable of reaching Moscow"
+      },
+      "points": 5,
+      "position": 2,
+      "question": "Greece and Turkey were early flashpoints in the Cold War. How did the United States respond to unrest in Greece and Turkey in 1947?",
+      "question_type": "multiple_choice",
+      "retrieval_questions": [
+        "1947 United States Greece Turkey 400 million aid"
+      ],
+      "source_chunks": [
+        191
+      ],
+      "source_citation": "history.pdf pp. 274-276, chunk 91",
+      "source_pages": [
+        274,
+        275,
+        276
+      ],
+      "target": "announced $400 million in aid to Greece and Turkey"
+    },
+    {
+      "correct": "C",
+      "id": "ch25-q003",
+      "options": {
+        "A": "Create new markets for American goods",
+        "B": "Generate support for Capitalist democracies",
+        "C": "All of the possible answers",
+        "D": "Rebuild Western Europe"
+      },
+      "points": 5,
+      "position": 3,
+      "question": "What was the purpose of the Marshall Plan?",
+      "question_type": "multiple_choice",
+      "retrieval_questions": [
+        "Marshall Plan rebuild Western Europe markets capitalist democracies"
+      ],
+      "source_chunks": [
+        191
+      ],
+      "source_citation": "history.pdf pp. 274-276, chunk 91",
+      "source_pages": [
+        274,
+        275,
+        276
+      ],
+      "target": "designed to rebuild Western Europe, open markets"
+    },
+    {
+      "correct": "A",
+      "id": "ch25-q004",
+      "options": {
+        "A": "Before the United States entered World War II",
+        "B": "When the Soviet Union invaded Korea",
+        "C": "Immediately after World War I",
+        "D": "After World War II"
+      },
+      "points": 5,
+      "position": 4,
+      "question": "When was the Atlantic Charter issued?",
+      "question_type": "multiple_choice",
+      "retrieval_questions": [
+        "Atlantic Charter August 1941 before United States entered World War II"
+      ],
+      "source_chunks": [
+        190
+      ],
+      "source_citation": "history.pdf pp. 271-273, chunk 90",
+      "source_pages": [
+        271,
+        272,
+        273
+      ],
+      "target": "On the eve of American involvement in World War II, on August 14, 1941"
+    },
+    {
+      "correct": "C",
+      "id": "ch25-q005",
+      "options": {
+        "A": "Harry Truman",
+        "B": "Winston Churchill",
+        "C": "George Kennan",
+        "D": "George Marshall"
+      },
+      "points": 5,
+      "position": 5,
+      "question": "Who first advocated the policy of containment?",
+      "question_type": "multiple_choice",
+      "retrieval_questions": [
+        "George Kennan policy containment Long Telegram"
+      ],
+      "source_chunks": [
+        190
+      ],
+      "source_citation": "history.pdf pp. 271-273, chunk 90",
+      "source_pages": [
+        271,
+        272,
+        273
+      ],
+      "target": "George Kennan"
+    },
+    {
+      "correct": "D",
+      "id": "ch25-q006",
+      "options": {
+        "A": "He refused to attack Chinese forces because of a fear of starting World War III",
+        "B": "His defensive tactics frustrated an impatient President Truman",
+        "C": "He refused to recognize the cease-fire",
+        "D": "He was publicly insubordinate to the Commander in Chief"
+      },
+      "points": 5,
+      "position": 6,
+      "question": "Why was Douglas MacArthur removed from command?",
+      "question_type": "multiple_choice",
+      "retrieval_questions": [
+        "Truman dismissed MacArthur public insubordination"
+      ],
+      "source_chunks": [
+        192
+      ],
+      "source_citation": "history.pdf pp. 277-279, chunk 92",
+      "source_pages": [
+        277,
+        278,
+        279
+      ],
+      "target": "public insubordination"
+    },
+    {
+      "correct": "D",
+      "id": "ch25-q007",
+      "options": {
+        "A": "New York bankers",
+        "B": "Hollywood executives",
+        "C": "Military officers",
+        "D": "Members of the Department of State"
+      },
+      "points": 5,
+      "position": 7,
+      "question": "Joseph McCarthy first achieved national prominence in February 1950 by waving a piece of paper that he claimed included 205 communists currently working in what capacity?",
+      "question_type": "multiple_choice",
+      "retrieval_questions": [
+        "McCarthy list 205 Secretary of State government officials"
+      ],
+      "source_chunks": [
+        194
+      ],
+      "source_citation": "history.pdf pp. 283-285, chunk 94",
+      "source_pages": [
+        283,
+        284,
+        285
+      ],
+      "target": "list of 205"
+    },
+    {
+      "correct": "D",
+      "id": "ch25-q008",
+      "instructor_key_note": "The instructor key selects D, which says the United States did not act one way or another during decolonization. The PDF instead says American policy allied with colonial regimes when confronting anticolonial movements, directly supporting B.",
+      "key_review_status": "disputed",
+      "options": {
+        "A": "The United States was war-weary and an isolationist foreign policy prohibited active intervention for these decades",
+        "B": "The Cold War alliance with Western Europe led the United States to support many colonial powers",
+        "C": "The United States did serve as the most active supporter of decolonization independence movements",
+        "D": "The United States was preoccupied with the arms race against the Soviet Union and therefore did not act one way or another during he decolonization struggle"
+      },
+      "points": 5,
+      "position": 8,
+      "question": "Why did the United States fail to help more of the decolonization independence movements during the 1940s \u2013 1970s?",
+      "question_type": "multiple_choice",
+      "retrieval_questions": [
+        "United States decolonization alliances European colonial regimes Cold War"
+      ],
+      "source_chunks": [
+        198
+      ],
+      "source_citation": "history.pdf pp. 294-296, chunk 98",
+      "source_pages": [
+        294,
+        295,
+        296
+      ],
+      "target": "American policy dictated alliances with colonial regimes"
+    },
+    {
+      "correct": "B",
+      "id": "ch25-q009",
+      "options": {
+        "A": "The Pledge of Allegiance was modified in 1954",
+        "B": "All possible answers",
+        "C": "Anti-Catholicism and Anti-Semitism declined in the United States",
+        "D": "Americans attended church at higher rates than in any time in American history"
+      },
+      "points": 5,
+      "position": 9,
+      "question": "Which of the following most accurately describes religious commitment during the early Cold War years?",
+      "question_type": "multiple_choice",
+      "retrieval_questions": [
+        "early Cold War church attendance Pledge Allegiance anti-Catholicism anti-Semitism"
+      ],
+      "source_chunks": [
+        196
+      ],
+      "source_citation": "history.pdf pp. 288-290, chunk 96",
+      "source_pages": [
+        288,
+        289,
+        290
+      ],
+      "target": "higher rates than in any time in American history"
+    },
+    {
+      "correct": "A",
+      "id": "ch25-q010",
+      "options": {
+        "A": "Sweden",
+        "B": "England",
+        "C": "France",
+        "D": "Italy"
+      },
+      "points": 5,
+      "position": 10,
+      "question": "Which of the following nations were not a part of the North Atlantic Treaty Organization (NATO)?",
+      "question_type": "multiple_choice",
+      "retrieval_questions": [
+        "NATO founding members England France Italy Sweden"
+      ],
+      "source_chunks": [
+        191
+      ],
+      "source_citation": "history.pdf pp. 274-276, chunk 91",
+      "source_pages": [
+        274,
+        275,
+        276
+      ],
+      "target": "England/France/Italy"
+    },
+    {
+      "correct": "C",
+      "id": "ch25-q011",
+      "options": {
+        "A": "The failure of the United Nations to resolve postwar disputes",
+        "B": "The collapse of the European colonial empires",
+        "C": "Competing ideological and geopolitical goals of the United States and the Soviet Union",
+        "D": "The outbreak of the Korean War"
+      },
+      "points": 5,
+      "position": 11,
+      "question": "Which factor most directly contributed to the emergence of the Cold War immediately following World War II?",
+      "question_type": "multiple_choice",
+      "retrieval_questions": [
+        "Cold War competing ideological geopolitical goals United States Soviet Union"
+      ],
+      "source_chunks": [
+        190
+      ],
+      "source_citation": "history.pdf pp. 271-273, chunk 90",
+      "source_pages": [
+        271,
+        272,
+        273
+      ],
+      "target": "global political and ideological struggle"
+    },
+    {
+      "correct": "A",
+      "id": "ch25-q012",
+      "options": {
+        "A": "prevent the spread of communism by supporting nations resisting Soviet influence.",
+        "B": "eliminate nuclear weapons through international agreements.",
+        "C": "encourage European nations to become politically neutral.",
+        "D": "establish a permanent American military presence throughout Europe."
+      },
+      "points": 5,
+      "position": 12,
+      "question": "The primary objective of the Truman Doctrine was to:",
+      "question_type": "multiple_choice",
+      "retrieval_questions": [
+        "Truman Doctrine support nations resisting communism Soviet influence"
+      ],
+      "source_chunks": [
+        191
+      ],
+      "source_citation": "history.pdf pp. 274-276, chunk 91",
+      "source_pages": [
+        274,
+        275,
+        276
+      ],
+      "target": "to support free peoples . . . resisting attempted subjugation"
+    },
+    {
+      "correct": "D",
+      "id": "ch25-q013",
+      "options": {
+        "A": "leading negotiations that ended the Korean War.",
+        "B": "exposing Soviet espionage networks operating inside the White House.",
+        "C": "directing the House Un-American Activities Committee during the Hollywood investigations.",
+        "D": "accusing numerous government officials of communist sympathies with limited evidence."
+      },
+      "points": 5,
+      "position": 13,
+      "question": "Senator Joseph McCarthy became nationally prominent by:",
+      "question_type": "multiple_choice",
+      "retrieval_questions": [
+        "McCarthy national prominence accusations communist sympathies limited evidence"
+      ],
+      "source_chunks": [
+        194
+      ],
+      "source_citation": "history.pdf pp. 283-285, chunk 94",
+      "source_pages": [
+        283,
+        284,
+        285
+      ],
+      "target": "McCarthy\u2019s claims won him fame and fueled the ongoing \u201cred scare.\u201d"
+    },
+    {
+      "correct": "D",
+      "id": "ch25-q014",
+      "options": {
+        "A": "resulted in the permanent reunification of Korea under democratic government.",
+        "B": "ended with a formal peace treaty between North and South Korea.",
+        "C": "marked the first direct military conflict between the United States and the Soviet Union.",
+        "D": "demonstrated the United States' willingness to use military force to contain communism."
+      },
+      "points": 5,
+      "position": 14,
+      "question": "The significance of the Korean War in the broader Cold War was that it:",
+      "question_type": "multiple_choice",
+      "retrieval_questions": [
+        "Korean War United States military force contain communism"
+      ],
+      "source_chunks": [
+        192
+      ],
+      "source_citation": "history.pdf pp. 277-279, chunk 92",
+      "source_pages": [
+        277,
+        278,
+        279
+      ],
+      "target": "deployed its own troops to the Korean Peninsula"
+    },
+    {
+      "correct": "B",
+      "id": "ch25-q015",
+      "options": {
+        "A": "establish permanent American military bases in Cuba.",
+        "B": "remove Soviet nuclear missiles from Cuba while avoiding nuclear war.",
+        "C": "overthrow Fidel Castro through an immediate invasion.",
+        "D": "negotiate Cuba's admission into NATO."
+      },
+      "points": 5,
+      "position": 15,
+      "question": "During the Cuban Missile Crisis, President John F. Kennedy's principal objective was to:",
+      "question_type": "multiple_choice",
+      "retrieval_questions": [
+        "Kennedy Cuban Missile Crisis remove Soviet missiles avoid nuclear war"
+      ],
+      "source_chunks": [
+        211
+      ],
+      "source_citation": "history.pdf pp. 330-332, chunk 111",
+      "source_pages": [
+        330,
+        331,
+        332
+      ],
+      "target": "the Soviet Union agreed to remove its missiles from Cuba"
+    },
+    {
+      "correct": "B",
+      "id": "ch25-q016",
+      "options": {
+        "A": "Flexible Response",
+        "B": "Mutually Assured Destruction (MAD)",
+        "C": "Domino Theory",
+        "D": "Massive Retaliation"
+      },
+      "points": 5,
+      "position": 16,
+      "question": "Which concept best describes the Cold War strategy based on the belief that nuclear war would be avoided because both superpowers possessed the ability to destroy one another?",
+      "question_type": "multiple_choice",
+      "retrieval_questions": [
+        "mutually assured destruction both superpowers nuclear deterrence"
+      ],
+      "source_chunks": [
+        193
+      ],
+      "source_citation": "history.pdf pp. 280-282, chunk 93",
+      "source_pages": [
+        280,
+        281,
+        282
+      ],
+      "target": "mutually assured destruction (MAD)"
+    },
+    {
+      "correct": "B",
+      "id": "ch25-q017",
+      "options": {
+        "A": "replaced nuclear competition as the primary source of Cold War tensions.",
+        "B": "reflected technological, military, and ideological rivalry between the United States and the Soviet Union.",
+        "C": "had little connection to Cold War competition.",
+        "D": "ended immediately after the Soviet launch of Sputnik."
+      },
+      "points": 5,
+      "position": 17,
+      "question": "According to The American Yawp, the Space Race was important because it:",
+      "question_type": "multiple_choice",
+      "retrieval_questions": [
+        "Space Race technological military ideological rivalry Sputnik NASA"
+      ],
+      "source_chunks": [
+        193
+      ],
+      "source_citation": "history.pdf pp. 280-282, chunk 93",
+      "source_pages": [
+        280,
+        281,
+        282
+      ],
+      "target": "Sputnik 1, the world\u2019s first human-made satellite"
+    },
+    {
+      "correct": "A",
+      "id": "ch25-q018",
+      "options": {
+        "A": "American leaders believed that the fall of Vietnam to communism might encourage neighboring countries to follow.",
+        "B": "The Soviet Union had already occupied all of Southeast Asia.",
+        "C": "Vietnam possessed the world's largest supply of nuclear weapons.",
+        "D": "The United States sought to defend its colonial possessions in Southeast Asia."
+      },
+      "points": 5,
+      "position": 18,
+      "question": "Which statement best explains why the Vietnam War became a major Cold War conflict for the United States?",
+      "question_type": "multiple_choice",
+      "retrieval_questions": [
+        "Vietnam domino theory neighboring countries fall communism"
+      ],
+      "source_chunks": [
+        197
+      ],
+      "source_citation": "history.pdf pp. 291-293, chunk 97",
+      "source_pages": [
+        291,
+        292,
+        293
+      ],
+      "target": "one country after another would fall to communism"
+    },
+    {
+      "correct": "D",
+      "id": "ch25-q019",
+      "options": {
+        "A": "The signing of the Treaty of Versailles",
+        "B": "The American victory in the Vietnam War",
+        "C": "The success of the Bay of Pigs invasion",
+        "D": "Economic and political reforms in the Soviet Union combined with growing internal instability"
+      },
+      "points": 5,
+      "position": 19,
+      "question": "Which development contributed most directly to the end of the Cold War?",
+      "question_type": "multiple_choice",
+      "retrieval_questions": [
+        "end Cold War Soviet reforms internal instability Gorbachev"
+      ],
+      "source_chunks": [
+        241
+      ],
+      "source_citation": "history.pdf pp. 416-418, chunk 141",
+      "source_pages": [
+        416,
+        417,
+        418
+      ],
+      "target": "Gorbachev\u2019s proposed reforms unraveled the decaying Soviet system"
+    },
+    {
+      "correct": "C",
+      "id": "ch25-q020",
+      "options": {
+        "A": "The Supreme Court assumed direct control over foreign policy decisions involving communist nations.",
+        "B": "State governments gained primary responsibility for responding to international conflicts.",
+        "C": "Presidents increasingly exercised broad authority over foreign policy, military interventions, and national security, often with limited congressional approval.",
+        "D": "Congress assumed primary responsibility for directing military operations abroad."
+      },
+      "points": 5,
+      "position": 20,
+      "question": "How did the Cold War influence the expansion of presidential power in the United States?",
+      "question_type": "multiple_choice",
+      "retrieval_questions": [
+        "Cold War expansion presidential authority military interventions limited congressional approval"
+      ],
+      "source_chunks": [
+        215,
+        221
+      ],
+      "source_citation": "history.pdf pp. 342-344, chunk 115",
+      "source_pages": [
+        342,
+        343,
+        344,
+        359,
+        360,
+        361
+      ],
+      "target": "granting President Johnson the authority to deploy"
+    }
+  ],
+  "source": "canvas_pasted_text",
+  "title": "Quiz CH 25",
+  "total_points": 100,
+  "version": "external-quiz-v2"
+}

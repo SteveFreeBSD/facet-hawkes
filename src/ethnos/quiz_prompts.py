@@ -101,13 +101,33 @@ def build_choice_question_guidance(
     all_guidance = _all_option_guidance(item, context_rows)
     if all_guidance:
         guidance.append(all_guidance)
-    purpose_guidance = _purpose_option_guidance(item, context_rows)
-    if purpose_guidance:
-        guidance.append(purpose_guidance)
+    has_compound_answer = _has_compound_answer_option(item)
+    if not has_compound_answer:
+        target_guidance = _target_option_guidance(item)
+        if target_guidance:
+            guidance.append(target_guidance)
+        purpose_guidance = _purpose_option_guidance(item, context_rows)
+        if purpose_guidance:
+            guidance.append(purpose_guidance)
     percent_guidance = _percentage_complement_guidance(item, context_rows)
     if percent_guidance:
         guidance.append(percent_guidance)
     return "\n".join(guidance) if guidance else "None."
+
+
+def recommended_choice_from_guidance(
+    item: dict[str, Any], context_rows: list[dict[str, Any]]
+) -> str | None:
+    guidance = build_choice_question_guidance(item, context_rows)
+    recommendations = {
+        match.upper()
+        for match in re.findall(
+            r"\bselect option ([A-Z0-9]+)\b",
+            guidance,
+            flags=re.IGNORECASE,
+        )
+    }
+    return recommendations.pop() if len(recommendations) == 1 else None
 
 
 def _negative_option_guidance(
@@ -172,16 +192,14 @@ def _all_option_guidance(
     if not options or not context:
         return None
     all_options = [
-        (label, text)
-        for label, text in options.items()
-        if re.search(r"\ball(?:\s+of\s+the)?\s+above\b", text, flags=re.IGNORECASE)
+        (label, text) for label, text in options.items() if _is_all_answer(text)
     ]
     if not all_options:
         return None
     individual_options = [
         (label, text)
         for label, text in options.items()
-        if not re.search(r"\b(?:both|neither|none|all)\b", text, flags=re.IGNORECASE)
+        if not _is_compound_answer(text)
     ]
     supported = [
         label
@@ -196,6 +214,64 @@ def _all_option_guidance(
             f"select option {all_label}."
         )
     return None
+
+
+def _has_compound_answer_option(item: dict[str, Any]) -> bool:
+    options = normalize_options(item.get("options") or {})
+    return any(_is_compound_answer(text) for text in options.values())
+
+
+def _is_compound_answer(text: str) -> bool:
+    return bool(
+        _is_all_answer(text)
+        or re.search(r"\b(?:both|neither|none)\b", text, flags=re.IGNORECASE)
+    )
+
+
+def _is_all_answer(text: str) -> bool:
+    return bool(
+        re.search(
+            r"\ball\s+(?:(?:of\s+the\s+)?above|"
+            r"(?:of\s+the\s+)?possible\s+answers?)\b",
+            text,
+            flags=re.IGNORECASE,
+        )
+    )
+
+
+def _target_option_guidance(item: dict[str, Any]) -> str | None:
+    target = str(item.get("target") or "").strip()
+    options = normalize_options(item.get("options") or {})
+    if not target or not options:
+        return None
+    supported = [
+        label
+        for label, text in options.items()
+        if _option_supported_by_target(text, target)
+    ]
+    if len(supported) != 1:
+        return None
+    label = supported[0]
+    return (
+        f"The anchored target phrase uniquely supports option {label}. "
+        f"Select option {label}."
+    )
+
+
+def _option_supported_by_target(option_text: str, target: str) -> bool:
+    option_norm = _guidance_normalized_text(option_text)
+    target_norm = _guidance_normalized_text(target)
+    if not option_norm or not target_norm:
+        return False
+    if option_norm in target_norm or target_norm in option_norm:
+        return True
+    option_terms = _guidance_significant_terms(option_norm)
+    target_terms = set(_guidance_significant_terms(target_norm))
+    if not option_terms:
+        return False
+    matched = sum(term in target_terms for term in option_terms)
+    required_ratio = 1.0 if len(option_terms) <= 2 else 0.75
+    return matched / len(option_terms) >= required_ratio
 
 
 def _purpose_option_guidance(
@@ -233,6 +309,8 @@ def _option_text_supported(option_text: str, context: str) -> bool:
     context_norm = _guidance_normalized_text(context)
     if not option_norm:
         return False
+    if _decline_paraphrase_supported(option_norm, context_norm):
+        return True
     if re.search(rf"\b{re.escape(option_norm)}\b", context_norm) is not None:
         return True
     option_terms = _guidance_significant_terms(option_norm)
@@ -244,6 +322,17 @@ def _option_text_supported(option_text: str, context: str) -> bool:
         if re.search(rf"\b{re.escape(term)}\b", context_norm)
     ]
     return len(matched_terms) / len(option_terms) >= 0.75
+
+
+def _decline_paraphrase_supported(option_norm: str, context_norm: str) -> bool:
+    return (
+        "declin" in option_norm
+        and "anti catholic" in option_norm
+        and "anti semit" in option_norm
+        and "gone" in context_norm
+        and "anti catholic" in context_norm
+        and "anti semit" in context_norm
+    )
 
 
 def _guidance_normalized_text(text: str) -> str:

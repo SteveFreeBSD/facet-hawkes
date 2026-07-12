@@ -23,7 +23,7 @@ and every report should separate model behavior from source quality.
   searches and inspects evidence before answering, with fixed Q&A preserved as
   the fast baseline.
 - **Real quiz workflows**: Canvas-style mixed quizzes, answer keys, true/false,
-  essays, incomplete matching items, generated quizzes, source grounding, and
+  essays, incomplete imported items, generated quizzes, source grounding, and
   benchmark reports all use one coherent pipeline.
 - **CPU-aware model strategy**: the current baseline is tuned for the
   Gemma 4 based `gemma-python` alias on CPU-only local hardware; heavier local
@@ -354,7 +354,7 @@ uv run ethnos import-canvas-quiz benchmarks/canvas_mixed_quiz_raw.txt \
 
 The mixed importer preserves Canvas question positions and point values, strips
 `Flag question` and `Group of answer choices` boilerplate, detects MC,
-true/false, matching, and essay items, and keeps incomplete matching questions
+true/false, matching, and essay items, and keeps incomplete questions
 with warnings. Use the generic review, validation, and benchmark commands for
 mixed quizzes:
 
@@ -372,7 +372,7 @@ uv run ethnos quiz-bench 1 \
 
 `quiz-bench` scores keyed MC/true-false items, answers unkeyed choice items
 without counting them toward accuracy, drafts source-grounded essay answers with
-rubrics, and skips incomplete matching items without calling Ollama. When
+rubrics, and skips incomplete items without calling Ollama. When
 `--output` is provided, it atomically checkpoints after every item. Resume an
 interrupted run with the same arguments plus `--resume`; answer-key verification
 rejects incomplete checkpoints.
@@ -380,6 +380,27 @@ rejects incomplete checkpoints.
 Items with `key_review_status: disputed` still report agreement or conflict with
 the instructor key, but are excluded from PDF-grounded accuracy. Reports keep
 grounded accuracy and instructor-key agreement as separate metrics.
+
+Choice responses receive one bounded retry by default when schema validation
+fails, source-derived question guidance and the selected label disagree, the
+evidence is too weak to justify the label, or the response omits citations.
+Reports retain every attempt and retry reason. Set `--answer-retries 0` to
+disable this behavior. To rerun only specific failures, repeat `--item-id`:
+
+```bash
+uv run ethnos quiz-bench 2 \
+  --quiz benchmarks/history_ch25_canvas.json \
+  --item-id ch25-q001 \
+  --item-id ch25-q008 \
+  --item-id ch25-q009 \
+  --output data/runs/history_ch25-targeted.json \
+  --options-retrieval
+```
+
+`--item-id` cannot be combined with the prefix-oriented `--max-questions`.
+Compound options including “Both,” “All of the above,” “All possible answers,”
+and “All of the possible answers” receive deterministic source guidance only
+when the required individual options are supported.
 
 Multiple-response questions such as “select two” are rejected during validation
 because the current fixture schema supports one keyed choice per item. Split
