@@ -1051,7 +1051,7 @@ def test_ask_cli_writes_trace_when_requested(tmp_path, capsys, monkeypatch):
     assert trace["question"] == "What is evolutionary ethics?"
     assert trace["model"] == "custom-model"
     assert trace["num_predict"] == 1536
-    assert trace["num_ctx"] == 8192
+    assert trace["num_ctx"] == 4096
     assert trace["context_found"] is True
     assert trace["command_mode"] == "ask"
     assert trace["ollama"]["format_kind"] == "plain_text"

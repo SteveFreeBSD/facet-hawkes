@@ -4,7 +4,7 @@ Agent Review is the model-driven review layer for Ethnos. It lets a local or
 hybrid Ollama model inspect quiz items with deterministic Ethnos tools, cite
 PDF evidence, flag answer-key risks, and write a CTO-ready report.
 
-The CPU-local path does not depend on the model to do all the work. Each item
+The local path does not depend on the model to do all the work. Each item
 gets deterministic preflight grounding first, using the question, keyed answer,
 question-plus-key, retrieval hints, target, and option text. This keeps the
 review useful when a small local model calls tools imperfectly or fails to
@@ -61,18 +61,19 @@ Each run is also persisted to SQLite in `agent_runs` and `agent_findings`.
 
 ## Model Profiles
 
-- `cpu-local`: tuned for the current CPU-only baseline with `gemma-python`.
-- `review-local`: slightly larger CPU-only review budget with `gemma-python`.
+- `cpu-local`: compatibility name for the smallest local review budget with
+  `gemma-python`.
+- `review-local`: slightly larger local review budget with `gemma-python`.
 - `gemma3-local`: optional 12B-class Gemma 3 profile for explicit model
   comparisons; it is not a baseline fallback.
 - `gemma3-fast`: optional smaller Gemma 3 comparison profile.
 - `hybrid-max`: max-capability profile for explicit web/cloud-assisted review.
 
-Existing `gemma-python` workflows remain the CPU-only baseline for structure
-extraction, Q&A, quiz benchmarking, and Agent Review. The current
-`gemma-python` alias is Gemma 4 based; new capability work should evaluate
-Gemma 4 edge/workstation candidates or explicit hybrid profiles against the same
-benchmarks before changing defaults.
+Existing `gemma-python` workflows remain the local baseline for structure
+extraction, Q&A, quiz benchmarking, and Agent Review. The profile name
+`cpu-local` predates Vulkan enablement; on `caspian`, Ollama offloads Gemma to
+the Vega GPU. New model profiles must beat the same quality and stability gates
+before changing defaults.
 
 ## Review Meaning
 
@@ -105,19 +106,19 @@ Review priorities:
 - `fix`: source-missing, conflict-candidate, or ambiguous item that should block
   release until corrected or explicitly accepted.
 
-The current CPU-local history chapter 20 probe reports `20` supported keyed
+The current local history chapter 20 probe reports `20` supported keyed
 answers, `17` pass items, and `3` inspect items: the two duplicate New Freedom
 prompts and the `Temperence` spelling note.
 
 A compact checked-in example is available at
 [`examples/history_ch20_agent_review_summary.md`](../examples/history_ch20_agent_review_summary.md).
 
-For CPU-only hosts, prefer:
+For the fastest local review with deterministic fallback, prefer:
 
 ```bash
 uv run ethnos agent-review 2 \
   --quiz benchmarks/history_ch20_canvas.json \
-  --output data/runs/history_ch20_agent_review_cpu \
+  --output data/runs/history_ch20_agent_review_local \
   --model gemma-python \
   --profile cto \
   --vision-pages off \

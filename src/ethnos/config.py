@@ -70,7 +70,7 @@ def load_settings() -> Settings:
                 os.getenv("ETHNOS_OLLAMA_NUM_PREDICT", "1536"),
             )
         ),
-        ollama_num_ctx=int(os.getenv("ETHNOS_OLLAMA_NUM_CTX", "8192")),
+        ollama_num_ctx=int(os.getenv("ETHNOS_OLLAMA_NUM_CTX", "4096")),
         ollama_think=parse_ollama_think(os.getenv("ETHNOS_OLLAMA_THINK")),
         agent_model=os.getenv("ETHNOS_AGENT_MODEL"),
         agent_model_profile=os.getenv("ETHNOS_AGENT_MODEL_PROFILE", "cpu-local"),

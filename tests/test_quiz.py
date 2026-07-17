@@ -1782,6 +1782,42 @@ def test_mc_prompt_formats_context_options_and_json_instruction(tmp_path):
     assert "Virtue ethics emphasizes character." in prompt
 
 
+def test_mc_prompt_prefers_closest_approximate_target_match(tmp_path):
+    prompt_path = tmp_path / "mc.md"
+    prompt_path.write_text(
+        "Target: {target}\nOptions:\n{options}\nContext:\n{context}",
+        encoding="utf-8",
+    )
+    item = {
+        "question": "Which definition best matches normative ethics?",
+        "question_type": "multiple_choice",
+        "target": "normative ethics",
+        "options": {"A": "Description", "B": "Evaluation"},
+    }
+    rows = [
+        {
+            "id": 1,
+            "source_citation": "ethics.pdf p. 18, chunk 10",
+            "section_label": "book_intro",
+            "content_role": "core",
+            "text": (
+                "Background material. " * 20
+                + "Philosophers examine cases for particular moral principles. "
+                + "This normative or prescriptive side of philosophical ethics "
+                + "evaluates which approach should be accepted. "
+                + "Transition material. " * 20
+                + "Normative approaches are explored before a later metaethical "
+                + "claim about whether rational deliberation about ethics is possible."
+            ),
+        }
+    ]
+
+    prompt = build_mc_prompt(item, rows, max_chars=300, prompt_path=prompt_path)
+
+    assert "normative or prescriptive side of philosophical ethics" in prompt
+    assert "later metaethical claim" not in prompt
+
+
 def test_choice_prompt_targets_retrieval_terms_inside_long_context(tmp_path):
     prompt_path = tmp_path / "choice.md"
     prompt_path.write_text(

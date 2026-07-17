@@ -528,7 +528,7 @@ def _best_token_window_center(text: str, target: str, max_chars: int) -> int:
         return -1
     unique_tokens = list(dict.fromkeys(tokens))
     best_index = -1
-    best_score: tuple[int, int, int] | None = None
+    best_score: tuple[int, int, int, int] | None = None
     for token in unique_tokens:
         start = 0
         while True:
@@ -538,10 +538,21 @@ def _best_token_window_center(text: str, target: str, max_chars: int) -> int:
             window_start = max(index - max_chars // 2, 0)
             window_end = min(window_start + max_chars, len(text))
             window = lowered[window_start:window_end]
+            token_positions = [
+                window.find(candidate)
+                for candidate in unique_tokens
+                if candidate in window
+            ]
+            token_span = (
+                max(token_positions) - min(token_positions)
+                if len(token_positions) > 1
+                else max_chars
+            )
             score = (
-                sum(1 for candidate in unique_tokens if candidate in window),
+                len(token_positions),
+                -token_span,
                 len(token),
-                index,
+                -index,
             )
             if best_score is None or score > best_score:
                 best_score = score

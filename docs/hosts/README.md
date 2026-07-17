@@ -1,14 +1,12 @@
 # Host Profiles
 
-These files keep machine-specific setup separate from the project baseline.
-Update the matching host profile when hardware, OS, Ollama service settings, or
-installed models change.
+Machine-specific facts and persistent operating-system settings live here.
 
 | Host | Role | Profile |
 |---|---|---|
-| `erosion` | Local development source host | [`erosion.md`](erosion.md) |
-| `caspian` | Migrated CachyOS host | [`caspian.md`](caspian.md) |
+| `caspian` | Primary Ethnos and benchmark host | [caspian.md](caspian.md) |
 
-Shared app defaults live in [`../PERFORMANCE_TUNING.md`](../PERFORMANCE_TUNING.md)
-and [`.env.example`](../../.env.example). Runtime data and model stores are not
-tracked by git.
+Shared application defaults live in
+[../CURRENT_BASELINE.md](../CURRENT_BASELINE.md). Historical hosts and
+superseded optimization reports are available through Git history rather than
+the active operating documentation.
