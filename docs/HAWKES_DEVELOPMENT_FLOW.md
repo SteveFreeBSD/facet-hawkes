@@ -77,4 +77,3 @@ Owner's real Hawkes session or signed release test?
 
 If there is any doubt, stay in mode A. Capturing too little is recoverable;
 launching the wrong browser or authentication flow disrupts the test.
-
