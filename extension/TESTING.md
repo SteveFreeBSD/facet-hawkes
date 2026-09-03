@@ -3,6 +3,14 @@
 Two layers. The automated one runs anywhere; the manual one needs a real
 lesson, because only Hawkes can tell you whether Hawkes accepts an answer.
 
+> **Live-test route:** Sign in **directly to Hawkes** using the owner's normal
+> Hawkes login and navigate to the intended practice question there. Do not use
+> OSUIT Canvas, a school portal, CAS/SSO, or an LMS redirect for extension
+> testing. Do not infer or reopen an authentication route from browser history.
+> An agent must leave Firefox untouched unless the owner explicitly requests a
+> specific browser action; when a lesson is needed, the owner performs the
+> login and navigation.
+
 ```console
 $ python3 scripts/build_extension.py --check   # manifest, permissions, footprint rules
 $ pytest                                       # logic, under QuickJS where it is JavaScript
@@ -20,7 +28,8 @@ add-on builds. That is what the checks below are for.
 
 ## Setup
 
-1. Open the lesson in Firefox.
+1. Using the direct Hawkes login—not Canvas or another school/LMS portal—open
+   the intended practice question in the existing Firefox session.
 2. In another tab, open `about:debugging#/runtime/this-firefox`.
 3. **Load Temporary Add-on**, and select `extension/manifest.json`.
 4. Pin **Ethnos Hawkes Assistant** if its toolbar button is not visible.
