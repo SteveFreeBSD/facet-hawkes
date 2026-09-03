@@ -3,6 +3,20 @@
 All notable changes to the Ethnos Hawkes Assistant add-on. Versions follow
 `major.minor.patch` as required by the Firefox manifest.
 
+## 0.39.2
+
+### Fixed
+
+- A tab dragged out into a window of its own is no longer read from or written
+  to by the panel left behind. `state` pairs one window with one tab, both
+  captured when the answer field is found; detaching that tab changes which
+  window it is in while its id stays the same, so the pair silently stopped
+  describing anything real. Scoping the tab lookup by window did not cover
+  this, because the lookup had already happened. The event page now forgets a
+  tab on `onAttached`, `onDetached` and `onRemoved`, and insertion re-checks
+  that the tab is still in the expected window immediately before writing —
+  an event can be missed, a check at the write cannot.
+
 ## 0.39.1
 
 ### Fixed

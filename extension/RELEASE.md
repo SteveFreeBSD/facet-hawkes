@@ -4,20 +4,22 @@ This runbook produces a Mozilla-signed add-on that installs permanently in a
 normal Firefox profile. A locally built XPI is unsigned and is only a release
 candidate; do not weaken Firefox signature enforcement to install it.
 
-## Frozen 0.39.1 candidate
+## Frozen 0.39.2 candidate
 
 The accepted local candidate is frozen. Do not rebuild or alter packaged
 source before submission unless AMO requires a source change:
 
 ```text
-dist/ethnos-hawkes-0.39.1-unsigned.xpi
-SHA-256 35a5739b8150a8cd678e0672124b7ad064061eb9c54622dddbdd2a62dbd6a82e
+dist/ethnos-hawkes-0.39.2-unsigned.xpi
+SHA-256 57e0ac32081a038110b2ac5d439b26035fe074e522131ebe01523cbbb3fe55b7
 ```
 
-0.39.0 was superseded before submission and must not be uploaded: `web-ext
-lint --warnings-as-errors` refused it over a `strict_min_version` of 140 that
-contradicted the manifest's own data-collection declaration on Firefox for
-Android. The floor is now 142.
+0.39.0 and 0.39.1 were superseded before submission and must not be uploaded.
+0.39.0 was refused by `web-ext lint --warnings-as-errors` over a
+`strict_min_version` of 140 that contradicted the manifest's own
+data-collection declaration on Firefox for Android; the floor is now 142.
+0.39.1 read from and wrote to a tab that had been dragged into another
+window.
 
 The last signed release is retained for rollback:
 
@@ -26,7 +28,7 @@ dist/ethnos-hawkes-0.38.0-unsigned.xpi
 SHA-256 5308a5b1853b641050388e9d1be9d893def3d138bb1bd7c7f05140d353fdfdbf
 ```
 
-0.39.1 changes no permission, host, or data-collection declaration. It is a
+0.39.2 changes no permission, host, or data-collection declaration. It is a
 panel/state redesign plus correctness fixes; the permission surface, the single
 declared origin, the `websiteContent` declaration and the native-messaging
 boundary are byte-for-byte what 0.38.0 declared. See
@@ -66,7 +68,7 @@ $ export PATH="$HOME/.local/opt/node-v22.23.2-linux-x64/bin:$HOME/.local/bin:$PA
 $ npm install -g --prefix ~/.local web-ext
 $ web-ext --version
 $ release_lint_dir=$(mktemp -d)
-$ unzip -q dist/ethnos-hawkes-0.39.1-unsigned.xpi -d "$release_lint_dir"
+$ unzip -q dist/ethnos-hawkes-0.39.2-unsigned.xpi -d "$release_lint_dir"
 $ web-ext lint --source-dir "$release_lint_dir" --warnings-as-errors
 ```
 
@@ -152,7 +154,7 @@ substitute the separate Marionette profile for signed-artifact acceptance.
    duplicate-insertion guard, and removal footprint. Never press Hawkes submit
    as part of the extension smoke test.
 
-Only after the signed XPI passes this physical-browser acceptance is 0.39.1
+Only after the signed XPI passes this physical-browser acceptance is 0.39.2
 **released**. Until then its status remains **release candidate complete**.
 
 Firefox Release and Beta require Mozilla-signed extensions. Mozilla documents

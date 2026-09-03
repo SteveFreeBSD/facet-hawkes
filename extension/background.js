@@ -964,6 +964,26 @@ async function insert() {
     return;
   }
   const reviewed = state.answer;
+
+  // The tab is looked up by window when the field is found; this confirms the
+  // pairing still holds at the moment of writing. An event can be missed, or
+  // arrive after a click has already been dispatched -- a check here cannot
+  // be, and this is the one operation that changes the page.
+  try {
+    const tab = await browser.tabs.get(state.tabId);
+    if (Number.isInteger(state.windowId) && tab.windowId !== state.windowId) {
+      log.warn("tab-left-its-window-before-insert", {
+        was: state.windowId, now: tab.windowId,
+      });
+      fail("errorTabMoved");
+      return;
+    }
+  } catch (error) {
+    log.warn("answer-tab-unreadable", { error: describeError(error) });
+    fail("errorTabMoved");
+    return;
+  }
+
   update({ phase: "inserting" });
 
   // Re-read the editor's rules now. They are published per question, and the
@@ -1301,3 +1321,30 @@ browser.tabs.onUpdated.addListener((tabId, info) => {
     state = blankState();
   }
 });
+
+/**
+ * Forget a tab that has moved between windows, or gone.
+ *
+ * `state` pairs one window with one tab, and both are captured when the field
+ * is found. Dragging that tab out into a window of its own changes which
+ * window it is in while its id stays the same, so the pair silently stops
+ * describing anything real -- and the panel left behind would read from, and
+ * insert into, a tab that is no longer in its window. Scoping the tab lookup
+ * by window does not cover this: the lookup already happened.
+ */
+function forgetMovedTab(tabId) {
+  if (tabId !== state.tabId) {
+    return;
+  }
+  log.info("answer-tab-moved", { tabId, windowId: state.windowId });
+  inFlight?.abort();
+  inFlight = null;
+  // The window binding, not just the answer, is what went stale. Re-preparing
+  // is the panel's own next step; this only makes sure nothing acts first.
+  state = { ...blankState(), windowId: state.windowId };
+  update({ phase: "idle" });
+}
+
+browser.tabs.onAttached.addListener(forgetMovedTab);
+browser.tabs.onDetached.addListener(forgetMovedTab);
+browser.tabs.onRemoved.addListener(forgetMovedTab);

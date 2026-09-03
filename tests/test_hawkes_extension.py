@@ -1033,8 +1033,12 @@ def test_the_editor_rules_are_re_read_before_inserting():
     """
     background = (EXTENSION_DIR / "background.js").read_text()
 
-    insert_at = background.index("async function insert()")
-    body = background[insert_at:insert_at + 2000]
+    # The whole function, rather than a fixed number of characters from its
+    # start: a guard added ahead of the re-read pushed the comparison out of a
+    # 2000-character window and failed on length rather than on order.
+    body = background.split("async function insert()", 1)[1].split(
+        "* Settle after a successful insertion.", 1
+    )[0]
     # Re-described inside insert, before anything is decided or typed.
     assert "await describeEditor(state.tabId, state.frameId)" in body
     assert body.index("describeEditor") < body.index("answerFitsEditor")
@@ -1097,3 +1101,30 @@ def test_an_answer_solved_in_one_window_cannot_be_inserted_into_another():
     for operation in ("ethnos:solve", "ethnos:insert"):
         block = background.split(f'case "{operation}":', 1)[1].split("break;", 1)[0]
         assert "await claim(asking)" in block
+
+
+def test_a_tab_dragged_into_another_window_is_not_written_to():
+    """`state` pairs one window with one tab, both captured when the field is
+    found. Detaching that tab into a window of its own changes which window it
+    is in while its id stays the same, so the pair silently stops describing
+    anything real. Scoping the tab lookup by window does not cover it: the
+    lookup already happened."""
+    background = (EXTENSION_DIR / "background.js").read_text()
+
+    # Noticed when it happens...
+    assert "function forgetMovedTab(tabId)" in background
+    for event in ("onAttached", "onDetached", "onRemoved"):
+        assert f"browser.tabs.{event}.addListener(forgetMovedTab)" in background
+    forget = background.split("function forgetMovedTab(tabId)", 1)[1].split("\n}\n", 1)[0]
+    assert "inFlight?.abort()" in forget
+    assert "blankState()" in forget
+
+    # ...and re-checked at the write, which is where it cannot be missed.
+    insertion = background.split("async function insert()", 1)[1].split(
+        "* Settle after a successful insertion.", 1
+    )[0]
+    assert "await browser.tabs.get(state.tabId)" in insertion
+    assert "tab.windowId !== state.windowId" in insertion
+    assert 'fail("errorTabMoved")' in insertion
+    # The guard precedes the write, not merely accompanies it.
+    assert insertion.index("errorTabMoved") < insertion.index("enterPlainAnswer")

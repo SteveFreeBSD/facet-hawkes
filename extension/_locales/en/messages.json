@@ -201,6 +201,10 @@
     "message": "This answer needs absolute-value bars, but this question does not offer that keypad template. The answer is shown above; enter it manually only if Hawkes permits it.",
     "description": "Shown when an answer needs absolute value but the question does not publish that editor template."
   },
+  "errorTabMoved": {
+    "message": "The answer field's tab is no longer in this window, so nothing was inserted. Open the panel in the window that now holds it.",
+    "description": "Error when the tab an answer was solved against has moved to a different browser window before insertion."
+  },
   "errorQuestionChanged": {
     "message": "The question changed, so that answer was not inserted. Solving the question now on screen.",
     "description": "Shown when the question on screen no longer matches the one the answer was solved for."
