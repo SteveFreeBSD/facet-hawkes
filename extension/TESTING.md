@@ -56,6 +56,10 @@ select `extension/manifest.json` in the isolated Firefox profile only.
 Failures surface in the panel itself: the status line says what happened, and
 **Details** carries the reason codes. Quote that line when reporting anything.
 
+Settings → Diagnostics → **Copy** puts the whole log on the clipboard. The
+same log can be read straight off the profile, without interrupting the
+browser, with `python3 scripts/read_extension_log.py` (`--grep window`, `--level warn`, `--last N`).
+
 A failure in the panel's *own* code is different, and looks different: a red
 banner under the header offering **Copy diagnostics** and **Reload panel**. If
 you see it, the copied log is the report. Settings → Diagnostics holds the same

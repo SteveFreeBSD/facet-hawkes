@@ -21,6 +21,7 @@ the active documentation; Git history remains the archive.
 | Understand the Hawkes answer editor | [Hawkes editor findings](HAWKES_EDITOR_FINDINGS.md) |
 | Verify the live Hawkes end-to-end path | [Hawkes E2E proof](HAWKES_E2E_PROOF.md) |
 | Review what live Hawkes testing has exposed | [Hawkes live findings](HAWKES_LIVE_FINDINGS.md) |
+| Read the add-on's diagnostic log off a profile | `python3 scripts/read_extension_log.py` |
 | Review the current Hawkes release status | [Hawkes release audit](HAWKES_RELEASE_AUDIT.md) |
 
 ## Workflows
