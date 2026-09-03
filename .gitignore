@@ -12,3 +12,8 @@ data/
 !data/.gitkeep
 
 *.sqlite
+
+dist/
+
+# Captured Hawkes coursework markup, for the local harness only.
+benchmarks/hawkes_dom/*.html
