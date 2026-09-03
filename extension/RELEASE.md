@@ -102,13 +102,18 @@ Physical acceptance uses the owner's **direct Hawkes login**. Never start a
 release test through OSUIT Canvas, a school portal, CAS/SSO, or an LMS redirect,
 and never reconstruct a login route from Firefox history. The owner signs in
 and opens the intended practice question before browser testing begins.
+Use the existing-session mode in
+[`docs/HAWKES_DEVELOPMENT_FLOW.md`](../docs/HAWKES_DEVELOPMENT_FLOW.md); do not
+substitute the separate Marionette profile for signed-artifact acceptance.
 
 1. Restart Firefox after installing or changing the native host.
 2. Open `about:addons`, choose the gear menu, then **Install Add-on From File**.
 3. Select the Mozilla-signed XPI—not the `*-unsigned.xpi` candidate.
 4. Accept the Hawkes-site and website-content disclosures.
 5. Open the add-on's Settings and run **Test connection**.
-6. After the owner has directly opened the Hawkes practice question, run the
+6. Confirm the current Firefox window and signed add-on with
+   `python3 scripts/inspect_live_firefox.py inspect`.
+7. After the owner has directly opened the Hawkes practice question, run the
    manual smoke checks in `TESTING.md`: exact solve, screenshot refusal
    or fallback, plain insertion, structured insertion, next-question reset,
    duplicate-insertion guard, and removal footprint. Never press Hawkes submit

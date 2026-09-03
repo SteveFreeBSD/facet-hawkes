@@ -11,6 +11,18 @@ lesson, because only Hawkes can tell you whether Hawkes accepts an answer.
 > specific browser action; when a lesson is needed, the owner performs the
 > login and navigation.
 
+The authoritative choice between the owner's existing signed Firefox and the
+separate automated development browser is documented in
+[`docs/HAWKES_DEVELOPMENT_FLOW.md`](../docs/HAWKES_DEVELOPMENT_FLOW.md). For
+physical acceptance, begin with:
+
+```console
+$ python3 scripts/inspect_live_firefox.py inspect
+```
+
+Do not run `scripts/live_browser.py start` during that workflow. It creates a
+different Firefox profile and cannot prove the installed signed artifact.
+
 ```console
 $ python3 scripts/build_extension.py --check   # manifest, permissions, footprint rules
 $ pytest                                       # logic, under QuickJS where it is JavaScript
@@ -26,13 +38,20 @@ touches your profile, your running Firefox, or the real Hawkes site.
 What none of that can settle is whether the *Hawkes* editor accepts what the
 add-on builds. That is what the checks below are for.
 
-## Setup
+## Normal signed-Firefox setup
 
 1. Using the direct Hawkes login—not Canvas or another school/LMS portal—open
    the intended practice question in the existing Firefox session.
-2. In another tab, open `about:debugging#/runtime/this-firefox`.
-3. **Load Temporary Add-on**, and select `extension/manifest.json`.
-4. Pin **Ethnos Hawkes Assistant** if its toolbar button is not visible.
+2. Confirm the signed add-on is active with
+   `python3 scripts/inspect_live_firefox.py status`.
+3. Open its toolbar panel or sidebar without changing the Hawkes page.
+
+Loading `extension/manifest.json` through `about:debugging` is a separate
+temporary-add-on development workflow. It is not part of signed release
+acceptance and must not replace the installed Mozilla-signed XPI mid-test.
+When that isolated workflow is explicitly intended, open
+`about:debugging#/runtime/this-firefox`, choose **Load Temporary Add-on**, and
+select `extension/manifest.json` in the isolated Firefox profile only.
 
 Failures surface in the panel itself: the status line says what happened, and
 **Details** carries the reason codes. Quote that line when reporting anything.

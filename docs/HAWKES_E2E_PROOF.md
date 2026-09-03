@@ -95,9 +95,15 @@ PYTHONPATH=src .venv/bin/pytest -q tests/test_hawkes_e2e.py
 The gate includes the live Question 2 expression and rejects an empty solver
 input, so a model-only answer cannot silently enter the verified path.
 
-## Reproduce
+## Reproduce the isolated Marionette evidence
 
-From the repository root, with the live browser already running:
+The commands in this section control the dedicated throwaway profile; they do
+not attach to the owner's normal Firefox. Do not start them during a normal
+signed-extension test. For the existing normal session, follow
+[`HAWKES_DEVELOPMENT_FLOW.md`](HAWKES_DEVELOPMENT_FLOW.md) and use
+`scripts/inspect_live_firefox.py`.
+
+From the repository root, with the isolated browser already running:
 
 ```fish
 python3 scripts/live_browser.py popup
