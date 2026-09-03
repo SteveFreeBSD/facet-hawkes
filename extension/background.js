@@ -129,11 +129,32 @@ function blankState() {
  */
 const panels = new Map();
 
+/**
+ * What one panel may be shown.
+ *
+ * One state exists at a time and it names the window it describes. Sending it
+ * to every panel meant a sidebar in an unrelated window -- a chat, a docs tab,
+ * anything -- displayed the Hawkes question, its answer, its source, and an
+ * enabled Insert button. Seen live across two monitors: the answer to lesson
+ * 1.3 question 2 sitting in the sidebar of a Discord window, offering to
+ * insert itself.
+ *
+ * A panel that is not the state's window is shown a blank of its own, which is
+ * exactly true for that window: nothing has been found or solved there. Acting
+ * in it claims the state and prepares properly.
+ */
+function stateFor(windowId) {
+  if (!Number.isInteger(state.windowId) || windowId === state.windowId) {
+    return state;
+  }
+  return { ...blankState(), windowId: Number.isInteger(windowId) ? windowId : null };
+}
+
 function update(changes) {
   state = { ...state, ...changes };
-  for (const port of panels.keys()) {
+  for (const [port, entry] of panels) {
     try {
-      port.postMessage({ type: "ethnos:state", state });
+      port.postMessage({ type: "ethnos:state", state: stateFor(entry.windowId) });
     } catch {
       // Closed between the iteration and the post.
       panels.delete(port);
@@ -1256,13 +1277,20 @@ browser.runtime.onConnect.addListener((port) => {
   panels.set(port, { windowId: null });
   // The panel renders from whatever is already here, so reopening mid-solve
   // shows the solve in progress instead of starting another.
-  port.postMessage({ type: "ethnos:state", state });
+  port.postMessage({ type: "ethnos:state", state: stateFor(null) });
   watchQuestion();
 
   port.onMessage.addListener((incoming) => {
     const entry = panels.get(port);
-    if (entry && Number.isInteger(incoming?.windowId)) {
+    if (entry && Number.isInteger(incoming?.windowId) && entry.windowId === null) {
       entry.windowId = incoming.windowId;
+      // Now that this panel has a window, show it what belongs to it: either
+      // the live state, or a blank if the state describes a different window.
+      try {
+        port.postMessage({ type: "ethnos:state", state: stateFor(entry.windowId) });
+      } catch {
+        panels.delete(port);
+      }
     }
     // Undefined until the panel has said which window it is in, which makes
     // every operation fall back to its previous single-window behaviour rather
@@ -1343,6 +1371,12 @@ function forgetMovedTab(tabId) {
   // is the panel's own next step; this only makes sure nothing acts first.
   state = { ...blankState(), windowId: state.windowId };
   update({ phase: "idle" });
+  // Leave the panel usable rather than parked at "Checking…" forever. The
+  // window it belongs to is remembered, so this looks at whatever is in front
+  // there now -- which after a detach is a different tab, correctly.
+  if (panels.size > 0) {
+    begin(() => prepare(state.windowId));
+  }
 }
 
 browser.tabs.onAttached.addListener(forgetMovedTab);

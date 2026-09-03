@@ -3,6 +3,31 @@
 All notable changes to the Ethnos Hawkes Assistant add-on. Versions follow
 `major.minor.patch` as required by the Firefox manifest.
 
+## 0.39.3
+
+### Fixed
+
+- A panel no longer shows another window's question. One state exists at a time
+  and names the window it describes, but it was posted to every connected
+  panel — so a sidebar open in an unrelated window displayed the Hawkes
+  question, its answer, its source, and an enabled **Insert answer**. Seen live
+  across two monitors: lesson 1.3's answer sitting in the sidebar of a Discord
+  window, offering to insert itself. Insertion was already guarded and would
+  have refused, but an offer that only a guard prevents is not one to leave
+  standing. Each panel is now shown its own window's state, or a blank of its
+  own — which is exactly true for a window where nothing has been solved.
+
+- A panel no longer acts before it knows which window it is in. The tab lookup
+  falls back to `currentWindow` when given no window, and in a background page
+  that is whichever window was focused last. A panel learns its own window
+  asynchronously from `windows.getCurrent()`, while its automatic prepare fires
+  on the first state — and routinely won that race. Dragging a tab into a new
+  window focuses that window, so the panel left behind pointed itself at the
+  tab that had just left it. Requests are now held until the window is known.
+- After its tab changes window, a panel re-prepares in the window it belongs to
+  instead of sitting at "Checking the focused answer field" with nothing to act
+  on. Forgetting the moved tab was correct but left the panel unusable.
+
 ## 0.39.2
 
 ### Fixed

@@ -96,7 +96,7 @@ let recoveringPort = false;
  * click landing before this resolves is merely unscoped, never misdirected.
  */
 let panelWindowId = null;
-browser.windows
+const announced = browser.windows
   .getCurrent()
   .then((info) => {
     panelWindowId = info.id;
@@ -104,12 +104,8 @@ browser.windows
   })
   .catch((error) => log.warn("panel-window-unknown", { error: describeError(error) }));
 
-/** Ask the background to do something. Progress arrives back as state. */
-function request(type) {
-  if (!portOpen) {
-    render(null);
-    return false;
-  }
+/** Send one request. Only ever called once the window is known. */
+function post(type) {
   try {
     port.postMessage({ type, windowId: panelWindowId });
     log.debug("panel-request", { type, windowId: panelWindowId });
@@ -119,6 +115,32 @@ function request(type) {
     recoverPort();
     return false;
   }
+}
+
+/**
+ * Ask the background to do something. Progress arrives back as state.
+ *
+ * Held until this panel knows which window it is in. Sent before that, the
+ * event page has no window to scope the tab lookup to and falls back to "the
+ * current window" -- whichever was focused last. The panel's own automatic
+ * prepare fires on the first state and routinely beat `windows.getCurrent()`,
+ * so a panel could point itself at a tab that had just been dragged out into
+ * a new window, which is exactly the window that focus had moved to.
+ */
+function request(type) {
+  if (!portOpen) {
+    render(null);
+    return false;
+  }
+  if (panelWindowId === null) {
+    announced.finally(() => {
+      if (portOpen) {
+        post(type);
+      }
+    });
+    return true;
+  }
+  return post(type);
 }
 
 /**

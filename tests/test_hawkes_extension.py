@@ -472,8 +472,9 @@ def test_the_panel_talks_to_the_background_over_a_port():
     assert "onDisconnect" in background
     # State is only pushed while a panel is actually connected.
     # State is pushed only to panels that are actually connected, and to
-    # every one of them: Firefox gives each window its own sidebar.
-    assert "for (const port of panels.keys())" in background
+    # every one of them: Firefox gives each window its own sidebar. What each
+    # is shown is scoped to its own window by `stateFor`.
+    assert "for (const [port, entry] of panels)" in background
     # An operation started from a port message must not leak a rejection.
     assert "function begin(operation)" in background
 
@@ -1059,7 +1060,7 @@ def test_every_open_panel_keeps_receiving_state():
     assert "panels.set(port," in background
     assert "panels.delete(port)" in background
     # State goes to every connected panel, not to the most recent one.
-    assert "for (const port of panels.keys())" in background
+    assert "for (const [port, entry] of panels)" in background
     assert "let panel = null" not in background
     assert "panel = port;" not in background
     # And the question watcher belongs to the set, not to a single panel.
@@ -1128,3 +1129,62 @@ def test_a_tab_dragged_into_another_window_is_not_written_to():
     assert 'fail("errorTabMoved")' in insertion
     # The guard precedes the write, not merely accompanies it.
     assert insertion.index("errorTabMoved") < insertion.index("enterPlainAnswer")
+
+
+def test_a_panel_never_acts_before_it_knows_its_own_window():
+    """The hole in 0.39.2, reported live on the signed build.
+
+    `activeHawkesTab` falls back to `currentWindow` when it is given no window,
+    and `currentWindow` in a background page is whichever window was focused
+    last. The panel learns its own window asynchronously from
+    `windows.getCurrent()`, while its automatic prepare fires on the first
+    state -- and routinely won that race. Dragging a tab into a new window
+    focuses that window, so the panel left behind prepared against the tab that
+    had just left it.
+    """
+    popup = (EXTENSION_DIR / "popup" / "popup.js").read_text()
+
+    assert "const announced = browser.windows" in popup
+    # Requests are held rather than sent unscoped.
+    held = popup.split("function request(type)", 1)[1].split("\n}\n", 1)[0]
+    assert "panelWindowId === null" in held
+    assert "announced.finally" in held
+    # And the only sender is the one the hold routes through.
+    assert popup.count("port.postMessage({ type, windowId: panelWindowId })") == 1
+
+
+def test_the_panel_recovers_after_its_tab_changes_window():
+    """Forgetting the tab is necessary but leaves the panel at "Checking…"
+    with nothing to act on. The window it belongs to is remembered, so it can
+    re-prepare there and find whatever is in front now."""
+    background = (EXTENSION_DIR / "background.js").read_text()
+
+    forget = background.split("function forgetMovedTab(tabId)", 1)[1].split("\n}\n", 1)[0]
+    assert "windowId: state.windowId" in forget
+    assert "prepare(state.windowId)" in forget
+
+
+def test_a_panel_is_never_shown_another_window_s_question():
+    """Seen live across two monitors on signed 0.39.2.
+
+    One state exists at a time and names the window it describes, but it was
+    posted to every connected panel. A sidebar open in an unrelated window -- a
+    chat window, in the observed case -- displayed the Hawkes question, its
+    answer, its source badge, and an enabled Insert button. Insertion itself
+    was guarded, but a panel offering to insert an answer that belongs to a
+    different window is not something to leave standing on the guard alone.
+    """
+    background = (EXTENSION_DIR / "background.js").read_text()
+
+    assert "function stateFor(windowId)" in background
+    scoped = background.split("function stateFor(windowId)", 1)[1].split("\n}\n", 1)[0]
+    # Its own window, or a blank of its own -- never another window's.
+    assert "windowId === state.windowId" in scoped
+    assert "blankState()" in scoped
+
+    # Every delivery goes through it: the broadcast, the first post on connect,
+    # and the post once a panel says which window it is in.
+    assert 'state: stateFor(entry.windowId) })' in background
+    assert 'state: stateFor(null) })' in background
+    # No delivery bypasses it.
+    assert '"ethnos:state", state })' not in background
