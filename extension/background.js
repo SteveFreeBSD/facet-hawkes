@@ -1369,7 +1369,17 @@ initLog("background", {
   level: defaultSettings().logLevel,
   onFatal: () => fail("errorNoBridge"),
 });
-settingsReady.then(() => log.info("event-page-loaded", settings));
+// The version goes in the log because working out which build is running is
+// otherwise guesswork: a temporary add-on reports nothing about itself, and
+// `about:debugging`'s Reload re-reads whichever file was first selected, so a
+// newly built one can silently not be the one under test. An hour was spent
+// diagnosing a fixed bug in a build that did not contain the fix.
+settingsReady.then(() =>
+  log.info("event-page-loaded", {
+    version: browser.runtime.getManifest().version,
+    ...settings,
+  })
+);
 
 // A new page means the old answer field is gone.
 browser.tabs.onUpdated.addListener((tabId, info) => {
@@ -1417,6 +1427,31 @@ function forgetMovedTab(tabId) {
  * surviving panel a blank of its own and nothing ever re-prepares. The panel
  * looks broken, and the only way back is pressing something.
  */
+/**
+ * Re-check when the window's front tab changes.
+ *
+ * A sidebar belongs to a window, not to a tab: it stays open as its window
+ * moves between tabs, exactly as Firefox's own sidebars do. With nothing
+ * watching for that, the panel went on showing a question and an answer that
+ * belonged to a tab no longer in front -- reported as the add-on being
+ * attached to every tab at once.
+ *
+ * Re-preparing drops an answer solved against the tab being left. That is the
+ * safe direction and, since the exact path answers in about a second, a cheap
+ * one: an answer still on screen for a tab you are no longer looking at is the
+ * failure this whole class of bug keeps producing.
+ */
+browser.tabs.onActivated.addListener(({ windowId }) => {
+  if (panels.size === 0 || windowId !== state.windowId) {
+    return;
+  }
+  if (["checking", "solving", "inserting"].includes(state.phase)) {
+    // Work in flight already holds the tab it targets, and a prepare is one.
+    return;
+  }
+  begin(() => prepare(windowId));
+});
+
 browser.windows.onRemoved.addListener((windowId) => {
   for (const [port, entry] of panels) {
     if (entry.windowId === windowId) {

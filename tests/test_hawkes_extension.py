@@ -1278,3 +1278,37 @@ def test_the_answer_is_drawn_as_elements_not_assigned_as_markup():
     assert "document.createElement" in popup
     for markup in ("innerHTML", "insertAdjacentHTML", "outerHTML"):
         assert markup not in popup
+
+
+def test_the_log_records_which_build_is_running():
+    """A temporary add-on reports nothing about itself, and `about:debugging`'s
+    Reload re-reads whichever file was first selected -- so a freshly built
+    version can silently not be the one under test. Diagnosing a fixed bug in a
+    build that did not contain the fix costs far more than logging a string."""
+    background = (EXTENSION_DIR / "background.js").read_text()
+
+    loaded = background.split('log.info("event-page-loaded"', 1)[1].split(")\n", 1)[0]
+    assert "browser.runtime.getManifest().version" in loaded
+
+
+def test_moving_between_tabs_re_checks_what_is_in_front():
+    """A sidebar belongs to a window, not to a tab.
+
+    It stays open as its window moves between tabs, exactly as Firefox's own
+    sidebars do -- and with nothing watching for that, the panel went on
+    showing a question and an answer belonging to a tab no longer in front.
+    Reported as the add-on being attached to every tab at once.
+    """
+    background = (EXTENSION_DIR / "background.js").read_text()
+
+    assert "browser.tabs.onActivated.addListener" in background
+    switched = background.split("browser.tabs.onActivated.addListener", 1)[1].split(
+        "\n});\n", 1
+    )[0]
+    # Only this window's own tab changes, and only when a panel is watching.
+    assert "windowId !== state.windowId" in switched
+    assert "panels.size === 0" in switched
+    # Work in flight holds the tab it targets; a switch must not cut in.
+    for phase in ("checking", "solving", "inserting"):
+        assert phase in switched
+    assert "prepare(windowId)" in switched

@@ -3,6 +3,21 @@
 All notable changes to the Ethnos Hawkes Assistant add-on. Versions follow
 `major.minor.patch` as required by the Firefox manifest.
 
+## 0.40.1
+
+### Fixed
+
+- Moving between tabs re-checks what is in front. A sidebar belongs to a
+  window, not to a tab — it stays open as the window moves between tabs, just
+  as Firefox's own sidebars do — and nothing watched for that, so the panel
+  went on showing a question and an answer belonging to a tab no longer on
+  screen. Reported as the add-on being attached to every tab at once.
+- The diagnostic log records which version is running. A temporary add-on
+  reports nothing about itself, and `about:debugging`'s **Reload** re-reads
+  whichever file was first selected — so a freshly built version can silently
+  not be the one under test, and a bug can be diagnosed at length in a build
+  that never contained its fix.
+
 ## 0.40.0
 
 ### Added
