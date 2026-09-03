@@ -1,0 +1,221 @@
+/*
+ * Firefox's own design language, as tokens.
+ *
+ * Values come from Acorn, the design system Firefox itself is built in, so the
+ * add-on reads as part of the browser rather than as a page that happens to be
+ * inside it: Firefox's panel surfaces (#ffffff / #2b2a33), its in-content text
+ * (#15141a / #fbfbfe), its accent (#0060df / #00ddff), its 4px control radius
+ * and its 2px focus ring at 2px offset.
+ *
+ * One block, not two. `light-dark()` picks per `color-scheme`, which Firefox
+ * has supported since 120 and this add-on requires 140. A theme written as a
+ * light block plus a `prefers-color-scheme` override drifts, because a token
+ * added to one half is easy to forget in the other.
+ */
+
+:root {
+  color-scheme: light dark;
+
+  /* --- surfaces ------------------------------------------------------- */
+  /* Firefox's panel background, which is what a browser-action popup is. */
+  --surface: light-dark(#ffffff, #2b2a33);
+  /* In-content page background, for the settings page. */
+  --surface-page: light-dark(#f9f9fb, #1c1b22);
+  /* Raised-from-panel: Firefox's ghost-button and box fill. */
+  --surface-sunken: light-dark(#f0f0f4, #23222b);
+  --surface-raised: light-dark(#ffffff, #2b2a33);
+
+  --border: light-dark(#cfcfd8, #3a3944);
+  --border-strong: light-dark(#8f8f9d, #52525e);
+
+  /* --- text ----------------------------------------------------------- */
+  --text: light-dark(#15141a, #fbfbfe);
+  --text-muted: light-dark(#5b5b66, #bfbfc9);
+  --text-faint: light-dark(#8f8f9d, #8f8f9d);
+
+  /* --- accent --------------------------------------------------------- */
+  --accent: light-dark(#0060df, #00ddff);
+  --accent-hover: light-dark(#0250bb, #80ebff);
+  --accent-active: light-dark(#054096, #aaf2ff);
+  --accent-text: light-dark(#fbfbfe, #15141a);
+
+  /* --- neutral control ------------------------------------------------ */
+  --control: light-dark(#f0f0f4, #2b2a33);
+  --control-hover: light-dark(#e0e0e6, #52525e);
+  --control-active: light-dark(#cfcfd8, #5b5b66);
+
+  /* --- state ---------------------------------------------------------- */
+  --success: light-dark(#017a40, #54ffbd);
+  --warning: light-dark(#a47f00, #ffd567);
+  --danger: light-dark(#c50042, #ff9aa2);
+  --danger-surface: light-dark(#ffdfe7, #4a1420);
+
+  --focus: var(--accent);
+
+  /* --- metrics -------------------------------------------------------- */
+  /* Acorn: 4px on controls, 8px on cards. */
+  --radius: 4px;
+  --radius-card: 8px;
+  --control-height: 32px;
+
+  --font: system-ui, -apple-system, "Segoe UI", "Cantarell", sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", "DejaVu Sans Mono", monospace;
+  /* Answers are notation, not prose, and need a serif with real math glyphs. */
+  --font-math: "Cambria Math", "Latin Modern Math", Cambria, Georgia, serif;
+}
+
+body {
+  margin: 0;
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+h1 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.eyebrow {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.note {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+/* --- controls ---------------------------------------------------------- */
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--control-height);
+  padding: 0 16px;
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--accent);
+  color: var(--accent-text);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.button:hover:not(:disabled) { background: var(--accent-hover); }
+.button:active:not(:disabled) { background: var(--accent-active); }
+
+/* Firefox's ghost button: the same shape, carrying no emphasis. */
+.button--secondary {
+  background: var(--control);
+  color: var(--text);
+}
+
+.button--secondary:hover:not(:disabled) { background: var(--control-hover); }
+.button--secondary:active:not(:disabled) { background: var(--control-active); }
+
+.button:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  cursor: pointer;
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.link:hover:not(:disabled) { color: var(--accent-hover); }
+.link:disabled { cursor: default; color: var(--text-faint); text-decoration: none; }
+
+/* Firefox's focus ring, at Firefox's offset. Never suppressed. */
+:where(a, button, input, select, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* --- status ------------------------------------------------------------ */
+
+.status {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.status.ready { color: var(--success); }
+.status.error { color: var(--danger); }
+/* An answer that is correct but has to be entered by hand. Not a failure, so
+   not red; not nothing either, so not the muted default. */
+.status.note { color: var(--warning); }
+
+/* --- accessibility ----------------------------------------------------- */
+
+/*
+ * Windows High Contrast, which Firefox honours as `forced-colors`. Every
+ * custom colour is replaced by the user's system pair; borders become visible
+ * so shapes survive when fills do not.
+ */
+@media (forced-colors: active) {
+  :root {
+    --surface: Canvas;
+    --surface-page: Canvas;
+    --surface-sunken: Canvas;
+    --surface-raised: Canvas;
+    --text: CanvasText;
+    --text-muted: CanvasText;
+    --text-faint: GrayText;
+    --border: CanvasText;
+    --border-strong: CanvasText;
+    --accent: Highlight;
+    --accent-hover: Highlight;
+    --accent-active: Highlight;
+    --accent-text: HighlightText;
+    --control: ButtonFace;
+    --control-hover: ButtonFace;
+    --control-active: ButtonFace;
+    --success: CanvasText;
+    --warning: CanvasText;
+    --danger: CanvasText;
+    --danger-surface: Canvas;
+    --focus: CanvasText;
+  }
+
+  .button {
+    border: 1px solid ButtonBorder;
+  }
+
+  .button:disabled {
+    opacity: 1;
+    color: GrayText;
+    border-color: GrayText;
+  }
+}
+
+@media (prefers-contrast: more) {
+  :root {
+    --border: var(--border-strong);
+    --text-muted: var(--text);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .button,
+  .link {
+    transition: background-color 120ms ease, color 120ms ease;
+  }
+}

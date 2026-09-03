@@ -1,0 +1,176 @@
+@import url("../common/theme.css");
+
+/*
+ * Firefox's in-content pages, which is what this is: it opens inside
+ * about:addons. Hence the page background rather than the panel one, the 15px
+ * body text about: pages use, and cards on a tinted ground.
+ */
+
+body {
+  padding: 20px 16px 28px;
+  background: var(--surface-page);
+  font-size: 15px;
+}
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface-raised);
+}
+
+.card h1 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.page__footer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 4px;
+}
+
+/* --- fields ------------------------------------------------------------ */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field__label {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.field__control {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.field__unit {
+  color: var(--text-muted);
+  font-size: 13px;
+  /* Reserved, so the slider does not shuffle sideways as the number widens. */
+  min-width: 5ch;
+}
+
+.input {
+  min-height: var(--control-height);
+  padding: 4px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+
+.input--number { width: 7ch; }
+.input--shortcut { width: 18ch; font-family: var(--font-mono); }
+.input--select { min-width: 20ch; }
+
+.input:invalid { border-color: var(--danger); }
+
+.range {
+  flex: 1;
+  min-width: 180px;
+  accent-color: var(--accent);
+}
+
+.check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  cursor: pointer;
+  line-height: 1.4;
+}
+
+.check input {
+  margin: 3px 0 0;
+  flex: none;
+  accent-color: var(--accent);
+}
+
+.check__label {
+  display: block;
+  font-size: 13px;
+}
+
+.check .note {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+}
+
+.scope {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.scope li + li {
+  margin-top: 6px;
+}
+
+/* --- diagnostics -------------------------------------------------------- */
+
+/*
+ * Fixed height whether or not there is anything in it, so clearing the log
+ * does not collapse the page under the pointer that just cleared it.
+ */
+.log {
+  height: 200px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-sunken);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  user-select: text;
+}
+
+.log__row {
+  display: grid;
+  grid-template-columns: 6em 6em 12em 1fr;
+  gap: 8px;
+  padding: 1px 2px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.log__row--error { color: var(--danger); }
+.log__row--warn { color: var(--warning); }
+
+.log__event {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.log__row--error .log__event,
+.log__row--warn .log__event {
+  color: inherit;
+}
+
+.log__data {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <!-- Declared here, ahead of the stylesheet, so Firefox paints the panel's
+         own background on the first frame. Left to CSS alone, a dark-theme
+         popup opens as a white rectangle for as long as the stylesheet takes. -->
+    <meta name="color-scheme" content="light dark">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title data-i18n="extensionName">Ethnos Hawkes Assistant</title>
+    <link rel="stylesheet" href="popup.css">
+  </head>
+  <body>
+    <main class="panel">
+      <header class="bar">
+        <img class="bar__mark" src="../icons/icon-32.png" alt="" width="20" height="20">
+        <h1 class="bar__name" data-i18n="extensionName">Ethnos</h1>
+        <span id="badge" class="badge"></span>
+        <button id="options" class="icon-button" type="button"
+                data-i18n-attr="title:popupOptionsLink,aria-label:popupOptionsLink">
+          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false">
+            <path fill="currentColor" fill-rule="evenodd" d="M6.6 1h2.8a.6.6 0 0 1 .59.5l.19 1.13q.5.2.94.5l1.07-.4a.6.6 0 0 1 .73.27l1.4 2.42a.6.6 0 0 1-.14.76l-.88.73a5 5 0 0 1 0 1.18l.88.73a.6.6 0 0 1 .14.76l-1.4 2.42a.6.6 0 0 1-.73.27l-1.07-.4q-.44.3-.94.5l-.19 1.13a.6.6 0 0 1-.59.5H6.6a.6.6 0 0 1-.59-.5l-.19-1.13q-.5-.2-.94-.5l-1.07.4a.6.6 0 0 1-.73-.27l-1.4-2.42a.6.6 0 0 1 .14-.76l.88-.73a5 5 0 0 1 0-1.18l-.88-.73a.6.6 0 0 1-.14-.76l1.4-2.42a.6.6 0 0 1 .73-.27l1.07.4q.44-.3.94-.5l.19-1.13A.6.6 0 0 1 6.6 1Zm.51 1.2-.16.98a.6.6 0 0 1-.42.48 4 4 0 0 0-1.14.6.6.6 0 0 1-.63.07l-.93-.35-.9 1.56.76.63a.6.6 0 0 1 .2.6 4 4 0 0 0 0 1.32.6.6 0 0 1-.2.6l-.76.63.9 1.56.93-.35a.6.6 0 0 1 .63.07q.51.38 1.14.6a.6.6 0 0 1 .42.48l.16.98h1.78l.16-.98a.6.6 0 0 1 .42-.48 4 4 0 0 0 1.14-.6.6.6 0 0 1 .63-.07l.93.35.9-1.56-.76-.63a.6.6 0 0 1-.2-.6 4 4 0 0 0 0-1.32.6.6 0 0 1 .2-.6l.76-.63-.9-1.56-.93.35a.6.6 0 0 1-.63-.07 4 4 0 0 0-1.14-.6.6.6 0 0 1-.42-.48l-.16-.98ZM8 5.6a2.4 2.4 0 1 1 0 4.8 2.4 2.4 0 0 1 0-4.8Zm0 1.2a1.2 1.2 0 1 0 0 2.4 1.2 1.2 0 0 0 0-2.4Z"/>
+          </svg>
+        </button>
+        <button id="dock" class="icon-button" type="button"
+                data-i18n-attr="title:popupSidebarHint,aria-label:popupSidebarHint">
+          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false">
+            <path fill="currentColor" d="M2 2h12v12H2Zm1.2 1.2v9.6h5.4V3.2Zm6.6 0v9.6h3V3.2Z"/>
+          </svg>
+        </button>
+        <button id="close" class="icon-button" type="button"
+                data-i18n-attr="title:popupCloseTitle,aria-label:popupCloseTitle">
+          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false">
+            <path fill="currentColor" d="M4.3 3.4 8 7.1l3.7-3.7.9.9L8.9 8l3.7 3.7-.9.9L8 8.9l-3.7 3.7-.9-.9L7.1 8 3.4 4.3Z"/>
+          </svg>
+        </button>
+      </header>
+
+      <!--
+        Shown only when the panel itself has failed: an uncaught exception or a
+        rejected promise. Ordinary refusals are not faults and stay in the
+        status line. This region is the difference between a panel that has
+        stopped responding for a reason you can read, and one that has simply
+        stopped.
+      -->
+      <section id="fault" class="fault" role="alert" hidden>
+        <p class="fault__text" data-i18n="panelFault">
+          The panel hit an internal error and may be out of date.
+        </p>
+        <div class="fault__actions">
+          <button id="fault-copy" class="link" type="button"
+                  data-i18n="panelFaultCopy">Copy diagnostics</button>
+          <button id="fault-reload" class="link" type="button"
+                  data-i18n="panelFaultReload">Reload panel</button>
+        </div>
+      </section>
+
+      <div class="answer-slot">
+        <output id="answer" class="answer" data-empty="true">&mdash;</output>
+        <button id="copy" class="copy-button" type="button" disabled
+                data-i18n-attr="title:popupCopyTitle,aria-label:popupCopyTitle">
+          <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" focusable="false">
+            <path fill="currentColor" d="M5.5 2h6A1.5 1.5 0 0 1 13 3.5v7h-1.2v-7a.3.3 0 0 0-.3-.3h-6Z"/>
+            <path fill="currentColor" d="M4 4.5h5.5A1.5 1.5 0 0 1 11 6v6.5A1.5 1.5 0 0 1 9.5 14H4a1.5 1.5 0 0 1-1.5-1.5V6A1.5 1.5 0 0 1 4 4.5Zm0 1.2a.3.3 0 0 0-.3.3v6.5a.3.3 0 0 0 .3.3h5.5a.3.3 0 0 0 .3-.3V6a.3.3 0 0 0-.3-.3Z"/>
+          </svg>
+        </button>
+      </div>
+
+      <details id="problem-block" class="fold">
+        <summary class="fold__summary" data-i18n="popupProblemHeading">Recognized problem</summary>
+        <p id="problem" class="problem"></p>
+      </details>
+
+      <div class="progress" aria-hidden="true">
+        <div id="progress-fill" class="progress__fill"></div>
+      </div>
+
+      <p id="status" class="status" role="status" aria-live="polite"></p>
+
+      <div class="actions">
+        <button id="solve" class="button" type="button" data-i18n="popupSolveButton">
+          Solve
+        </button>
+        <button id="insert" class="button button--secondary" type="button" disabled
+                data-i18n="popupInsertButton">Insert</button>
+      </div>
+
+      <pre id="detail" class="detail" hidden></pre>
+
+      <footer class="bar bar--footer">
+        <button id="reset" class="link" type="button" data-i18n="popupResetButton">Reset</button>
+        <button id="detail-toggle" class="link" type="button" aria-expanded="false"
+                aria-controls="detail" data-i18n="popupDetailToggle">Details</button>
+        <span class="bar__spacer"></span>
+        <span id="hint" class="hint"></span>
+      </footer>
+
+      <p class="note" data-i18n="popupSafetyNote">
+        Ethnos runs locally and never submits, checks, or navigates.
+      </p>
+    </main>
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

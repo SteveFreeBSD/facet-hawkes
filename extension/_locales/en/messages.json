@@ -1,0 +1,536 @@
+{
+  "extensionName": {
+    "message": "Ethnos Hawkes Assistant",
+    "description": "Name shown in the Firefox add-ons list and toolbar."
+  },
+  "extensionDescription": {
+    "message": "Reviews a prepared answer and places it in the focused Hawkes answer field only when you ask. It never submits, checks, or navigates.",
+    "description": "Add-on summary shown in about:addons."
+  },
+  "actionTitle": {
+    "message": "Ethnos Hawkes Assistant",
+    "description": "Tooltip for the toolbar button."
+  },
+  "popupInsertButton": {
+    "message": "Insert answer",
+    "description": "Label of the button that performs the insertion."
+  },
+  "popupOptionsLink": {
+    "message": "Settings",
+    "description": "Link from the popup to the add-on preferences page."
+  },
+  "popupSafetyNote": {
+    "message": "Ethnos runs locally and never submits, checks, or navigates. You review every answer before it is inserted. Closing this panel does not stop a solve.",
+    "description": "Standing scope note shown at the bottom of the popup."
+  },
+  "statusChecking": {
+    "message": "Checking the focused answer field…",
+    "description": "Shown while the popup inspects the page."
+  },
+  "statusReady": {
+    "message": "Answer field found. Solve when you are ready.",
+    "description": "Shown when insertion is available."
+  },
+  "statusInserting": {
+    "message": "Inserting…",
+    "description": "Shown while an insertion is in flight."
+  },
+  "statusInserted": {
+    "message": "Inserted. Submit it, then reopen for the next question.",
+    "description": "Shown after a successful insertion."
+  },
+  "errorNoTab": {
+    "message": "No active Firefox tab was found.",
+    "description": "Error when the active tab cannot be resolved."
+  },
+  "errorWrongSite": {
+    "message": "Open this panel from a Hawkes lesson tab at learn.hawkeslearning.com.",
+    "description": "Error when the active tab is not the approved host."
+  },
+  "errorNoBridge": {
+    "message": "The Hawkes page could not be inspected. Reload the lesson and try again.",
+    "description": "Error when the content script cannot be injected or reached."
+  },
+  "errorNoFocusedField": {
+    "message": "Close this panel, click the empty Hawkes answer box, then open it again.",
+    "description": "Error when no editable answer field holds focus."
+  },
+  "errorFieldNotEditable": {
+    "message": "The focused field is read-only, so nothing was inserted.",
+    "description": "Error when the focused field is disabled or read-only."
+  },
+  "errorUnsupportedField": {
+    "message": "The focused element is not a supported answer field.",
+    "description": "Error when the focused element cannot accept text."
+  },
+  "errorInsertRejected": {
+    "message": "The Hawkes editor rejected the insertion. Nothing was changed.",
+    "description": "Error when the page cancels or refuses the input."
+  },
+  "errorAnswerInvalid": {
+    "message": "The saved answer is not a supported plain-text answer. Fix it in Settings.",
+    "description": "Error when the stored answer fails validation."
+  },
+  "optionsTitle": {
+    "message": "Ethnos Hawkes Assistant settings",
+    "description": "Title of the preferences page."
+  },
+  "optionsSaved": {
+    "message": "Saved.",
+    "description": "Confirmation after saving preferences."
+  },
+  "optionsScopeHeading": {
+    "message": "What this add-on can do",
+    "description": "Heading of the standing scope list."
+  },
+  "optionsScopeSite": {
+    "message": "Acts only on https://learn.hawkeslearning.com, and only after you click the toolbar button.",
+    "description": "Scope bullet about the site allowlist."
+  },
+  "optionsScopeGesture": {
+    "message": "Inserts text only into the field you focused, and only after a second click.",
+    "description": "Scope bullet about the required user gesture."
+  },
+  "optionsScopeNoSubmit": {
+    "message": "Never submits, checks, navigates, or selects a different question.",
+    "description": "Scope bullet about submission being out of scope."
+  },
+  "optionsScopeNoNetwork": {
+    "message": "Makes no network requests and stores nothing except the answer above.",
+    "description": "Scope bullet about data handling."
+  },
+  "errorFrameUnreachable": {
+    "message": "The answer field is inside a frame this add-on is not allowed to reach. Click the answer box itself, then reopen this panel.",
+    "description": "Error when the focused field sits in a frame activeTab does not cover."
+  },
+  "errorAnswerChanged": {
+    "message": "The saved answer changed while this panel was open, so nothing was inserted. Reopen the panel to review it.",
+    "description": "Error when the inserted value no longer matches the reviewed one."
+  },
+  "errorFrameUnreachableAt": {
+    "message": "The answer field is inside $ORIGIN$, which this add-on has no permission to reach. Grant that one host in Firefox's add-on settings, or click the answer box directly and reopen this panel.",
+    "description": "Error when the focused field is in a named cross-origin frame.",
+    "placeholders": {
+      "origin": {
+        "content": "$1",
+        "example": "https://editor.hawkeslearning.com"
+      }
+    }
+  },
+  "errorFrameAmbiguous": {
+    "message": "More than one frame reports a focused answer field, so nothing was inserted. Click the box you mean and reopen this panel.",
+    "description": "Error when several frames claim the caret and the target is ambiguous."
+  },
+  "popupSolveButton": {
+    "message": "Solve with Ethnos",
+    "description": "Button that captures the question and asks Ethnos to solve it."
+  },
+  "popupProblemHeading": {
+    "message": "Recognized problem",
+    "description": "Heading above the transcription Ethnos read back."
+  },
+  "statusSolving": {
+    "message": "Working locally",
+    "description": "Shown while Ethnos works."
+  },
+  "statusSolved": {
+    "message": "Ready. Check it against the screen, then press Insert.",
+    "description": "Shown when an answer is ready and insertable."
+  },
+  "errorEthnosUnreachable": {
+    "message": "Ethnos is not reachable. Run deploy/firefox/install_native_host.py --write, then restart Firefox.",
+    "description": "Error when the native host is missing or refused."
+  },
+  "errorEthnosTimeout": {
+    "message": "Ethnos did not answer in time. It may still be loading a model; try again.",
+    "description": "Error when the host exceeds the request timeout."
+  },
+  "errorEthnosVersion": {
+    "message": "Ethnos replied with a protocol this add-on does not speak. Update both sides.",
+    "description": "Error on a protocol version mismatch."
+  },
+  "errorNoCapture": {
+    "message": "The question could not be captured from this tab.",
+    "description": "Error when the screenshot fails."
+  },
+  "errorQuestionRegion": {
+    "message": "The question region could not be isolated safely, so no screenshot was sent. For an unusual layout, you can explicitly turn off question-region limiting in Settings and retry.",
+    "description": "Privacy error when a screenshot cannot be cropped without including unrelated page content."
+  },
+  "errorSolveRefused": {
+    "message": "Ethnos would not answer this question. The reason is shown below.",
+    "description": "Error when the host returns a non-ready status."
+  },
+  "errorTranscriptionDisputed": {
+    "message": "Ethnos's two readers disagreed about the question, so nothing may be inserted. Read the notes below.",
+    "description": "Error when image transcription was not independently confirmed."
+  },
+  "errorAnswerNeedsTemplate": {
+    "message": "Needs a keypad template ($STRUCTURE$), which cannot be typed. The answer is above — build it with the keypad.",
+    "description": "Shown when the answer requires structure the add-on cannot build.",
+    "placeholders": {
+      "structure": {
+        "content": "$1",
+        "example": "fraction, radical"
+      }
+    }
+  },
+  "errorAnswerRejected": {
+    "message": "This question's answer box does not accept: $CHARS$. Nothing was inserted.",
+    "description": "Shown when the editor's own character set rejects the answer.",
+    "placeholders": {
+      "chars": {
+        "content": "$1",
+        "example": "y ."
+      }
+    }
+  },
+  "errorEditorUnknown": {
+    "message": "The answer editor could not be read, so nothing was inserted. Click the answer box and reopen this panel.",
+    "description": "Shown when the editor model could not be inspected."
+  },
+  "errorAnswerNeedsAbsoluteValue": {
+    "message": "This answer needs absolute-value bars, but this question does not offer that keypad template. The answer is shown above; enter it manually only if Hawkes permits it.",
+    "description": "Shown when an answer needs absolute value but the question does not publish that editor template."
+  },
+  "errorQuestionChanged": {
+    "message": "The question changed, so that answer was not inserted. Solving the question now on screen.",
+    "description": "Shown when the question on screen no longer matches the one the answer was solved for."
+  },
+  "errorQuestionUnverified": {
+    "message": "The current question could not be verified, so nothing was inserted. Solve it again when the question is readable.",
+    "description": "Shown when the final question identity cannot be read before insertion."
+  },
+  "commandOpenPanel": {
+    "message": "Open the Ethnos panel",
+    "description": "Description of the keyboard shortcut that opens the popup."
+  },
+  "popupCancelButton": {
+    "message": "Cancel",
+    "description": "Button that abandons an in-progress solve."
+  },
+  "popupDetailToggle": {
+    "message": "Details",
+    "description": "Toggle revealing the technical detail line."
+  },
+  "popupSourceBadge": {
+    "message": "$SOURCE$",
+    "description": "Badge naming which stage produced the answer.",
+    "placeholders": {
+      "source": {
+        "content": "$1",
+        "example": "symbolic"
+      }
+    }
+  },
+  "statusElapsed": {
+    "message": "($SECONDS$s)",
+    "description": "Elapsed seconds appended while a solve runs.",
+    "placeholders": {
+      "seconds": {
+        "content": "$1",
+        "example": "23"
+      }
+    }
+  },
+  "errorEditorDialogOpen": {
+    "message": "Hawkes has a message box open, which blocks the answer field. Close it, then try again.",
+    "description": "Error when a Hawkes modal is holding focus."
+  },
+  "errorTabAccessLost": {
+    "message": "Hawkes access is not granted. Grant access to use the sidebar across navigation.",
+    "description": "Error when neither the site permission nor a current activeTab grant is available."
+  },
+  "errorOperationTimeout": {
+    "message": "The page did not respond. Reload the lesson and try again.",
+    "description": "Error when a page operation exceeds its deadline."
+  },
+  "errorOptionAnswer": {
+    "message": "Answered by choosing an option. The answer is above — select it yourself; Ethnos does not click choices.",
+    "description": "Shown when the focused control is a radio option rather than a field."
+  },
+  "stageCapturing": {
+    "message": "Capturing the question",
+    "description": "Progress stage: taking the screenshot."
+  },
+  "stageReading": {
+    "message": "Reading it",
+    "description": "Progress stage: first transcription of the image."
+  },
+  "stageChecking": {
+    "message": "Checking the reading",
+    "description": "Progress stage: independent second transcription."
+  },
+  "stageSolving": {
+    "message": "Solving",
+    "description": "Progress stage: producing the answer."
+  },
+  "statusWillBuild": {
+    "message": "Ready. Check it against the screen, then press Insert — it builds this with the keypad for you.",
+    "description": "Shown when the answer will be assembled from templates rather than typed."
+  },
+  "errorTemplateRefused": {
+    "message": "This question does not offer the $STRUCTURE$ template, so the answer cannot be entered here. Check the problem above.",
+    "description": "Shown when the answer needs a template the question disallows.",
+    "placeholders": {
+      "structure": {
+        "content": "$1",
+        "example": "fraction"
+      }
+    }
+  },
+  "popupResetButton": {
+    "message": "Reset",
+    "description": "Button that clears the panel and re-checks the current question."
+  },
+  "optionsAutoSolveLabel": {
+    "message": "Start solving as soon as the panel finds the answer field",
+    "description": "Label for the automatic-solve preference."
+  },
+  "optionsAutoSolveHelp": {
+    "message": "Saves a click per question. Turn it off to press Solve yourself.",
+    "description": "Help text for the automatic-solve preference."
+  },
+  "popupCloseTitle": {
+    "message": "Close (Esc)",
+    "description": "Tooltip for the panel's close button."
+  },
+  "popupRetryButton": {
+    "message": "Try again",
+    "description": "Label on the primary button after a failure."
+  },
+  "popupGrantAccessButton": {
+    "message": "Grant Hawkes access",
+    "description": "Button that requests access to the single Hawkes Learning host after Firefox withholds it."
+  },
+  "popupCopyTitle": {
+    "message": "Copy the answer",
+    "description": "Tooltip on the button that copies the answer text."
+  },
+  "popupCopied": {
+    "message": "Copied.",
+    "description": "Confirmation shown after copying to the clipboard."
+  },
+  "popupCopyFailed": {
+    "message": "Firefox would not let the panel use the clipboard.",
+    "description": "Shown when a clipboard write is refused."
+  },
+  "popupHintSolve": {
+    "message": "Enter to solve",
+    "description": "Footer hint naming what the Enter key does."
+  },
+  "popupHintCancel": {
+    "message": "Enter to cancel",
+    "description": "Footer hint while a solve is running."
+  },
+  "popupHintInsert": {
+    "message": "Enter to insert",
+    "description": "Footer hint once an answer can be inserted."
+  },
+  "panelFault": {
+    "message": "The panel hit an internal error, so what is shown may be out of date. The solve itself is unaffected and is still running in the background.",
+    "description": "Banner shown when the panel's own code throws."
+  },
+  "panelFaultCopy": {
+    "message": "Copy diagnostics",
+    "description": "Button that copies the diagnostic log after a panel fault."
+  },
+  "panelFaultReload": {
+    "message": "Reload panel",
+    "description": "Button that reloads the panel document after a fault."
+  },
+  "optionsSolvingHeading": {
+    "message": "Solving",
+    "description": "Heading for the solving preferences."
+  },
+  "optionsCropLabel": {
+    "message": "Limit screenshots to the question region",
+    "description": "Label for the screenshot-cropping preference."
+  },
+  "optionsCropHelp": {
+    "message": "Recommended. If the region cannot be isolated safely, nothing is sent. Turn this off only for an unusual question layout.",
+    "description": "Help text for the screenshot-cropping preference."
+  },
+  "optionsTimeoutLabel": {
+    "message": "Give up on a solve after",
+    "description": "Label for the solve timeout preference."
+  },
+  "optionsTimeoutUnit": {
+    "message": "seconds",
+    "description": "Unit beside the solve timeout field."
+  },
+  "optionsTimeoutHelp": {
+    "message": "A larger vision model on a slower machine needs longer. 30 to 900.",
+    "description": "Help text for the solve timeout preference."
+  },
+  "optionsPanelHeading": {
+    "message": "Panel",
+    "description": "Heading for the panel preferences."
+  },
+  "optionsWidthLabel": {
+    "message": "Panel width",
+    "description": "Label for the panel width preference."
+  },
+  "optionsWidthValue": {
+    "message": "$PIXELS$ px",
+    "description": "Current panel width beside its slider.",
+    "placeholders": {
+      "pixels": {
+        "content": "$1",
+        "example": "360"
+      }
+    }
+  },
+  "optionsWidthHelp": {
+    "message": "Firefox sizes a popup to its content, so this is the whole of the control there is over it. Wider makes long problem text easier to check.",
+    "description": "Help text for the panel width preference."
+  },
+  "optionsProblemOpenLabel": {
+    "message": "Show the recognized problem expanded",
+    "description": "Label for the preference that unfolds the recognized problem."
+  },
+  "optionsProblemOpenHelp": {
+    "message": "Checking the transcription is the point of showing it; expanding it by default costs a little panel height.",
+    "description": "Help text for the recognized-problem preference."
+  },
+  "optionsShortcutLabel": {
+    "message": "Keyboard shortcut",
+    "description": "Label for the toolbar-button keyboard shortcut."
+  },
+  "optionsShortcutSave": {
+    "message": "Apply",
+    "description": "Button that applies a new keyboard shortcut."
+  },
+  "optionsShortcutReset": {
+    "message": "Default",
+    "description": "Button that restores the default keyboard shortcut."
+  },
+  "optionsShortcutApplied": {
+    "message": "Shortcut updated.",
+    "description": "Confirmation after changing the keyboard shortcut."
+  },
+  "optionsShortcutInvalid": {
+    "message": "Firefox would not accept that combination. Try one with Alt, Ctrl or Command.",
+    "description": "Shown when Firefox rejects a keyboard shortcut."
+  },
+  "optionsConnectionHeading": {
+    "message": "Ethnos connection",
+    "description": "Heading for the native-host connection check."
+  },
+  "optionsConnectionHelp": {
+    "message": "Asks the local host to identify itself. It loads no model, so this answers at once — before a solve spends a minute finding out.",
+    "description": "Help text for the connection check."
+  },
+  "optionsConnectionTest": {
+    "message": "Test connection",
+    "description": "Button that checks the native host is reachable."
+  },
+  "optionsConnectionChecking": {
+    "message": "Asking Ethnos…",
+    "description": "Shown while the connection check is running."
+  },
+  "optionsConnectionOk": {
+    "message": "Ethnos answered in $MS$ ms.",
+    "description": "Shown when the native host replies.",
+    "placeholders": {
+      "ms": {
+        "content": "$1",
+        "example": "42"
+      }
+    }
+  },
+  "optionsDiagnosticsHeading": {
+    "message": "Diagnostics",
+    "description": "Heading for the diagnostic log."
+  },
+  "optionsLogLevelLabel": {
+    "message": "Record",
+    "description": "Label for the log level preference."
+  },
+  "optionsLogLevelHelp": {
+    "message": "Kept on this machine, capped at 200 entries, and cleared with the button below. Answers, recognized problems and screenshots are never recorded — only their shapes.",
+    "description": "Help text for the log level preference."
+  },
+  "logLevelOff": {
+    "message": "Nothing",
+    "description": "Log level: record nothing."
+  },
+  "logLevelError": {
+    "message": "Errors",
+    "description": "Log level: errors only."
+  },
+  "logLevelWarn": {
+    "message": "Errors and warnings",
+    "description": "Log level: errors and warnings."
+  },
+  "logLevelInfo": {
+    "message": "Normal activity",
+    "description": "Log level: ordinary operations."
+  },
+  "logLevelDebug": {
+    "message": "Everything",
+    "description": "Log level: every event."
+  },
+  "optionsDiagnosticsRefresh": {
+    "message": "Refresh",
+    "description": "Button that re-reads the diagnostic log."
+  },
+  "optionsDiagnosticsCopy": {
+    "message": "Copy",
+    "description": "Button that copies the diagnostic log."
+  },
+  "optionsDiagnosticsClear": {
+    "message": "Clear",
+    "description": "Button that erases the diagnostic log."
+  },
+  "optionsDiagnosticsCleared": {
+    "message": "Log cleared.",
+    "description": "Confirmation after erasing the diagnostic log."
+  },
+  "optionsDiagnosticsEmpty": {
+    "message": "Nothing recorded yet.",
+    "description": "Shown when the diagnostic log is empty."
+  },
+  "optionsDiagnosticsCount": {
+    "message": "Showing the last $SHOWN$ of $TOTAL$ entries.",
+    "description": "Summary line beneath the diagnostic log.",
+    "placeholders": {
+      "shown": {
+        "content": "$1",
+        "example": "60"
+      },
+      "total": {
+        "content": "$2",
+        "example": "200"
+      }
+    }
+  },
+  "optionsCopied": {
+    "message": "Copied to the clipboard.",
+    "description": "Confirmation after a copy."
+  },
+  "optionsCopyFailed": {
+    "message": "Firefox would not let the page use the clipboard.",
+    "description": "Shown when a clipboard write is refused on the settings page."
+  },
+  "optionsResetAll": {
+    "message": "Restore every default",
+    "description": "Button that resets every preference."
+  },
+  "optionsResetDone": {
+    "message": "Every preference is back to its default.",
+    "description": "Confirmation after resetting every preference."
+  },
+  "optionsSaveFailed": {
+    "message": "That preference could not be saved.",
+    "description": "Shown when writing a preference to storage fails."
+  },
+  "commandOpenSidebar": {
+    "message": "Open the Ethnos sidebar",
+    "description": "Description of the keyboard shortcut that opens the sidebar."
+  },
+  "popupSidebarHint": {
+    "message": "Open in the sidebar so it stays put while solving.",
+    "description": "Offered in the popup, which closes whenever focus moves."
+  }
+}

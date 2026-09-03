@@ -1,0 +1,344 @@
+@import url("../common/theme.css");
+
+/*
+ * The panel keeps one shape.
+ *
+ * Every region below is always present and holds its height, so moving from
+ * idle to solving to solved never reflows the layout. Sections that appeared
+ * and vanished -- a stage list, a detail block, a third and fourth button --
+ * made the panel jump on every state change.
+ *
+ * Width is the one thing that moves, and only because the user set it:
+ * `--panel-width` is written by the panel from the stored preference. Firefox
+ * sizes a popup to its content and clamps it at 800x600, so a width declared
+ * here is the only control there is over how wide it opens.
+ */
+
+:root {
+  --panel-width: 360px;
+}
+
+/* The sidebar is resizable, so it fills the width the user chose; the toolbar
+   popup cannot be resized and keeps the configured width. */
+body[data-sidebar="true"] {
+  width: auto;
+  min-width: 250px;
+}
+
+body {
+  width: var(--panel-width);
+  /* Firefox clamps a popup at 600px and scrolls the overflow itself. Saying so
+     here means the scrollbar belongs to the panel and is styled with it. */
+  max-height: 600px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 14px 12px;
+}
+
+/* --- header and footer bars ------------------------------------------- */
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
+}
+
+.bar__mark {
+  flex: none;
+  border-radius: 4px;
+}
+
+.bar__name {
+  flex: none;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.bar__spacer {
+  flex: 1;
+}
+
+.bar--footer {
+  gap: 12px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.badge {
+  margin-left: auto;
+  padding: 1px 7px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 600;
+  /* Reserved even when empty, so the buttons beside it never shift. */
+  min-height: 15px;
+  min-width: 0;
+}
+
+/* Holding the space is the point; drawing an empty chip is not. Nothing has
+   answered yet during a solve, and a bare outline in the header read as a
+   control that had failed to load. */
+.badge:empty {
+  border-color: transparent;
+  background: transparent;
+}
+
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.icon-button:hover {
+  background: var(--control-hover);
+  color: var(--text);
+}
+
+.icon-button:active {
+  background: var(--control-active);
+}
+
+.hint {
+  color: var(--text-faint);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+/* --- panel fault -------------------------------------------------------- */
+
+/*
+ * Only ever shown when the panel's own code failed. It is allowed to change
+ * the layout, because by the time it appears the layout is the lesser problem.
+ */
+.fault {
+  padding: 8px 10px;
+  border: 1px solid var(--danger);
+  border-radius: var(--radius);
+  background: var(--danger-surface);
+}
+
+.fault__text {
+  margin: 0;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.fault__actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 6px;
+}
+
+/* --- answer ------------------------------------------------------------ */
+
+.answer-slot {
+  position: relative;
+}
+
+.answer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Fixed, so a one-character answer and a stacked fraction occupy the same
+     space and nothing below them moves. */
+  min-height: 84px;
+  padding: 10px 30px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface-sunken);
+  font-family: var(--font-math);
+  font-size: 26px;
+  line-height: 1.15;
+  text-align: center;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.answer[data-empty="true"] {
+  color: var(--text-faint);
+}
+
+/*
+ * Copying matters most in exactly the cases insertion is refused -- an option
+ * question, or notation the editor will not accept -- where entering the
+ * answer is the user's job. Absolutely positioned so it reserves no row of its
+ * own and the answer box keeps its height.
+ */
+.copy-button {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  opacity: 0;
+}
+
+.answer-slot:hover .copy-button:not(:disabled),
+.copy-button:focus-visible {
+  opacity: 1;
+}
+
+.copy-button:hover:not(:disabled) {
+  background: var(--control-hover);
+  color: var(--text);
+}
+
+.copy-button:disabled {
+  cursor: default;
+}
+
+.copy-button[data-copied="true"] {
+  opacity: 1;
+  color: var(--success);
+}
+
+/* --- recognized problem ------------------------------------------------ */
+
+.fold__summary {
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  list-style: none;
+}
+
+.fold__summary::-webkit-details-marker { display: none; }
+
+.fold__summary::before {
+  content: "\25B8";
+  display: inline-block;
+  width: 10px;
+}
+
+.fold[open] > .fold__summary::before { transform: rotate(90deg); }
+.fold__summary:hover { color: var(--text); }
+.fold[data-idle="true"] > .fold__summary { opacity: 0.45; pointer-events: none; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .fold__summary::before { transition: transform 120ms ease; }
+  .copy-button { transition: opacity 120ms ease, background-color 120ms ease; }
+}
+
+.problem {
+  margin: 6px 0 0;
+  padding-left: 10px;
+  border-left: 2px solid var(--border-strong);
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.4;
+  max-height: 84px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+/* --- progress ---------------------------------------------------------- */
+
+.progress {
+  height: 3px;
+  border-radius: 2px;
+  background: var(--surface-sunken);
+  overflow: hidden;
+}
+
+.progress__fill {
+  height: 100%;
+  width: 0;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .progress__fill { transition: width 260ms ease; }
+}
+
+.progress__fill[data-state="done"] { background: var(--success); }
+.progress__fill[data-state="error"] { background: var(--danger); }
+
+/* --- status ------------------------------------------------------------ */
+
+.status {
+  /* Two lines' worth, always. Most messages are one line; reserving the
+     second stops the buttons moving when one wraps. */
+  min-height: 32px;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+/* --- actions ----------------------------------------------------------- */
+
+.actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.actions .button {
+  width: 100%;
+  padding: 0 10px;
+  font-size: 13px;
+}
+
+/* --- detail ------------------------------------------------------------ */
+
+.detail {
+  margin: 0;
+  padding: 7px 8px;
+  max-height: 120px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.note {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.link { font-size: 11px; }

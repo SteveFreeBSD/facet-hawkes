@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="color-scheme" content="light dark">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title data-i18n="optionsTitle">Ethnos Hawkes Assistant settings</title>
+    <link rel="stylesheet" href="options.css">
+  </head>
+  <body>
+    <main class="page">
+      <section class="card">
+        <h1 data-i18n="optionsSolvingHeading">Solving</h1>
+
+        <label class="check">
+          <input id="autoSolve" type="checkbox" data-setting="autoSolve">
+          <span>
+            <span class="check__label" data-i18n="optionsAutoSolveLabel">Start solving as soon as the panel finds the answer field</span>
+            <span class="note" data-i18n="optionsAutoSolveHelp">Saves a click per question. Turn it off to press Solve yourself.</span>
+          </span>
+        </label>
+
+        <label class="check">
+          <input id="cropCapture" type="checkbox" data-setting="cropCapture">
+          <span>
+            <span class="check__label" data-i18n="optionsCropLabel">Limit screenshots to the question region</span>
+            <span class="note" data-i18n="optionsCropHelp">Recommended. If the region cannot be isolated safely, nothing is sent. Turn this off only for an unusual question layout.</span>
+          </span>
+        </label>
+
+        <div class="field">
+          <label class="field__label" for="solveTimeoutSeconds"
+                 data-i18n="optionsTimeoutLabel">Give up on a solve after</label>
+          <div class="field__control">
+            <input id="solveTimeoutSeconds" class="input input--number" type="number"
+                   data-setting="solveTimeoutSeconds" inputmode="numeric">
+            <span class="field__unit" data-i18n="optionsTimeoutUnit">seconds</span>
+          </div>
+          <p class="note" data-i18n="optionsTimeoutHelp">
+            A larger vision model on a slower machine needs longer. 30 to 900.
+          </p>
+        </div>
+      </section>
+
+      <section class="card">
+        <h1 data-i18n="optionsPanelHeading">Panel</h1>
+
+        <div class="field">
+          <label class="field__label" for="panelWidth"
+                 data-i18n="optionsWidthLabel">Panel width</label>
+          <div class="field__control">
+            <input id="panelWidth" class="range" type="range" data-setting="panelWidth" step="20">
+            <output id="panelWidth-value" class="field__unit" for="panelWidth"></output>
+          </div>
+          <p class="note" data-i18n="optionsWidthHelp">
+            Firefox sizes a popup to its content, so this is the whole of the control there is over it. Wider makes long problem text easier to check.
+          </p>
+        </div>
+
+        <label class="check">
+          <input id="problemOpen" type="checkbox" data-setting="problemOpen">
+          <span>
+            <span class="check__label" data-i18n="optionsProblemOpenLabel">Show the recognized problem expanded</span>
+            <span class="note" data-i18n="optionsProblemOpenHelp">Checking the transcription is the point of showing it; expanding it by default costs a little panel height.</span>
+          </span>
+        </label>
+
+        <div class="field">
+          <label class="field__label" for="shortcut"
+                 data-i18n="optionsShortcutLabel">Keyboard shortcut</label>
+          <div class="field__control">
+            <input id="shortcut" class="input input--shortcut" type="text"
+                   autocomplete="off" spellcheck="false" placeholder="Alt+Shift+E">
+            <button id="shortcut-save" class="button button--secondary" type="button"
+                    data-i18n="optionsShortcutSave">Apply</button>
+            <button id="shortcut-reset" class="link" type="button"
+                    data-i18n="optionsShortcutReset">Default</button>
+          </div>
+          <p id="shortcut-status" class="status" role="status" aria-live="polite"></p>
+        </div>
+      </section>
+
+      <section class="card">
+        <h1 data-i18n="optionsConnectionHeading">Ethnos connection</h1>
+        <p class="note" data-i18n="optionsConnectionHelp">
+          Asks the local host to identify itself. It loads no model, so this answers at once — before a solve spends a minute finding out.
+        </p>
+        <div class="field__control">
+          <button id="health" class="button button--secondary" type="button"
+                  data-i18n="optionsConnectionTest">Test connection</button>
+          <span id="health-status" class="status" role="status" aria-live="polite"></span>
+        </div>
+      </section>
+
+      <section class="card">
+        <h1 data-i18n="optionsDiagnosticsHeading">Diagnostics</h1>
+
+        <div class="field">
+          <label class="field__label" for="logLevel"
+                 data-i18n="optionsLogLevelLabel">Record</label>
+          <div class="field__control">
+            <select id="logLevel" class="input input--select" data-setting="logLevel">
+              <option value="off" data-i18n="logLevelOff">Nothing</option>
+              <option value="error" data-i18n="logLevelError">Errors</option>
+              <option value="warn" data-i18n="logLevelWarn">Errors and warnings</option>
+              <option value="info" data-i18n="logLevelInfo">Normal activity</option>
+              <option value="debug" data-i18n="logLevelDebug">Everything</option>
+            </select>
+          </div>
+          <p class="note" data-i18n="optionsLogLevelHelp">
+            Kept on this machine, capped at 200 entries, and cleared with the button below. Answers, recognized problems and screenshots are never recorded — only their shapes.
+          </p>
+        </div>
+
+        <div id="log" class="log" tabindex="0" role="group"
+             data-i18n-attr="aria-label:optionsDiagnosticsHeading"></div>
+        <p id="log-summary" class="note"></p>
+
+        <div class="field__control">
+          <button id="log-refresh" class="button button--secondary" type="button"
+                  data-i18n="optionsDiagnosticsRefresh">Refresh</button>
+          <button id="log-copy" class="button button--secondary" type="button"
+                  data-i18n="optionsDiagnosticsCopy">Copy</button>
+          <button id="log-clear" class="button button--secondary" type="button"
+                  data-i18n="optionsDiagnosticsClear">Clear</button>
+          <span id="log-status" class="status" role="status" aria-live="polite"></span>
+        </div>
+      </section>
+
+      <section class="card">
+        <h1 data-i18n="optionsScopeHeading">What this add-on can do</h1>
+        <ul class="scope">
+          <li data-i18n="optionsScopeSite"></li>
+          <li data-i18n="optionsScopeGesture"></li>
+          <li data-i18n="optionsScopeNoSubmit"></li>
+          <li data-i18n="optionsScopeNoNetwork"></li>
+        </ul>
+      </section>
+
+      <footer class="page__footer">
+        <button id="reset-all" class="link" type="button"
+                data-i18n="optionsResetAll">Restore every default</button>
+        <span id="reset-status" class="status" role="status" aria-live="polite"></span>
+      </footer>
+    </main>
+    <script type="module" src="options.js"></script>
+  </body>
+</html>
