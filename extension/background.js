@@ -845,7 +845,13 @@ async function solve(windowId = state.windowId) {
       && screenshot.length === 0
       && !controller.signal.aborted
     ) {
-      log.info("markup-fallback", { expressions: question.expressions.length });
+      // The host says which decline this was; without it a live fallback
+      // reports only that the exact path did not work, which is the one thing
+      // already obvious from the minute it then takes.
+      log.info("markup-fallback", {
+        expressions: question.expressions.length,
+        why: String(reply.message || "").slice(0, 120),
+      });
       screenshot = await captureQuestion(state.tabId, state.frameId);
       if (screenshot === null || controller.signal.aborted) {
         return;

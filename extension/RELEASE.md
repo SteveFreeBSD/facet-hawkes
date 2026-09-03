@@ -4,17 +4,17 @@ This runbook produces a Mozilla-signed add-on that installs permanently in a
 normal Firefox profile. A locally built XPI is unsigned and is only a release
 candidate; do not weaken Firefox signature enforcement to install it.
 
-## Frozen 0.41.1 candidate
+## Frozen 0.41.2 candidate
 
 The accepted local candidate is frozen. Do not rebuild or alter packaged
 source before submission unless AMO requires a source change:
 
 ```text
-dist/ethnos-hawkes-0.41.1-unsigned.xpi
-SHA-256 31d860ca5dffe500bfa8a22332b74430fb2c0a5de6589a9f515a9c5bccd70454
+dist/ethnos-hawkes-0.41.2-unsigned.xpi
+SHA-256 0311bb819fec9ca3967b721d79872eb3222f3e0ab201790edf88aeb5a8874980
 ```
 
-0.39.0 through 0.41.0 were development builds and must not be uploaded. The
+0.39.0 through 0.41.1 were development builds and must not be uploaded. The
 last signed release is retained for rollback:
 
 ```text
@@ -24,7 +24,7 @@ candidate  dist/ethnos-hawkes-0.39.2-unsigned.xpi
 SHA-256    57e0ac32081a038110b2ac5d439b26035fe074e522131ebe01523cbbb3fe55b7
 ```
 
-0.41.1 changes no permission, host, or data-collection declaration. Gates on
+0.41.2 changes no permission, host, or data-collection declaration. Gates on
 this candidate: repository validator, 633 tests,
 `web-ext lint --warnings-as-errors` at 0 errors / 0 warnings / 0 notices, an
 identical rebuild, and 11 of 11 checks in the real-browser harness.
@@ -61,7 +61,7 @@ $ export PATH="$HOME/.local/opt/node-v22.23.2-linux-x64/bin:$HOME/.local/bin:$PA
 $ npm install -g --prefix ~/.local web-ext
 $ web-ext --version
 $ release_lint_dir=$(mktemp -d)
-$ unzip -q dist/ethnos-hawkes-0.41.1-unsigned.xpi -d "$release_lint_dir"
+$ unzip -q dist/ethnos-hawkes-0.41.2-unsigned.xpi -d "$release_lint_dir"
 $ web-ext lint --source-dir "$release_lint_dir" --warnings-as-errors
 ```
 
@@ -144,7 +144,7 @@ which AMO returns with its trailing newline stripped — one byte, and
 semantically the same document. Version, id, minimum version and the
 `websiteContent` declaration all match what was submitted.
 
-Status: **signed, pending physical acceptance.** The live checks below have not
+Status: **candidate, pending physical acceptance.** The live checks below have not
 yet run against this artifact.
 
 ## 4. Permanent installation
@@ -170,7 +170,7 @@ substitute the separate Marionette profile for signed-artifact acceptance.
    duplicate-insertion guard, and removal footprint. Never press Hawkes submit
    as part of the extension smoke test.
 
-Only after the signed XPI passes this physical-browser acceptance is 0.41.1
+Only after the signed XPI passes this physical-browser acceptance is 0.41.2
 **released**. Until then its status remains **release candidate complete**.
 
 Firefox Release and Beta require Mozilla-signed extensions. Mozilla documents

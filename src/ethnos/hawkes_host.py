@@ -116,7 +116,7 @@ def solve(request: SolveRequest, report=None) -> SolveResponse:
     # solve. A screenshot is the fallback, not the default.
     if problem.mathml:
         announce("reading", "page markup")
-        answer = _solve_from_markup(instruction, problem.mathml)
+        answer, decline = _solve_from_markup(instruction, problem.mathml)
         if answer is not None:
             return SolveResponse(
                 request_id=request.request_id,
@@ -137,8 +137,8 @@ def solve(request: SolveRequest, report=None) -> SolveResponse:
         if not problem.screenshot_png_base64:
             return error_response(
                 request.request_id,
-                "The question's markup could not be solved exactly, and no "
-                "screenshot was supplied to fall back on.",
+                f"The question's markup was not solved exactly ({decline}), and "
+                "no screenshot was supplied to fall back on.",
                 "unsupported",
             )
 
@@ -224,8 +224,28 @@ def solve(request: SolveRequest, report=None) -> SolveResponse:
     )
 
 
-def _solve_from_markup(instruction: str, markup: list[str]) -> AnswerPayload | None:
-    """Solve straight from the page's MathML, or return None to fall back."""
+def markup_decline_reason(markup_failed: bool) -> str:
+    """Name which of the two markup declines happened.
+
+    They fall back identically -- a screenshot, a vision model, and the better
+    part of a minute -- and are fixed in completely different places. Without
+    the distinction, a live fallback says only that the exact path did not
+    work, which is the one thing already obvious.
+    """
+    return (
+        "markup could not be converted"
+        if markup_failed
+        else "no exact operation matched the instruction"
+    )
+
+
+def _solve_from_markup(
+    instruction: str, markup: list[str]
+) -> tuple[AnswerPayload | None, str]:
+    """Solve straight from the page's MathML.
+
+    Returns the answer and an empty reason, or None and why it declined.
+    """
     from .answer_image import extract_final_math, keyboard_entry_for_math
     from .hawkes_mathml import UnsupportedMathML, mathml_to_latex
     from .polynomial_solver import answer_polynomial_product
@@ -239,11 +259,11 @@ def _solve_from_markup(instruction: str, markup: list[str]) -> AnswerPayload | N
         except UnsupportedMathML:
             conversion_failed = True
     if conversion_failed or not expressions:
-        return None
+        return None, markup_decline_reason(True)
 
     classification = _polynomial_classification(instruction, expressions)
     if classification is not None:
-        return classification
+        return classification, ""
 
     # "Is this a real number?" is decidable before any solver runs: an even
     # root of a negative number is not real, and every other case here is.
@@ -252,7 +272,7 @@ def _solve_from_markup(instruction: str, markup: list[str]) -> AnswerPayload | N
     # asked, and the host then reported the question unsupported.
     realness = _realness_answer(instruction, expressions)
     if realness is not None:
-        return realness
+        return realness, ""
 
     result = answer_symbolic_math(problem_text=instruction, expressions=expressions)
     if result is None:
@@ -261,16 +281,16 @@ def _solve_from_markup(instruction: str, markup: list[str]) -> AnswerPayload | N
         # Only the exact solvers are trusted without a transcription. Handing
         # the markup to the model here would give an answer with no independent
         # check behind it at all.
-        return None
+        return None, markup_decline_reason(False)
 
     final_math = extract_final_math(result.raw_response)
     if not final_math:
-        return None
+        return None, "the exact solver produced no final answer"
     prose = re.fullmatch(r"[A-Za-z][A-Za-z ]*", final_math) is not None
     return AnswerPayload(
         display_text=final_math,
         keyboard_entry=final_math if prose else keyboard_entry_for_math(final_math),
-    )
+    ), ""
 
 
 def _polynomial_classification(instruction: str, expressions: list[str]) -> AnswerPayload | None:

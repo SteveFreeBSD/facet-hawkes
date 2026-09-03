@@ -1363,3 +1363,19 @@ def test_entry_pacing_is_fixed_rather_than_shaped():
 
     for shaping in ("Math.random", "jitter", "humanize", "randomInt"):
         assert shaping not in editor
+
+
+def test_a_markup_fallback_records_why_it_fell_back():
+    """The two declines are indistinguishable from the outside.
+
+    Markup that would not convert and an instruction no exact operation
+    matched both fall back to a screenshot, a vision model, and most of a
+    minute -- and are fixed in completely different places. A 53-second solve
+    seen live could not be attributed to either, because the log said only that
+    the fallback had happened.
+    """
+    background = (EXTENSION_DIR / "background.js").read_text()
+
+    fallback = background.split('log.info("markup-fallback"', 1)[1].split(");", 1)[0]
+    assert "why:" in fallback
+    assert "reply.message" in fallback

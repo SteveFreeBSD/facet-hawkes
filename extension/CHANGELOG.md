@@ -3,6 +3,18 @@
 All notable changes to the Ethnos Hawkes Assistant add-on. Versions follow
 `major.minor.patch` as required by the Firefox manifest.
 
+## 0.41.2
+
+### Changed
+
+- A markup fallback records why it fell back. The exact path declines for two
+  reasons — markup that would not convert, and an instruction no exact
+  operation matched — which fall back identically to a screenshot, a vision
+  model, and most of a minute, and are fixed in completely different places.
+  A 53-second solve seen in live use could be attributed to neither, because
+  the log said only that a fallback had happened. The host now names which, and
+  the panel's diagnostics carry it.
+
 ## 0.41.1
 
 ### Fixed

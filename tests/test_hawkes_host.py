@@ -91,7 +91,15 @@ def test_markup_classifies_a_fractional_power_as_non_polynomial():
 def test_markup_refuses_a_partial_conversion():
     from ethnos.hawkes_host import _solve_from_markup
 
-    assert _solve_from_markup("Expand the expression.", ["x", "<math>unsupported</math>"]) is None
+    answer, decline = _solve_from_markup(
+        "Expand the expression.", ["x", "<math>unsupported</math>"]
+    )
+    assert answer is None
+    # And it says which of the two declines this was: markup that would not
+    # convert, or an instruction no exact operation matched. They fall back
+    # identically -- a screenshot, a vision model, most of a minute -- and are
+    # fixed in completely different places.
+    assert decline == "markup could not be converted"
 
 
 def test_a_solve_from_any_other_origin_is_refused_at_the_native_boundary():

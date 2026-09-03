@@ -264,6 +264,31 @@ at what actually threw.
 4. **Per-window sessions** (finding 8), when the appetite for a large
    refactor exists.
 
+## Before Signing
+
+Every gate that can be run from a terminal is green: repository validator, 644
+tests, `web-ext lint --warnings-as-errors` at 0/0/0, reproducible rebuild, and
+11 of 11 checks in the real-browser harness. Three things are **not** covered by
+any of them, and each needs one live action:
+
+1. **An insertion has never run.** The harness exercises discovery, not
+   writing, and the diagnostic log shows no insertion since entry became
+   paced character by character — the largest behavioural change of the day.
+   Press **Insert** once on a typed question. That is the single most
+   important unverified path in this release.
+2. **The answer card has never been seen holding structure.** Only `-3` and
+   `trinomial` have appeared, both of which render as plain text. No fraction
+   bar, superscript, radical rule or absolute-value bar has been looked at.
+   Solve one radical or rational-exponent question and look at the card.
+3. **The step-marker fix is proven against invented markup.** Real Hawkes
+   markup has never been captured. Save one step-2 and one step-3 question into
+   `benchmarks/hawkes_dom/` and the harness checks it against Hawkes rather
+   than against a description of Hawkes.
+
+One defect remains open and unexplained: an `errorNoBridge` during an
+insertion, finding 9. A markup fallback now records which of its two declines
+occurred, so the next unexplained slow solve will name its own cause.
+
 ## Session Record, 3 September 2026
 
 Nine findings, eight fixed, verified against a real browser. The exact path now
