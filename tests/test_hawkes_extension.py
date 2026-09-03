@@ -1188,3 +1188,20 @@ def test_a_panel_is_never_shown_another_window_s_question():
     assert 'state: stateFor(null) })' in background
     # No delivery bypasses it.
     assert '"ethnos:state", state })' not in background
+
+
+def test_an_unreadable_url_with_the_grant_held_is_the_wrong_site():
+    """Reported from a sidebar open beside a chat window: "No active Firefox
+    tab was found", of a window plainly showing one.
+
+    The add-on may read one host. If that grant is held and the active tab's
+    URL is still unreadable, the tab cannot be Hawkes -- a Hawkes URL is
+    precisely what the grant makes readable. Reporting a missing tab sent the
+    reader looking for the wrong thing entirely.
+    """
+    background = (EXTENSION_DIR / "background.js").read_text()
+
+    block = background.split('if (typeof tab.url !== "string")', 1)[1].split("\n  }\n", 1)[0]
+    assert 'throw new Error("errorTabAccessLost")' in block   # grant withheld
+    assert 'throw new Error("errorWrongSite")' in block       # grant held
+    assert 'throw new Error("errorNoTab")' not in block

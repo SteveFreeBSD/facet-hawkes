@@ -247,11 +247,18 @@ async function activeHawkesTab(windowId) {
     throw new Error("errorNoTab");
   }
   if (typeof tab.url !== "string") {
+    // A URL this add-on cannot read. Which of the two reasons it is turns on
+    // whether the one host it may see has been granted.
     const granted = await browser.permissions.contains({ origins: [ALLOWED_HOST_PATTERN] });
     if (!granted) {
       throw new Error("errorTabAccessLost");
     }
-    throw new Error("errorNoTab");
+    // Granted, and still unreadable: whatever is in front cannot be Hawkes,
+    // because a Hawkes URL is exactly what that grant makes readable. Saying
+    // "no active tab was found" of a window plainly showing one sent people
+    // looking for a missing tab instead of the wrong site -- reported from a
+    // sidebar open beside a chat window.
+    throw new Error("errorWrongSite");
   }
   let url;
   try {

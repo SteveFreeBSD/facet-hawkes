@@ -3,6 +3,17 @@
 All notable changes to the Ethnos Hawkes Assistant add-on. Versions follow
 `major.minor.patch` as required by the Firefox manifest.
 
+## 0.39.4
+
+### Fixed
+
+- A panel beside a non-Hawkes tab said "No active Firefox tab was found" of a
+  window plainly showing one. The add-on may read a single host; if that grant
+  is held and the active tab's URL is still unreadable, the tab cannot be
+  Hawkes, because a Hawkes URL is precisely what the grant makes readable. It
+  now says so — open the panel from a Hawkes lesson tab — instead of sending
+  the reader to look for a tab that was never missing.
+
 ## 0.39.3
 
 ### Fixed
