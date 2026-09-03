@@ -82,6 +82,52 @@ POLYNOMIAL = (
 )
 
 
+def hawkes_short_step(instruction: str) -> str:
+    """A page whose step marker appears twice, as Hawkes prints it.
+
+    Once in the header beside the question number, once at the head of the
+    instruction. Both pages in this group carry the *same* header and the same
+    "Step 2 of 3" marker, and differ only in a short instruction -- so their
+    signatures can only differ if that instruction is read.
+
+    Live, they were not. The header was taken as the step, `Identify the
+    degree.` was dropped for being exactly twenty characters, and the page's
+    radio-button note was picked up as the instruction instead.
+    """
+    return (
+        "<!doctype html><title>hawkes</title>"
+        "<div>Question 5 of 14, &nbsp;Step 2 of 3</div>"
+        "<div>Consider the following polynomial.</div>"
+        f"{POLYNOMIAL}"
+        f'<div><span class="stepLabel">Step 2 of 3 :</span> {instruction}</div>'
+        "<div>Selecting a radio button will replace the entered answer value(s) "
+        "with the radio button value. If the radio button is not selected, the "
+        "entered answer is used.</div>"
+        f"{HAWKES_FIELD}"
+    )
+
+
+def hawkes_detached_short_step(instruction: str) -> str:
+    """The step marker in an element of its own, and a short instruction below.
+
+    Sharper than `hawkes_short_step`: with the marker carrying no verb, the
+    only way these pages can be told apart is by reading the instruction
+    itself. That isolates the length cutoff, which the other group does not --
+    preferring the instruction-bearing step line is enough to distinguish those
+    even when the instruction is dropped.
+    """
+    return (
+        "<!doctype html><title>hawkes</title>"
+        "<div>Question 5 of 14, &nbsp;Step 2 of 3</div>"
+        f"{POLYNOMIAL}"
+        '<div><span class="stepLabel">Step 2 of 3 :</span></div>'
+        f"<div>{instruction}</div>"
+        "<div>Selecting a radio button will replace the entered answer value(s) "
+        "with the radio button value.</div>"
+        f"{HAWKES_FIELD}"
+    )
+
+
 def hawkes_step(step_line: str, *, split: bool) -> str:
     """A multi-step Hawkes question, in one of two plausible markup shapes.
 
@@ -200,6 +246,44 @@ def build_scenarios(site: str, foreign: str) -> list[Scenario]:
             expect_enabled=False,
             expect_fragment="Answer field found",
             distinct="steps-split",
+        ),
+        # Both carry the same header and the same step marker, so only the
+        # short instruction can tell them apart.
+        Scenario(
+            "hawkes-short-degree",
+            {"hawkes-short-degree.html": hawkes_short_step("Identify the degree.")},
+            expect_enabled=False,
+            expect_fragment="Answer field found",
+            distinct="short-instructions",
+        ),
+        Scenario(
+            "hawkes-short-coefficient",
+            {"hawkes-short-coefficient.html":
+                hawkes_short_step("Identify the leading coefficient.")},
+            expect_enabled=False,
+            expect_fragment="Answer field found",
+            distinct="short-instructions",
+        ),
+        Scenario(
+            "hawkes-detached-degree",
+            {"hawkes-detached-degree.html":
+                hawkes_detached_short_step("Identify the degree.")},
+            expect_enabled=False,
+            expect_fragment="Answer field found",
+            distinct="detached-short",
+        ),
+        Scenario(
+            "hawkes-detached-constant",
+            {"hawkes-detached-constant.html":
+                # Both instructions in this group must be short enough for the
+                # old rule to drop, or the longer one survives it and the pages
+                # differ for the wrong reason -- which is exactly how an
+                # earlier version of this fixture passed its own negative
+                # control.
+                hawkes_detached_short_step("Find the constant.")},
+            expect_enabled=False,
+            expect_fragment="Answer field found",
+            distinct="detached-short",
         ),
         Scenario(
             "no-field-focused",

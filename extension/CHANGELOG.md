@@ -3,6 +3,25 @@
 All notable changes to the Ethnos Hawkes Assistant add-on. Versions follow
 `major.minor.patch` as required by the Firefox manifest.
 
+## 0.41.3
+
+### Fixed
+
+- The question's instruction is read again on steps that state it briefly.
+  Two faults compounded. Hawkes prints "Step N of M" twice — once in the page
+  header beside the question number, once at the head of the instruction — and
+  the header comes first, so it was taken as the step and contributed no
+  instruction. The instruction was then sought separately under a `> 20`
+  character rule, and **"Identify the degree." is exactly twenty characters**,
+  so it was skipped; the next line carrying an accepted verb was Hawkes' own
+  note about radio buttons, which names no operation at all.
+
+  The host was therefore asked to solve a question about radio buttons,
+  declined, and fell through to a screenshot the sidebar has no permission to
+  take — reported as "the question could not be captured from this tab", which
+  was true and told nobody anything. A step line that carries an instruction is
+  now preferred over the header, and the length rule admits a short sentence.
+
 ## 0.41.2
 
 ### Changed

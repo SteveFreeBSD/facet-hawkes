@@ -264,6 +264,37 @@ at what actually threw.
 4. **Per-window sessions** (finding 8), when the appetite for a large
    refactor exists.
 
+### 10. A brief instruction was invisible, and the failure named the wrong thing
+
+**Severity: high. Fixed in 0.41.3, with a negative control.**
+
+"Step 2 of 3: Identify the degree." reported *"The question could not be
+captured from this tab."* Two faults compounded:
+
+- Hawkes prints "Step N of M" twice — in the page header beside the question
+  number, and at the head of the instruction. The header comes first, so it was
+  taken as the step and carried no instruction.
+- The instruction was then sought separately under a `> 20` character rule, and
+  **"Identify the degree." is exactly twenty characters**. Skipped, the next
+  line carrying an accepted verb was Hawkes' own note about radio buttons.
+
+So the host was asked to solve a question about radio buttons, declined, and
+fell to a screenshot the sidebar cannot take. Three layers each reported
+truthfully and the sum was misleading: the message named capture, the cause was
+a length comparison.
+
+Found in one reading because the previous change had just made a markup
+fallback record *why* it declined. Without that line it was indistinguishable
+from the unexplained 53-second solve in finding 3.
+
+**The fixture took three attempts to make honest.** The first passed its own
+negative control because preferring the instruction-bearing step line already
+distinguished the pages. The second passed because its two instructions were 20
+and 22 characters and the longer survived the old rule. Only the third — both
+instructions short enough to be dropped — fails without the fix, hashing both
+pages to `txtAns1|1f1kr3e|367`. A test that passes either way proves nothing,
+and it is easy to write one twice.
+
 ## Before Signing
 
 Every gate that can be run from a terminal is green: repository validator, 644

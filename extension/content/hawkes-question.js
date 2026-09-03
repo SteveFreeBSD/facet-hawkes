@@ -51,6 +51,10 @@
     }
   }
 
+  /** Verbs that mark a line as the question's own instruction. */
+  const INSTRUCTION =
+    /simplify|evaluate|determine|convert|factor|express|rationaliz|find|add|subtract|multiply|expand|identify|write|state|name|list|select|choose|arrange|round|solve/i;
+
   /** Prose above the answer area, in document order. */
   const lines = [...document.querySelectorAll("p, div, span, td")]
     .filter((element) => {
@@ -73,7 +77,13 @@
    * question 7 were the same question: the same digest, so the watcher saw no
    * change and step 2's answer stayed on the card while step 3 sat empty.
    */
-  const step = lines.find((text) => /step\s+\d+\s+of\s+\d+/i.test(text)) ?? "";
+  const stepLines = lines.filter((text) => /step\s+\d+\s+of\s+\d+/i.test(text));
+  // Hawkes prints "Step N of M" twice: once in the page header beside the
+  // question number, and once at the head of the instruction itself. The
+  // header comes first in the document and says nothing about what to do, so
+  // taking it left the instruction to be found separately -- and when it was
+  // missed, the page's radio-button boilerplate was picked up instead.
+  const step = stepLines.find((text) => INSTRUCTION.test(text)) ?? stepLines[0] ?? "";
 
   /**
    * The instruction itself.
@@ -84,10 +94,14 @@
    * picture. "Identify the leading coefficient" missed, which is how a
    * one-millisecond question became a minute of vision plus model.
    */
+  // Long enough to be a sentence, and no longer. "Identify the degree." is
+  // exactly twenty characters, so a `> 20` cutoff dropped it -- and the next
+  // line carrying an accepted verb was Hawkes' own note about radio buttons,
+  // which named no operation at all. The question then cost a screenshot the
+  // sidebar had no permission to take, and reported that it could not be
+  // captured, which was true and useless.
   const instruction = lines.find(
-    (text) =>
-      text.length > 20
-      && /simplify|evaluate|determine|convert|factor|express|rationaliz|find|add|subtract|multiply|expand|identify|write|state|name|list|select|choose|arrange|round|solve/i.test(text)
+    (text) => text.length > 8 && INSTRUCTION.test(text)
   ) ?? "";
 
   // One line when the step already carries the instruction, which is the usual
