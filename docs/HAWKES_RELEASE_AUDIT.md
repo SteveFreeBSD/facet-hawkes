@@ -21,6 +21,7 @@ version and release evidence must be regenerated.
 | Artifact-producing commit | None—the candidate was built from an uncommitted worktree, so inventing an ID would give false provenance |
 | Verified artifact-source snapshot | `06397109f52c3dfa68115f5d96d57e4acee72611` |
 | Post-freeze release-procedure commit | `384606c0067cbc17855b9943c7d3599d75ef4c83` |
+| Public privacy/support documentation commit | `a463b50f17b56e78157941411c3a61bcab593b0e` |
 | Candidate status | **release candidate complete** |
 | Remaining gate | Mozilla signing → normal Firefox install → documented non-submitting physical acceptance |
 | Promotion rule | Only the Mozilla-signed artifact that passes physical acceptance becomes released 0.38.0 |
