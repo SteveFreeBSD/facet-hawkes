@@ -36,8 +36,12 @@
     "description": "Shown while an insertion is in flight."
   },
   "statusInserted": {
-    "message": "Inserted. Submit it, then reopen for the next question.",
-    "description": "Shown after a successful insertion."
+    "message": "Answer placed in the field. Review it on the page and submit there, then reopen this panel for the next question.",
+    "description": "Shown after a successful insertion in the toolbar popup, which closes as soon as focus moves and so stops watching."
+  },
+  "statusInsertedWatching": {
+    "message": "Answer placed in the field. Review it on the page and submit there — Ethnos is watching for the next question.",
+    "description": "Shown after a successful insertion in the docked sidebar, which stays open and keeps watching for the next question."
   },
   "errorNoTab": {
     "message": "No active Firefox tab was found.",
@@ -124,6 +128,10 @@
   "popupSolveButton": {
     "message": "Solve with Ethnos",
     "description": "Button that captures the question and asks Ethnos to solve it."
+  },
+  "popupSolveAgainButton": {
+    "message": "Solve again",
+    "description": "Label of the same solve button once an answer has been inserted, where starting over is a deliberate redo rather than the next step."
   },
   "popupProblemHeading": {
     "message": "Recognized problem",
@@ -265,6 +273,10 @@
     "message": "Solving",
     "description": "Progress stage: producing the answer."
   },
+  "statusSolvedUnread": {
+    "message": "Ethnos could not read this question's instruction, so this answer comes from the picture alone. Check it against the screen before inserting.",
+    "description": "Shown when an answer is ready but the page's own instruction never reached the solver, which forces the least reliable path."
+  },
   "statusWillBuild": {
     "message": "Ready. Check it against the screen, then press Insert — it builds this with the keypad for you.",
     "description": "Shown when the answer will be assembled from templates rather than typed."
@@ -326,6 +338,10 @@
   "popupHintInsert": {
     "message": "Enter to insert",
     "description": "Footer hint once an answer can be inserted."
+  },
+  "popupPlacedChip": {
+    "message": "Placed",
+    "description": "Chip on the answer card marking that this answer is already in the Hawkes field."
   },
   "panelFault": {
     "message": "The panel hit an internal error, so what is shown may be out of date. The solve itself is unaffected and is still running in the background.",

@@ -150,7 +150,50 @@ Insert, close the panel, reopen, insert again.
 **Expected:** one further copy, not two. Each operation is a fresh
 `executeScript` that registers nothing, so re-running cannot stack listeners.
 
-### 8. Removal leaves nothing
+### 8. A placed answer stays on the card, and clears for the next step
+
+Insert an answer, then read the panel without touching anything.
+
+**Expected:** the card still shows what it placed, marked **Placed**, with its
+source beside it; **Insert answer** is disabled; **Solve** reads **Solve
+again** and no longer carries the accent; the footer offers no `Enter` action.
+The docked sidebar says it is watching for the next question.
+
+Then move to the next question — or the next **step** of a multi-step question,
+which is the case that used to fail. Within about a second and a half the card
+must clear and the panel re-arm. A previous step's answer still showing against
+an empty box means the question signature could not tell the steps apart.
+
+**Recognized problem** is the check for that: on a step-2 or step-3 question it
+must name the step, for example `Step 3 of 3 : Identify the leading
+coefficient`. If it is empty, or shows only the polynomial, the page probe is
+not reading the step marker and every step of that question looks identical to
+the add-on.
+
+### 9. An answer reached without the question's instruction says so
+
+Find a question whose instruction the probe cannot read, or watch for it: the
+status line turns amber and says the instruction was not read, rather than the
+ordinary green "Ready". **Details** carries `instruction not read from the
+page`.
+
+**Expected:** the answer is still offered for review and **Insert answer** is
+still enabled. This is a caution, not a refusal — but it must never look
+identical to an exactly derived answer, because without the instruction no
+exact operation can be selected and the result came from the picture alone.
+
+### 10. Two windows do not fight
+
+Open a second Firefox window, and open the sidebar in both.
+
+**Expected:** both panels keep updating — neither goes dead when the other
+opens. Each acts on its own window's tab: solving in one must never read, and
+inserting in one must never write to, the other window's page. Acting in the
+second window's panel rebuilds its state, so an answer solved in the first
+window cannot be inserted into the second; the panel simply has nothing to
+insert.
+
+### 11. Removal leaves nothing
 
 Remove the add-on in `about:debugging`, then reload the lesson.
 
@@ -163,7 +206,7 @@ host registration is separate:
 $ python3 deploy/firefox/install_native_host.py --uninstall --write
 ```
 
-### 9. The settings actually govern a solve
+### 12. The settings actually govern a solve
 
 Settings → Solving. Set **Give up on a solve after** to 30 seconds and turn
 **Start solving as soon as the panel finds the answer field** off. Then open a
@@ -177,7 +220,7 @@ reopen the panel; it opens at the width you set.
 The event page holds preferences in memory, so a change applies to the next
 question without restarting Firefox.
 
-### 10. The connection check answers without a solve
+### 13. The connection check answers without a solve
 
 Settings → Ethnos connection → **Test connection**.
 
@@ -186,7 +229,7 @@ within a moment — it loads no model. With the host removed
 (`install_native_host.py --uninstall --write`), a legible "Ethnos is not
 reachable" rather than a wait.
 
-### 11. The diagnostic log records shapes, not coursework
+### 14. The diagnostic log records shapes, not coursework
 
 Solve one question, then open Settings → Diagnostics.
 
@@ -195,7 +238,7 @@ Solve one question, then open Settings → Diagnostics.
 the answer you just solved and for any part of the question text: neither may
 appear.** Then **Clear**, and confirm the view empties.
 
-### 12. Both themes, and high contrast
+### 15. Both themes, and high contrast
 
 Switch Firefox between light and dark (Settings → General → Website appearance)
 and reopen the panel.

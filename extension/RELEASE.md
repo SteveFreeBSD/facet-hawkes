@@ -4,15 +4,30 @@ This runbook produces a Mozilla-signed add-on that installs permanently in a
 normal Firefox profile. A locally built XPI is unsigned and is only a release
 candidate; do not weaken Firefox signature enforcement to install it.
 
-## Frozen 0.38.0 candidate
+## Frozen 0.39.0 candidate
 
 The accepted local candidate is frozen. Do not rebuild or alter packaged
 source before submission unless AMO requires a source change:
 
 ```text
+dist/ethnos-hawkes-0.39.0-unsigned.xpi
+SHA-256 303838fce32b2631ab6c08038bf5b8edb5ec77f95ff3659f7db56749d479ab4d
+```
+
+The previous candidate is retained for rollback:
+
+```text
 dist/ethnos-hawkes-0.38.0-unsigned.xpi
 SHA-256 5308a5b1853b641050388e9d1be9d893def3d138bb1bd7c7f05140d353fdfdbf
 ```
+
+0.39.0 changes no permission, host, or data-collection declaration. It is a
+panel/state redesign plus correctness fixes; the permission surface, the single
+declared origin, the `websiteContent` declaration and the native-messaging
+boundary are byte-for-byte what 0.38.0 declared. See
+[`CHANGELOG.md`](CHANGELOG.md) for the full entry and
+[`../docs/HAWKES_LIVE_FINDINGS.md`](../docs/HAWKES_LIVE_FINDINGS.md) for the
+live evidence behind the correctness fixes.
 
 Documentation-only updates do not change that archive. If any packaged file
 must change, bump the version, rerun every gate, and record a new candidate
@@ -38,7 +53,7 @@ release and run Mozilla's official validator with warnings treated as errors:
 $ npm install --global web-ext
 $ web-ext --version
 $ release_lint_dir=$(mktemp -d)
-$ unzip -q dist/ethnos-hawkes-0.38.0-unsigned.xpi -d "$release_lint_dir"
+$ unzip -q dist/ethnos-hawkes-0.39.0-unsigned.xpi -d "$release_lint_dir"
 $ web-ext lint --source-dir "$release_lint_dir" --warnings-as-errors
 ```
 
@@ -56,6 +71,11 @@ Confirm all of the following:
 - `websiteContent` accurately describes the native-messaging transfer;
 - [`PRIVACY.md`](PRIVACY.md) matches the configured Ollama endpoint;
 - the live checks in [`TESTING.md`](TESTING.md) pass without submitting work.
+  Checks 8, 9 and 10 are new in 0.39.0 and are the ones this version turns on:
+  a placed answer clearing for the next **step**, the unread-instruction
+  caution, and two windows not fighting. Checks 8 and 10 cover fixes that are
+  verified by unit test but **not yet confirmed against a live browser**, and
+  both fail silently, so neither may be skipped.
 
 ## 2. Build the candidate
 
@@ -119,7 +139,7 @@ substitute the separate Marionette profile for signed-artifact acceptance.
    duplicate-insertion guard, and removal footprint. Never press Hawkes submit
    as part of the extension smoke test.
 
-Only after the signed XPI passes this physical-browser acceptance is 0.38.0
+Only after the signed XPI passes this physical-browser acceptance is 0.39.0
 **released**. Until then its status remains **release candidate complete**.
 
 Firefox Release and Beta require Mozilla-signed extensions. Mozilla documents

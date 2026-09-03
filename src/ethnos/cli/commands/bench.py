@@ -30,9 +30,52 @@ from ...qa import (
     summarize_answer_items,
 )
 from ...section_presets import SECTION_LABELS
+from ...config import PROJECT_ROOT, load_settings
+from ...hawkes_coverage import format_report, load_cases, summarize, sweep
+from ...precalc_benchmark import (
+    load_precalculus_benchmark,
+    run_precalculus_benchmark,
+    write_precalculus_report,
+)
+
+
+def hawkes_coverage_cmd(args) -> int:
+    """Report which Hawkes question types the exact path can answer.
+
+    No browser and no model: the fallback that hides a coverage gap costs about
+    seventy seconds live, and everything needed to find the gap is offline.
+    """
+    results = sweep(load_cases(Path(args.corpus)))
+    print(format_report(results))
+    counts = summarize(results)
+    # A wrong exact answer fails the sweep. A gap does not: gaps are the
+    # backlog this command exists to print, and failing on them would mean the
+    # sweep could never be run in CI while any remained.
+    if counts["wrong"]:
+        return 1
+    if args.strict and (counts["no-verb"] or counts["solver-declined"]):
+        return 1
+    return 0
 
 
 def register(subcommands):
+    coverage_parser = add_command(
+        subcommands,
+        "hawkes-coverage",
+        "Report which Hawkes question types the exact solver answers.",
+        hawkes_coverage_cmd,
+    )
+    coverage_parser.add_argument(
+        "--corpus",
+        default=str(PROJECT_ROOT / "benchmarks" / "hawkes_lesson_coverage.json"),
+        help="Coverage corpus to sweep.",
+    )
+    coverage_parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="Also fail when any question type is uncovered, not only when one is wrong.",
+    )
+
     bench_parser = add_command(
         subcommands,
         "qa-bench",
@@ -76,6 +119,62 @@ def register(subcommands):
         help="Ollama context window token budget for --ask answers.",
     )
     bench_parser.add_argument("--output", type=Path)
+
+    precalc_parser = add_command(
+        subcommands,
+        "precalc-bench",
+        "Benchmark an Ollama model on structured pre-calculus problems.",
+        precalc_bench_cmd,
+    )
+    precalc_parser.add_argument(
+        "--benchmark",
+        type=Path,
+        default=PROJECT_ROOT / "benchmarks" / "precalculus_model_benchmark.json",
+    )
+    precalc_parser.add_argument("--model", default="precalc-local")
+    precalc_parser.add_argument("--num-predict", type=int, default=512)
+    precalc_parser.add_argument("--num-ctx", type=int, default=4096)
+    precalc_parser.add_argument("--max-questions", type=int)
+    precalc_parser.add_argument("--output", type=Path)
+
+
+def precalc_bench_cmd(args) -> int:
+    if args.num_predict < 1:
+        raise SystemExit("--num-predict must be 1 or greater.")
+    if args.num_ctx < 1:
+        raise SystemExit("--num-ctx must be 1 or greater.")
+    if args.max_questions is not None and args.max_questions < 1:
+        raise SystemExit("--max-questions must be 1 or greater.")
+
+    settings = load_settings()
+    benchmark = load_precalculus_benchmark(args.benchmark)
+    from .. import create_client as _create_client
+
+    print("Pre-calculus model benchmark", flush=True)
+    print(f"  model: {args.model}", flush=True)
+    print(f"  benchmark: {args.benchmark}", flush=True)
+    report = run_precalculus_benchmark(
+        benchmark=benchmark,
+        client=_create_client(settings.ollama_host, settings.ollama_timeout),
+        model_name=args.model,
+        num_predict=args.num_predict,
+        num_ctx=args.num_ctx,
+        max_questions=args.max_questions,
+    )
+    for item in report["items"]:
+        status = "pass" if item["is_correct"] else item["validation_status"]
+        print(
+            f"  {item['id']}: {status} "
+            f"(expected {item['expected_option']}, got {item['selected_option']})"
+        )
+    print("Summary:")
+    print(f"  correct: {report['correct']}/{report['total']}")
+    print(f"  invalid: {report['invalid']}")
+    print(f"  elapsed: {format_elapsed(report['elapsed_seconds'])}")
+    if args.output:
+        write_precalculus_report(report, args.output)
+        print(f"  wrote report: {args.output}")
+    return 0 if report["correct"] == report["total"] else 1
 
 
 def qa_bench_cmd(args) -> int:

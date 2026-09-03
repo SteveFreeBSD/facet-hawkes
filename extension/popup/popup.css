@@ -73,28 +73,6 @@ body {
   border-top: 1px solid var(--border);
 }
 
-.badge {
-  margin-left: auto;
-  padding: 1px 7px;
-  border: 1px solid var(--border);
-  border-radius: 9px;
-  background: var(--surface-sunken);
-  color: var(--text-muted);
-  font-size: 10px;
-  font-weight: 600;
-  /* Reserved even when empty, so the buttons beside it never shift. */
-  min-height: 15px;
-  min-width: 0;
-}
-
-/* Holding the space is the point; drawing an empty chip is not. Nothing has
-   answered yet during a solve, and a bare outline in the header read as a
-   control that had failed to load. */
-.badge:empty {
-  border-color: transparent;
-  background: transparent;
-}
-
 .icon-button {
   display: inline-flex;
   align-items: center;
@@ -161,10 +139,13 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  /* Fixed, so a one-character answer and a stacked fraction occupy the same
-     space and nothing below them moves. */
-  min-height: 84px;
-  padding: 10px 30px;
+  /* Border-box, so the room the padding reserves for the chips comes out of
+     one fixed height rather than adding to it: a one-character answer, a
+     stacked fraction and a placed answer with both chips all occupy the same
+     106px and nothing below them moves. */
+  box-sizing: border-box;
+  min-height: 106px;
+  padding: 22px 30px 26px;
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
   background: var(--surface-sunken);
@@ -178,6 +159,55 @@ body {
 
 .answer[data-empty="true"] {
   color: var(--text-faint);
+}
+
+/*
+ * The answer is already in the Hawkes field. Shown rather than cleared: this
+ * card is the largest thing in the panel, and emptying it to an em dash at the
+ * moment the add-on had succeeded read as the answer having been lost.
+ */
+.answer[data-placed="true"] {
+  border-color: var(--success);
+}
+
+/*
+ * Chips sit inside the card, on the row its bottom padding reserves.
+ *
+ * The source badge used to be in the header, competing with the add-on name
+ * and three icon buttons for one 360px row, where "polynomial" was clipped to
+ * a mystery "mod.". It describes this answer rather than the add-on, so it
+ * belongs with the answer -- and here it has the width to say so in full.
+ */
+.chip {
+  position: absolute;
+  bottom: 7px;
+  max-width: calc(50% - 12px);
+  padding: 1px 7px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.5;
+  /* Should a source ever outgrow even this, it ends in a real ellipsis rather
+     than at whatever character the box happened to end on. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chip--source { left: 8px; }
+.chip--placed { right: 8px; }
+
+/* Nothing has answered yet, so there is nothing to name. A bare outline here
+   read as a control that had failed to load. */
+.chip--source:empty { display: none; }
+
+.chip--placed {
+  border-color: var(--success);
+  background: transparent;
+  color: var(--success);
 }
 
 /*

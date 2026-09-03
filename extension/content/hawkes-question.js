@@ -51,8 +51,8 @@
     }
   }
 
-  /** The instruction, which is prose above the answer area. */
-  const promptText = [...document.querySelectorAll("p, div, span, td")]
+  /** Prose above the answer area, in document order. */
+  const lines = [...document.querySelectorAll("p, div, span, td")]
     .filter((element) => {
       if (!visible(element) || element.getBoundingClientRect().top >= limit) {
         return false;
@@ -60,16 +60,43 @@
       if (element.querySelector("p, div, table")) {
         return false;   // a container, not the sentence itself
       }
-      const text = (element.textContent || "").trim();
-      return (
-        text.length > 20
-        && text.length < 400
-        && /simplify|evaluate|determine|convert|factor|express|rationaliz|find|add|subtract|multiply|expand/i.test(text)
-      );
+      const length = (element.textContent || "").trim().length;
+      return length > 3 && length < 400;
     })
-    .map((element) => element.textContent.trim())
-    .slice(0, 1)
-    .join(" ");
+    .map((element) => element.textContent.trim());
+
+  /**
+   * Which step of a multi-step question this is.
+   *
+   * Hawkes keeps one prompt and one expression across every step of a question
+   * and changes only this line. Read without it, steps 2 and 3 of lesson 1.3
+   * question 7 were the same question: the same digest, so the watcher saw no
+   * change and step 2's answer stayed on the card while step 3 sat empty.
+   */
+  const step = lines.find((text) => /step\s+\d+\s+of\s+\d+/i.test(text)) ?? "";
+
+  /**
+   * The instruction itself.
+   *
+   * The verb list is what decides whether the host is told the question at all;
+   * anything it misses is sent as "Solve the question in the image", where no
+   * exact operation can match and a model has to infer the task from a
+   * picture. "Identify the leading coefficient" missed, which is how a
+   * one-millisecond question became a minute of vision plus model.
+   */
+  const instruction = lines.find(
+    (text) =>
+      text.length > 20
+      && /simplify|evaluate|determine|convert|factor|express|rationaliz|find|add|subtract|multiply|expand|identify|write|state|name|list|select|choose|arrange|round|solve/i.test(text)
+  ) ?? "";
+
+  // One line when the step already carries the instruction, which is the usual
+  // Hawkes markup; both when the step marker sits in its own element.
+  const promptText = (
+    step && instruction && step.includes(instruction)
+      ? step
+      : [step, instruction].filter((text) => text.length > 0).join(" ")
+  ).slice(0, 400);
 
   return { promptText, expressions };
 })();

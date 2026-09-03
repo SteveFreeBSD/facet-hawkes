@@ -26,6 +26,9 @@ def test_running_view_suppresses_every_previous_answer_form():
         "phase": "solving",
         "answer": "14",
         "displayText": "14",
+        # The answer a previous insertion left on the card is one more form a
+        # retry must not keep showing.
+        "placedText": "14",
         "problemText": "an earlier question",
         "stage": "reading",
         "startedAt": 1,
@@ -33,7 +36,7 @@ def test_running_view_suppresses_every_previous_answer_form():
 
     view = json.loads(context.eval(f"JSON.stringify(describeView({json.dumps(stale)}, 2))"))
 
-    assert view["answer"] == {"text": "", "empty": True}
+    assert view["answer"] == {"text": "", "empty": True, "placed": False}
     assert view["copy"]["enabled"] is False
     assert view["insert"]["enabled"] is False
 

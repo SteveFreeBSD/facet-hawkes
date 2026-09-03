@@ -1,0 +1,166 @@
+{
+  "schema_version": "precalculus-model-benchmark-v1",
+  "items": [
+    {
+      "id": "linear-equation",
+      "category": "algebra",
+      "question": "Solve 3(2x - 5) = 4x + 7.",
+      "choices": {"A": "x = 4", "B": "x = 7", "C": "x = 11", "D": "x = -11"},
+      "answer": "C"
+    },
+    {
+      "id": "quadratic-zeros",
+      "category": "algebra",
+      "question": "Find all real zeros of x^2 - 5x + 6.",
+      "choices": {"A": "{2, 3}", "B": "{-2, -3}", "C": "{1, 6}", "D": "{-1, -6}"},
+      "answer": "A"
+    },
+    {
+      "id": "radical-rational-domain",
+      "category": "functions",
+      "question": "What is the domain of h(x) = sqrt(2x - 6) / (x - 5)?",
+      "choices": {
+        "A": "[3, infinity)",
+        "B": "[3, 5) union (5, infinity)",
+        "C": "(3, 5) union (5, infinity)",
+        "D": "(-infinity, 3] union (5, infinity)"
+      },
+      "answer": "B"
+    },
+    {
+      "id": "function-composition",
+      "category": "functions",
+      "question": "If f(x) = 2x + 1 and g(x) = x^2 - 3, what is f(g(2))?",
+      "choices": {"A": "1", "B": "2", "C": "3", "D": "5"},
+      "answer": "C"
+    },
+    {
+      "id": "inverse-function",
+      "category": "functions",
+      "question": "If f(x) = (3x - 2) / 5, which formula gives f inverse of x?",
+      "choices": {
+        "A": "(3x + 2) / 5",
+        "B": "5 / (3x - 2)",
+        "C": "(5x - 2) / 3",
+        "D": "(5x + 2) / 3"
+      },
+      "answer": "D"
+    },
+    {
+      "id": "exponential-equation",
+      "category": "exponential-logarithmic",
+      "question": "Solve 2^(x + 1) = 16.",
+      "choices": {"A": "x = 2", "B": "x = 3", "C": "x = 4", "D": "x = 5"},
+      "answer": "B"
+    },
+    {
+      "id": "logarithmic-equation",
+      "category": "exponential-logarithmic",
+      "question": "Solve log base 3 of (x - 1) = 2.",
+      "choices": {"A": "x = 3", "B": "x = 7", "C": "x = 9", "D": "x = 10"},
+      "answer": "D"
+    },
+    {
+      "id": "unit-circle-value",
+      "category": "trigonometry",
+      "question": "What is the exact value of sin(7pi/6)?",
+      "choices": {"A": "1/2", "B": "-1/2", "C": "sqrt(3)/2", "D": "-sqrt(3)/2"},
+      "answer": "B"
+    },
+    {
+      "id": "trig-equation",
+      "category": "trigonometry",
+      "question": "Solve 2 cos(x) = sqrt(3) on the interval [0, 2pi).",
+      "choices": {
+        "A": "{pi/6, 11pi/6}",
+        "B": "{pi/3, 5pi/3}",
+        "C": "{pi/6, 5pi/6}",
+        "D": "{pi/3, 2pi/3}"
+      },
+      "answer": "A"
+    },
+    {
+      "id": "circle-standard-form",
+      "category": "analytic-geometry",
+      "question": "For x^2 + y^2 - 6x + 4y - 12 = 0, identify the center and radius.",
+      "choices": {
+        "A": "center (-3, 2), radius 5",
+        "B": "center (3, -2), radius 25",
+        "C": "center (3, -2), radius 5",
+        "D": "center (-3, 2), radius 25"
+      },
+      "answer": "C"
+    },
+    {
+      "id": "rational-hole",
+      "category": "functions",
+      "question": "For r(x) = (x^2 - 1) / (x - 1), which statement is correct?",
+      "choices": {
+        "A": "r(x) equals x + 1 for every real x",
+        "B": "r(x) equals x - 1 with a hole at x = -1",
+        "C": "r(x) equals x + 1 with a hole at x = 1",
+        "D": "r(x) has a vertical asymptote at x = 1"
+      },
+      "answer": "C"
+    },
+    {
+      "id": "arithmetic-sequence",
+      "category": "sequences",
+      "question": "An arithmetic sequence has first term 7 and common difference -3. What is its tenth term?",
+      "choices": {"A": "-23", "B": "-20", "C": "-17", "D": "34"},
+      "answer": "B"
+    },
+    {
+      "id": "complex-power-fraction",
+      "category": "complex-numbers",
+      "question": "Simplify i^7 times the fraction 12 over (6i^3).",
+      "choices": {"A": "-2", "B": "2", "C": "-2i", "D": "2i"},
+      "answer": "B"
+    },
+    {
+      "id": "complex-addition",
+      "category": "complex-numbers",
+      "question": "Simplify (9i^2 - 11i) + (5 + 8i).",
+      "choices": {"A": "14 - 3i", "B": "-4 + 3i", "C": "-4 - 3i", "D": "4 - 19i"},
+      "answer": "C"
+    },
+    {
+      "id": "complex-power-square-root",
+      "category": "complex-numbers",
+      "question": "Evaluate (-i)^10 times sqrt(-25), using the principal square root.",
+      "choices": {"A": "5", "B": "-5", "C": "5i", "D": "-5i"},
+      "answer": "D"
+    },
+    {
+      "id": "complex-square-root-product",
+      "category": "complex-numbers",
+      "question": "Simplify sqrt(-128) times sqrt(-2), using principal square roots.",
+      "choices": {"A": "16", "B": "-16", "C": "16i", "D": "-16i"},
+      "answer": "B"
+    },
+    {
+      "id": "polynomial-descending-order",
+      "category": "polynomials",
+      "question": "Express 2y^7 - y^3 + 2 + 7y^6 in descending order.",
+      "choices": {
+        "A": "2y^7 + 7y^6 - y^3 + 2",
+        "B": "7y^6 + 2y^7 - y^3 + 2",
+        "C": "2 - y^3 + 7y^6 + 2y^7",
+        "D": "2y^7 - y^3 + 7y^6 + 2"
+      },
+      "answer": "A"
+    },
+    {
+      "id": "polynomial-combine-like-terms",
+      "category": "polynomials",
+      "question": "Add and simplify (xy - 5x + x^3y) + (4x - xy^3 - xy).",
+      "choices": {
+        "A": "x^3y - xy^3 - x",
+        "B": "x^3y - xy^3 + 9x",
+        "C": "2xy + x^3y - xy^3 - x",
+        "D": "x^3y + xy^3 - x"
+      },
+      "answer": "A"
+    }
+  ]
+}

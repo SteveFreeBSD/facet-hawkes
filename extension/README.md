@@ -41,6 +41,51 @@ It is not designed to conceal add-on use or to interfere with Hawkes
 monitoring. Confirm that assistance tools are permitted for the work you are
 doing.
 
+## What it answers exactly
+
+Every exact operation is selected by reading a verb out of the question's own
+instruction. What is not on this list falls through to the vision-plus-model
+path, which takes roughly a minute and produces an answer nothing can check —
+so this table is also the list of what is *fast* and what is *verifiable*.
+
+| Question says | Operation | Answered by |
+| --- | --- | --- |
+| factor | `factor` | SymPy, verified by re-expansion |
+| greatest common factor, GCF | `gcf` | SymPy `factor_terms`, GCF only |
+| expand, find the product, multiply | `expand` | SymPy, verified by re-factoring |
+| simplify, simplified form | `simplify` | SymPy exact evaluation |
+| rationalize | `rationalize` | SymPy `radsimp` |
+| rational exponent | `rational_exponents` | SymPy, written with fractional powers |
+| descending / ascending order | `descending_order`, `ascending_order` | SymPy term ordering |
+| degree | `degree` | read from the polynomial's terms |
+| leading coefficient | `leading_coefficient` | coefficient of the highest power |
+
+The orderings and both extractions were added after a live session where each
+cost about a minute of model time for a result SymPy has in about one
+millisecond. Two rules keep them honest: a rewriting verb alongside an ordering
+wins, so "factor completely, then write in descending order" is a factoring
+question; and anything with more than one variable declines rather than
+guessing which one an ordering or a degree refers to.
+
+A product verb beats "simplify", because these questions say "multiply the
+following polynomials **and simplify your answer**" and mean multiply; and
+"factor out the greatest common factor" is narrower than "factor", which would
+otherwise return a complete factorization and answer a different question.
+
+Coverage is swept offline, with no browser and no model:
+
+```console
+$ python3 -m ethnos.cli hawkes-coverage
+17/20 answered exactly, 1 correctly declined (0 wrong, 3 unrecognized, ...)
+```
+
+It separates the two kinds of gap, which fall through to a model identically
+and are fixed in completely different places: `no-verb` means no operation
+matched the prompt, `solver-declined` means one did and SymPy would not answer.
+A wrong exact answer fails the sweep; a gap does not, because gaps are the
+backlog it exists to print. `--strict` fails on those too. Add phrasings to
+`benchmarks/hawkes_lesson_coverage.json`.
+
 ## When it refuses
 
 The add-on fails closed, and there are three reasons it will show an answer but
@@ -56,6 +101,15 @@ not let you insert it:
   needing one that is not offered is refused by name.
 - **The answer is a choice, not a value.** Some questions are answered with a
   radio button. The answer is shown; selecting it stays your action.
+
+There is also one case that is cautioned rather than refused. Every exact
+operation is chosen by reading a verb out of the question's own instruction, so
+when that instruction cannot be read the question reaches a model as a picture
+with nothing stating what to do about it — the least reliable path the add-on
+has. The answer is still offered, because it is often right and you review
+every one before insertion; but the status line turns amber and says the
+instruction was not read, instead of the ordinary green "Ready". `Details`
+carries `instruction not read from the page`.
 
 Supported structured answers—including fractions, radicals, exponents,
 absolute value, and several tested nestings—are **built** with the editor's own
@@ -300,15 +354,37 @@ If the panel reports multiple fields or cannot identify the field, close the
 toolbar popup (if used), click the intended answer box, and reopen it. The
 extension never guesses when more than one candidate is visible.
 
+### What the panel shows after an insertion
+
+The answer card keeps the answer it placed, marked **Placed**, with the source
+that produced it beside it. Nothing there can be inserted again: the reviewed
+answer is dropped from state at insertion and what remains is a display-only
+copy, cleared by the next solve or the next question.
+
+**Solve** stays available but stops being the primary action and is relabelled
+**Solve again**, `Enter` is bound to nothing, and the status line says what
+happens next — the docked sidebar keeps watching for the next question, while
+the toolbar popup closes as soon as focus moves and so asks you to reopen it.
+
+### Two browser windows
+
+Each Firefox window has its own sidebar, and each acts on its own tab. One
+question is worked on at a time: acting in a second window's panel rebuilds the
+state for that window, which drops the first window's answer, so an answer
+solved in one window can never be inserted into another. Until you act in it,
+a second panel displays the first window's question.
+
 ### Keyboard
 
 The panel is usable without the mouse. Focus starts on the primary action and
-moves to **Insert** when a solve finishes.
+moves to **Insert** when a solve finishes. Where there is no primary action —
+during an insertion, and after one — the panel takes no focus at all rather
+than parking the caret on a control it does not want pressed.
 
 | Key | Does |
 | --- | --- |
 | `Alt+Shift+E` | Open the panel. Rebindable in Settings. |
-| `Enter` | The primary action: Solve, then Cancel, then Insert. |
+| `Enter` | The primary action: Solve, then Cancel, then Insert. Bound to nothing once an answer has been placed, so it cannot re-solve an answered question. |
 | `Ctrl+Enter` | Solve, or cancel a solve, whatever is primary. |
 | `Escape` | Close the panel. A solve under way carries on. |
 

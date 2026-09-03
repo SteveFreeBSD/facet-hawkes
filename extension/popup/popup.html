@@ -15,7 +15,7 @@
       <header class="bar">
         <img class="bar__mark" src="../icons/icon-32.png" alt="" width="20" height="20">
         <h1 class="bar__name" data-i18n="extensionName">Ethnos</h1>
-        <span id="badge" class="badge"></span>
+        <span class="bar__spacer"></span>
         <button id="options" class="icon-button" type="button"
                 data-i18n-attr="title:popupOptionsLink,aria-label:popupOptionsLink">
           <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false">
@@ -56,7 +56,9 @@
       </section>
 
       <div class="answer-slot">
-        <output id="answer" class="answer" data-empty="true">&mdash;</output>
+        <output id="answer" class="answer" data-empty="true" data-placed="false">&mdash;</output>
+        <span id="badge" class="chip chip--source"></span>
+        <span id="placed" class="chip chip--placed" data-i18n="popupPlacedChip" hidden>Placed</span>
         <button id="copy" class="copy-button" type="button" disabled
                 data-i18n-attr="title:popupCopyTitle,aria-label:popupCopyTitle">
           <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" focusable="false">

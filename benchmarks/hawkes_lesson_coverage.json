@@ -1,0 +1,153 @@
+{
+  "schema_version": "hawkes-coverage-v1",
+  "note": "Standard algebra question phrasings for the polynomial and factoring territory, written to exercise operation selection and the exact solvers. Prompts are phrased as Hawkes states them, including the step marker, because that text is what selects an operation. Contains no coursework content.",
+  "cases": [
+    {
+      "id": "order-descending",
+      "topic": "ordering",
+      "prompt": "Step 1 of 3 : Express the polynomial in descending order.",
+      "expressions": ["-3x^11 - x^13 + 5 + 2x^12"],
+      "expected": "-x^13 + 2x^12 - 3x^11 + 5"
+    },
+    {
+      "id": "order-descending-write",
+      "topic": "ordering",
+      "prompt": "Write the polynomial in descending order.",
+      "expressions": ["4 + x^2 - 2x^5"],
+      "expected": "-2x^5 + x^2 + 4"
+    },
+    {
+      "id": "order-ascending",
+      "topic": "ordering",
+      "prompt": "Write the polynomial in ascending order.",
+      "expressions": ["-3x^11 - x^13 + 5 + 2x^12"],
+      "expected": "5 - 3x^11 + 2x^12 - x^13"
+    },
+    {
+      "id": "degree",
+      "topic": "extraction",
+      "prompt": "Step 2 of 3 : Identify the degree of the polynomial.",
+      "expressions": ["-3x^11 - x^13 + 5 + 2x^12"],
+      "expected": "13"
+    },
+    {
+      "id": "degree-determine",
+      "topic": "extraction",
+      "prompt": "Determine the degree of the polynomial.",
+      "expressions": ["7x^4 - 2x + 1"],
+      "expected": "4"
+    },
+    {
+      "id": "leading-coefficient",
+      "topic": "extraction",
+      "prompt": "Step 3 of 3 : Identify the leading coefficient.",
+      "expressions": ["-3x^11 - x^13 + 5 + 2x^12"],
+      "expected": "-1"
+    },
+    {
+      "id": "constant-term",
+      "topic": "extraction",
+      "prompt": "Identify the constant term of the polynomial.",
+      "expressions": ["-3x^11 - x^13 + 5 + 2x^12"],
+      "expected": "5"
+    },
+    {
+      "id": "classify-terms",
+      "topic": "classification",
+      "prompt": "Classify the polynomial as a monomial, binomial, or trinomial.",
+      "expressions": ["x^2 + 3x + 2"],
+      "expected": "trinomial"
+    },
+    {
+      "id": "factor-grouping",
+      "topic": "factoring",
+      "prompt": "Factor the following polynomial by grouping. If it cannot be factored, indicate \"Not Factorable\".",
+      "expressions": ["ax - 5bx + 5ay - 25by"],
+      "expected": "(a - 5b)(x + 5y)"
+    },
+    {
+      "id": "factor-trinomial",
+      "topic": "factoring",
+      "prompt": "Factor the following trinomial completely.",
+      "expressions": ["x^2 + 7x + 12"],
+      "expected": "(x + 3)(x + 4)"
+    },
+    {
+      "id": "factor-difference-squares",
+      "topic": "factoring",
+      "prompt": "Factor the following binomial completely.",
+      "expressions": ["9x^2 - 25"],
+      "expected": "(3x - 5)(3x + 5)"
+    },
+    {
+      "id": "factor-gcf",
+      "topic": "factoring",
+      "prompt": "Factor out the greatest common factor.",
+      "expressions": ["-10xy^2 - 15xy + 25x"],
+      "expected": "-5x(2y^2 + 3y - 5)"
+    },
+    {
+      "id": "expand-product",
+      "topic": "products",
+      "prompt": "Find the product of the following polynomials.",
+      "expressions": ["(x + 3)(x - 5)"],
+      "expected": "x^2 - 2x - 15"
+    },
+    {
+      "id": "expand-multiply",
+      "topic": "products",
+      "prompt": "Multiply the following polynomials and simplify your answer.",
+      "expressions": ["(2x + 1)(x + 4)"],
+      "expected": "2x^2 + 9x + 4"
+    },
+    {
+      "id": "add-subtract",
+      "topic": "sums",
+      "prompt": "Add or subtract the following polynomials as indicated.",
+      "expressions": ["(4y^3 - 9y^3) + (11 - 9)"],
+      "expected": "-5y^3 + 2"
+    },
+    {
+      "id": "evaluate-at-value",
+      "topic": "evaluation",
+      "prompt": "Evaluate the polynomial for x = 2.",
+      "expressions": ["x^3 - 4x + 1"],
+      "expected": "1"
+    },
+    {
+      "id": "simplify-radical",
+      "topic": "radicals",
+      "prompt": "Simplify the following radical expression. Assume all variables are positive.",
+      "expressions": ["\\sqrt{9y^2}"],
+      "expected": "3y"
+    },
+    {
+      "id": "rationalize",
+      "topic": "radicals",
+      "prompt": "Simplify by rationalizing the denominator.",
+      "expressions": ["1/\\sqrt{5}"],
+      "expected": "\\frac{√5}{5}"
+    },
+    {
+      "id": "rational-exponents",
+      "topic": "radicals",
+      "prompt": "Write the expression using rational exponents. Assume all variables are positive.",
+      "expressions": ["\\sqrt{y^3}"],
+      "expected": "y^(3/2)"
+    },
+    {
+      "id": "factor-then-order",
+      "topic": "guards",
+      "prompt": "Factor completely, then write the answer in descending order.",
+      "expressions": ["x^2 + 7x + 12"],
+      "expected": "(x + 3)(x + 4)"
+    },
+    {
+      "id": "order-two-variables",
+      "topic": "guards",
+      "prompt": "Express the polynomial in descending order.",
+      "expressions": ["a x^2 + b y^3"],
+      "expects_decline": true
+    }
+  ]
+}

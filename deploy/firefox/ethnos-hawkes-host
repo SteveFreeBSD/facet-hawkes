@@ -1,0 +1,11 @@
+#!/bin/sh
+# Development launcher. The installer generates a pinned launcher under the
+# user's application-data directory; this source-tree copy remains portable.
+set -eu
+project_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+python="$project_root/.venv/bin/python"
+if [ ! -x "$python" ]; then
+  python=python3
+  export PYTHONPATH="$project_root/src${PYTHONPATH:+:$PYTHONPATH}"
+fi
+exec "$python" -m ethnos.hawkes_host

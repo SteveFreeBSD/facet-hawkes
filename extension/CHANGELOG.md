@@ -3,6 +3,74 @@
 All notable changes to the Ethnos Hawkes Assistant add-on. Versions follow
 `major.minor.patch` as required by the Firefox manifest.
 
+## 0.39.0
+
+### Changed
+
+- The panel now works out one named **stance** — offline, solve, working,
+  review, inserting, placed — and derives the primary button, the Enter key and
+  the footer hint from it in a single place. Those three were previously
+  re-decided at each site that needed them, and a finished insertion was the
+  state none of them had a name for, so every one fell through to its "nothing
+  has happened yet" default.
+- The source badge has left the header, where it competed with the add-on name
+  and three icon buttons for one 360px row and could be clipped to a mystery
+  `mod.`. It now sits inside the answer card, which is what it describes, with
+  room to spell `polynomial` in full and an ellipsis if it ever cannot.
+
+### Fixed
+
+- The answer card keeps showing the answer after insertion, marked **Placed**,
+  instead of emptying to an em dash at the moment the add-on had succeeded. The
+  reviewed answer is still dropped from state — nothing can insert it twice or
+  offer it to a later question — and what the card shows is a display-only
+  copy, cleared by a new solve or a new question like everything else. The
+  recognized problem and source survive alongside it, so the sidebar watcher no
+  longer blanks the card 1.5 seconds after a successful insertion.
+- "Inserted. Submit it, then reopen for the next question" was written before
+  the sidebar watcher existed. The docked sidebar now says it is watching for
+  the next question, because it is; the toolbar popup still says to reopen,
+  because it closes as soon as focus moves and stops watching.
+- The footer no longer offers "Enter to solve" after an insertion, and Enter is
+  bound to nothing there. Enter took its action from whichever button was not
+  disabled, and Solve stays enabled so a doubted answer can be re-solved — so
+  the key quietly re-solved the question that had just been answered.
+- A second browser window no longer kills the first window's panel. Firefox
+  gives every window its own sidebar, and the event page held one `panel`
+  variable that each new connection overwrote: the earlier panel received its
+  first state and then nothing further, which from the outside is a panel that
+  will not open. Panels are now tracked as a set and all of them are kept
+  current.
+- An operation now targets the window whose panel asked for it. Tab lookup used
+  `currentWindow`, which in a background event page means the most recently
+  focused window — so with two windows open a solve could read, and an
+  insertion could write to, the other one's tab. The panel reports its own
+  window (a sidebar's port carries no sender tab) and every lookup is scoped to
+  it. A request from a window other than the one the current state describes
+  rebuilds that state first, dropping the previous window's answer, so an
+  answer solved in one window can no longer be inserted into another.
+- Two consecutive steps of a multi-step question were the same question. The
+  page probe reported an instruction only when it matched a fixed verb list,
+  and "Identify the leading coefficient" matched nothing — so with Hawkes
+  keeping one prompt and one expression across every step, the signature
+  reduced to the field and the shared polynomial and was identical for both.
+  The previous step's answer stayed on the card, and because that signature is
+  what `insert()` re-checks, an un-inserted answer could have entered the next
+  step's box. The probe now reads the `Step N of M` marker, which distinguishes
+  steps whatever their wording, and the verb list is wider.
+- An answer reached without the question's instruction is no longer presented
+  as though it were derived exactly. Without a prompt no exact operation can be
+  selected, so the question reaches a model as a picture with nothing saying
+  what to do about it — and the result was reported identically to an exact
+  one. The host now reports `prompt_seen`, and the panel shows an amber note
+  instead of the green "Ready". The answer is still offered for review; it just
+  no longer looks like something it is not.
+- Solve gives up the accent and the caret after a successful insertion, and is
+  relabelled **Solve again**. Left prominent, focused, and reading "Solve with
+  Ethnos", it presented itself as the next step and invited the needless retry
+  this release was opened to fix. It stays available, and Ctrl+Enter still
+  reaches it from the keyboard.
+
 ## 0.38.1
 
 ### Fixed

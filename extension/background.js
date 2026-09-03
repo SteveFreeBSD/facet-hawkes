@@ -78,6 +78,10 @@ onSettingsChanged((changed) => {
 function blankState() {
   return {
     phase: /** @type {Phase} */ ("idle"),
+    // Which browser window this state describes. One state exists at a time,
+    // and it names the tab answers are read from and written to, so a request
+    // from any other window has to re-establish it first.
+    windowId: null,
     tabId: null,
     frameId: null,
     fieldId: "",
@@ -86,6 +90,12 @@ function blankState() {
     answer: "",
     displayText: "",
     entryText: "",
+    // What insertion put in the field, kept for the panel to show and for
+    // nothing else. Never re-inserted, never offered to a later question.
+    placedText: "",
+    // Whether the host was told what the question asks. True until a solve
+    // says otherwise, so nothing is ever cautioned about without cause.
+    promptSeen: true,
     stage: "",
     stageDetail: "",
     signature: null,
@@ -98,27 +108,36 @@ function blankState() {
 }
 
 /**
- * The open panel, if there is one.
+ * The open panels, keyed by the browser window each one belongs to.
  *
  * A port is used rather than `runtime.sendMessage` because a panel closes
  * whenever anything else takes focus. Sending to a closed popup leaves an
  * in-flight message Firefox reports as an aborted query; a port simply
- * disconnects, and this reference goes back to null.
+ * disconnects, and its entry goes away.
  *
- * @type {browser.runtime.Port | null}
+ * Keyed by window because Firefox gives every window its own sidebar. This was
+ * one `panel` variable, and `panel = port` on each connection: opening a second
+ * window's sidebar silently replaced the first, which then received no further
+ * state and sat on whatever snapshot it had. It looked like a panel that would
+ * no longer open.
+ *
+ * Keyed by port rather than by window because a sidebar's port carries no
+ * sender tab: the window is only known once the panel announces it, and the
+ * panel has to receive state from the moment it connects.
+ *
+ * @type {Map<browser.runtime.Port, {windowId: number | null}>}
  */
-let panel = null;
+const panels = new Map();
 
 function update(changes) {
   state = { ...state, ...changes };
-  if (panel === null) {
-    return;
-  }
-  try {
-    panel.postMessage({ type: "ethnos:state", state });
-  } catch {
-    // The panel closed between the check and the post.
-    panel = null;
+  for (const port of panels.keys()) {
+    try {
+      port.postMessage({ type: "ethnos:state", state });
+    } catch {
+      // Closed between the iteration and the post.
+      panels.delete(port);
+    }
   }
 }
 
@@ -189,8 +208,20 @@ function enterPlainAnswer(answer) {
   return { ok: outcome.ok, code: outcome.code, answer };
 }
 
-async function activeHawkesTab() {
-  const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+/**
+ * The Hawkes tab of one specific window.
+ *
+ * `currentWindow` used to choose this, which in a background event page means
+ * the most recently focused window -- not the window whose sidebar asked. With
+ * two windows open, a solve started in one could read, and an insertion could
+ * write to, the other one's tab.
+ */
+async function activeHawkesTab(windowId) {
+  const [tab] = await browser.tabs.query(
+    Number.isInteger(windowId)
+      ? { active: true, windowId }
+      : { active: true, currentWindow: true }
+  );
   if (!tab || !Number.isInteger(tab.id)) {
     throw new Error("errorNoTab");
   }
@@ -578,20 +609,22 @@ async function captureQuestion(tabId, frameId) {
 // --- operations the popup can ask for --------------------------------------
 
 /** Find the answer field and read the editor's rules. Cheap, and no model. */
-async function prepare() {
+async function prepare(windowId = state.windowId) {
   const previous = {
     phase: state.phase,
     signature: state.signature,
     answer: state.answer,
     displayText: state.displayText,
     entryText: state.entryText,
+    placedText: state.placedText,
+    promptSeen: state.promptSeen,
     problemText: state.problemText,
     source: state.source,
     detail: state.detail,
   };
-  update({ ...blankState(), phase: "checking" });
+  update({ ...blankState(), phase: "checking", windowId });
   try {
-    const tab = await activeHawkesTab();
+    const tab = await activeHawkesTab(windowId);
     const results = await runOperation({ tabId: tab.id, allFrames: true }, INSPECT_SCRIPT);
     const choice = selectAnswerFrame(results);
     if (!Number.isInteger(choice.frameId)) {
@@ -613,6 +646,12 @@ async function prepare() {
     const sameQuestion = signature !== null && signature === previous.signature;
     const alreadyInserted = sameQuestion && previous.phase === "inserted";
     const hasAnswer = sameQuestion && previous.answer !== "";
+    // What was answered, and what answered it, describe a question that is
+    // still on screen in both cases -- so they outlive the insertion that
+    // consumed the answer itself. Without this the sidebar watcher blanked the
+    // card, the source and the recognized problem 1.5 seconds after a
+    // successful insertion, on its very next tick.
+    const context = hasAnswer || alreadyInserted;
     log.debug("question-identified", { signature, sameQuestion, alreadyInserted });
     update({
       phase: alreadyInserted ? "inserted" : hasAnswer ? "solved" : "ready",
@@ -626,9 +665,11 @@ async function prepare() {
       answer: hasAnswer ? previous.answer : "",
       displayText: hasAnswer ? previous.displayText : "",
       entryText: hasAnswer ? previous.entryText : "",
-      problemText: hasAnswer ? previous.problemText : "",
-      source: hasAnswer ? previous.source : "",
-      detail: hasAnswer ? previous.detail : "",
+      promptSeen: hasAnswer ? previous.promptSeen : true,
+      placedText: alreadyInserted ? previous.placedText : "",
+      problemText: context ? previous.problemText : "",
+      source: context ? previous.source : "",
+      detail: context ? previous.detail : "",
       stage: sameQuestion ? "done" : "",
     });
     // Insertion handles this question. Keep that state across a sidebar watch
@@ -666,12 +707,12 @@ function errorKeyOf(error) {
 }
 
 /** Capture the question and solve it. Survives the popup closing. */
-async function solve() {
+async function solve(windowId = state.windowId) {
   if (state.phase === "solving") {
     return;
   }
   if (state.tabId === null) {
-    await prepare();
+    await prepare(windowId);
     if (state.phase !== "ready") {
       return;
     }
@@ -693,6 +734,8 @@ async function solve() {
     answer: "",
     displayText: "",
     entryText: "",
+    placedText: "",
+    promptSeen: true,
     problemText: "",
     source: "",
     detail: "",
@@ -836,6 +879,9 @@ async function acceptReply(reply) {
   }
   const certainty = reply.certainty ?? {};
   const notes = [`source: ${certainty.source ?? "unknown"}`];
+  if (certainty.prompt_seen === false) {
+    notes.push("instruction not read from the page");
+  }
   if (certainty.issues?.length) {
     notes.push(...certainty.issues.slice(0, 4));
   }
@@ -875,6 +921,9 @@ async function acceptReply(reply) {
     entryText,
     problemText: reply.problem_text ?? "",
     source: certainty.source ?? "",
+    // Absent means an older host that cannot report it; only an explicit false
+    // is treated as "the question reached the model unlabelled".
+    promptSeen: certainty.prompt_seen !== false,
     detail: notes.join("; "),
     errorKey: certainty.insertable ? "" : "errorTranscriptionDisputed",
   });
@@ -991,11 +1040,16 @@ async function insert() {
 /**
  * Settle after a successful insertion.
  *
- * The answer is in the box, so holding on to it only means the panel shows a
- * stale answer next time it opens. The signature deliberately remains: it
- * marks this exact question handled, preventing the sidebar watcher (or a
- * close/reopen) from solving it a second time. A real prompt/MathML change has
- * a different signature and starts the next solve normally.
+ * The reviewed answer is dropped: nothing may insert it twice, and it must
+ * never be offered for a later question. What is kept instead is `placedText`,
+ * a display-only copy for the panel's card. Clearing both left the largest
+ * element in the panel showing an em dash at the exact moment the add-on had
+ * succeeded, which read as the answer having been lost.
+ *
+ * The signature deliberately remains: it marks this exact question handled,
+ * preventing the sidebar watcher (or a close/reopen) from solving it a second
+ * time. A real prompt/MathML change has a different signature and starts the
+ * next solve normally.
  */
 async function finishInsertion(detail) {
   // Structured entry changes Hawkes' rendered answer mathematics. Depending
@@ -1015,23 +1069,45 @@ async function finishInsertion(detail) {
     phase: "inserted",
     errorKey: "",
     detail,
+    // Readable form, matching what the card showed a moment ago for review.
+    placedText: state.displayText || state.answer,
     answer: "",
     displayText: "",
     entryText: "",
-    problemText: "",
-    source: "",
+    // `problemText` and `source` are left as they are: both describe the
+    // question still on screen, which the insertion did not change.
     signature: handledSignature,
     stage: "",
     stageDetail: "",
   });
 }
 
-async function reset() {
+async function reset(windowId = state.windowId) {
   inFlight?.abort();
   inFlight = null;
-  state = blankState();
+  state = { ...blankState(), windowId };
   update({ phase: "idle" });
-  await prepare();
+  await prepare(windowId);
+}
+
+/**
+ * Make the asking window the one this state describes.
+ *
+ * There is one state, and it names the tab that answers are read from and
+ * written to. A request from a different window must therefore rebuild it,
+ * which drops the previous window's answer -- so an answer solved in one
+ * window can never be inserted into another. Insertion after a switch finds no
+ * answer and refuses, which is the correct outcome rather than a near miss.
+ */
+async function claim(windowId) {
+  if (!Number.isInteger(windowId) || state.windowId === windowId) {
+    return;
+  }
+  log.info("panel-window-changed", { was: state.windowId, now: windowId });
+  inFlight?.abort();
+  inFlight = null;
+  state = { ...blankState(), windowId };
+  await prepare(windowId);
 }
 
 function cancel() {
@@ -1117,7 +1193,7 @@ function watchQuestion() {
     return;
   }
   questionWatch = setInterval(async () => {
-    if (panel === null) {
+    if (panels.size === 0) {
       stopWatchingQuestion();
       return;
     }
@@ -1157,28 +1233,44 @@ browser.runtime.onConnect.addListener((port) => {
     return;
   }
   log.debug("panel-connected", { phase: state.phase });
-  panel = port;
+  panels.set(port, { windowId: null });
   // The panel renders from whatever is already here, so reopening mid-solve
   // shows the solve in progress instead of starting another.
   port.postMessage({ type: "ethnos:state", state });
   watchQuestion();
 
   port.onMessage.addListener((incoming) => {
+    const entry = panels.get(port);
+    if (entry && Number.isInteger(incoming?.windowId)) {
+      entry.windowId = incoming.windowId;
+    }
+    // Undefined until the panel has said which window it is in, which makes
+    // every operation fall back to its previous single-window behaviour rather
+    // than act on a window it is only guessing at.
+    const asking = entry?.windowId ?? undefined;
     switch (incoming?.type) {
+      case "ethnos:hello":
+        break;
       case "ethnos:prepare":
-        begin(prepare);
+        begin(() => prepare(asking));
         break;
       case "ethnos:solve":
-        begin(solve);
+        begin(async () => {
+          await claim(asking);
+          await solve(asking);
+        });
         break;
       case "ethnos:insert":
-        begin(insert);
+        begin(async () => {
+          await claim(asking);
+          await insert();
+        });
         break;
       case "ethnos:cancel":
         cancel();
         break;
       case "ethnos:reset":
-        begin(reset);
+        begin(() => reset(asking));
         break;
       default:
         break;
@@ -1186,8 +1278,8 @@ browser.runtime.onConnect.addListener((port) => {
   });
 
   port.onDisconnect.addListener(() => {
-    if (panel === port) {
-      panel = null;
+    panels.delete(port);
+    if (panels.size === 0) {
       stopWatchingQuestion();
     }
   });

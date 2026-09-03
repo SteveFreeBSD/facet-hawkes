@@ -14,6 +14,14 @@ the active documentation; Git history remains the archive.
 | Diagnose Ollama or Vulkan | [Ollama Troubleshooting](OLLAMA_TROUBLESHOOTING.md) |
 | Reproduce performance decisions | [Performance Tuning](PERFORMANCE_TUNING.md) |
 | Inspect the primary host | [Caspian Host Profile](hosts/caspian.md) |
+| Configure screenshot OCR and exact math | [Vision and Exact-Math Architecture](VISION_MATH_ARCHITECTURE.md) |
+| Use or develop the Hawkes add-on | [extension/README.md](../extension/README.md) |
+| Sign and permanently install the Hawkes add-on | [Firefox release runbook](../extension/RELEASE.md) |
+| Review Hawkes add-on data handling | [Hawkes privacy notice](../extension/PRIVACY.md) |
+| Understand the Hawkes answer editor | [Hawkes editor findings](HAWKES_EDITOR_FINDINGS.md) |
+| Verify the live Hawkes end-to-end path | [Hawkes E2E proof](HAWKES_E2E_PROOF.md) |
+| Review what live Hawkes testing has exposed | [Hawkes live findings](HAWKES_LIVE_FINDINGS.md) |
+| Review the current Hawkes release status | [Hawkes release audit](HAWKES_RELEASE_AUDIT.md) |
 
 ## Workflows
 
@@ -21,8 +29,10 @@ the active documentation; Git history remains the archive.
 |---|---|
 | Quiz import, grounding, validation, and benchmarks | [Quiz Workflow](QUIZ_WORKFLOW.md) |
 | Model-driven answer-key review | [Agent Review](AGENT_REVIEW.md) |
+| History chapter fixture runs | [History Chapter Quizzes](../benchmarks/history_chapter_quizzes.md) |
 | Tool-using local PDF questions | [Agentic Q&A](AGENTIC_QA.md) |
 | Inspect saved answer traces | [Trace Debugging](TRACE_DEBUGGING.md) |
+| Set up Precalculus | [Precalculus Setup](PRECALCULUS.md) |
 
 ## Source-of-truth rules
 

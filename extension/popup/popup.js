@@ -27,6 +27,7 @@ const elements = {
   problemBlock: document.querySelector("#problem-block"),
   problem: document.querySelector("#problem"),
   answer: document.querySelector("#answer"),
+  placed: document.querySelector("#placed"),
   copy: document.querySelector("#copy"),
   status: document.querySelector("#status"),
   progress: document.querySelector("#progress-fill"),
@@ -54,6 +55,21 @@ let handedOver = false;
 let frame = null;
 /** Interval that advances the elapsed-seconds readout during a solve. */
 let ticking = null;
+/** What Enter does right now, as named by the view. */
+let primary = "none";
+
+/**
+ * Whether this is the docked sidebar rather than the toolbar popup.
+ *
+ * A popup is torn down whenever anything else takes focus, which loses the
+ * answer on screen mid-read. The sidebar stays put — and only the sidebar
+ * keeps the event page's question watcher alive, so what the panel promises
+ * after an insertion differs between the two. Same page either way; the
+ * controls that make no sense in each are hidden.
+ *
+ * Read during the first paint, so it is declared before anything can render.
+ */
+const inSidebar = new URLSearchParams(window.location.search).get("sidebar") === "1";
 
 /**
  * The link to the background page.
@@ -67,6 +83,27 @@ const port = browser.runtime.connect({ name: "ethnos:panel" });
 let portOpen = true;
 let recoveringPort = false;
 
+/**
+ * The window this panel is in, which the event page needs and cannot infer.
+ *
+ * Firefox gives every window its own sidebar, and a sidebar's port carries no
+ * sender tab -- so without this the event page read "the current window",
+ * meaning whichever was focused last. With two windows open, a solve started
+ * here could read, and an insertion could write to, the other one's tab.
+ *
+ * Announced as soon as it is known rather than awaited: the port is already
+ * registered and receiving state, and every request carries the id too, so a
+ * click landing before this resolves is merely unscoped, never misdirected.
+ */
+let panelWindowId = null;
+browser.windows
+  .getCurrent()
+  .then((info) => {
+    panelWindowId = info.id;
+    port.postMessage({ type: "ethnos:hello", windowId: info.id });
+  })
+  .catch((error) => log.warn("panel-window-unknown", { error: describeError(error) }));
+
 /** Ask the background to do something. Progress arrives back as state. */
 function request(type) {
   if (!portOpen) {
@@ -74,8 +111,8 @@ function request(type) {
     return false;
   }
   try {
-    port.postMessage({ type });
-    log.debug("panel-request", { type });
+    port.postMessage({ type, windowId: panelWindowId });
+    log.debug("panel-request", { type, windowId: panelWindowId });
     return true;
   } catch (error) {
     log.error("panel-request-failed", { type, error: describeError(error) });
@@ -148,7 +185,7 @@ function render(state) {
 /** Repaint now, from `current`. Never throws. */
 function paint() {
   try {
-    apply(describeView(current, Date.now()));
+    apply(describeView(current, Date.now(), { docked: inSidebar }));
   } catch (error) {
     // A rendering bug must degrade to a visible fault, not to a panel that
     // has quietly stopped updating. That is exactly how the 0.22.0 panel
@@ -161,6 +198,8 @@ function paint() {
 function apply(view) {
   elements.answer.textContent = view.answer.text || "—";
   elements.answer.dataset.empty = String(view.answer.empty);
+  elements.answer.dataset.placed = String(view.answer.placed);
+  elements.placed.hidden = !view.answer.placed;
   if (!view.answer.empty) {
     // Spelled out for a screen reader: "3y" read as a word is not an answer.
     elements.answer.setAttribute("aria-label", view.answer.text.split("").join(" "));
@@ -208,9 +247,10 @@ function apply(view) {
     delete elements.progress.dataset.state;
   }
 
-  elements.hint.textContent = message(
-    view.insert.enabled ? "popupHintInsert" : view.running ? "popupHintCancel" : "popupHintSolve"
-  );
+  // Named by the view, which is also what decides whether Enter is bound at
+  // all. A hint the panel would not act on is worse than no hint.
+  primary = view.primary;
+  elements.hint.textContent = view.hint ? message(view.hint) : "";
 
   if (view.running) {
     startTicking();
@@ -232,18 +272,36 @@ function apply(view) {
  * Without the hand-over, a finished solve left the caret on a Solve button
  * that had just stopped being the thing to press, while the panel's own hint
  * said "Enter to insert".
+ *
+ * Where the view names no primary action -- after an insertion, and during one
+ * -- the caret is not placed at all. Parking it on Solve there is precisely
+ * what turned an Enter press into a needless re-solve of a question that had
+ * just been answered.
  */
 function focusPrimary(view) {
+  const wantsInsert = view.primary === "insert";
+  const target = wantsInsert
+    ? elements.insert
+    : view.primary === "solve" || view.primary === "cancel"
+      ? elements.solve
+      : null;
+
+  if (target === null) {
+    // Deliberately not settled: when the next question makes the panel
+    // actionable again, focus may still be offered -- and only if the user has
+    // not moved it in the meantime.
+    handedOver = false;
+    return;
+  }
   if (!settled && document.activeElement === document.body) {
     settled = true;
-    const target = view.insert.enabled ? elements.insert : elements.solve;
     if (!target.disabled) {
       target.focus();
-      handedOver = view.insert.enabled;
+      handedOver = wantsInsert;
     }
     return;
   }
-  if (!view.insert.enabled) {
+  if (!wantsInsert) {
     handedOver = false;
     return;
   }
@@ -307,8 +365,8 @@ async function toggleSolve() {
   // Match the background immediately: a retry is new work, so an old answer
   // must not remain visible while the panel waits for the first state update.
   render({ ...current, phase: "solving", startedAt: Date.now(), errorKey: "", detail: "",
-           answer: "", displayText: "", entryText: "", problemText: "", source: "",
-           stage: "checking-host" });
+           answer: "", displayText: "", entryText: "", placedText: "", problemText: "",
+           source: "", stage: "checking-host" });
 }
 
 function requestInsert() {
@@ -325,8 +383,8 @@ function requestReset() {
   if (!request("ethnos:reset")) {
     return;
   }
-  render({ ...current, phase: "checking", answer: "", displayText: "", problemText: "",
-           detail: "", errorKey: "", source: "" });
+  render({ ...current, phase: "checking", answer: "", displayText: "", placedText: "",
+           problemText: "", detail: "", errorKey: "", source: "" });
 }
 
 /**
@@ -352,11 +410,18 @@ async function copyAnswer() {
   }
 }
 
-/** The action Enter performs, which is whichever button is currently primary. */
+/**
+ * The action Enter performs, as named by the view.
+ *
+ * Asked of the view rather than inferred from which buttons happen to be
+ * enabled. Solve stays enabled after an insertion -- a doubted answer is
+ * re-solved from there -- so "not disabled" quietly meant Enter re-solved the
+ * question that had just been answered.
+ */
 function primaryAction() {
-  if (!elements.insert.disabled) {
+  if (primary === "insert") {
     requestInsert();
-  } else if (!elements.solve.disabled) {
+  } else if (primary === "solve" || primary === "cancel") {
     toggleSolve();
   }
 }
@@ -394,15 +459,6 @@ on(elements.options, "click", () => {
   );
   window.close();
 });
-
-/**
- * Whether this is the docked sidebar rather than the toolbar popup.
- *
- * A popup is torn down whenever anything else takes focus, which loses the
- * answer on screen mid-read. The sidebar stays put. Same page either way; only
- * the controls that make no sense in each are hidden.
- */
-const inSidebar = new URLSearchParams(window.location.search).get("sidebar") === "1";
 
 if (inSidebar) {
   document.body.dataset.sidebar = "true";
