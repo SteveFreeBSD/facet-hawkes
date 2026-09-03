@@ -3,6 +3,23 @@
 All notable changes to the Ethnos Hawkes Assistant add-on. Versions follow
 `major.minor.patch` as required by the Firefox manifest.
 
+## 0.41.1
+
+### Fixed
+
+- "Find the product of the binomial factors using the appropriate special
+  product (difference of two squares, square of a binomial sum, or square of a
+  binomial difference)" is a multiplication. It was answered **`trinomial`** in
+  live use: the classification rule counted mentions of
+  monomial/binomial/trinomial, and that prompt says "binomial" three times.
+  Classification now requires all three names or an explicit verb.
+- The same prompt then resolved to factoring, because "factor" is matched as a
+  substring and sits inside "binomial factors" — and declined, since
+  `(x + 9)^2` has no further factorization. A named product is now read before
+  the factoring checks: an explicit "find the product" beats an incidental
+  noun. It answers `x^2 + 18x + 81`.
+- Both prompts are now in the coverage corpus, which stands at 23 of 23 exact.
+
 ## 0.41.0
 
 ### Changed

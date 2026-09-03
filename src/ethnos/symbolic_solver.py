@@ -308,8 +308,14 @@ def _requested_operation(problem_text: str) -> str | None:
     # question; claiming it answered "trinomial" to a request to factor, which
     # the coverage sweep caught before it shipped. A real classification either
     # says so, or offers the choice.
-    if re.search(r"\bclassif\w*\b", lowered) or (
-        len(re.findall(r"\b(?:monomial|binomial|trinomial)\b", lowered)) >= 2
+    # All three names, or an explicit classification verb. Counting mentions
+    # was far too loose: "find the product of the binomial factors using the
+    # appropriate special product (difference of two squares, square of a
+    # binomial sum, or square of a binomial difference)" says "binomial" three
+    # times and is a multiplication. It was answered `trinomial`, live.
+    if re.search(r"\bclassif\w*\b", lowered) or all(
+        re.search(rf"\b{name}\b", lowered)
+        for name in ("monomial", "binomial", "trinomial")
     ):
         return "classify"
     # "Evaluate the polynomial for x = 2". The value to substitute is in the
@@ -347,18 +353,16 @@ def _requested_operation(problem_text: str) -> str | None:
         return "rational_exponents"
     if "rationaliz" in lowered:
         return "rationalize"
-    # Narrower than factoring, and checked first. "Factor out the greatest
-    # common factor" asks for one step; `sympy.factor` performs all of them and
-    # answers a question that was not asked.
-    if "greatest common factor" in lowered or re.search(r"\bgcf\b", lowered):
-        return "gcf"
-    if "factor" in lowered:
-        return "factor"
-    # Before "simplify", because these questions say "Multiply the following
-    # polynomials and simplify your answer" and mean multiply. Checked the
-    # other way round, `simplify` claimed the prompt and SymPy returned the
-    # already-simple factored form -- which is to say, the question's own input
-    # handed back as its answer.
+    # Before the factoring checks, because "factor" is matched as a substring
+    # and appears inside "binomial factors". "Find the product of the binomial
+    # factors" is a multiplication; read as a factoring it declined, having
+    # already been answered `trinomial` by a looser classification rule. A
+    # named product beats an incidental noun.
+    #
+    # Before "simplify" too: these questions say "multiply the following
+    # polynomials and simplify your answer" and mean multiply. Read the other
+    # way round, `simplify` claimed the prompt and SymPy returned the
+    # already-simple factored form -- the question's own input as its answer.
     if any(
         phrase in lowered
         for phrase in (
@@ -370,6 +374,13 @@ def _requested_operation(problem_text: str) -> str | None:
         )
     ):
         return "expand"
+    # Narrower than factoring, and checked first. "Factor out the greatest
+    # common factor" asks for one step; `sympy.factor` performs all of them and
+    # answers a question that was not asked.
+    if "greatest common factor" in lowered or re.search(r"\bgcf\b", lowered):
+        return "gcf"
+    if "factor" in lowered:
+        return "factor"
     # Hawkes commonly says "Express your answer in simplified form" rather
     # than using the imperative "Simplify". They request the same exact
     # operation; missing the adjective sent a deterministic radical down the

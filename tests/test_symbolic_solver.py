@@ -629,3 +629,37 @@ def test_an_unfactorable_polynomial_is_handed_back_when_no_escape_is_offered():
     assert answer_symbolic_math(
         problem_text="Factor completely.", expressions=["y^2 + y + 17"]
     ) is None
+
+
+def test_a_named_product_beats_the_word_factor_appearing_in_a_noun():
+    """Shipped wrong and caught in live use, twice over.
+
+    "Find the product of the binomial factors using the appropriate special
+    product (difference of two squares, square of a binomial sum, or square of
+    a binomial difference)" says "binomial" three times, so a classification
+    rule that counted mentions answered it `trinomial`. Tightened, it then said
+    `factor` -- because "factor" is matched as a substring and sits inside
+    "binomial factors" -- and declined. It is a multiplication.
+    """
+    prompt = (
+        "Find the product of the binomial factors using the appropriate special "
+        "product (difference of two squares, square of a binomial sum, or square "
+        "of a binomial difference)."
+    )
+    assert _requested_operation(prompt) == "expand"
+
+    result = answer_symbolic_math(problem_text=prompt, expressions=["(x + 9)^2"])
+    assert result is not None
+    assert extract_final_math(result.raw_response) == "x^2 + 18x + 81"
+
+
+def test_classification_needs_all_three_names_or_the_verb():
+    """Counting mentions is too loose: a question may name one of them in
+    passing while asking something else entirely."""
+    assert _requested_operation(
+        "Classify the polynomial as a monomial, binomial, or trinomial."
+    ) == "classify"
+    assert _requested_operation("Factor the following binomial completely.") == "factor"
+    assert _requested_operation(
+        "Find the product of the binomial factors."
+    ) == "expand"
