@@ -2308,6 +2308,41 @@ def test_save_extraction_result_preserves_valid_model_source_pages(tmp_path):
     )
 
 
+def test_save_extraction_result_rejects_pages_outside_chunk_range(tmp_path):
+    conn = connect(tmp_path / "ethnos.sqlite")
+    init_db(conn)
+    chunk_id = _stored_chunk(conn, page_start=10, page_end=12)
+    result = ExtractionResult.model_validate(
+        {
+            "chunk_summary": "A chunk with invalid model citations.",
+            "topics": [
+                {
+                    "name": "Mixed citations",
+                    "summary": "One cited page belongs to another numbering scheme.",
+                    "confidence": 0.9,
+                    "source_pages": [11, 99],
+                },
+                {
+                    "name": "Invalid citations",
+                    "summary": "Every cited page is outside the chunk.",
+                    "confidence": 0.8,
+                    "source_pages": [98, 99],
+                },
+            ],
+            "key_terms": [],
+            "examples": [],
+            "questions": [],
+        }
+    )
+
+    from ethnos.db import save_extraction_result
+
+    save_extraction_result(conn, chunk_id, result)
+
+    rows = conn.execute("SELECT source_pages FROM topics ORDER BY id").fetchall()
+    assert [row["source_pages"] for row in rows] == ["[11]", "[10, 11, 12]"]
+
+
 def test_valid_extraction_rerun_replaces_normalized_rows_for_chunk(tmp_path):
     conn = connect(tmp_path / "ethnos.sqlite")
     init_db(conn)

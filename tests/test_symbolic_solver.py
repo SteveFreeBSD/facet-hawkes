@@ -537,3 +537,70 @@ def test_extraction_declines_when_there_is_no_single_variable():
         problem_text="Identify the leading coefficient.",
         expressions=["a x^2 + b y^3"],
     ) is None
+
+
+def test_the_constant_term_is_the_coefficient_not_the_last_thing_written():
+    """An ordered polynomial may have no constant term at all, so this asks
+    what the polynomial is where the variable is zero rather than reading off
+    whatever was written last."""
+    result = answer_symbolic_math(
+        problem_text="Identify the constant term of the polynomial.",
+        expressions=["-3x^11 - x^13 + 5 + 2x^12"],
+    )
+    assert result is not None
+    assert extract_final_math(result.raw_response) == "5"
+
+    none_at_all = answer_symbolic_math(
+        problem_text="Identify the constant term of the polynomial.",
+        expressions=["x^2 + 3x"],
+    )
+    assert none_at_all is not None
+    assert extract_final_math(none_at_all.raw_response) == "0"
+
+
+def test_a_polynomial_is_classified_by_counting_its_terms():
+    for expression, expected in (
+        ("5x^3", "monomial"), ("x^2 - 9", "binomial"), ("x^2 + 3x + 2", "trinomial"),
+    ):
+        result = answer_symbolic_math(
+            problem_text="Classify the polynomial as a monomial, binomial, or trinomial.",
+            expressions=[expression],
+        )
+        assert result is not None, expression
+        assert extract_final_math(result.raw_response) == expected
+
+
+def test_naming_a_trinomial_is_not_asking_what_kind_it_is():
+    """Caught by the coverage sweep before it shipped.
+
+    "Factor the following trinomial completely" contains the word and is a
+    factoring question. Matching on the word alone answered "trinomial" to a
+    request to factor -- fast, confident, and wrong.
+    """
+    assert _requested_operation("Factor the following trinomial completely.") == "factor"
+    assert _requested_operation("Factor the following binomial completely.") == "factor"
+    assert _requested_operation(
+        "Classify the polynomial as a monomial, binomial, or trinomial."
+    ) == "classify"
+
+
+def test_evaluating_needs_a_value_to_evaluate_at():
+    """Without one there is nothing to substitute, and claiming the question
+    would mean answering it with the polynomial itself."""
+    assert _requested_operation("Evaluate the polynomial for x = 2.") == "evaluate"
+    assert _requested_operation("Evaluate the polynomial.") != "evaluate"
+
+    result = answer_symbolic_math(
+        problem_text="Evaluate the polynomial for x = 2.",
+        expressions=["x^3 - 4x + 1"],
+    )
+    assert result is not None
+    assert extract_final_math(result.raw_response) == "1"
+
+
+def test_evaluation_declines_when_the_named_variable_is_not_the_one_present():
+    """"for t = 2" against a polynomial in x names nothing to substitute."""
+    assert answer_symbolic_math(
+        problem_text="Evaluate the polynomial for t = 2.",
+        expressions=["x^3 - 4x + 1"],
+    ) is None

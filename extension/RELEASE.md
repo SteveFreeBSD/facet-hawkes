@@ -4,37 +4,30 @@ This runbook produces a Mozilla-signed add-on that installs permanently in a
 normal Firefox profile. A locally built XPI is unsigned and is only a release
 candidate; do not weaken Firefox signature enforcement to install it.
 
-## Frozen 0.39.2 candidate
+## Frozen 0.40.0 candidate
 
 The accepted local candidate is frozen. Do not rebuild or alter packaged
 source before submission unless AMO requires a source change:
 
 ```text
-dist/ethnos-hawkes-0.39.2-unsigned.xpi
-SHA-256 57e0ac32081a038110b2ac5d439b26035fe074e522131ebe01523cbbb3fe55b7
+dist/ethnos-hawkes-0.40.0-unsigned.xpi
+SHA-256 64db1275b49bff3fd2b362d40c3ad1e33729c33571f31275390850f1cbcac78e
 ```
 
-0.39.0 and 0.39.1 were superseded before submission and must not be uploaded.
-0.39.0 was refused by `web-ext lint --warnings-as-errors` over a
-`strict_min_version` of 140 that contradicted the manifest's own
-data-collection declaration on Firefox for Android; the floor is now 142.
-0.39.1 read from and wrote to a tab that had been dragged into another
-window.
-
-The last signed release is retained for rollback:
+0.39.0 through 0.39.5 were development builds and must not be uploaded. The
+last signed release is retained for rollback:
 
 ```text
-dist/ethnos-hawkes-0.38.0-unsigned.xpi
-SHA-256 5308a5b1853b641050388e9d1be9d893def3d138bb1bd7c7f05140d353fdfdbf
+signed     bd61a7d54aca41af9bb8-0.39.2.xpi
+SHA-256    88b6a002b877450601f7f03c1e462d2bcfb379a1a0b84266e040da5aa6670d26
+candidate  dist/ethnos-hawkes-0.39.2-unsigned.xpi
+SHA-256    57e0ac32081a038110b2ac5d439b26035fe074e522131ebe01523cbbb3fe55b7
 ```
 
-0.39.2 changes no permission, host, or data-collection declaration. It is a
-panel/state redesign plus correctness fixes; the permission surface, the single
-declared origin, the `websiteContent` declaration and the native-messaging
-boundary are byte-for-byte what 0.38.0 declared. See
-[`CHANGELOG.md`](CHANGELOG.md) for the full entry and
-[`../docs/HAWKES_LIVE_FINDINGS.md`](../docs/HAWKES_LIVE_FINDINGS.md) for the
-live evidence behind the correctness fixes.
+0.40.0 changes no permission, host, or data-collection declaration. Gates on
+this candidate: repository validator, 633 tests,
+`web-ext lint --warnings-as-errors` at 0 errors / 0 warnings / 0 notices, an
+identical rebuild, and 11 of 11 checks in the real-browser harness.
 
 Documentation-only updates do not change that archive. If any packaged file
 must change, bump the version, rerun every gate, and record a new candidate
@@ -68,7 +61,7 @@ $ export PATH="$HOME/.local/opt/node-v22.23.2-linux-x64/bin:$HOME/.local/bin:$PA
 $ npm install -g --prefix ~/.local web-ext
 $ web-ext --version
 $ release_lint_dir=$(mktemp -d)
-$ unzip -q dist/ethnos-hawkes-0.39.2-unsigned.xpi -d "$release_lint_dir"
+$ unzip -q dist/ethnos-hawkes-0.40.0-unsigned.xpi -d "$release_lint_dir"
 $ web-ext lint --source-dir "$release_lint_dir" --warnings-as-errors
 ```
 
@@ -177,7 +170,7 @@ substitute the separate Marionette profile for signed-artifact acceptance.
    duplicate-insertion guard, and removal footprint. Never press Hawkes submit
    as part of the extension smoke test.
 
-Only after the signed XPI passes this physical-browser acceptance is 0.39.2
+Only after the signed XPI passes this physical-browser acceptance is 0.40.0
 **released**. Until then its status remains **release candidate complete**.
 
 Firefox Release and Beta require Mozilla-signed extensions. Mozilla documents

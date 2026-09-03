@@ -59,6 +59,24 @@ Environment="OLLAMA_KEEP_ALIVE=24h"
 LimitMEMLOCK=infinity
 ```
 
+The staged image-question profile is checked in at
+`deploy/systemd/ollama-ethnos.conf`. It shortens the fallback keepalive to 30
+minutes, explicitly limits the host to two loaded models, and makes the existing
+single-request parallelism explicit. Installing it requires administrator
+authority:
+
+```bash
+sudo install -m 0644 deploy/systemd/ollama-ethnos.conf \
+  /etc/systemd/system/ollama.service.d/override.conf
+sudo systemctl daemon-reload
+sudo systemctl restart ollama
+```
+
+Ethnos also sends `ETHNOS_OLLAMA_KEEP_ALIVE` per request when configured, so
+normal `.env`-driven screenshot sessions receive the 30-minute behavior before
+the global service drop-in is promoted. Do not restart Ollama while a structure
+run is active.
+
 Apply after editing:
 
 ```bash

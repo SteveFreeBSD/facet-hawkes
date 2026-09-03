@@ -21,6 +21,7 @@ def test_known_section_presets_have_contiguous_ranges():
     expectations = {
         "ethics": {"pages": (1, 118), "chunks": (1, 100)},
         "history": {"pages": (1, 464), "chunks": (1, 157)},
+        "precalc": {"pages": (1, 1094), "chunks": (1, 609)},
     }
 
     assert set(expectations) <= set(PRESETS)

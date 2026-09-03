@@ -145,15 +145,23 @@ same as one derived exactly.
 
 ### 5. The answer card shows transport encoding, not mathematics
 
-**Severity: medium. Open.**
+**Severity: medium. Fixed in 0.40.0.**
 
-The card renders `-x^13 + 2x^12 - 3x^11 + 5` — the linearized form used to move
+The card rendered `-x^13 + 2x^12 - 3x^11 + 5` — the linearized form used to move
 the answer between components. Hawkes renders real superscripts, and the box
 takes keypad templates. The owner's words: *"useless knowing what the original
 markup is, and sometimes confusing on what the answer really needs to be."*
 
-The card should render the answer as mathematics — superscripts, fraction bars,
-radicals — so it reads as the answer rather than as an encoding of it.
+**Fixed by** `common/answer-math.js`, which lays the answer out as a tree —
+superscripts, fraction bars, radical signs over exactly their radicand, bars for
+absolute value — with the panel building elements from it. The layout is
+DOM-free and runs in the suite against the forms the solver actually produces.
+
+The trap in doing this: **Copy** read the card, and a rendered card's text is
+`x13` for `x^13`. Copy now takes the answer from the view, never from the DOM —
+otherwise drawing the answer properly would have started handing over a
+different answer than the one on screen, in exactly the cases where copying is
+the only way in.
 
 ### 6. The answer card is blank for the length of a solve
 

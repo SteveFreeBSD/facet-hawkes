@@ -4,6 +4,9 @@ import json
 import time
 from pathlib import Path
 
+import pytest
+from pydantic import ValidationError
+
 from ethnos.agent_loop import render_agent_review_markdown, run_agent_review
 from ethnos.agent_models import (
     AgentAction,
@@ -13,6 +16,7 @@ from ethnos.agent_models import (
 )
 from ethnos.agent_tools import (
     AgentToolContext,
+    answer_support_details,
     build_agent_tool_registry,
     call_agent_tool,
 )
@@ -48,6 +52,85 @@ def test_model_profile_resolution_uses_gemma3_defaults():
     assert explicit.num_predict == MODEL_PROFILES["gemma3-fast"].num_predict
 
 
+def test_answer_support_uses_normalized_token_boundaries_and_acronyms():
+    assert (
+        answer_support_details(
+            "civil rights", [{"text": "An uprights culture is unrelated."}]
+        )["supported"]
+        is False
+    )
+    assert (
+        answer_support_details("AIM", [{"text": "The AIM organized protests."}])[
+            "evidence_strength"
+        ]
+        == "direct"
+    )
+    assert (
+        answer_support_details("AIM", [{"text": "The A.I.M. organized protests."}])[
+            "evidence_strength"
+        ]
+        == "direct"
+    )
+    assert (
+        answer_support_details(
+            "African American", [{"text": "African-American activists organized."}]
+        )["evidence_strength"]
+        == "direct"
+    )
+    assert (
+        answer_support_details(
+            "John F. Kennedy", [{"text": "John F Kennedy won the election."}]
+        )["evidence_strength"]
+        == "direct"
+    )
+    assert (
+        answer_support_details(
+            "interconnected", [{"text": "inter\u00adconnected systems"}]
+        )["evidence_strength"]
+        == "direct"
+    )
+    assert (
+        answer_support_details("well-known", [{"text": "a well-\nknown organizer"}])[
+            "evidence_strength"
+        ]
+        == "direct"
+    )
+    assert (
+        answer_support_details(
+            "César Chávez", [{"text": "Cesar Chavez organized farmworkers."}]
+        )["evidence_strength"]
+        == "direct"
+    )
+    assert (
+        answer_support_details("not a victory", [{"text": "It was a victory."}])[
+            "supported"
+        ]
+        is False
+    )
+    assert (
+        answer_support_details(
+            "not a victory", [{"text": "It was a victory, not a defeat."}]
+        )["supported"]
+        is False
+    )
+    assert (
+        answer_support_details(
+            "not a victory", [{"text": "It was not a victory for either side."}]
+        )["supported"]
+        is True
+    )
+    assert (
+        answer_support_details("AIM", [{"text": "Their aim was reform."}])["supported"]
+        is False
+    )
+    assert (
+        answer_support_details("AIM", [{"text": "The claimant was unaimed."}])[
+            "supported"
+        ]
+        is False
+    )
+
+
 def test_agent_action_requires_final_review_for_finalize():
     parsed = AgentAction.model_validate(
         {
@@ -66,6 +149,18 @@ def test_agent_action_requires_final_review_for_finalize():
 
     assert parsed.final_review is not None
     assert parsed.final_review.verdict == "key_supported"
+
+    with pytest.raises(ValidationError, match="requires final_review"):
+        AgentAction.model_validate({"tool": "finalize_item_review", "arguments": {}})
+
+    with pytest.raises(ValidationError, match="only valid"):
+        AgentAction.model_validate(
+            {
+                "tool": "ground_quiz_item",
+                "arguments": {"item_id": "q1"},
+                "final_review": parsed.final_review.model_dump(mode="json"),
+            }
+        )
 
 
 def test_agent_tool_registry_dispatches_pdf_tools(tmp_path):
@@ -94,6 +189,82 @@ def test_agent_tool_registry_dispatches_pdf_tools(tmp_path):
     assert grounding.result["grounding"]["source_status"] == "retrieved_candidate"
     assert web.ok is True
     assert web.result["status"] == "blocked"
+
+
+def test_ground_quiz_item_skips_retrieval_for_declared_external_source(tmp_path):
+    conn = _agent_test_db(tmp_path)
+    quiz = _sample_quiz()
+    item = quiz["questions"][0]
+    item["warnings"] = ["external_source_item"]
+    context = AgentToolContext(
+        conn=conn,
+        document_id=1,
+        quiz_items={item["id"]: item},
+        output_dir=tmp_path,
+        allow_web=False,
+        vision_pages="off",
+        model_name="gemma-python",
+        num_predict=256,
+        num_ctx=8192,
+    )
+
+    grounding = call_agent_tool(
+        build_agent_tool_registry(context),
+        "ground_quiz_item",
+        {"item_id": item["id"]},
+    )
+
+    assert grounding.ok is True
+    assert grounding.result["context_rows"] == []
+    assert grounding.result["grounding"]["queries_tried"] == []
+    assert (
+        grounding.result["grounding"]["source_status"] == "source_missing_in_local_pdf"
+    )
+    assert (
+        grounding.result["grounding"]["keyed_answer_support"]["evidence_strength"]
+        == "missing"
+    )
+
+
+def test_ground_quiz_item_uses_declared_anchors_as_complete_context(tmp_path):
+    conn = _agent_test_db(tmp_path)
+    anchor = conn.execute(
+        "SELECT id, source_citation FROM chunks WHERE chunk_index = 1"
+    ).fetchone()
+    item = {
+        "id": "anchored",
+        "question": "Who photographed tenement housing?",
+        "question_type": "multiple_choice",
+        "options": {"A": "Jacob Riis", "B": "A muckraker"},
+        "correct": "A",
+        "target": "Muckrakers",
+        "source_chunks": [anchor["id"]],
+        "source_pages": [1],
+        "source_citation": anchor["source_citation"],
+    }
+    context = AgentToolContext(
+        conn=conn,
+        document_id=1,
+        quiz_items={item["id"]: item},
+        output_dir=tmp_path,
+        allow_web=False,
+        vision_pages="off",
+        model_name="gemma-python",
+        num_predict=256,
+        num_ctx=8192,
+    )
+
+    grounding = call_agent_tool(
+        build_agent_tool_registry(context),
+        "ground_quiz_item",
+        {"item_id": item["id"]},
+    )
+
+    assert grounding.ok is True
+    assert [row["id"] for row in grounding.result["context_rows"]] == [anchor["id"]]
+    assert grounding.result["grounding"]["source_chunks"] == [anchor["id"]]
+    assert grounding.result["grounding"]["queries_tried"] == []
+    assert grounding.result["grounding"]["keyed_answer_supported"] is False
 
 
 def test_ground_quiz_item_uses_key_and_option_aware_queries(tmp_path):
@@ -204,19 +375,20 @@ def test_agent_review_writes_reports_and_persists_findings(tmp_path):
                 "tool": "finalize_item_review",
                 "arguments": {},
                 "final_review": {
-                    "id": "q1",
-                    "question": "Which group exposed corruption?",
+                    "id": "wrong-item",
+                    "question": "Wrong model-supplied question",
                     "verdict": "key_supported",
-                    "keyed_option": "A",
-                    "keyed_option_text": "Muckrakers",
+                    "keyed_option": "B",
+                    "keyed_option_text": "Industrialists",
                     "explanation": "The source identifies muckrakers as investigative journalists exposing corruption.",
+                    "tool_calls": ["web_search"],
                     "evidence": [
                         {
                             "source": "pdf",
-                            "chunk_id": 1,
-                            "page": 1,
-                            "citation": "history.pdf p. 1, chunk 1",
-                            "snippet": "Muckrakers were investigative journalists.",
+                            "chunk_id": 999,
+                            "page": 999,
+                            "citation": "fake.pdf p. 999, chunk 999",
+                            "snippet": "Fabricated model citation.",
                         }
                     ],
                 },
@@ -267,9 +439,19 @@ def test_agent_review_writes_reports_and_persists_findings(tmp_path):
 
     assert report.verdict_counts == {"key_supported": 1}
     assert report.priority_counts == {"pass": 1}
+    assert report.model_finalized_count == 1
+    assert report.fallback_item_count == 0
     assert report.items[0].evidence_strength == "direct"
     assert report.items[0].confidence_score > 0.9
     assert report.items[0].review_priority == "pass"
+    assert report.items[0].id == "q1"
+    assert report.items[0].question == "Which group exposed corruption?"
+    assert report.items[0].keyed_option == "A"
+    assert report.items[0].keyed_option_text == "Muckrakers"
+    assert [citation.chunk_id for citation in report.items[0].evidence] == [1]
+    assert report.items[0].evidence[0].citation == "history.pdf p. 1, chunk 1"
+    assert "Fabricated" not in report.items[0].evidence[0].snippet
+    assert "web_search" not in report.items[0].tool_calls
     assert report.items[0].distractor_verdicts["B"].verdict in {
         "not_discussed",
         "plausible_but_wrong",
@@ -290,8 +472,11 @@ def test_agent_loop_repairs_item_scoped_tool_arguments(tmp_path):
         messages = kwargs["messages"]
         if "Tool result:" not in messages[-1]["content"]:
             parsed = {
-                "tool": "ground_quiz_item",
-                "arguments": {"question_id": "q1"},
+                "tool": "compare_options",
+                "arguments": {
+                    "item_id": "wrong-item",
+                    "question_id": "also-wrong",
+                },
             }
         else:
             parsed = {
@@ -328,12 +513,254 @@ def test_agent_loop_repairs_item_scoped_tool_arguments(tmp_path):
     assert report.items[0].evidence_strength == "direct"
     assert report.items[0].review_priority == "pass"
     assert report.items[0].distractor_verdicts["B"].verdict == "not_discussed"
+    assert '"keyed_option": "A"' in trace
+    assert "Unknown quiz item id" not in trace
     assert '"error": null' in trace
+
+
+def test_agent_loop_retries_runtime_invalid_action(tmp_path):
+    conn = _agent_test_db(tmp_path)
+    quiz = _sample_quiz()
+    calls = 0
+
+    def fake_structured_chat(**kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            parsed = {
+                "tool": "search_pdf",
+                "arguments": {"query": "muckrakers"},
+                "final_review": {
+                    "id": "q1",
+                    "question": "Which group exposed corruption?",
+                    "verdict": "key_supported",
+                    "explanation": "Premature payload.",
+                },
+            }
+        else:
+            assert (
+                "failed runtime schema validation" in kwargs["messages"][-1]["content"]
+            )
+            parsed = {
+                "tool": "finalize_item_review",
+                "arguments": {},
+                "final_review": {
+                    "id": "q1",
+                    "question": "Which group exposed corruption?",
+                    "verdict": "key_supported",
+                    "explanation": "Corrected final review.",
+                },
+            }
+        return type("FakeStructuredResponse", (), {"parsed_json": parsed})()
+
+    output_dir = tmp_path / "agent_review"
+    report = run_agent_review(
+        conn=conn,
+        document_id=1,
+        quiz=quiz,
+        quiz_path=tmp_path / "quiz.json",
+        output_dir=output_dir,
+        model_name="gemma-python",
+        model_profile=MODEL_PROFILES["cpu-local"],
+        allow_web=False,
+        vision_pages="off",
+        max_steps=2,
+        item_timeout=None,
+        debug_agent=True,
+        client=object(),
+        structured_chat=fake_structured_chat,
+    )
+
+    trace = (output_dir / "tool_trace.jsonl").read_text(encoding="utf-8")
+    assert calls == 2
+    assert report.items[0].model_finalized is True
+    assert report.model_finalized_count == 1
+    assert report.fallback_item_count == 0
+    assert "model_action_invalid" in trace
+
+
+def test_agent_anchored_review_excludes_later_unrelated_search_evidence(tmp_path):
+    conn = _agent_test_db(tmp_path)
+    anchor = conn.execute(
+        "SELECT id, source_citation FROM chunks WHERE chunk_index = 1"
+    ).fetchone()
+    quiz = _sample_quiz()
+    quiz["questions"][0].update(
+        {
+            "target": "Muckrakers",
+            "source_chunks": [anchor["id"]],
+            "source_pages": [1],
+            "source_citation": anchor["source_citation"],
+        }
+    )
+    calls = 0
+
+    def fake_structured_chat(**_kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            parsed = {
+                "tool": "search_pdf",
+                "arguments": {"query": "Jacob Riis"},
+            }
+        else:
+            parsed = {
+                "tool": "finalize_item_review",
+                "arguments": {},
+                "final_review": {
+                    "id": "q1",
+                    "question": "Which group exposed corruption?",
+                    "verdict": "key_supported",
+                    "explanation": "The anchored evidence supports the key.",
+                    "evidence_strength": "direct",
+                    "confidence_score": 0.98,
+                },
+            }
+        return type("FakeStructuredResponse", (), {"parsed_json": parsed})()
+
+    report = run_agent_review(
+        conn=conn,
+        document_id=1,
+        quiz=quiz,
+        quiz_path=tmp_path / "quiz.json",
+        output_dir=tmp_path / "agent_review",
+        model_name="gemma-python",
+        model_profile=MODEL_PROFILES["cpu-local"],
+        allow_web=False,
+        vision_pages="off",
+        max_steps=2,
+        item_timeout=None,
+        debug_agent=False,
+        client=object(),
+        structured_chat=fake_structured_chat,
+    )
+
+    assert [citation.chunk_id for citation in report.items[0].evidence] == [
+        anchor["id"]
+    ]
+    assert "Jacob Riis" not in report.items[0].evidence[0].snippet
+
+
+def test_agent_evidence_excerpt_keeps_late_support_and_trace_is_fresh(tmp_path):
+    conn = _agent_test_db(tmp_path)
+    long_text = (
+        "Background material unrelated to the keyed answer. " * 40
+    ) + "Muckrakers were investigative journalists who exposed corruption."
+    conn.execute(
+        "UPDATE chunks SET text = ?, char_count = ? WHERE chunk_index = 1",
+        (long_text, len(long_text)),
+    )
+    conn.commit()
+    anchor = conn.execute(
+        "SELECT id, source_citation FROM chunks WHERE chunk_index = 1"
+    ).fetchone()
+    quiz = _sample_quiz()
+    quiz["questions"][0].update(
+        {
+            "target": "Muckrakers",
+            "source_chunks": [anchor["id"]],
+            "source_pages": [1],
+            "source_citation": anchor["source_citation"],
+        }
+    )
+    output_dir = tmp_path / "agent_review"
+
+    reports = []
+    for _ in range(2):
+        reports.append(
+            run_agent_review(
+                conn=conn,
+                document_id=1,
+                quiz=quiz,
+                quiz_path=tmp_path / "quiz.json",
+                output_dir=output_dir,
+                model_name="gemma-python",
+                model_profile=MODEL_PROFILES["cpu-local"],
+                allow_web=False,
+                vision_pages="off",
+                max_steps=0,
+                item_timeout=None,
+                debug_agent=True,
+                client=None,
+            )
+        )
+
+    item = reports[-1].items[0]
+    trace_lines = (
+        (output_dir / "tool_trace.jsonl").read_text(encoding="utf-8").splitlines()
+    )
+    assert item.verdict == "key_supported"
+    assert item.evidence_strength == "direct"
+    assert "Muckrakers were investigative journalists" in item.evidence[0].snippet
+    assert len(item.evidence[0].snippet) <= 900
+    assert len(trace_lines) == 1
+
+
+def test_agent_source_missing_fallback_discards_later_search_evidence(tmp_path):
+    quiz = _sample_quiz()
+    quiz["questions"][0]["warnings"] = ["external_source_item"]
+
+    def fake_structured_chat(**_kwargs):
+        parsed = {"tool": "search_pdf", "arguments": {"query": "muckrakers"}}
+        return type("FakeStructuredResponse", (), {"parsed_json": parsed})()
+
+    report = run_agent_review(
+        conn=_agent_test_db(tmp_path),
+        document_id=1,
+        quiz=quiz,
+        quiz_path=tmp_path / "quiz.json",
+        output_dir=tmp_path / "agent_review",
+        model_name="gemma-python",
+        model_profile=MODEL_PROFILES["cpu-local"],
+        allow_web=False,
+        vision_pages="off",
+        max_steps=1,
+        item_timeout=None,
+        debug_agent=False,
+        client=object(),
+        structured_chat=fake_structured_chat,
+    )
+
+    assert report.items[0].verdict == "source_missing"
+    assert report.items[0].evidence == []
+
+
+def test_agent_source_missing_preflight_skips_model_call(tmp_path):
+    quiz = _sample_quiz()
+    quiz["questions"][0]["warnings"] = ["external_source_item"]
+    calls = []
+
+    def fake_structured_chat(**_kwargs):
+        calls.append(True)
+        raise AssertionError("deterministic source-missing status should short-circuit")
+
+    report = run_agent_review(
+        conn=_agent_test_db(tmp_path),
+        document_id=1,
+        quiz=quiz,
+        quiz_path=tmp_path / "quiz.json",
+        output_dir=tmp_path / "agent_review",
+        model_name="gemma-python",
+        model_profile=MODEL_PROFILES["cpu-local"],
+        allow_web=False,
+        vision_pages="off",
+        max_steps=8,
+        item_timeout=None,
+        debug_agent=False,
+        client=object(),
+        structured_chat=fake_structured_chat,
+    )
+
+    assert calls == []
+    assert report.items[0].verdict == "source_missing"
 
 
 def test_agent_fallback_can_support_key_from_evidence(tmp_path):
     conn = _agent_test_db(tmp_path)
     quiz = _sample_quiz()
+    quiz["questions"][0]["instructor_key_note"] = (
+        "Instructor wording should be reviewed before publication."
+    )
     report = run_agent_review(
         conn=conn,
         document_id=1,
@@ -351,6 +778,326 @@ def test_agent_fallback_can_support_key_from_evidence(tmp_path):
     )
 
     assert report.items[0].verdict == "key_supported"
+    assert report.items[0].review_priority == "inspect"
+    assert report.quality_counts == {"instructor_key_note": 1}
+    assert report.model_finalized_count == 0
+    assert report.fallback_item_count == 1
+
+
+def test_agent_fallback_does_not_treat_same_chunk_mention_as_ambiguity(tmp_path):
+    conn = _agent_test_db(tmp_path)
+    anchor = conn.execute(
+        "SELECT id, source_citation FROM chunks WHERE chunk_index = 1"
+    ).fetchone()
+    quiz = _sample_quiz()
+    item = quiz["questions"][0]
+    item.update(
+        {
+            "options": {
+                "A": "Muckrakers",
+                "B": "Investigative journalists",
+            },
+            "target": "Muckrakers",
+            "source_chunks": [anchor["id"]],
+            "source_pages": [1],
+            "source_citation": anchor["source_citation"],
+        }
+    )
+
+    report = run_agent_review(
+        conn=conn,
+        document_id=1,
+        quiz=quiz,
+        quiz_path=tmp_path / "quiz.json",
+        output_dir=tmp_path / "agent_review",
+        model_name="gemma-python",
+        model_profile=MODEL_PROFILES["cpu-local"],
+        allow_web=False,
+        vision_pages="off",
+        max_steps=1,
+        item_timeout=None,
+        debug_agent=False,
+        client=None,
+    )
+
+    item = report.items[0]
+    assert item.verdict == "key_supported"
+    assert item.distractor_verdicts["B"].verdict == "plausible_but_wrong"
+    assert item.review_priority == "pass"
+
+
+def test_agent_source_missing_does_not_report_incidental_partial_evidence(tmp_path):
+    quiz = _sample_quiz()
+    quiz["questions"][0]["warnings"] = ["external_source_item"]
+    quiz["questions"][0]["source_missing_note"] = "Not present in the local PDF."
+
+    report = run_agent_review(
+        conn=_agent_test_db(tmp_path),
+        document_id=1,
+        quiz=quiz,
+        quiz_path=tmp_path / "quiz.json",
+        output_dir=tmp_path / "agent_review",
+        model_name="gemma-python",
+        model_profile=MODEL_PROFILES["cpu-local"],
+        allow_web=False,
+        vision_pages="off",
+        max_steps=1,
+        item_timeout=None,
+        debug_agent=False,
+        client=None,
+    )
+
+    item = report.items[0]
+    assert item.verdict == "source_missing"
+    assert item.evidence_strength == "missing"
+    assert item.confidence_score == 0.0
+    assert item.review_priority == "fix"
+    assert item.evidence == []
+    assert item.distractor_verdicts == {}
+
+
+def test_agent_declared_external_source_overrides_conflicting_model_review(tmp_path):
+    quiz = _sample_quiz()
+    quiz["questions"][0]["warnings"] = ["external_source_item"]
+
+    def fake_structured_chat(**_kwargs):
+        parsed = {
+            "tool": "finalize_item_review",
+            "arguments": {},
+            "final_review": {
+                "id": "q1",
+                "question": "Which group exposed corruption?",
+                "verdict": "key_supported",
+                "explanation": "Incidental terms appear in retrieval.",
+                "evidence_strength": "partial",
+                "confidence_score": 0.72,
+                "support_reason": "Incidental retrieval overlap.",
+                "review_priority": "pass",
+                "evidence": [
+                    {
+                        "source": "pdf",
+                        "chunk_id": 1,
+                        "page": 1,
+                        "citation": "history.pdf p. 1, chunk 1",
+                        "snippet": "Incidental terms appear in retrieval.",
+                    }
+                ],
+            },
+        }
+        return type("FakeStructuredResponse", (), {"parsed_json": parsed})()
+
+    report = run_agent_review(
+        conn=_agent_test_db(tmp_path),
+        document_id=1,
+        quiz=quiz,
+        quiz_path=tmp_path / "quiz.json",
+        output_dir=tmp_path / "agent_review",
+        model_name="gemma-python",
+        model_profile=MODEL_PROFILES["cpu-local"],
+        allow_web=False,
+        vision_pages="off",
+        max_steps=1,
+        item_timeout=None,
+        debug_agent=False,
+        client=object(),
+        structured_chat=fake_structured_chat,
+    )
+
+    item = report.items[0]
+    assert item.verdict == "source_missing"
+    assert item.source_status == "source_missing_in_local_pdf"
+    assert item.evidence_strength == "missing"
+    assert item.confidence_score == 0.0
+    assert (
+        item.support_reason
+        == "No usable local PDF evidence was available for this item."
+    )
+    assert item.review_priority == "fix"
+    assert item.evidence == []
+    assert "Incidental" not in item.explanation
+    serialized = json.loads(
+        (tmp_path / "agent_review" / "agent_review.json").read_text(encoding="utf-8")
+    )["items"][0]
+    markdown = (tmp_path / "agent_review" / "agent_review.md").read_text(
+        encoding="utf-8"
+    )
+    assert serialized["evidence_strength"] == "missing"
+    assert serialized["confidence_score"] == 0.0
+    assert "source_missing, missing evidence (0.00)" in markdown
+
+
+def test_agent_ungrounded_source_overrides_conflicting_model_review(tmp_path):
+    quiz = _sample_quiz()
+    quiz["questions"][0].update(
+        {
+            "question": "Which nonexistent lunar program is described?",
+            "options": {"A": "Apollo 99", "B": "Gemini 99"},
+        }
+    )
+
+    def fake_structured_chat(**_kwargs):
+        parsed = {
+            "tool": "finalize_item_review",
+            "arguments": {},
+            "final_review": {
+                "id": "q1",
+                "question": "Which nonexistent lunar program is described?",
+                "verdict": "key_supported",
+                "explanation": "Supported.",
+                "evidence_strength": "direct",
+                "confidence_score": 0.98,
+                "review_priority": "pass",
+                "evidence": [
+                    {
+                        "source": "pdf",
+                        "chunk_id": 1,
+                        "page": 1,
+                        "citation": "history.pdf p. 1, chunk 1",
+                        "snippet": "Unrelated evidence supplied by the model.",
+                    }
+                ],
+            },
+        }
+        return type("FakeStructuredResponse", (), {"parsed_json": parsed})()
+
+    report = run_agent_review(
+        conn=_agent_test_db(tmp_path),
+        document_id=1,
+        quiz=quiz,
+        quiz_path=tmp_path / "quiz.json",
+        output_dir=tmp_path / "agent_review",
+        model_name="gemma-python",
+        model_profile=MODEL_PROFILES["cpu-local"],
+        allow_web=False,
+        vision_pages="off",
+        max_steps=1,
+        item_timeout=None,
+        debug_agent=False,
+        client=object(),
+        structured_chat=fake_structured_chat,
+    )
+
+    item = report.items[0]
+    assert item.source_status == "ungrounded"
+    assert item.verdict == "source_missing"
+    assert item.evidence_strength == "missing"
+    assert item.confidence_score == 0.0
+    assert item.review_priority == "fix"
+    assert item.evidence == []
+
+
+@pytest.mark.parametrize(
+    ("evidence_strength", "confidence_score"),
+    [("partial", 0.72), ("direct", 0.01)],
+)
+def test_agent_model_evidence_requires_strength_and_confidence_for_pass(
+    tmp_path, evidence_strength, confidence_score
+):
+    conn = _agent_test_db(tmp_path)
+    anchor = conn.execute(
+        "SELECT id, source_citation FROM chunks WHERE chunk_index = 1"
+    ).fetchone()
+    quiz = _sample_quiz()
+    quiz["questions"][0].update(
+        {
+            "target": "Muckrakers",
+            "source_chunks": [anchor["id"]],
+            "source_pages": [1],
+            "source_citation": anchor["source_citation"],
+        }
+    )
+
+    def fake_structured_chat(**_kwargs):
+        parsed = {
+            "tool": "finalize_item_review",
+            "arguments": {},
+            "final_review": {
+                "id": "q1",
+                "question": "Which group exposed corruption?",
+                "verdict": "key_supported",
+                "explanation": "Only partial support was identified.",
+                "evidence_strength": evidence_strength,
+                "confidence_score": confidence_score,
+                "review_priority": "pass",
+            },
+        }
+        return type("FakeStructuredResponse", (), {"parsed_json": parsed})()
+
+    report = run_agent_review(
+        conn=conn,
+        document_id=1,
+        quiz=quiz,
+        quiz_path=tmp_path / "quiz.json",
+        output_dir=tmp_path / "agent_review",
+        model_name="gemma-python",
+        model_profile=MODEL_PROFILES["cpu-local"],
+        allow_web=False,
+        vision_pages="off",
+        max_steps=1,
+        item_timeout=None,
+        debug_agent=False,
+        client=object(),
+        structured_chat=fake_structured_chat,
+    )
+
+    item = report.items[0]
+    assert item.verdict == "key_supported"
+    assert item.evidence_strength == evidence_strength
+    assert item.confidence_score == confidence_score
+    assert item.review_priority == "inspect"
+
+
+def test_agent_invalid_anchor_cannot_pass_from_incidental_key_support(tmp_path):
+    conn = _agent_test_db(tmp_path)
+    anchor = conn.execute("SELECT id FROM chunks WHERE chunk_index = 1").fetchone()
+    quiz = _sample_quiz()
+    item = quiz["questions"][0]
+    item.update(
+        {
+            "target": "Muckrakers",
+            "source_chunks": [anchor["id"]],
+            "source_pages": [1],
+            "source_citation": "history.pdf p. 99, chunk 99",
+        }
+    )
+
+    def fake_structured_chat(**_kwargs):
+        parsed = {
+            "tool": "finalize_item_review",
+            "arguments": {},
+            "final_review": {
+                "id": "q1",
+                "question": "Which group exposed corruption?",
+                "verdict": "source_missing",
+                "explanation": "The model used the wrong blocking verdict.",
+            },
+        }
+        return type("FakeStructuredResponse", (), {"parsed_json": parsed})()
+
+    report = run_agent_review(
+        conn=conn,
+        document_id=1,
+        quiz=quiz,
+        quiz_path=tmp_path / "quiz.json",
+        output_dir=tmp_path / "agent_review",
+        model_name="gemma-python",
+        model_profile=MODEL_PROFILES["cpu-local"],
+        allow_web=False,
+        vision_pages="off",
+        max_steps=1,
+        item_timeout=None,
+        debug_agent=False,
+        client=object(),
+        structured_chat=fake_structured_chat,
+    )
+
+    item = report.items[0]
+    assert item.source_status == "invalid_anchor"
+    assert item.verdict == "needs_human_review"
+    assert item.review_priority == "inspect"
+    assert "invalid_anchor" in item.explanation
+    assert "declared anchors" in item.explanation
+    assert "wrong blocking verdict" not in item.explanation
 
 
 def test_agent_review_item_timeout_uses_deterministic_fallback(tmp_path):
@@ -473,7 +1220,11 @@ def test_agent_review_cli_with_fake_agent(tmp_path, monkeypatch, capsys):
         return report
 
     monkeypatch.setenv("ETHNOS_DB_PATH", str(db_path))
-    monkeypatch.setattr("ethnos.cli.create_client", lambda host, timeout: object())
+
+    def unexpected_client(*_args, **_kwargs):
+        raise AssertionError("deterministic-only review must not create a client")
+
+    monkeypatch.setattr("ethnos.cli.create_client", unexpected_client)
     monkeypatch.setattr(
         "ethnos.cli.commands.agent.run_agent_review", fake_run_agent_review
     )
@@ -492,6 +1243,8 @@ def test_agent_review_cli_with_fake_agent(tmp_path, monkeypatch, capsys):
             "cto",
             "--vision-pages",
             "off",
+            "--max-steps",
+            "0",
         ]
     )
     text = capsys.readouterr().out
@@ -612,10 +1365,10 @@ def _agent_test_db(tmp_path, *, db_path=None):
                 chunk_index=4,
                 text=(
                     "A host of social problems turned Americans toward reform "
-                    "politics. Progressive reformers sought order, efficiency, "
-                    "and national political solutions."
+                    "politics. Progressive reformers believed scientific expertise "
+                    "and principles offered ways of solving social problems."
                 ),
-                char_count=146,
+                char_count=166,
                 source_citation="history.pdf p. 4, chunk 4",
             ),
         ],

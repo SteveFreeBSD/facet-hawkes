@@ -3,6 +3,36 @@
 All notable changes to the Ethnos Hawkes Assistant add-on. Versions follow
 `major.minor.patch` as required by the Firefox manifest.
 
+## 0.40.0
+
+### Added
+
+- **The answer is drawn as mathematics.** The card showed the string the answer
+  travelled in — `\frac{z^4|y^5|}{3}`, `-x^13 + 2x^12`, `y^(3/2)` — which is
+  neither what Hawkes renders nor what anyone types, and reads as an encoding
+  rather than an answer. It now has real superscripts, a fraction bar between
+  numerator and denominator, a radical sign with a rule over exactly its
+  radicand, and bars for absolute value. `common/answer-math.js` decides the
+  layout and has no DOM, so the suite runs it against the forms the solver
+  actually produces; the panel only builds elements from that.
+- Three more exact operations: the **constant term**, **classifying** a
+  polynomial as monomial/binomial/trinomial, and **evaluating** one at a given
+  value. Each was a question type that fell through to roughly a minute of
+  vision-plus-model and now answers in about a millisecond. The shipped
+  coverage corpus is at 20 of 20 exact, none wrong.
+
+### Fixed
+
+- **Copy** takes the answer from the panel's state rather than reading the
+  card. Once the card holds elements its text is the rendered form — `x13` for
+  `x^13` — so drawing the answer properly would otherwise have quietly begun
+  copying something different from what is displayed, in precisely the cases
+  (option questions, refused notation) where copying is the only way in.
+- "Factor the following **trinomial** completely" is a factoring question.
+  Matching a classification on the word alone answered `trinomial` to a request
+  to factor: fast, confident, and wrong. Caught by the coverage sweep before it
+  shipped, which is what the sweep is for.
+
 ## 0.39.5
 
 ### Fixed

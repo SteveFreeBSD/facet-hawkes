@@ -17,7 +17,12 @@ REMOVED_LEGACY_DOCS = {
 
 
 def _markdown_files() -> list[Path]:
-    return [PROJECT_ROOT / "README.md", *sorted((PROJECT_ROOT / "docs").rglob("*.md"))]
+    return [
+        PROJECT_ROOT / "README.md",
+        *sorted((PROJECT_ROOT / "docs").rglob("*.md")),
+        *sorted((PROJECT_ROOT / "benchmarks").glob("*.md")),
+        *sorted((PROJECT_ROOT / "examples").glob("*.md")),
+    ]
 
 
 def _heading_anchors(path: Path) -> set[str]:

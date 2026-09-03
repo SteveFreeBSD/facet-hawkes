@@ -19,7 +19,9 @@ ORDERING = frozenset({"descending_order", "ascending_order"})
 #: Operations that report a property of the polynomial rather than another way
 #: of writing it. Their answer is a number, so it is deliberately *not* equal
 #: to the input and the equivalence check does not apply to them.
-EXTRACTION = frozenset({"degree", "leading_coefficient"})
+EXTRACTION = frozenset(
+    {"degree", "leading_coefficient", "constant_term", "classify", "evaluate"}
+)
 
 
 @dataclass(frozen=True)
@@ -64,6 +66,9 @@ def answer_symbolic_math(
             "are unchanged."
         ),
         "degree": "SymPy read the degree from the polynomial's own terms.",
+        "constant_term": "SymPy evaluated the polynomial where the variable is zero.",
+        "classify": "SymPy counted the polynomial's terms.",
+        "evaluate": "SymPy substituted the given value exactly.",
         "leading_coefficient": (
             "SymPy took the coefficient of the highest-power term."
         ),
@@ -121,11 +126,25 @@ def solve_symbolic_operation(
                 continue
             (symbol,) = original.free_symbols
             polynomial = sympy.Poly(original, symbol)
-            answer = (
-                sympy.Integer(polynomial.degree())
-                if operation == "degree"
-                else polynomial.LC()
-            )
+            if operation == "degree":
+                answer = sympy.Integer(polynomial.degree())
+            elif operation == "leading_coefficient":
+                answer = polynomial.LC()
+            elif operation == "constant_term":
+                # The coefficient of x^0, which is not the same as the last
+                # term written: an ordered polynomial may simply have none.
+                answer = polynomial.as_expr().subs(symbol, 0)
+            elif operation == "classify":
+                names = {1: "monomial", 2: "binomial", 3: "trinomial"}
+                count = len(polynomial.as_expr().as_ordered_terms())
+                if count not in names:
+                    continue
+                answer = sympy.Symbol(names[count])
+            else:
+                value = _substitution(problem_text.lower())
+                if value is None or value[0] != symbol.name:
+                    continue
+                answer = sympy.nsimplify(original.subs(symbol, sympy.Rational(value[1])))
         elif operation in {"descending_order", "ascending_order"}:
             # "Descending order" names a single variable's powers. With two or
             # more symbols the intended ordering is genuinely ambiguous, so
@@ -268,6 +287,21 @@ def _requested_operation(problem_text: str) -> str | None:
     # a screenshot; SymPy reads them straight off the terms.
     if "leading coefficient" in lowered:
         return "leading_coefficient"
+    if "constant term" in lowered:
+        return "constant_term"
+    # Naming a trinomial is not asking what kind of polynomial it is. "Factor
+    # the following trinomial completely" contains the word and is a factoring
+    # question; claiming it answered "trinomial" to a request to factor, which
+    # the coverage sweep caught before it shipped. A real classification either
+    # says so, or offers the choice.
+    if re.search(r"\bclassif\w*\b", lowered) or (
+        len(re.findall(r"\b(?:monomial|binomial|trinomial)\b", lowered)) >= 2
+    ):
+        return "classify"
+    # "Evaluate the polynomial for x = 2". The value to substitute is in the
+    # prompt, so this is only claimed when one is actually there.
+    if re.search(r"\bevaluat\w*\b", lowered) and _substitution(lowered) is not None:
+        return "evaluate"
     if re.search(r"\bdegree\b", lowered):
         return "degree"
     # Checked first, but only when ordering is the whole request. "Express the
@@ -329,6 +363,16 @@ def _requested_operation(problem_text: str) -> str | None:
     if re.search(r"\bsimplif(?:y|ied|ication)\b", lowered):
         return "simplify"
     return None
+
+
+def _substitution(lowered: str) -> tuple[str, str] | None:
+    """The variable and value in "evaluate ... for x = 2", or None.
+
+    Without one there is nothing to evaluate, and claiming the question would
+    mean answering it with the polynomial itself.
+    """
+    match = re.search(r"\b(?:for|when|at)\s+([a-z])\s*=\s*(-?\d+(?:/\d+)?)", lowered)
+    return (match.group(1), match.group(2)) if match else None
 
 
 def _expression_candidates(problem_text: str, expressions: list[str]) -> list[str]:

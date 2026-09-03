@@ -7,7 +7,11 @@ from random import Random
 import pytest
 
 from ethnos.cli import _add_quiz_source_context, main
-from ethnos.cli.commands.quiz import _apply_chapter_quiz_item_overrides
+from ethnos.cli.commands.quiz import (
+    _apply_chapter_quiz_item_overrides,
+    _normalize_checkpoint_report_item,
+    _quiz_bench_counts,
+)
 from ethnos.db import (
     connect,
     init_db,
@@ -106,6 +110,130 @@ def test_target_anchor_accepts_slash_alias_present_as_or_phrase():
         "Moral Philosophy/Ethics",
         "Moral philosophy or ethics is concerned with critical examination.",
     )
+
+
+def test_target_anchor_normalizes_pdf_line_break_hyphenation():
+    assert target_text_found(
+        "Pesticides, Carson argued",
+        "Pesticides, Carson ar-\ngued, also posed a threat to human health.",
+    )
+    assert target_text_found(
+        "well-known figure",
+        "Chavez became a well-\nknown figure in the movement.",
+    )
+    assert target_text_found(
+        "well known figure",
+        "Chavez became a well-known figure in the movement.",
+    )
+
+
+def test_validate_anchor_normalizes_pdf_line_break_hyphenation(tmp_path):
+    conn = connect(tmp_path / "ethnos.sqlite")
+    init_db(conn)
+    document_id = _stored_quiz_document(conn)
+    chunk = conn.execute(
+        "SELECT id, source_citation FROM chunks WHERE document_id = ? ORDER BY id LIMIT 1",
+        (document_id,),
+    ).fetchone()
+    conn.execute(
+        "UPDATE chunks SET text = ? WHERE id = ?",
+        ("Pesticides, Carson ar-\ngued, posed a threat.", chunk["id"]),
+    )
+    conn.commit()
+
+    errors = validate_mc_quiz_item(
+        conn,
+        document_id,
+        {
+            "id": "q1",
+            "question": "What did Carson discuss?",
+            "options": {"A": "Pesticides", "B": "Noise"},
+            "correct": "A",
+            "target": "Pesticides, Carson argued",
+            "source_chunks": [chunk["id"]],
+            "source_pages": [1],
+            "source_citation": chunk["source_citation"],
+        },
+        require_anchors=True,
+    )
+
+    assert errors == []
+
+
+def test_validate_anchor_rejects_source_pages_outside_declared_chunks(tmp_path):
+    conn = connect(tmp_path / "ethnos.sqlite")
+    init_db(conn)
+    document_id = _stored_quiz_document(conn)
+    chunk = conn.execute(
+        """
+        SELECT id, page_start, source_citation
+        FROM chunks
+        WHERE document_id = ?
+        ORDER BY id
+        LIMIT 1
+        """,
+        (document_id,),
+    ).fetchone()
+
+    errors = validate_mc_quiz_item(
+        conn,
+        document_id,
+        {
+            "id": "q1",
+            "question": "Which theory is described?",
+            "options": {"A": "Virtue ethics", "B": "Deontology"},
+            "correct": "A",
+            "target": "Virtue ethics",
+            "source_chunks": [chunk["id"]],
+            "source_pages": [9999],
+            "source_citation": chunk["source_citation"],
+        },
+        require_anchors=True,
+    )
+
+    assert errors == ["source_pages contains pages outside source_chunks: 9999"]
+
+
+def test_validate_anchor_rejects_non_integer_source_pages(tmp_path):
+    conn = connect(tmp_path / "ethnos.sqlite")
+    init_db(conn)
+    document_id = _stored_quiz_document(conn)
+
+    errors = validate_mc_quiz_item(
+        conn,
+        document_id,
+        {
+            "id": "q1",
+            "question": "Which theory is described?",
+            "options": {"A": "Virtue ethics", "B": "Deontology"},
+            "correct": "A",
+            "source_pages": ["1"],
+        },
+        require_anchors=False,
+    )
+
+    assert errors == ["source_pages must contain positive integers"]
+
+
+def test_validate_anchor_rejects_non_integer_source_chunks(tmp_path):
+    conn = connect(tmp_path / "ethnos.sqlite")
+    init_db(conn)
+    document_id = _stored_quiz_document(conn)
+
+    errors = validate_mc_quiz_item(
+        conn,
+        document_id,
+        {
+            "id": "q1",
+            "question": "Which theory is described?",
+            "options": {"A": "Virtue ethics", "B": "Deontology"},
+            "correct": "A",
+            "source_chunks": ["1"],
+        },
+        require_anchors=False,
+    )
+
+    assert errors == ["source_chunks must contain positive integers"]
 
 
 def test_validate_anchor_accepts_matching_key_term_source_record(tmp_path):
@@ -350,6 +478,7 @@ def test_source_page_parsing_and_external_quiz_normalization(tmp_path):
                 {
                     "question": "Pick one",
                     "options": ["One", "Two", "Three", "Four"],
+                    "source_chunks": [3, 1, 3],
                     "source_pages": ["2"],
                 }
             ]
@@ -363,6 +492,7 @@ def test_source_page_parsing_and_external_quiz_normalization(tmp_path):
     assert quiz["generated_count"] == 1
     assert quiz["questions"][0]["id"] == "q0001"
     assert quiz["questions"][0]["options"]["D"] == "Four"
+    assert quiz["questions"][0]["source_chunks"] == [3, 1]
     assert "correct" not in quiz["questions"][0]
     assert normalize_quiz({"questions": quiz["questions"]})["generated_count"] == 1
 
@@ -659,6 +789,33 @@ def test_chapter_canvas_fixtures_match_manifest(manifest_path):
             assert set(item.get("warnings", [])) <= allowed_warnings
 
 
+def test_history_chapter_27_key_matches_supplied_canvas_key():
+    quiz = load_quiz(Path("benchmarks/history_ch27_canvas.json"))
+
+    assert [item["correct"] for item in quiz["questions"]] == [
+        "B",
+        "A",
+        "D",
+        "D",
+        "B",
+        "C",
+        "B",
+        "C",
+        "D",
+        "C",
+        "D",
+        "C",
+        "C",
+        "C",
+        "C",
+        "B",
+        "A",
+        "D",
+        "B",
+        "A",
+    ]
+
+
 def test_import_chapter_quiz_cli_imports_validates_and_reports_unresolved(
     tmp_path, capsys
 ):
@@ -848,6 +1005,17 @@ def test_ground_quiz_cli_writes_source_grounding_records(tmp_path, capsys):
                         "options": {"A": "Complete", "B": "Trunc"},
                         "warnings": ["incomplete_item"],
                     },
+                    {
+                        "id": "q6",
+                        "question": "What does virtue ethics emphasize?",
+                        "question_type": "multiple_choice",
+                        "options": {"A": "Rules", "B": "Character"},
+                        "correct": "B",
+                        "target": "Virtue ethics",
+                        "source_chunks": [1],
+                        "source_pages": [1],
+                        "source_citation": "quiz.pdf p. 99, chunk 99",
+                    },
                 ],
             }
         ),
@@ -864,6 +1032,7 @@ def test_ground_quiz_cli_writes_source_grounding_records(tmp_path, capsys):
             str(quiz_path),
             "--output",
             str(output_path),
+            "--options-retrieval",
         ]
     )
     text = capsys.readouterr().out
@@ -876,17 +1045,26 @@ def test_ground_quiz_cli_writes_source_grounding_records(tmp_path, capsys):
         "retrieved_candidate": 1,
         "source_missing_in_local_pdf": 1,
         "incomplete": 2,
+        "invalid_anchor": 1,
     }
-    assert report["unresolved_count"] == 2
+    assert report["unresolved_count"] == 3
     assert report["items"][0]["source_status"] == "pdf_grounded"
+    assert report["items"][0]["queries_tried"] == []
+    assert report["items"][0]["selected_query"] == ""
     assert report["items"][1]["source_status"] == "retrieved_candidate"
     assert report["items"][1]["source_chunks"]
     assert report["items"][2]["source_status"] == "source_missing_in_local_pdf"
     assert report["items"][2]["source_chunks"] == []
+    assert report["items"][2]["queries_tried"] == []
+    assert report["items"][2]["selected_query"] == ""
     assert report["items"][3]["source_status"] == "incomplete"
     assert report["items"][3]["source_chunks"] == []
+    assert report["items"][3]["queries_tried"] == []
     assert report["items"][4]["source_status"] == "incomplete"
     assert report["items"][4]["source_chunks"] == []
+    assert report["items"][4]["queries_tried"] == []
+    assert report["items"][5]["source_status"] == "invalid_anchor"
+    assert report["items"][5]["queries_tried"] == []
     assert "q1: pdf_grounded" in text
     assert "q3: source_missing_in_local_pdf" in text
 
@@ -1086,6 +1264,17 @@ def test_quiz_bench_answers_unkeyed_choice_drafts_essay_and_skips_incomplete_mat
                         },
                         "warnings": ["incomplete_item"],
                     },
+                    {
+                        "id": "q6",
+                        "question": "What does virtue ethics emphasize?",
+                        "question_type": "multiple_choice",
+                        "options": {"A": "Rules", "B": "Character"},
+                        "correct": "B",
+                        "target": "Virtue ethics",
+                        "source_chunks": [1],
+                        "source_pages": [1],
+                        "source_citation": "quiz.pdf p. 99, chunk 99",
+                    },
                 ],
             }
         ),
@@ -1161,8 +1350,9 @@ def test_quiz_bench_answers_unkeyed_choice_drafts_essay_and_skips_incomplete_mat
     assert report["skipped_incomplete_count"] == 2
     assert report["skipped_source_missing_count"] == 1
     assert report["skipped_external_source_count"] == 1
+    assert report["invalid_anchor_count"] == 1
     assert report["source_covered_total"] == 2
-    assert report["source_coverage"] == 0.4
+    assert report["source_coverage"] == pytest.approx(1 / 3)
     assert report["items"][0]["status"] == "answered_unscored"
     assert (
         report["items"][0]["source_grounding"]["source_status"] == "retrieved_candidate"
@@ -1172,12 +1362,66 @@ def test_quiz_bench_answers_unkeyed_choice_drafts_essay_and_skips_incomplete_mat
     assert report["items"][1]["answer"]["rubric"] == ["Mentions character"]
     assert report["items"][2]["status"] == "skipped_incomplete"
     assert report["items"][3]["status"] == "skipped_source_missing"
+    assert report["items"][3]["scoring_eligible"] is False
+    assert report["items"][3]["is_correct"] is None
+    assert report["items"][3]["source_grounding"]["queries_tried"] == []
     assert report["items"][4]["status"] == "skipped_incomplete"
+    assert report["items"][4]["source_grounding"]["queries_tried"] == []
+    assert report["items"][5]["status"] == "invalid_anchor"
+    assert report["items"][5]["scoring_eligible"] is False
+    assert report["items"][5]["is_correct"] is None
+    assert report["items"][5]["selected_option"] is None
     assert "answered unscored: 1" in text
     assert "essays drafted: 1" in text
     assert "grounded accuracy: n/a" in text
-    assert "source coverage: 2/5 (40.0%)" in text
+    assert "source coverage: 2/6 (33.3%)" in text
     assert "skipped source-missing: 1" in text
+    assert "invalid anchors: 1" in text
+
+
+@pytest.mark.parametrize(
+    "source_status",
+    [
+        "invalid_anchor",
+        "source_missing_in_local_pdf",
+        "incomplete",
+        "ungrounded",
+    ],
+)
+def test_quiz_bench_counts_defensively_exclude_non_scoring_source_status(
+    source_status,
+):
+    counts = _quiz_bench_counts(
+        [
+            {
+                "id": "q1",
+                "correct": "A",
+                "status": "correct",
+                "scoring_eligible": True,
+                "source_grounding": {"source_status": source_status},
+            }
+        ]
+    )
+
+    assert counts["scored_total"] == 0
+    assert counts["correct_count"] == 0
+    assert counts["accuracy"] is None
+    assert counts["instructor_key_agreement_total"] == 0
+    assert counts["invalid_anchor_count"] == int(source_status == "invalid_anchor")
+
+
+def test_checkpoint_normalization_preserves_matching_skip_status():
+    normalized = _normalize_checkpoint_report_item(
+        {
+            "id": "q1",
+            "question_type": "matching",
+            "status": "skipped_matching",
+            "source_grounding": {"source_status": "ungrounded"},
+        }
+    )
+
+    assert normalized["status"] == "skipped_matching"
+    assert normalized["scoring_eligible"] is False
 
 
 def test_quiz_bench_checkpoints_interrupts_and_resumes(tmp_path, capsys, monkeypatch):
@@ -2210,6 +2454,62 @@ def test_mc_bench_cli_scores_keyed_and_unkeyed_items(tmp_path, capsys, monkeypat
     assert "status: unkeyed" in output
 
 
+def test_mc_bench_does_not_score_invalid_anchors(tmp_path, capsys, monkeypatch):
+    db_path = tmp_path / "ethnos.sqlite"
+    quiz_path = tmp_path / "quiz.json"
+    report_path = tmp_path / "report.json"
+    conn = connect(db_path)
+    init_db(conn)
+    document_id = _stored_quiz_document(conn)
+    quiz_path.write_text(
+        json.dumps(
+            {
+                "questions": [
+                    {
+                        "id": "q1",
+                        "question": "What does virtue ethics emphasize?",
+                        "question_type": "multiple_choice",
+                        "options": {"A": "Rules", "B": "Character"},
+                        "correct": "B",
+                        "target": "Virtue ethics",
+                        "source_chunks": [1],
+                        "source_pages": [1],
+                        "source_citation": "quiz.pdf p. 99, chunk 99",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def unexpected_client(*_args, **_kwargs):
+        raise AssertionError("invalid anchors must not reach the model")
+
+    monkeypatch.setattr("ethnos.cli.create_client", unexpected_client)
+    exit_code = main(
+        [
+            "--db",
+            str(db_path),
+            "mc-bench",
+            str(document_id),
+            "--quiz",
+            str(quiz_path),
+            "--output",
+            str(report_path),
+        ]
+    )
+    output = capsys.readouterr().out
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+
+    assert exit_code == 0
+    assert report["scored_total"] == 0
+    assert report["invalid_anchor_count"] == 1
+    assert report["items"][0]["status"] == "invalid_anchor"
+    assert report["items"][0]["scoring_eligible"] is False
+    assert report["items"][0]["is_correct"] is None
+    assert "invalid anchors: 1" in output
+
+
 def test_mc_bench_reports_selected_distractor_provenance(tmp_path, monkeypatch):
     db_path = tmp_path / "ethnos.sqlite"
     quiz_path = tmp_path / "quiz.json"
@@ -2777,6 +3077,17 @@ def test_verify_answer_key_flags_conflicts_and_unresolved_items(tmp_path, capsys
                         "correct": "C",
                         "correct_option_text": "Charlie",
                     },
+                    {
+                        "id": "q11",
+                        "question": "Broken source anchor?",
+                        "question_type": "multiple_choice",
+                        "status": "correct",
+                        "selected_option": "A",
+                        "selected_option_text": "Alpha",
+                        "correct": "A",
+                        "correct_option_text": "Alpha",
+                        "source_grounding": {"source_status": "invalid_anchor"},
+                    },
                 ],
             }
         ),
@@ -2795,7 +3106,7 @@ def test_verify_answer_key_flags_conflicts_and_unresolved_items(tmp_path, capsys
     audit = json.loads(output_path.read_text(encoding="utf-8"))
 
     assert exit_code == 1
-    assert audit["keyed_item_count"] == 4
+    assert audit["keyed_item_count"] == 5
     assert audit["key_supported_count"] == 1
     assert audit["key_conflict_candidate_count"] == 1
     assert audit["disputed_key_count"] == 1
@@ -2803,17 +3114,54 @@ def test_verify_answer_key_flags_conflicts_and_unresolved_items(tmp_path, capsys
     assert audit["external_source_count"] == 1
     assert audit["incomplete_count"] == 0
     assert audit["no_pdf_context_count"] == 1
+    assert audit["invalid_anchor_count"] == 1
     assert audit["items"][1]["audit_status"] == "key_conflict_candidate"
     assert audit["items"][2]["audit_status"] == "source_missing_in_local_pdf"
+    assert audit["items"][4]["audit_status"] == "invalid_anchor"
     assert audit["items"][1]["selected_option"] == "B"
     assert audit["items"][1]["keyed_option"] == "D"
     assert audit["items"][1]["key_review_status"] == "disputed"
     assert "q8: key_conflict_candidate" in text
     assert "source missing in local PDF: 1" in text
+    assert "invalid anchors: 1" in text
     assert (
         "selected: B - That sin affects our moral life but not our rational life"
         in text
     )
+
+
+def test_verify_answer_key_fails_for_invalid_anchor_without_key_conflict(
+    tmp_path, capsys
+):
+    report_path = tmp_path / "invalid-anchor.json"
+    report_path.write_text(
+        json.dumps(
+            {
+                "items": [
+                    {
+                        "id": "q1",
+                        "question": "Broken source anchor?",
+                        "question_type": "multiple_choice",
+                        "status": "correct",
+                        "correct": "A",
+                        "correct_option_text": "Alpha",
+                        "selected_option": "A",
+                        "selected_option_text": "Alpha",
+                        "source_grounding": {"source_status": "invalid_anchor"},
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    exit_code = main(["verify-answer-key", str(report_path)])
+    output = capsys.readouterr().out
+
+    assert exit_code == 1
+    assert "conflict candidates: 0" in output
+    assert "invalid anchors: 1" in output
+    assert "q1: invalid_anchor" in output
 
 
 def _type_counts(items: list[dict[str, object]]) -> dict[str, int]:

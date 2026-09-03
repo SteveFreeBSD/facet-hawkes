@@ -59,6 +59,9 @@ so this table is also the list of what is *fast* and what is *verifiable*.
 | descending / ascending order | `descending_order`, `ascending_order` | SymPy term ordering |
 | degree | `degree` | read from the polynomial's terms |
 | leading coefficient | `leading_coefficient` | coefficient of the highest power |
+| constant term | `constant_term` | the polynomial where the variable is zero |
+| monomial / binomial / trinomial | `classify` | counting the terms |
+| evaluate … for x = n | `evaluate` | exact substitution |
 
 The orderings and both extractions were added after a live session where each
 cost about a minute of model time for a result SymPy has in about one

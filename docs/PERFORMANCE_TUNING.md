@@ -6,6 +6,13 @@ and the accepted result belongs in [CURRENT_BASELINE.md](CURRENT_BASELINE.md).
 
 ## Current decisions
 
+The general-purpose table below remains the accepted baseline. Screenshot OCR
+has a separate staged 2026-09-02 profile documented in
+[VISION_MATH_ARCHITECTURE.md](VISION_MATH_ARCHITECTURE.md). The user requested
+setup based on primary-source recommendations without a new comparative model
+benchmark; only functional screenshot smokes and regression tests are part of
+that rollout.
+
 | Area | Selected value | Reason |
 |---|---|---|
 | Model | `gemma-python` | Best fit for the Ethnos workload on this host |

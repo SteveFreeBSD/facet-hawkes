@@ -1247,3 +1247,34 @@ def test_closing_the_owning_window_hands_the_work_on():
     assert "inFlight?.abort()" in closed            # its work stops
     assert "survivor" in closed                     # and another window takes over
     assert "prepare(survivor.windowId)" in closed
+
+
+def test_copy_hands_over_the_answer_not_the_rendering():
+    """The trap in drawing the answer as mathematics.
+
+    Once the card holds elements, its `textContent` is the *rendered* reading:
+    `x13` for `x^13`, `z^4|y^5|/3` flattened out of its fraction. Copy read the
+    card, so drawing the answer properly would have quietly started handing
+    over a different answer than the one on screen -- in exactly the cases
+    (option questions, refused notation) where copying is the only way in.
+    """
+    popup = (EXTENSION_DIR / "popup" / "popup.js").read_text()
+
+    assert "let copyText" in popup
+    assert "copyText = view.copy.text;" in popup
+    assert "const text = copyText;" in popup
+    # The card is never the source of what gets copied.
+    assert "elements.answer.textContent" not in popup
+
+
+def test_the_answer_is_drawn_as_elements_not_assigned_as_markup():
+    """This text comes from a solver reading a web page. It is never markup,
+    and the build agrees -- but the rule only holds if the drawing code builds
+    nodes rather than assigning a string."""
+    popup = (EXTENSION_DIR / "popup" / "popup.js").read_text()
+
+    assert "function drawAnswer(text)" in popup
+    assert "elements.answer.replaceChildren()" in popup
+    assert "document.createElement" in popup
+    for markup in ("innerHTML", "insertAdjacentHTML", "outerHTML"):
+        assert markup not in popup

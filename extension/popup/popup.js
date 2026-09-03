@@ -19,6 +19,7 @@
 import { message, localizeDocument } from "../common/i18n.js";
 import { ALLOWED_HOST_PATTERN } from "../common/config.js";
 import { describeView } from "../common/panel-view.js";
+import { layoutAnswer } from "../common/answer-math.js";
 import { initLog, log, flushLog, readLog, formatEntry, describeError } from "../common/log.js";
 import { readSettings } from "../common/settings.js";
 
@@ -57,6 +58,8 @@ let frame = null;
 let ticking = null;
 /** What Enter does right now, as named by the view. */
 let primary = "none";
+/** The answer as a string, which is what Copy must hand over. */
+let copyText = "";
 
 /**
  * Whether this is the docked sidebar rather than the toolbar popup.
@@ -216,9 +219,87 @@ function paint() {
   }
 }
 
+/**
+ * Draw the answer as mathematics.
+ *
+ * The card used to show the transport encoding -- `\frac{z^4|y^5|}{3}`,
+ * `-x^13 + 2x^12` -- which is neither what Hawkes renders nor what anyone
+ * types. `layoutAnswer` decides the structure, where the suite can run it;
+ * this only turns that structure into elements.
+ *
+ * Built node by node because the build forbids assigning HTML, and rightly:
+ * this text comes from a solver reading a web page, and it is never markup.
+ */
+function drawAnswer(text) {
+  elements.answer.replaceChildren();
+  if (!text) {
+    elements.answer.append("—");
+    return;
+  }
+  elements.answer.append(buildRow(layoutAnswer(text)));
+}
+
+function buildRow(row) {
+  const span = document.createElement("span");
+  span.className = "math";
+  for (const item of row.items) {
+    span.append(buildItem(item));
+  }
+  return span;
+}
+
+function buildItem(item) {
+  if (item.kind === "sup") {
+    const sup = document.createElement("sup");
+    sup.append(buildRow(item.exponent));
+    return sup;
+  }
+  if (item.kind === "frac") {
+    const frac = document.createElement("span");
+    frac.className = "frac";
+    const over = document.createElement("span");
+    over.className = "frac__over";
+    over.append(buildRow(item.numerator));
+    const under = document.createElement("span");
+    under.className = "frac__under";
+    under.append(buildRow(item.denominator));
+    frac.append(over, under);
+    return frac;
+  }
+  if (item.kind === "radical") {
+    const radical = document.createElement("span");
+    radical.className = "radical";
+    if (item.index) {
+      const index = document.createElement("span");
+      index.className = "radical__index";
+      index.textContent = item.index;
+      radical.append(index);
+    }
+    const sign = document.createElement("span");
+    sign.className = "radical__sign";
+    sign.textContent = "\u221A";
+    const body = document.createElement("span");
+    body.className = "radical__body";
+    body.append(buildRow(item.radicand));
+    radical.append(sign, body);
+    return radical;
+  }
+  if (item.kind === "abs") {
+    const bars = document.createElement("span");
+    bars.className = "bars";
+    bars.append(buildRow(item.body));
+    return bars;
+  }
+  return document.createTextNode(item.text ?? "");
+}
+
 /** Write one view onto the elements. The only place that touches the DOM. */
 function apply(view) {
-  elements.answer.textContent = view.answer.text || "—";
+  drawAnswer(view.answer.text);
+  // Copied from the view, never from the card. Once the card holds elements,
+  // its `textContent` is the *rendered* reading -- `x13` for `x^13` -- and
+  // copying that would hand over a different answer than the one on screen.
+  copyText = view.copy.text;
   elements.answer.dataset.empty = String(view.answer.empty);
   elements.answer.dataset.placed = String(view.answer.placed);
   elements.placed.hidden = !view.answer.placed;
@@ -417,7 +498,7 @@ function requestReset() {
  * where the answer is otherwise re-keyed by eye from a 26px serif.
  */
 async function copyAnswer() {
-  const text = elements.answer.textContent;
+  const text = copyText;
   if (!text || elements.copy.disabled) {
     return;
   }

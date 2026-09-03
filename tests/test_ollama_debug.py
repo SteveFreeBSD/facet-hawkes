@@ -64,6 +64,28 @@ def test_structure_parser_accepts_debug_ollama_flag():
     assert args.debug_ollama is True
 
 
+def test_ask_parser_accepts_separate_vision_models_and_budget():
+    args = build_parser().parse_args(
+        [
+            "ask",
+            "3",
+            "Solve",
+            "--question-image",
+            "problem.png",
+            "--vision-model",
+            "glm-ocr:q8_0",
+            "--vision-verifier-model",
+            "qwen3.5:4b",
+            "--vision-num-predict",
+            "256",
+        ]
+    )
+
+    assert args.vision_model == "glm-ocr:q8_0"
+    assert args.vision_verifier_model == "qwen3.5:4b"
+    assert args.vision_num_predict == 256
+
+
 def test_mc_bench_parser_uses_measured_short_context_default():
     parser = build_parser()
 
@@ -255,6 +277,50 @@ def test_generic_structured_chat_accepts_schema_messages_and_images():
     assert client.kwargs["model"] == "gemma3:4b"
     assert client.kwargs["messages"][0]["images"] == ["page.png"]
     assert "default" not in json.dumps(client.kwargs["format"])
+
+
+def test_generic_structured_chat_sends_configured_keep_alive(monkeypatch):
+    class FakeClient:
+        def chat(self, **kwargs):
+            self.kwargs = kwargs
+            return {"message": {"content": '{"ok": true}'}, "done_reason": "stop"}
+
+    monkeypatch.setenv("ETHNOS_OLLAMA_KEEP_ALIVE", "30m")
+    client = FakeClient()
+
+    result = structured_chat_json(
+        client=client,
+        model_name="vision-model",
+        messages=[{"role": "user", "content": "read"}],
+        schema={"type": "object", "properties": {"ok": {"type": "boolean"}}},
+        num_predict=64,
+        num_ctx=4096,
+    )
+
+    assert result.validation_status == "valid"
+    assert client.kwargs["keep_alive"] == "30m"
+
+
+def test_generic_structured_chat_defaults_to_short_session_keep_alive(monkeypatch):
+    class FakeClient:
+        def chat(self, **kwargs):
+            self.kwargs = kwargs
+            return {"message": {"content": '{"ok": true}'}, "done_reason": "stop"}
+
+    monkeypatch.delenv("ETHNOS_OLLAMA_KEEP_ALIVE", raising=False)
+    client = FakeClient()
+
+    result = structured_chat_json(
+        client=client,
+        model_name="vision-model",
+        messages=[{"role": "user", "content": "read"}],
+        schema={"type": "object", "properties": {"ok": {"type": "boolean"}}},
+        num_predict=64,
+        num_ctx=4096,
+    )
+
+    assert result.validation_status == "valid"
+    assert client.kwargs["keep_alive"] == "30m"
 
 
 def test_ollama_schema_strips_schema_defaults_but_keeps_titles():
@@ -599,6 +665,10 @@ def test_default_ollama_budgets_and_context(monkeypatch):
     monkeypatch.delenv("ETHNOS_OLLAMA_STRUCTURE_NUM_PREDICT", raising=False)
     monkeypatch.delenv("ETHNOS_OLLAMA_ANSWER_NUM_PREDICT", raising=False)
     monkeypatch.delenv("ETHNOS_OLLAMA_NUM_CTX", raising=False)
+    monkeypatch.delenv("ETHNOS_OLLAMA_VISION_MODEL", raising=False)
+    monkeypatch.delenv("ETHNOS_OLLAMA_VISION_VERIFIER_MODEL", raising=False)
+    monkeypatch.delenv("ETHNOS_OLLAMA_VISION_NUM_PREDICT", raising=False)
+    monkeypatch.delenv("ETHNOS_OLLAMA_MATH_MODEL", raising=False)
 
     settings = load_settings()
 
@@ -606,6 +676,12 @@ def test_default_ollama_budgets_and_context(monkeypatch):
     assert settings.ollama_structure_num_predict == 2048
     assert settings.ollama_answer_num_predict == 1536
     assert settings.ollama_num_ctx == 4096
+    assert settings.ollama_vision_model == "qwen3.5:4b"
+    assert settings.ollama_vision_verifier_model == "gemma-python"
+    assert settings.ollama_vision_num_predict == 256
+    assert settings.ollama_math_model == "qwen3.5:4b"
+    assert settings.question_image_cache_dir.name == "question_images"
+    assert settings.question_capture_dir.name == "captures"
 
 
 def test_num_ctx_uses_cli_option_before_settings():

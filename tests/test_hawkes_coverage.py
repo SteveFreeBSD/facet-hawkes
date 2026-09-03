@@ -51,7 +51,7 @@ def test_a_gap_says_which_kind_of_gap_it_is():
     unrecognized = evaluate(
         CoverageCase(
             id="x", topic="t",
-            prompt="Classify the polynomial as a monomial, binomial, or trinomial.",
+            prompt="Describe the end behavior of the polynomial.",
             expressions=["x^2 + 3x + 2"],
         )
     )

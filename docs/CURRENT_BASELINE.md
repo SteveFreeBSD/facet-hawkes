@@ -1,6 +1,11 @@
 # Current Baseline
 
-Last verified on `caspian`: 2026-07-16.
+Last verified on `caspian`: 2026-07-19.
+
+The screenshot OCR/exact-math stack is a staged candidate as of 2026-09-02;
+it does not replace the accepted general-purpose baseline below until its
+acceptance gate passes. See
+[Vision and Exact-Math Architecture](VISION_MATH_ARCHITECTURE.md).
 
 This is the single source of truth for the known-good Ethnos application,
 runtime data, model, and acceptance benchmark. Hardware and persistent service
@@ -17,6 +22,10 @@ details live in [hosts/caspian.md](hosts/caspian.md). Reproduction steps live in
 | Structure output budget | `2048` |
 | Answer output budget | `1536` |
 | Thinking | `false` |
+| Candidate primary screenshot OCR | `qwen3.5:4b` |
+| Candidate screenshot verifier | `gemma-python` |
+| Candidate vision output budget | `256` per pass |
+| Candidate image-question fallback solver | `qwen3.5:4b` |
 | Ollama thread override | unset |
 | MC context excerpt | `--chars 300` |
 | Mixed-quiz context excerpt | `--chars 900` |
@@ -98,6 +107,37 @@ passage. The behavior has a dedicated regression test.
 See [PERFORMANCE_TUNING.md](PERFORMANCE_TUNING.md) for the full 4K/8K, batching,
 and Qwen decision record.
 
+## Chapter 27 Canvas acceptance
+
+The Chapter 27 history fixture is a separate end-to-end functional acceptance
+run; it does not replace the fixed performance benchmark above.
+
+| Metric | Result |
+|---|---:|
+| Imported questions / points | 20 / 100 |
+| Valid local PDF anchors | 19 |
+| Explicit local source gaps | 1 |
+| Grounded correct | 19/19 |
+| Grounded accuracy | 100% |
+| Instructor-key agreement on scored items | 19/19 |
+| Source coverage | 19/20 (95%) |
+| Key conflicts | 0 |
+| Invalid responses / no-context cases | 0 / 0 |
+| Answer retries | 0 |
+| Elapsed model benchmark | 235.6 seconds |
+| Deterministic Agent verdicts | 17 supported / 2 human-review / 1 source-missing |
+| Agent priorities | 6 pass / 13 inspect / 1 fix |
+
+The uncovered item asks about Warren Court protections for criminal
+defendants, material that is absent from the local `history.pdf`. It remains an
+explicit `external_source_item`; Ethnos skips it without querying unrelated
+text. The two Agent human-review verdicts are items 15 and 16: conceptual
+counterculture wording and a formal-war-declaration qualifier not stated in the
+anchored passage. Four instructor-key notes are also explicit quality findings,
+which keeps otherwise supported items 5 and 10 in the inspection queue. See the
+[Chapter 27 findings](../examples/history_ch27_e2e_findings.md) for provenance,
+wording notes, exact commands, and the supplied answer sequence.
+
 ## Runtime data
 
 The ignored local database currently contains:
@@ -153,8 +193,9 @@ uv run ethnos structure-status 2
 uv run ethnos qa-bench 1 --benchmark benchmarks/ethics_qa.json --no-ask
 ```
 
-Last deterministic verification: 219 tests passed, Ruff passed, and
-`git diff --check` passed.
+Last staged deterministic verification on 2026-09-02: 284 tests passed, Ruff
+passed, formatting passed, compilation passed, vulture passed, documentation
+links passed, and `git diff --check` passed.
 
 Model/Vulkan smoke:
 

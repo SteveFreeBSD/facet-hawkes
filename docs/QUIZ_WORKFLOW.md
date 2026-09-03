@@ -60,6 +60,12 @@ Questions that explicitly request multiple responses, such as “select two,”
 are rejected because `external-quiz-v2` currently represents one keyed choice
 per item.
 
+Anchor validation checks that chunk IDs are positive integers owned by the
+selected document, citations match a declared chunk, and every declared page
+falls inside a declared chunk's page range. Target matching uses shared
+Unicode-aware normalization: accents, soft hyphens, Unicode dashes, ordinary
+hyphens, and PDF line-wrap hyphenation are handled consistently.
+
 ## Source Grounding
 
 `ground-quiz` performs a no-model source pass and writes one grounding record
@@ -107,6 +113,11 @@ Items tagged `external_source_item`, `incomplete_item`, or
 cannot be evaluated as complete PDF-grounded questions. Any anchor fields that
 are present are still validated.
 
+Grounding and benchmarking do not run broad retrieval for those exempt items.
+Their empty context and empty `queries_tried` fields are deliberate: unrelated
+PDF text must not make an explicitly missing or incomplete source look
+supported.
+
 ## Benchmarking
 
 `quiz-bench` answers mixed quizzes from retrieved PDF context:
@@ -148,8 +159,10 @@ passed directly to `verify-answer-key`. `--item-id` and `--max-questions` are
 mutually exclusive.
 
 When a quiz item has validated `source_chunks`, those anchors are the complete
-model context. Retrieval queries and candidates remain in diagnostics, but
-unrelated retrieved chunks are not mixed into the answer prompt.
+model and Agent Review context. Broad retrieval is not run, and unrelated
+chunks are not mixed into the answer prompt. All declared anchors are retained
+in manifest order even when their count is larger than the ordinary retrieval
+limit.
 
 Source-derived guidance handles negative questions, anchored target phrases,
 percentage complements, and compound options. “All of the above,” “All possible
@@ -164,15 +177,19 @@ It reports:
 - `skipped_incomplete` for incomplete items.
 - `skipped_source_missing` for items whose quiz source cannot be found in the
   current local PDF extraction.
+- `invalid_anchor` when declared source metadata fails validation. These items
+  do not reach the answer model and are not scoring-eligible.
 - `no_context` when PDF retrieval fails.
 - `invalid_response` when the model response cannot be parsed.
 
 Each benchmark item includes a `source_grounding` record so downstream tools can
 distinguish a likely wrong key from missing local PDF source material.
 Benchmark summaries separate `grounded accuracy` from `source coverage`; this
-keeps model correctness and source availability honest. Source coverage counts
-only `pdf_grounded` and `retrieved_candidate` items; incomplete and
-source-missing items are excluded.
+keeps model correctness and source availability honest. Only `pdf_grounded`
+and `retrieved_candidate` items count as covered. Source-missing and incomplete
+items remain in the total, so a 19-grounded/1-source-missing quiz reports 95%
+coverage rather than 100%. Invalid anchors are excluded from grounded accuracy
+and use `is_correct: null`, rather than being counted as model mistakes.
 
 When an instructor key is known but conflicts with the available PDF evidence,
 set `key_review_status` to `disputed` in the manifest override and explain the
@@ -198,11 +215,13 @@ Audit statuses:
   PDF extraction does not provide source text to judge it.
 - `incomplete`: the keyed item was skipped because the imported question is
   incomplete.
+- `invalid_anchor`: declared chunk, page, target, or citation metadata failed
+  validation, so neither the answer nor the key can be source-audited safely.
 - `invalid_response`: model output was not valid enough to judge the key.
 - `unclassified`: any remaining status that needs human review.
 
-The command exits nonzero when it finds a `key_conflict_candidate`, making wrong
-answer keys easy to catch in a review gate.
+The command exits nonzero when it finds a `key_conflict_candidate` or
+`invalid_anchor`, making wrong keys and broken provenance fail a review gate.
 
 ## Generated Quizzes
 
