@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" role="img" aria-label="Ethnos Hawkes Assistant">
+  <title>Ethnos Hawkes Assistant</title>
+  <!--
+    Firefox's accent blue, so the toolbar button and the panel it opens are
+    plainly the same add-on. The glyph is a radical with its vinculum: what
+    this reads and solves, rather than a tick, which would suggest it checks
+    or submits answers. It does neither.
+  -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0a84ff"/>
+      <stop offset="1" stop-color="#0043a8"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="128" height="128" rx="28" ry="28" fill="url(#bg)"/>
+  <path d="M24 70 H40 L55 100 L82 30 H108"
+        fill="none" stroke="#ffffff" stroke-width="11"
+        stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
