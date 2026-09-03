@@ -397,6 +397,14 @@ function focusPrimary(view) {
     return;
   }
   if (!settled && document.activeElement === document.body) {
+    // Only ever into a panel the user is actually looking at. Every window has
+    // its own sidebar, and loading or reloading the add-on reloads all of them
+    // at once -- so without this, panels in windows nobody is in reach for
+    // focus the moment they come back. `hasFocus` is false for a document in
+    // any window but the focused one, which is exactly the question.
+    if (!document.hasFocus()) {
+      return;
+    }
     settled = true;
     if (!target.disabled) {
       target.focus();
@@ -408,7 +416,7 @@ function focusPrimary(view) {
     handedOver = false;
     return;
   }
-  if (!handedOver && document.activeElement === elements.solve) {
+  if (!handedOver && document.activeElement === elements.solve && document.hasFocus()) {
     handedOver = true;
     elements.insert.focus();
   }

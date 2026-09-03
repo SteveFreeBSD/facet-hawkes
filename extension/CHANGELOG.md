@@ -3,6 +3,19 @@
 All notable changes to the Ethnos Hawkes Assistant add-on. Versions follow
 `major.minor.patch` as required by the Firefox manifest.
 
+## 0.40.2
+
+### Fixed
+
+- A panel takes focus only in the window being used. Every window has its own
+  sidebar, and loading or reloading the add-on reloads all of them at once —
+  each then put the caret on its primary button, including panels in windows
+  nobody was in. Reported as the add-on jumping to another window the instant
+  it was loaded. The add-on has never been able to move a tab or a window
+  (`tabs.update`, `tabs.create`, `windows.update` and `windows.create` are all
+  build failures); taking focus inside an unattended panel was the only thing
+  it could do that looked like it.
+
 ## 0.40.1
 
 ### Fixed

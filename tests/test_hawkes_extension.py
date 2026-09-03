@@ -1312,3 +1312,16 @@ def test_moving_between_tabs_re_checks_what_is_in_front():
     for phase in ("checking", "solving", "inserting"):
         assert phase in switched
     assert "prepare(windowId)" in switched
+
+
+def test_a_panel_only_takes_focus_in_the_window_being_used():
+    """Every window has its own sidebar, and loading or reloading the add-on
+    reloads all of them at once. Each panel then put the caret on its primary
+    button -- including panels in windows nobody was in. Reported as the add-on
+    jumping to another window the instant it was loaded."""
+    popup = (EXTENSION_DIR / "popup" / "popup.js").read_text()
+
+    focus_primary = popup.split("function focusPrimary(view)", 1)[1].split("\n}\n", 1)[0]
+    assert "document.hasFocus()" in focus_primary
+    # Both places that take focus are guarded, not just the first.
+    assert focus_primary.count("document.hasFocus()") == 2
