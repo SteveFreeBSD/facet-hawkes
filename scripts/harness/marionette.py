@@ -148,6 +148,13 @@ def launch(profile_dir: str, port: int, headless: bool = False) -> subprocess.Po
         "about:blank",
     ]
     environment = dict(os.environ)
+    # `xvfb-run` sets DISPLAY, and on a Wayland session Firefox ignores it: it
+    # reads WAYLAND_DISPLAY, connects to the real compositor, and every window
+    # opens on the user's actual screens. Observed exactly that way. Dropping
+    # the Wayland handle forces the X11 backend, so the virtual display given
+    # by xvfb-run is the one that gets used.
+    environment.pop("WAYLAND_DISPLAY", None)
+    environment["MOZ_ENABLE_WAYLAND"] = "0"
     if headless:
         environment["MOZ_HEADLESS"] = "1"
     return subprocess.Popen(

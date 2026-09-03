@@ -17,10 +17,23 @@ It never touches the user's profile, their running Firefox, or the real Hawkes
 site: fixtures are served from localhost and the browser is a separate instance
 on a temporary profile.
 
+It runs headless by default. On a Wayland session `xvfb-run` alone does *not*
+isolate Firefox -- it sets DISPLAY, and Firefox reads WAYLAND_DISPLAY and opens
+its windows on the real compositor, over whatever the developer is doing. The
+launcher drops that handle; headless removes the question entirely.
+
+The packaged browser may not support this at all. `firefox-pure` 155 ships with
+Marionette stripped out, so `--marionette` is an unrecognized flag and no port
+opens. Point `ETHNOS_FIREFOX` at a build that has it; Mozilla's release tarball
+does and needs no root::
+
+    export ETHNOS_FIREFOX="$HOME/.local/opt/firefox-mozilla/firefox"
+
 Usage::
 
-    xvfb-run -a python3 scripts/run_extension_harness.py
-    xvfb-run -a python3 scripts/run_extension_harness.py --scenario top
+    python3 scripts/run_extension_harness.py
+    python3 scripts/run_extension_harness.py --scenario top
+    python3 scripts/run_extension_harness.py --show      # watch it work
 """
 
 from __future__ import annotations
@@ -334,7 +347,7 @@ setTimeout(async () => {{
     manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
 
 
-def run(selected: str | None, headless: bool) -> int:
+def run(selected: str | None, headless: bool = True) -> int:
     site_port, report_port, foreign_port = free_port(), free_port(), free_port()
     site = f"http://127.0.0.1:{site_port}"
     report_origin = f"http://localhost:{report_port}"
@@ -505,13 +518,17 @@ def judge_distinct(scenarios, signatures) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--scenario", help="run only this scenario")
+    parser.add_argument("--show", action="store_true",
+                        help="Render the browser instead of running it headless.")
     parser.add_argument("--headless", action="store_true",
                         help="MOZ_HEADLESS instead of a virtual display")
     args = parser.parse_args()
     if not shutil.which("firefox"):
         print("firefox is not installed", file=sys.stderr)
         return 2
-    return run(args.scenario, args.headless)
+    # Headless by default. This drives a real browser on a developer's desktop,
+    # and the alternative is windows appearing over whatever they are doing.
+    return run(args.scenario, headless=not args.show)
 
 
 if __name__ == "__main__":
