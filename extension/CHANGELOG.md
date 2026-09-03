@@ -3,6 +3,16 @@
 All notable changes to the Ethnos Hawkes Assistant add-on. Versions follow
 `major.minor.patch` as required by the Firefox manifest.
 
+## 0.41.4
+
+### Changed
+
+- The pause between characters is 40ms, up from 16ms. Still fixed rather than
+  varied. `ENTRY_BUDGET_MS` is unchanged at 1500ms, so answers up to 37
+  characters get the full 40ms and the longest permitted answer (40 characters)
+  is compressed slightly to 37ms each — 1480ms either way, well inside the
+  15-second deadline on an injected operation.
+
 ## 0.41.3
 
 ### Fixed

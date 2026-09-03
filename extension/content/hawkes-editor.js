@@ -255,7 +255,7 @@ var ethnosHawkes = (function () {
    * randomised, or shaped to resemble anything: the add-on does not conceal
    * that it is the one typing.
    */
-  const CHARACTER_PAUSE_MS = 16;
+  const CHARACTER_PAUSE_MS = 40;
 
   /** A ceiling, so a long answer cannot leave the editor held open for ever. */
   const ENTRY_BUDGET_MS = 1500;
