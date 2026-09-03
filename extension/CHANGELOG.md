@@ -3,6 +3,22 @@
 All notable changes to the Ethnos Hawkes Assistant add-on. Versions follow
 `major.minor.patch` as required by the Firefox manifest.
 
+## 0.39.5
+
+### Fixed
+
+- The question watcher rebuilds what it watches instead of giving up in
+  silence. It is the only guard against a previous question's answer staying on
+  screen, and a frame that has gone — Hawkes reloading its editor, the tab
+  moving on — made every read throw. Logged at debug and swallowed, that
+  retired the guard: it failed every tick, forever, and nothing said so. Three
+  consecutive failures now re-prepare, and say why.
+- Closing the window the add-on was working in hands the work to a surviving
+  panel. Panels in a closing window disconnect by themselves, but the state
+  went on naming a window that no longer existed — so every other panel was
+  shown a blank of its own and nothing ever re-prepared, which looks exactly
+  like a panel that has stopped working.
+
 ## 0.39.4
 
 ### Fixed

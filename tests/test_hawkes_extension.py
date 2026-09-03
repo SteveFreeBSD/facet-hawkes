@@ -1016,7 +1016,8 @@ def test_an_open_panel_notices_the_question_changing() -> None:
     # Work in flight reads the question itself; the watch must not cut in.
     for phase in ("checking", "solving", "inserting"):
         assert phase in body, f"the watch must stand aside during {phase}"
-    assert "begin(prepare)" in body, "a changed question re-prepares the panel"
+    # Re-prepared in the window the state belongs to, not "the current one".
+    assert "prepare(state.windowId)" in body, "a changed question re-prepares the panel"
     assert "questionSignature" in body, "the comparison is the question's own signature"
     # And it is started and stopped with the panel, not left running.
     assert "watchQuestion();" in source
@@ -1205,3 +1206,44 @@ def test_an_unreadable_url_with_the_grant_held_is_the_wrong_site():
     assert 'throw new Error("errorTabAccessLost")' in block   # grant withheld
     assert 'throw new Error("errorWrongSite")' in block       # grant held
     assert 'throw new Error("errorNoTab")' not in block
+
+
+def test_the_question_watcher_rebuilds_what_it_watches_rather_than_giving_up():
+    """The one guard against a previous question's answer staying on screen.
+
+    A frame that has gone -- Hawkes reloading its editor, the tab moving on --
+    makes every read from the watcher throw. Logged at debug and swallowed,
+    that retired the guard silently: it failed every tick, forever, and nothing
+    said so. The stale answer it exists to catch would simply sit there.
+    """
+    background = (EXTENSION_DIR / "background.js").read_text()
+
+    assert "const WATCH_FAILURES_BEFORE_REPREPARE = 3" in background
+    watcher = background.split("questionWatch = setInterval", 1)[1].split(
+        "}, QUESTION_WATCH_MS)", 1
+    )[0]
+    assert "watchFailures = 0" in watcher          # a good read clears the count
+    assert "watchFailures += 1" in watcher
+    assert "WATCH_FAILURES_BEFORE_REPREPARE" in watcher
+    assert "question-watch-lost-the-frame" in watcher   # and it is said out loud
+    # Re-preparing is scoped to the window the state belongs to.
+    assert "prepare(state.windowId)" in watcher
+
+
+def test_closing_the_owning_window_hands_the_work_on():
+    """Panels in a closing window disconnect by themselves; the state does not.
+
+    It went on naming a window that no longer existed, so every surviving panel
+    was shown a blank of its own and nothing re-prepared -- a panel that looks
+    broken until something is pressed.
+    """
+    background = (EXTENSION_DIR / "background.js").read_text()
+
+    assert "browser.windows.onRemoved.addListener" in background
+    closed = background.split("browser.windows.onRemoved.addListener", 1)[1].split(
+        "\n});\n", 1
+    )[0]
+    assert "panels.delete(port)" in closed          # its panels go
+    assert "inFlight?.abort()" in closed            # its work stops
+    assert "survivor" in closed                     # and another window takes over
+    assert "prepare(survivor.windowId)" in closed

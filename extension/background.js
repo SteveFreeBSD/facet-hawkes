@@ -1236,6 +1236,15 @@ function attachSettingsPage(port) {
  */
 let questionWatch;
 
+/**
+ * Consecutive failed reads before the watcher rebuilds what it watches.
+ *
+ * Three ticks is under five seconds, long enough to ride out a question being
+ * swapped in and short enough that the guard is never off for long.
+ */
+const WATCH_FAILURES_BEFORE_REPREPARE = 3;
+let watchFailures = 0;
+
 function watchQuestion() {
   if (questionWatch !== undefined) {
     return;
@@ -1255,17 +1264,31 @@ function watchQuestion() {
     try {
       const question = await readQuestion(state.tabId, state.frameId, 1);
       const now = questionSignature(state.fieldId, question);
+      watchFailures = 0;
       if (now !== null && now !== state.signature) {
         log.debug("question-changed-while-open", { was: state.signature, now });
-        begin(prepare);
+        begin(() => prepare(state.windowId));
       }
     } catch (error) {
-      log.debug("question-watch-failed", { error: describeError(error) });
+      // A frame that has gone -- Hawkes reloading its editor, the tab moving
+      // on -- makes every read from here throw. Logged and swallowed, that
+      // silently retired the one guard against a previous question's answer
+      // staying on screen: it kept failing every tick and never said so.
+      watchFailures += 1;
+      log.debug("question-watch-failed", {
+        attempts: watchFailures, error: describeError(error),
+      });
+      if (watchFailures >= WATCH_FAILURES_BEFORE_REPREPARE) {
+        log.warn("question-watch-lost-the-frame", { attempts: watchFailures });
+        watchFailures = 0;
+        begin(() => prepare(state.windowId));
+      }
     }
   }, QUESTION_WATCH_MS);
 }
 
 function stopWatchingQuestion() {
+  watchFailures = 0;
   if (questionWatch !== undefined) {
     clearInterval(questionWatch);
     questionWatch = undefined;
@@ -1385,6 +1408,34 @@ function forgetMovedTab(tabId) {
     begin(() => prepare(state.windowId));
   }
 }
+
+/**
+ * Hand the work on when the window it belongs to is closed.
+ *
+ * Panels in a closing window disconnect by themselves. The state does not: it
+ * goes on naming a window that no longer exists, so `stateFor` shows every
+ * surviving panel a blank of its own and nothing ever re-prepares. The panel
+ * looks broken, and the only way back is pressing something.
+ */
+browser.windows.onRemoved.addListener((windowId) => {
+  for (const [port, entry] of panels) {
+    if (entry.windowId === windowId) {
+      panels.delete(port);
+    }
+  }
+  if (state.windowId !== windowId) {
+    return;
+  }
+  log.info("owning-window-closed", { windowId, panelsLeft: panels.size });
+  inFlight?.abort();
+  inFlight = null;
+  const survivor = [...panels.values()].find((entry) => Number.isInteger(entry.windowId));
+  state = { ...blankState(), windowId: survivor ? survivor.windowId : null };
+  update({ phase: "idle" });
+  if (survivor) {
+    begin(() => prepare(survivor.windowId));
+  }
+});
 
 browser.tabs.onAttached.addListener(forgetMovedTab);
 browser.tabs.onDetached.addListener(forgetMovedTab);
