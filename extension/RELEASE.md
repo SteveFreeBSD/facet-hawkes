@@ -4,17 +4,17 @@ This runbook produces a Mozilla-signed add-on that installs permanently in a
 normal Firefox profile. A locally built XPI is unsigned and is only a release
 candidate; do not weaken Firefox signature enforcement to install it.
 
-## Frozen 0.40.2 candidate
+## Frozen 0.40.3 candidate
 
 The accepted local candidate is frozen. Do not rebuild or alter packaged
 source before submission unless AMO requires a source change:
 
 ```text
-dist/ethnos-hawkes-0.40.2-unsigned.xpi
-SHA-256 85f7430ddf150f2560b63a9b916f7e32b4dac513026cb973bf0f74941a6f76f7
+dist/ethnos-hawkes-0.40.3-unsigned.xpi
+SHA-256 81053aa29ff2473d18300a378738401a89582a7c7c0bbe04e80b62a5cf697f4b
 ```
 
-0.39.0 through 0.40.1 were development builds and must not be uploaded. The
+0.39.0 through 0.40.2 were development builds and must not be uploaded. The
 last signed release is retained for rollback:
 
 ```text
@@ -24,7 +24,7 @@ candidate  dist/ethnos-hawkes-0.39.2-unsigned.xpi
 SHA-256    57e0ac32081a038110b2ac5d439b26035fe074e522131ebe01523cbbb3fe55b7
 ```
 
-0.40.2 changes no permission, host, or data-collection declaration. Gates on
+0.40.3 changes no permission, host, or data-collection declaration. Gates on
 this candidate: repository validator, 633 tests,
 `web-ext lint --warnings-as-errors` at 0 errors / 0 warnings / 0 notices, an
 identical rebuild, and 11 of 11 checks in the real-browser harness.
@@ -61,7 +61,7 @@ $ export PATH="$HOME/.local/opt/node-v22.23.2-linux-x64/bin:$HOME/.local/bin:$PA
 $ npm install -g --prefix ~/.local web-ext
 $ web-ext --version
 $ release_lint_dir=$(mktemp -d)
-$ unzip -q dist/ethnos-hawkes-0.40.2-unsigned.xpi -d "$release_lint_dir"
+$ unzip -q dist/ethnos-hawkes-0.40.3-unsigned.xpi -d "$release_lint_dir"
 $ web-ext lint --source-dir "$release_lint_dir" --warnings-as-errors
 ```
 
@@ -170,7 +170,7 @@ substitute the separate Marionette profile for signed-artifact acceptance.
    duplicate-insertion guard, and removal footprint. Never press Hawkes submit
    as part of the extension smoke test.
 
-Only after the signed XPI passes this physical-browser acceptance is 0.40.2
+Only after the signed XPI passes this physical-browser acceptance is 0.40.3
 **released**. Until then its status remains **release candidate complete**.
 
 Firefox Release and Beta require Mozilla-signed extensions. Mozilla documents

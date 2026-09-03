@@ -58,7 +58,7 @@ export function answerFitsEditor(answer, editor) {
   // Hawkes can keep its ordinary numeric/fraction editor visible even though
   // the prompt names a prose escape such as "Not a Real Number". That answer
   // belongs to Hawkes' separate choice/control, not in the digits-only box.
-  if (/^(?:Not a )?Real Number$/i.test(answer.trim())) {
+  if (/^(?:Not a Real Number|Real Number|Not Factorable)$/i.test(answer.trim())) {
     return { insertable: false, code: "editor-option-answer" };
   }
   if (Number.isInteger(editor.maxLength) && answer.length > editor.maxLength) {

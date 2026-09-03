@@ -604,3 +604,28 @@ def test_evaluation_declines_when_the_named_variable_is_not_the_one_present():
         problem_text="Evaluate the polynomial for t = 2.",
         expressions=["x^3 - 4x + 1"],
     ) is None
+
+
+def test_a_prime_polynomial_is_answered_when_the_question_offers_that_answer():
+    """Live: lesson 1.3 question 9, `y^2 + y + 17`.
+
+    Factoring is the one rewriting whose input can be its answer. Read as a
+    failure -- output equals input, so nothing happened -- it cost seventy-six
+    seconds of vision and model for a fact SymPy had at once.
+    """
+    offered = 'Factor the following trinomial. If it cannot be factored, indicate "Not Factorable".'
+    result = answer_symbolic_math(problem_text=offered, expressions=["y^2 + y + 17"])
+
+    assert result is not None
+    assert extract_final_math(result.raw_response) == "Not Factorable"
+
+    # And one that does factor is unaffected.
+    ordinary = answer_symbolic_math(problem_text=offered, expressions=["y^2 + 13y + 40"])
+    assert extract_final_math(ordinary.raw_response) == "(y + 5)(y + 8)"
+
+
+def test_an_unfactorable_polynomial_is_handed_back_when_no_escape_is_offered():
+    """A question that just says "factor" has not licensed prose as an answer."""
+    assert answer_symbolic_math(
+        problem_text="Factor completely.", expressions=["y^2 + y + 17"]
+    ) is None

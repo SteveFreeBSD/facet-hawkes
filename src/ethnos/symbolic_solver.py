@@ -46,7 +46,10 @@ def answer_symbolic_math(
     if result is None:
         return None
     verification = {
-        "factor": "SymPy exact factorization and reverse expansion agree.",
+        "factor": (
+            "SymPy exact factorization and reverse expansion agree, or the "
+            "polynomial is prime and the question offers that answer."
+        ),
         "gcf": (
             "SymPy removed the greatest common factor only, and the product "
             "expands back to the original."
@@ -190,6 +193,17 @@ def solve_symbolic_operation(
             and operation not in EXTRACTION
             and _compact(original_text) == _compact(answer_text)
         ):
+            # Factoring is the one rewriting whose input can be its answer: a
+            # prime polynomial has no factorization, and these questions say so
+            # themselves -- "if it cannot be factored, indicate Not
+            # Factorable". Read as a failure, `y^2 + y + 17` cost seventy-six
+            # seconds of vision and model for a fact SymPy had at once.
+            if operation == "factor" and _offers_not_factorable(problem_text):
+                return SymbolicResult(
+                    operation=operation,
+                    original=original_text,
+                    answer="Not Factorable",
+                )
             continue
         return SymbolicResult(
             operation=operation,
@@ -363,6 +377,17 @@ def _requested_operation(problem_text: str) -> str | None:
     if re.search(r"\bsimplif(?:y|ied|ication)\b", lowered):
         return "simplify"
     return None
+
+
+def _offers_not_factorable(problem_text: str) -> bool:
+    """Whether the question itself names "not factorable" as an answer.
+
+    Only then is an unfactorable polynomial an answer rather than a decline. A
+    question that simply says "factor" and cannot be factored is one this
+    solver should hand back, not one it should answer with prose.
+    """
+    lowered = problem_text.lower()
+    return "not factorable" in lowered or "cannot be factored" in lowered
 
 
 def _substitution(lowered: str) -> tuple[str, str] | None:

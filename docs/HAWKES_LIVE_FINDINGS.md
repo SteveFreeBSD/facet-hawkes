@@ -200,6 +200,50 @@ Worth recording, because it is the part that should not change:
   add-on reload, because Firefox spawns a fresh host per request. Only content
   scripts require reloading the add-on.
 
+### 8. Multi-window and multi-tab state, found one symptom at a time
+
+**Severity: high. Fixed across 0.39.0–0.40.2, verified in a real browser.**
+
+One assumption ran under everything: one panel, one window, one tab, one
+question. Firefox agrees with none of it. Each symptom was reported live and
+each looked unrelated until the last one:
+
+| Reported as | Actually |
+| --- | --- |
+| "doesn't open up anymore" | one `panel` variable; each new sidebar replaced the last |
+| "attaches to both" | `currentWindow` in a background page is the *last focused* window |
+| "stuck on a detached tab" | `state` paired a window with a tab; detaching changed one and not the other |
+| answer showing in a Discord window | one state, broadcast to every panel |
+| "attached to many tabs" | a sidebar belongs to a window; nothing re-checked on tab switch |
+| "popped over to the other window" | every panel took focus on load, including unattended ones |
+
+Three of these were only visible because the owner was using the add-on; none
+were caught by 600-odd tests. Two were made *worse* first by a fix that made
+the wrong state more visible rather than less.
+
+**Still not done:** one state serves all windows. Panels no longer show each
+other's work, but they still compete for ownership — acting in one window
+blanks another's panel until it is used. Per-window sessions (a `Map` of state,
+in-flight work and watcher, keyed by window) is the real fix; it is a large
+diff across 58 `state.` references and was judged not worth the risk once the
+safety holes were closed by narrower means.
+
+### 9. An insertion failed with `errorNoBridge`
+
+**Severity: unknown. Open.**
+
+Seen once in the diagnostic log, during live use:
+
+```text
+20:15:44.959 warn background failed {"errorKey":"errorNoBridge","phase":"inserting","stage":"done"}
+```
+
+`errorNoBridge` is what `errorKeyOf` returns for an error it does not
+recognise, so this is an unexplained failure at the one moment the add-on
+writes to the page. It was not reproduced, and the surrounding entries show
+ordinary markup solves before and after. It wants a narrower error and a look
+at what actually threw.
+
 ## Recommended Next Work
 
 1. **Verify findings 1 and 2 in situ.** Both are wrong-target fixes, both are
@@ -215,4 +259,23 @@ Worth recording, because it is the part that should not change:
    leading-coefficient cases came from a real lesson; the rest are written from
    standard algebra wording. Replace them with phrasings seen on screen as you
    meet them, so the sweep measures Hawkes rather than my guess at Hawkes.
-3. **Render the answer as mathematics** (finding 5).
+3. **Trace the `errorNoBridge` insertion failure** (finding 9). It is the only
+   unexplained failure left, and it is at the write boundary.
+4. **Per-window sessions** (finding 8), when the appetite for a large
+   refactor exists.
+
+## Session Record, 3 September 2026
+
+Nine findings, eight fixed, verified against a real browser. The exact path now
+answers every question type this lesson produces — the coverage corpus is at 20
+of 20 exact, none wrong — where three of them cost roughly a minute each that
+morning. Tooling built along the way: an offline coverage sweep
+(`ethnos.cli hawkes-coverage`), a diagnostic-log reader
+(`scripts/read_extension_log.py`), and multi-step fixtures in the browser
+harness with a negative control proving they catch the bug they were written
+for.
+
+The pattern worth keeping: **every defect of consequence was found by someone
+using the add-on, not by the suite.** The suite is good at holding fixed
+behaviour still. It had nothing to say about a second window, a detached tab,
+or an answer that was its own answer.

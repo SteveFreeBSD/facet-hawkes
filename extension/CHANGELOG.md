@@ -3,6 +3,19 @@
 All notable changes to the Ethnos Hawkes Assistant add-on. Versions follow
 `major.minor.patch` as required by the Firefox manifest.
 
+## 0.40.3
+
+### Fixed
+
+- A trinomial that cannot be factored is now answered, not abandoned.
+  Factoring is the one rewriting whose input can legitimately be its answer,
+  and these questions say so themselves — "if it cannot be factored, indicate
+  Not Factorable". Read as a failure, `y^2 + y + 17` cost seventy-six seconds
+  of vision and model for a fact SymPy had in thirty-six milliseconds. Only
+  claimed when the question actually offers that escape; a bare "factor
+  completely" is still handed back. The panel routes the result to Hawkes'
+  radio button as a manual choice, as it already does for "Not a Real Number".
+
 ## 0.40.2
 
 ### Fixed
