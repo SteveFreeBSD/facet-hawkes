@@ -3,6 +3,18 @@
 All notable changes to the Ethnos Hawkes Assistant add-on. Versions follow
 `major.minor.patch` as required by the Firefox manifest.
 
+## 0.39.1
+
+### Fixed
+
+- `strict_min_version` is 142.0. Mozilla's own `web-ext lint`, run with
+  `--warnings-as-errors` as the release runbook requires, refused the 0.39.0
+  candidate: Firefox for Android did not understand
+  `browser_specific_settings.gecko.data_collection_permissions` until 142, so a
+  declared floor of 140 contradicted the manifest's own data-collection
+  disclosure on that platform. Desktop understood the key from 140 and is
+  unaffected in practice.
+
 ## 0.39.0
 
 ### Changed

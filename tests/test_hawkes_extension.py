@@ -259,10 +259,12 @@ def test_manifest_is_signable_and_declares_website_content(manifest):
     gecko = manifest["browser_specific_settings"]["gecko"]
 
     assert gecko["id"] == "ethnos-hawkes@local"
-    # 140 is the first Firefox that understands the data consent declaration,
-    # so pinning it there means the disclosure is actually shown rather than
-    # silently ignored.
-    assert gecko["strict_min_version"] == "140.0"
+    # Desktop understands the data consent declaration from 140, but Firefox
+    # for Android only from 142, and one floor covers both. Pinned so the
+    # disclosure is actually shown rather than silently ignored -- and so the
+    # floor cannot contradict the declaration it exists to protect, which is
+    # what `web-ext lint --warnings-as-errors` refuses.
+    assert gecko["strict_min_version"] == "142.0"
     # Question text/MathML/screenshots cross the browser boundary through
     # native messaging, which Mozilla classifies as websiteContent even when
     # the companion and configured model endpoint are local.

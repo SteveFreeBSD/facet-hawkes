@@ -255,9 +255,12 @@ Confirm that assistance tools are permitted for the work you are doing.
 
 ## Permissions
 
-This add-on targets Firefox 140 or later. That is the first release that
-understands the `data_collection_permissions` declaration below; on anything
-older the disclosure is silently ignored, so `strict_min_version` pins it.
+This add-on targets Firefox 142 or later. Desktop understands the
+`data_collection_permissions` declaration below from 140, and on anything older
+the disclosure is silently ignored — but Firefox for Android did not understand
+it until 142, and `strict_min_version` covers both. Declaring 140 made the
+floor contradict the manifest's own disclosure on Android, which is what
+`web-ext lint --warnings-as-errors` refuses.
 
 | Permission | Why it is needed |
 |---|---|

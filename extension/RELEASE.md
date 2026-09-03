@@ -4,24 +4,29 @@ This runbook produces a Mozilla-signed add-on that installs permanently in a
 normal Firefox profile. A locally built XPI is unsigned and is only a release
 candidate; do not weaken Firefox signature enforcement to install it.
 
-## Frozen 0.39.0 candidate
+## Frozen 0.39.1 candidate
 
 The accepted local candidate is frozen. Do not rebuild or alter packaged
 source before submission unless AMO requires a source change:
 
 ```text
-dist/ethnos-hawkes-0.39.0-unsigned.xpi
-SHA-256 303838fce32b2631ab6c08038bf5b8edb5ec77f95ff3659f7db56749d479ab4d
+dist/ethnos-hawkes-0.39.1-unsigned.xpi
+SHA-256 35a5739b8150a8cd678e0672124b7ad064061eb9c54622dddbdd2a62dbd6a82e
 ```
 
-The previous candidate is retained for rollback:
+0.39.0 was superseded before submission and must not be uploaded: `web-ext
+lint --warnings-as-errors` refused it over a `strict_min_version` of 140 that
+contradicted the manifest's own data-collection declaration on Firefox for
+Android. The floor is now 142.
+
+The last signed release is retained for rollback:
 
 ```text
 dist/ethnos-hawkes-0.38.0-unsigned.xpi
 SHA-256 5308a5b1853b641050388e9d1be9d893def3d138bb1bd7c7f05140d353fdfdbf
 ```
 
-0.39.0 changes no permission, host, or data-collection declaration. It is a
+0.39.1 changes no permission, host, or data-collection declaration. It is a
 panel/state redesign plus correctness fixes; the permission surface, the single
 declared origin, the `websiteContent` declaration and the native-messaging
 boundary are byte-for-byte what 0.38.0 declared. See
@@ -49,11 +54,19 @@ Mozilla's current documentation covers **web-ext 10**, which since March 2026
 requires Node.js 22 or newer. On the signing machine, install the current
 release and run Mozilla's official validator with warnings treated as errors:
 
+Node is not installed system-wide on the development host, and the gate needs
+no root. Install both under `~/.local`:
+
 ```console
-$ npm install --global web-ext
+$ curl -O https://nodejs.org/dist/latest-v22.x/node-v22.23.2-linux-x64.tar.xz
+$ curl -O https://nodejs.org/dist/latest-v22.x/SHASUMS256.txt
+$ grep ' node-v22.23.2-linux-x64.tar.xz$' SHASUMS256.txt | sha256sum -c -
+$ tar -xJf node-v22.23.2-linux-x64.tar.xz -C ~/.local/opt
+$ export PATH="$HOME/.local/opt/node-v22.23.2-linux-x64/bin:$HOME/.local/bin:$PATH"
+$ npm install -g --prefix ~/.local web-ext
 $ web-ext --version
 $ release_lint_dir=$(mktemp -d)
-$ unzip -q dist/ethnos-hawkes-0.39.0-unsigned.xpi -d "$release_lint_dir"
+$ unzip -q dist/ethnos-hawkes-0.39.1-unsigned.xpi -d "$release_lint_dir"
 $ web-ext lint --source-dir "$release_lint_dir" --warnings-as-errors
 ```
 
@@ -139,7 +152,7 @@ substitute the separate Marionette profile for signed-artifact acceptance.
    duplicate-insertion guard, and removal footprint. Never press Hawkes submit
    as part of the extension smoke test.
 
-Only after the signed XPI passes this physical-browser acceptance is 0.39.0
+Only after the signed XPI passes this physical-browser acceptance is 0.39.1
 **released**. Until then its status remains **release candidate complete**.
 
 Firefox Release and Beta require Mozilla-signed extensions. Mozilla documents
