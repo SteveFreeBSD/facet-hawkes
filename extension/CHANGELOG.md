@@ -3,6 +3,24 @@
 All notable changes to the Ethnos Hawkes Assistant add-on. Versions follow
 `major.minor.patch` as required by the Firefox manifest.
 
+## 0.41.0
+
+### Changed
+
+- The answer is entered one character at a time rather than assigned in a
+  single write. A field driven by a framework re-renders on each input event,
+  and that work is asynchronous; the whole answer used to arrive as one
+  assignment carrying one event with a whole string, which is not the shape
+  such a field is built to receive. It is the likeliest reading of both the
+  half-entered structured answers of 0.19 and an unexplained `errorNoBridge` at
+  the write boundary seen during live use. Entry stops if the field closes
+  part-way through, and a fixed budget keeps a long answer from holding the
+  editor open.
+
+  The pace is fixed at what the editor absorbs. It is deliberately not varied,
+  randomised, or shaped to resemble anything: as `README.md` has always said,
+  the add-on does not conceal that it is the one typing.
+
 ## 0.40.3
 
 ### Fixed

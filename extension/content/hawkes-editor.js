@@ -241,7 +241,59 @@ var ethnosHawkes = (function () {
     );
   }
 
-  function insertIntoNativeField(target, value) {
+  /**
+   * How long to leave between characters, in milliseconds.
+   *
+   * A field driven by a framework re-renders on each input event, and that
+   * work is asynchronous. Writing the whole answer in one assignment gave it a
+   * single event carrying a whole string -- which is not the shape it is built
+   * to receive, and is the likeliest reading of both the half-entered
+   * structured answers of 0.19 and an unexplained failure at the write
+   * boundary seen live.
+   *
+   * Fixed, and small. It is set to what the editor absorbs, and is not varied,
+   * randomised, or shaped to resemble anything: the add-on does not conceal
+   * that it is the one typing.
+   */
+  const CHARACTER_PAUSE_MS = 16;
+
+  /** A ceiling, so a long answer cannot leave the editor held open for ever. */
+  const ENTRY_BUDGET_MS = 1500;
+
+  function pause(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  /**
+   * Write one character, as the field's own machinery expects to receive it.
+   *
+   * Reads the prototype's setter so frameworks that patch the instance
+   * property still observe the change. This only reads a descriptor; it never
+   * installs one, so no built-in is modified.
+   */
+  function writeCharacter(target, character) {
+    const start = Number.isInteger(target.selectionStart)
+      ? target.selectionStart
+      : target.value.length;
+    const end = Number.isInteger(target.selectionEnd) ? target.selectionEnd : start;
+    const next = `${target.value.slice(0, start)}${character}${target.value.slice(end)}`;
+    const owner = target instanceof HTMLTextAreaElement
+      ? HTMLTextAreaElement.prototype
+      : HTMLInputElement.prototype;
+    const descriptor = Object.getOwnPropertyDescriptor(owner, "value");
+    if (descriptor?.set) {
+      descriptor.set.call(target, next);
+    } else {
+      target.value = next;
+    }
+    const caret = start + character.length;
+    target.setSelectionRange?.(caret, caret);
+    target.dispatchEvent(
+      new InputEvent("input", { bubbles: true, data: character, inputType: "insertText" })
+    );
+  }
+
+  async function insertIntoNativeField(target, value) {
     if (target.disabled || target.readOnly) {
       return { ok: false, code: "field-not-editable" };
     }
@@ -250,30 +302,22 @@ var ethnosHawkes = (function () {
     }
 
     target.focus();
-    const start = Number.isInteger(target.selectionStart)
-      ? target.selectionStart
-      : target.value.length;
-    const end = Number.isInteger(target.selectionEnd) ? target.selectionEnd : start;
-    const nextValue = `${target.value.slice(0, start)}${value}${target.value.slice(end)}`;
-
-    // Read the prototype's setter so frameworks that patch the instance
-    // property still observe the change. This only reads a descriptor; it
-    // never installs one, so no built-in is modified.
-    const prototype = target instanceof HTMLTextAreaElement
-      ? HTMLTextAreaElement.prototype
-      : HTMLInputElement.prototype;
-    const descriptor = Object.getOwnPropertyDescriptor(prototype, "value");
-    if (descriptor?.set) {
-      descriptor.set.call(target, nextValue);
-    } else {
-      target.value = nextValue;
-    }
-
-    const caret = start + value.length;
-    target.setSelectionRange?.(caret, caret);
-    target.dispatchEvent(
-      new InputEvent("input", { bubbles: true, data: value, inputType: "insertText" })
+    const characters = [...value];
+    const gap = Math.min(
+      CHARACTER_PAUSE_MS,
+      Math.floor(ENTRY_BUDGET_MS / Math.max(characters.length, 1))
     );
+    for (let index = 0; index < characters.length; index += 1) {
+      if (target.disabled || target.readOnly) {
+        // The field closed under us part-way through. Stop rather than write
+        // into something that has stopped accepting input.
+        return { ok: false, code: "field-not-editable" };
+      }
+      writeCharacter(target, characters[index]);
+      if (gap > 0 && index < characters.length - 1) {
+        await pause(gap);
+      }
+    }
     return { ok: true, code: "native-input" };
   }
 
@@ -307,7 +351,7 @@ var ethnosHawkes = (function () {
    *
    * @returns {{ok: boolean, code: string}}
    */
-  function insertAnswer(value) {
+  async function insertAnswer(value) {
     if (!originAllowed()) {
       return { ok: false, code: "wrong-site" };
     }
@@ -325,6 +369,7 @@ var ethnosHawkes = (function () {
       return { ok: false, code: "no-focused-answer-field" };
     }
     if (isNativeField(target)) {
+      // Returns a promise: entry is paced, and `executeScript` awaits it.
       return insertIntoNativeField(target, value);
     }
     if (target.isContentEditable || target.getAttribute("role") === "textbox") {

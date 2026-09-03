@@ -215,7 +215,7 @@ async function runInjection(injection) {
  * immediately beforehand; neither it nor this function is visible to page
  * JavaScript.
  */
-function enterPlainAnswer(answer) {
+async function enterPlainAnswer(answer) {
   if (typeof ethnosHawkes === "undefined") {
     return { ok: false, code: "prelude-missing" };
   }
@@ -225,7 +225,10 @@ function enterPlainAnswer(answer) {
   if (!ethnosHawkes.answerIsSupported(answer)) {
     return { ok: false, code: "answer-invalid" };
   }
-  const outcome = ethnosHawkes.insertAnswer(answer);
+  // Awaited: entry is paced character by character, so this is a promise.
+  // Read without awaiting, `outcome.ok` is undefined and every insertion
+  // reports a failure it did not have.
+  const outcome = await ethnosHawkes.insertAnswer(answer);
   return { ok: outcome.ok, code: outcome.code, answer };
 }
 

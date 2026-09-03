@@ -1325,3 +1325,41 @@ def test_a_panel_only_takes_focus_in_the_window_being_used():
     assert "document.hasFocus()" in focus_primary
     # Both places that take focus are guarded, not just the first.
     assert focus_primary.count("document.hasFocus()") == 2
+
+
+def test_the_answer_is_entered_one_character_at_a_time():
+    """A field driven by a framework re-renders on each input event, and that
+    work is asynchronous. The whole answer used to arrive as one assignment and
+    one event carrying a whole string -- not the shape such a field is built to
+    receive, and the likeliest reading of both the half-entered structured
+    answers of 0.19 and an unexplained failure at the write boundary seen live.
+    """
+    editor = (EXTENSION_DIR / "content" / "hawkes-editor.js").read_text()
+
+    assert "const CHARACTER_PAUSE_MS" in editor
+    assert "const ENTRY_BUDGET_MS" in editor      # a long answer is still bounded
+    assert "function writeCharacter(target, character)" in editor
+    entry = editor.split("async function insertIntoNativeField", 1)[1].split("\n  }\n", 1)[0]
+    assert "for (let index = 0" in entry
+    assert "writeCharacter(target, characters[index])" in entry
+    # The field closing part-way through stops the write rather than continuing.
+    assert "field-not-editable" in entry
+
+
+def test_the_paced_insertion_is_awaited_by_its_caller():
+    """`insertAnswer` returns a promise now. Read without awaiting, `outcome.ok`
+    is undefined and every insertion reports a failure it did not have."""
+    background = (EXTENSION_DIR / "background.js").read_text()
+
+    assert "async function enterPlainAnswer(answer)" in background
+    assert "await ethnosHawkes.insertAnswer(answer)" in background
+
+
+def test_entry_pacing_is_fixed_rather_than_shaped():
+    """Paced to what the editor absorbs, and nothing else. The add-on does not
+    conceal that it is the one typing, and a cadence tuned to resemble a person
+    would be exactly that -- it carries no reliability benefit."""
+    editor = (EXTENSION_DIR / "content" / "hawkes-editor.js").read_text()
+
+    for shaping in ("Math.random", "jitter", "humanize", "randomInt"):
+        assert shaping not in editor
