@@ -4,8 +4,10 @@
 
 **Browser present:** Firefox 154.0.1
 
-**Status:** release candidate is built and locally verified; Mozilla signing
-and the post-signature browser smoke test remain external release gates.
+**Status:** Mozilla signed and installed, but not released. Physical acceptance
+on 3 September 2026 found that pressing Solve again left the prior answer
+visible during the retry. The signed 0.38.0 artifact is retained for audit but
+must not be promoted; the correction begins the 0.38.1 source line.
 
 The candidate and its recorded hash are frozen. No further packaged-source
 edit or rebuild belongs to 0.38.0 unless AMO forces a change, in which case the
@@ -17,13 +19,16 @@ version and release evidence must be regenerated.
 |---|---|
 | Candidate artifact | `ethnos-hawkes-0.38.0-unsigned.xpi` |
 | Frozen candidate SHA-256 | `5308a5b1853b641050388e9d1be9d893def3d138bb1bd7c7f05140d353fdfdbf` |
+| Mozilla-signed artifact | `ethnos-hawkes-0.38.0-mozilla-signed.xpi` |
+| Mozilla-signed SHA-256 | `1adc0ef88015cc84811f2456f8f8a39054c1ec234ba4317940b973a6d2f82d3e` |
 | Build-time repository base | `e3477fe6327e66fb8ef1a4d626929f1d6b4ab9b2` |
 | Artifact-producing commit | None—the candidate was built from an uncommitted worktree, so inventing an ID would give false provenance |
 | Verified artifact-source snapshot | `06397109f52c3dfa68115f5d96d57e4acee72611` |
 | Post-freeze release-procedure commit | `384606c0067cbc17855b9943c7d3599d75ef4c83` |
 | Public privacy/support documentation commit | `a463b50f17b56e78157941411c3a61bcab593b0e` |
-| Candidate status | **release candidate complete** |
-| Remaining gate | Mozilla signing → normal Firefox install → documented non-submitting physical acceptance |
+| Candidate status | **not promoted—physical acceptance finding** |
+| Installed signed state | Firefox `signedState: 2`, version 0.38.0, active |
+| Remaining gate | Correct as 0.38.1 → rebuild and sign → repeat normal-Firefox physical acceptance |
 | Promotion rule | Only the Mozilla-signed artifact that passes physical acceptance becomes released 0.38.0 |
 
 Commit `0639710` was created after the build because the extension had never
@@ -44,9 +49,10 @@ dist/ethnos-hawkes-0.38.0-unsigned.xpi
 SHA-256 5308a5b1853b641050388e9d1be9d893def3d138bb1bd7c7f05140d353fdfdbf
 ```
 
-That file is suitable for temporary development loading or AMO upload. It is
-not represented as permanently installable in Firefox Release; Mozilla must
-sign it first.
+That unsigned file remains the byte-for-byte AMO input. Mozilla's returned
+signed artifact is retained separately at
+`dist/ethnos-hawkes-0.38.0-mozilla-signed.xpi`; it installed normally, but the
+physical-acceptance finding prevents promotion to a released version.
 
 ## Verification completed
 
@@ -60,6 +66,9 @@ sign it first.
 | XPI archive integrity | passed, 28 expected files |
 | Native installer isolated install/check/uninstall test | passed |
 | Installed native-host health request | passed end to end |
+| `web-ext` 10.6.0 lint under Node 22.23.2 | 0 errors; one reviewed Android-only minimum-version warning |
+| Mozilla unlisted signing and normal install | passed; signed artifact retained and hashed |
+| Signed-browser physical acceptance | **failed:** a retry displayed the prior answer while solving |
 | Firefox version vs minimum 140 | Firefox 154.0.1 satisfies it |
 
 The generated native files are:
@@ -109,24 +118,20 @@ See [Hawkes E2E proof](HAWKES_E2E_PROOF.md) and
 [editor findings](HAWKES_EDITOR_FINDINGS.md) for the captured reasoning and
 editor protocol.
 
-## Remaining release gates
+## Physical-acceptance finding and next gate
 
-1. On the signing environment, install web-ext 10 under Node.js 22 or newer and
-   run official `web-ext lint --warnings-as-errors` against an unpacked copy of
-   the frozen candidate. Node and npm are not installed on this machine, so
-   this was not silently substituted with the repository validator.
-2. Upload that exact frozen candidate for AMO unlisted/self-distributed
-   signing, provide the published privacy-policy URL, and resolve AMO
-   validation/review findings. `web-ext sign` supports initial unlisted
-   submissions, but Developer Hub upload avoids repackaging this frozen file.
-3. Restart Firefox, install the Mozilla-signed result through `about:addons`,
-   record its separate SHA-256, and run **Test connection**.
-4. Run the complete manual protocol in `extension/TESTING.md`, especially the
-   new fail-closed screenshot-region check, against a permitted practice
-lesson without submitting work.
+The installed Mozilla-signed 0.38.0 panel correctly recognized Question 5,
+Step 2 and produced `14`. Pressing Solve again began a real three-pass local
+solve, but the panel continued to display `14` while reporting Solving. Even
+though the answer happened to remain correct for that retry, presenting an old
+result as current work is ambiguous and fails the professional-release bar.
 
-0.38.0 is called **released** only after those signed-artifact physical
-acceptance checks pass. Its current state is **release candidate complete**.
+Version 0.38.1 clears answer, recognized-problem, and source state at retry
+start in both the event page and optimistic panel render. The independent panel
+view also suppresses any answer carried by delayed running state. The remaining
+gate is a new 0.38.1 package/sign/install cycle followed by the complete
+existing-normal-Firefox protocol in `extension/TESTING.md`, without submitting
+work during the acceptance actions.
 
 Hawkes can change its private editor markup independently of this project, so
 the live protocol remains a release gate for every version even when all local

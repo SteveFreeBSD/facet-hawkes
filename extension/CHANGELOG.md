@@ -3,6 +3,16 @@
 All notable changes to the Ethnos Hawkes Assistant add-on. Versions follow
 `major.minor.patch` as required by the Firefox manifest.
 
+## 0.38.1
+
+### Fixed
+
+- Pressing Solve again now clears the previous answer, recognized problem, and
+  source immediately in both the panel and event page. A slow or failed retry
+  can no longer display an old result as though it belongs to work still in
+  progress. The panel view also suppresses answer text while solving as a
+  defense against delayed state updates.
+
 ## 0.38.0
 
 ### Changed

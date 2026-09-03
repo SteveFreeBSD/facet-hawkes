@@ -684,7 +684,20 @@ async function solve() {
     solveTimeoutSeconds: settings.solveTimeoutSeconds,
     cropCapture: settings.cropCapture,
   });
-  update({ phase: "solving", startedAt: Date.now(), detail: "", errorKey: "" });
+  // A retry must not keep presenting the previous result while new work is in
+  // flight. Apart from being confusing, a failed retry used to leave that old
+  // answer beside the failure and make it look usable for the current read.
+  update({
+    phase: "solving",
+    startedAt: Date.now(),
+    answer: "",
+    displayText: "",
+    entryText: "",
+    problemText: "",
+    source: "",
+    detail: "",
+    errorKey: "",
+  });
 
   try {
     // Confirm Ethnos is even installed before spending a minute on a capture.

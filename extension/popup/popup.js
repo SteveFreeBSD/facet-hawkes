@@ -304,7 +304,10 @@ async function toggleSolve() {
   if (!request("ethnos:solve")) {
     return;
   }
+  // Match the background immediately: a retry is new work, so an old answer
+  // must not remain visible while the panel waits for the first state update.
   render({ ...current, phase: "solving", startedAt: Date.now(), errorKey: "", detail: "",
+           answer: "", displayText: "", entryText: "", problemText: "", source: "",
            stage: "checking-host" });
 }
 

@@ -126,7 +126,9 @@ export function describeView(state, now = 0) {
 
   // Always the readable form. What can be typed is decided separately, and an
   // answer you must enter by hand still has to be legible.
-  const shown = state.displayText || state.answer || "";
+  // Defense in depth: even a delayed or older event page must never make a
+  // prior result look current while a fresh solve is running.
+  const shown = running ? "" : state.displayText || state.answer || "";
 
   /** @type {PanelView} */
   const view = {
