@@ -131,6 +131,29 @@ contain Mozilla signature metadata under `META-INF/`, and its SHA-256 will
 naturally differ from the unsigned candidate. Retain both artifacts and both
 hashes in the release record.
 
+## Signed 0.39.2 artifact
+
+Mozilla returned the signed archive on 3 September 2026. Both artifacts and
+both hashes are retained together, as this runbook requires:
+
+```text
+candidate  dist/ethnos-hawkes-0.39.2-unsigned.xpi
+SHA-256    57e0ac32081a038110b2ac5d439b26035fe074e522131ebe01523cbbb3fe55b7
+
+signed     bd61a7d54aca41af9bb8-0.39.2.xpi
+SHA-256    88b6a002b877450601f7f03c1e462d2bcfb379a1a0b84266e040da5aa6670d26
+```
+
+Verified against the candidate: the same 28 files, plus signature metadata
+under `META-INF/` (`cose.manifest`, `cose.sig`, `manifest.mf`, `mozilla.sf`,
+`mozilla.rsa`). Every packaged file is byte-identical except `manifest.json`,
+which AMO returns with its trailing newline stripped — one byte, and
+semantically the same document. Version, id, minimum version and the
+`websiteContent` declaration all match what was submitted.
+
+Status: **signed, pending physical acceptance.** The live checks below have not
+yet run against this artifact.
+
 ## 4. Permanent installation
 
 Physical acceptance uses the owner's **direct Hawkes login**. Never start a
