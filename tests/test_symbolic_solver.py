@@ -646,6 +646,56 @@ def test_evaluation_declines_when_the_named_variable_is_not_the_one_present():
     )
 
 
+def test_plain_sqrt_syntax_is_a_root_not_four_implicit_variables():
+    """H1: `sqrt(9)` was parsed as `s*q*r*t*(9)` and answered `9qrst`."""
+    result = answer_symbolic_math(
+        problem_text="Simplify the expression.", expressions=["2sqrt(9)"]
+    )
+
+    assert result is not None
+    assert extract_final_math(result.raw_response) == "6"
+
+
+def test_evaluation_consumes_signed_decimal_substitutions_completely():
+    """H2: the old match stopped `-2.5` after `-2`, yielding 4, not 25/4."""
+    for value, expected in (("-2.5", r"\frac{25}{4}"), ("+1.5", r"\frac{9}{4}")):
+        result = answer_symbolic_math(
+            problem_text=f"Evaluate the polynomial for x = {value}.",
+            expressions=["x^2"],
+        )
+
+        assert result is not None, value
+        assert extract_final_math(result.raw_response) == expected
+
+
+def test_bare_polynomial_evaluate_declines_without_a_substitution():
+    """H3: formatting changes must not disguise missing evaluation data."""
+    assert _requested_operation("Evaluate the polynomial.") is None
+    assert (
+        answer_symbolic_math(
+            problem_text="Evaluate the polynomial.",
+            expressions=["x^2+2*x+1"],
+        )
+        is None
+    )
+
+
+def test_simplify_declines_cosmetic_no_ops():
+    """M3: removing `*` or redundant parentheses is not a solved exercise."""
+    for expression in ("x*y", "(x + 1)", "sqrt(x + 1)"):
+        assert (
+            answer_symbolic_math(
+                problem_text="Simplify the expression.", expressions=[expression]
+            )
+            is None
+        )
+
+
+def test_prompt_prose_is_never_used_as_an_expression_candidate():
+    """M4: prose letters must not become a product of one-letter variables."""
+    assert answer_symbolic_math(problem_text="Simplify x + x.", expressions=[]) is None
+
+
 def test_a_prime_polynomial_is_answered_when_the_question_offers_that_answer():
     """Live: lesson 1.3 question 9, `y^2 + y + 17`.
 

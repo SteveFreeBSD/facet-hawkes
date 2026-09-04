@@ -193,7 +193,7 @@ def solve_symbolic_operation(
         if (
             not ordering
             and operation not in EXTRACTION
-            and _compact(original_text) == _compact(answer_text)
+            and _same_expression_text(original_text, answer_text)
         ):
             # Factoring is the one rewriting whose input can be its answer: a
             # prime polynomial has no factorization, and these questions say so
@@ -232,7 +232,7 @@ def _assume_positive(problem_text: str, candidate: str, operation: str) -> bool:
         return False
     if operation != "simplify":
         return True
-    if not re.search(r"\\sqrt|[√∛∜]|\*\*\(1/", candidate):
+    if not re.search(r"\\sqrt|\bsqrt\s*\(|[√∛∜]|\*\*\(1/", candidate):
         return False
     # An even index is the one case where the assumption changes the answer.
     # The fourth root of y^20 is |y|^5, not y^5: the two differ in sign for
@@ -277,7 +277,7 @@ def _has_even_index_radical(candidate: str) -> bool:
         if int(index) % 2 == 0:
             return True
     # A square root written without an index, and the two-character radicals.
-    if re.search(r"\\sqrt(?!\[)|√", candidate):
+    if re.search(r"\\sqrt(?!\[)|\bsqrt\s*\(|√", candidate):
         return True
     if "∜" in candidate:
         return True
@@ -388,15 +388,16 @@ def _requested_operation(problem_text: str) -> str | None:
     # operation; missing the adjective sent a deterministic radical down the
     # slow fallback path and then reported it unsupported.
     #
-    # "Evaluate" with nothing to substitute is that same request. Lesson 1.5
-    # question 5 says "Evaluate the following square root expression." over
-    # √-27, which SymPy answers exactly and instantly. The substitution-gated
-    # `evaluate` branch above declines it -- rightly, there is no value to put
-    # in -- and before this nothing further matched, so a question whose
-    # MathML had already been read exactly was handed to the vision model
-    # anyway. It came back as `3i×sqrt(3)`: the escape text for the
-    # multiplication sign, which no answer box will ever accept.
-    if re.search(r"\b(?:simplif(?:y|ied|ication)|evaluat\w*)\b", lowered):
+    if re.search(r"\bsimplif(?:y|ied|ication)\b", lowered):
+        return "simplify"
+    # Lesson 1.5 question 5 says "Evaluate the following square root
+    # expression" over √-27. That is an explicit radical evaluation, not a
+    # polynomial substitution, and SymPy can answer it exactly. Do not broaden
+    # this exception to bare "evaluate": without either a substitution above
+    # or a named radical operation, the required evaluation data is absent.
+    if re.search(r"\bevaluat\w*\b", lowered) and re.search(
+        r"\b(?:radical|(?:square|cube|fourth)\s+root|root\s+expression)\b", lowered
+    ):
         return "simplify"
     return None
 
@@ -418,20 +419,25 @@ def _substitution(lowered: str) -> tuple[str, str] | None:
     Without one there is nothing to evaluate, and claiming the question would
     mean answering it with the polynomial itself.
     """
-    match = re.search(r"\b(?:for|when|at)\s+([a-z])\s*=\s*(-?\d+(?:/\d+)?)", lowered)
+    lowered = lowered.replace("−", "-").replace("–", "-")
+    number = r"[+-]?(?:(?:\d+(?:\.\d*)?|\.\d+)(?:/[+-]?\d+(?:\.\d*)?)?)"
+    match = re.search(
+        rf"\b(?:for|when|at)\s+([a-z])\s*=\s*({number})(?![A-Za-z0-9_/]|\.\d)",
+        lowered,
+    )
     return (match.group(1), match.group(2)) if match else None
 
 
 def _expression_candidates(problem_text: str, expressions: list[str]) -> list[str]:
+    # `problem_text` selects the requested operation; it is not mathematical
+    # input. Feeding its prose to the implicit-multiplication parser can turn
+    # words into products of one-letter variables ("Simplify x + x" used to
+    # become a large polynomial in S, i, m, ...). Only the separately extracted
+    # and verified expression payload is eligible here.
+    del problem_text
     candidates: list[str] = []
-    for value in [*expressions, *problem_text.splitlines()]:
+    for value in expressions:
         candidate = value.strip().strip("$`").rstrip(".,;")
-        candidate = re.sub(
-            r"^(?:factor|expand|find the product(?: of)?|multiply)\b[^:]*:\s*",
-            "",
-            candidate,
-            flags=re.IGNORECASE,
-        )
         if not re.search(r"[A-Za-z\d]", candidate):
             continue
         if not re.search(r"[+\-*/^()⁰¹²³⁴⁵⁶⁷⁸⁹]|\\sqrt|[√∛∜]", candidate):
@@ -488,8 +494,18 @@ def _python_expression(expression: str) -> str:
         normalized,
     )
     normalized = re.sub(r"\s+", "", normalized)
+    # Protect the only accepted plain-text function while implicit
+    # multiplication is inserted. Without this, `sqrt(9)` becomes
+    # `s*q*r*t*(9)` and is confidently evaluated as a product of variables.
+    sqrt_marker = "\N{SECTION SIGN}"
+    if sqrt_marker in normalized:
+        raise ValueError("expression contains unsupported characters")
+    normalized = re.sub(r"sqrt(?=\()", sqrt_marker, normalized)
+    normalized = re.sub(rf"(?<=[A-Za-z0-9)])(?={sqrt_marker})", "*", normalized)
+    normalized = re.sub(rf"(?<=\))(?={sqrt_marker})", "*", normalized)
     normalized = re.sub(r"(?<=\d)(?=[A-Za-z(])", "*", normalized)
     normalized = re.sub(r"(?<=[A-Za-z)])(?=[A-Za-z\d(])", "*", normalized)
+    normalized = normalized.replace(sqrt_marker, "sqrt")
     normalized = normalized.replace("^", "**")
     if not re.fullmatch(r"[A-Za-z0-9_+\-*/().]+", normalized):
         raise ValueError("expression contains unsupported characters")
@@ -515,6 +531,15 @@ def _evaluate(node: ast.AST, *, positive_symbols: bool = False) -> sympy.Expr:
     if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
         value = _evaluate(node.operand, positive_symbols=positive_symbols)
         return value if isinstance(node.op, ast.UAdd) else -value
+    if (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "sqrt"
+        and len(node.args) == 1
+        and not node.keywords
+    ):
+        value = _evaluate(node.args[0], positive_symbols=positive_symbols)
+        return value ** sympy.Rational(1, 2)
     if isinstance(node, ast.BinOp):
         left = _evaluate(node.left, positive_symbols=positive_symbols)
         right = _evaluate(node.right, positive_symbols=positive_symbols)
@@ -771,6 +796,40 @@ def _input_display(expression: str) -> str:
     value = value.replace("−", "-").replace("–", "-")
     value = re.sub(r"\^\{(-?\d+)\}", r"^\1", value)
     return re.sub(r"\s+", "", value)
+
+
+def _same_expression_text(original: str, answer: str) -> bool:
+    """Whether two displays differ only in mathematically empty typography.
+
+    SymPy omits explicit multiplication and redundant outer parentheses. Those
+    are display changes, not simplification: returning `xy` for `x*y`, or
+    `x + 1` for `(x + 1)`, falsely claims that the requested work was done.
+    """
+
+    def cosmetic(value: str) -> str:
+        value = _compact(value).replace(r"\cdot", "*").replace("**", "^")
+        for _ in range(3):
+            value = re.sub(r"\\sqrt\{([^{}]+)\}", r"sqrt(\1)", value)
+            value = re.sub(r"√\(([^()]*)\)", r"sqrt(\1)", value)
+            value = re.sub(r"√([A-Za-z0-9]+)", r"sqrt(\1)", value)
+        value = value.replace("·", "*").replace("×", "*").replace("*", "")
+        while value.startswith("(") and value.endswith(")"):
+            depth = 0
+            wraps_whole_value = True
+            for index, character in enumerate(value):
+                if character == "(":
+                    depth += 1
+                elif character == ")":
+                    depth -= 1
+                    if depth == 0 and index != len(value) - 1:
+                        wraps_whole_value = False
+                        break
+            if not wraps_whole_value or depth != 0:
+                break
+            value = value[1:-1]
+        return value
+
+    return cosmetic(original) == cosmetic(answer)
 
 
 def _compact(value: str) -> str:
