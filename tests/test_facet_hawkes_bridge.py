@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import pytest
 
+from ethnos import hawkes_host
 from ethnos.facet_client import (
     FacetExecutionError,
     FacetProtocolError,
@@ -213,13 +214,22 @@ def test_a_facet_failure_is_reported_and_never_answered_locally(
     monkeypatch, failure
 ) -> None:
     answering(monkeypatch, failure)
-    monkeypatch.setattr(
-        "ethnos.hawkes_host._solve_from_markup",
-        lambda *_args: pytest.fail("a Facet failure fell back to the local solver"),
-    )
+    # The exact solvers run once, ahead of Facet, and decline this question.
+    # The invariant is what happens after Facet fails: nothing may answer in
+    # its place, because a substituted answer would carry a provenance nobody
+    # asked for. Counting the calls says both things at once.
+    attempts = []
+    real = hawkes_host._solve_from_markup
+
+    def counting(instruction, markup):
+        attempts.append(instruction)
+        return real(instruction, markup)
+
+    monkeypatch.setattr("ethnos.hawkes_host._solve_from_markup", counting)
 
     response = handle(request())
 
+    assert len(attempts) == 1, "the local solver ran again after Facet failed"
     assert response.status == "error"
     assert response.answer is None
     assert response.certainty is None
@@ -249,3 +259,85 @@ def test_an_unwanted_origin_never_reaches_facet(monkeypatch) -> None:
 
     assert response.status == "error"
     assert "origin is not allowed" in response.message
+
+
+# Markup taken from a live lesson, and already answered exactly. Facet must
+# never see it: a checkable millisecond is not worth trading for a second.
+RATIONAL_EXPONENTS = (
+    "<math><mstyle>"
+    "<msup><mi>y</mi><mfrac><mn>3</mn><mn>4</mn></mfrac></msup>"
+    "<mo>⋅</mo>"
+    "<msup><mi>y</mi><mfrac><mn>3</mn><mn>5</mn></mfrac></msup>"
+    "</mstyle></math>"
+)
+#: (x + 1) / (x^2 - 9), as MathJax leaves it in the page. "Find the domain"
+#: matches no exact operation, so this is the shape that costs a screenshot,
+#: two vision readings and the better part of a minute today.
+DOMAIN_RATIONAL = (
+    "<math><mrow><mfrac>"
+    "<mrow><mi>x</mi><mo>+</mo><mn>1</mn></mrow>"
+    "<mrow><msup><mi>x</mi><mn>2</mn></msup><mo>−</mo><mn>9</mn></mrow>"
+    "</mfrac></mrow></math>"
+)
+DOMAIN_INSTRUCTION = (
+    "Find the domain of the following function. Write your answer in interval notation."
+)
+
+
+def test_an_exactly_solvable_question_never_reaches_facet(monkeypatch) -> None:
+    """SymPy keeps what it can answer, even when the browser chose Facet.
+
+    Choosing the Facet engine chooses where the *remainder* goes. It does not
+    buy a model's opinion of a question that exact mathematics already settles
+    in a millisecond, and settles checkably.
+    """
+    monkeypatch.setattr(
+        "ethnos.facet_client.generate_text",
+        lambda *_a, **_k: pytest.fail("an exactly solvable question reached Facet"),
+    )
+
+    response = handle(
+        request(
+            mathml=[RATIONAL_EXPONENTS],
+            instruction="Simplify. Express your answer using rational exponents.",
+        )
+    )
+
+    assert response.status == "ready"
+    assert response.answer.display_text == "y^(27/20)"
+    # Reported as the exact reading it was, not as a Facet run.
+    assert response.certainty.source == "markup"
+    assert response.certainty.transcription == "exact"
+    assert response.certainty.insertable is True
+    assert response.certainty.model is None
+
+
+def test_facet_answers_the_question_that_falls_past_the_exact_solver(
+    monkeypatch,
+) -> None:
+    """The live shape: exact path declines, Facet reasons, no screenshot."""
+    seen = answering(
+        monkeypatch,
+        facet_result(text="FINAL ANSWER: (-∞,-3)∪(-3,3)∪(3,∞)"),
+    )
+
+    response = handle(request(mathml=[DOMAIN_RATIONAL], instruction=DOMAIN_INSTRUCTION))
+
+    # Ethnos handed Facet the exact expression off the page. Nothing was
+    # transcribed, and no picture was taken.
+    assert "\\frac{x+1}{x^2-9}" in seen["prompt"]
+    assert DOMAIN_INSTRUCTION in seen["prompt"]
+    assert response.status == "ready"
+    assert response.answer.display_text == "(-∞,-3)∪(-3,3)∪(3,∞)"
+    assert response.certainty.source == "Facet · GPU"
+    assert response.certainty.insertable is True
+
+
+def test_the_question_label_reaches_facet_when_the_page_supplied_one() -> None:
+    """The label is the only thing separating two steps of one problem."""
+    labelled = _facet_prompt("Simplify.", ["x^2"], label="Question 4 of 12")
+    plain = _facet_prompt("Simplify.", ["x^2"])
+
+    assert "Question: Question 4 of 12" in labelled
+    # A page that supplied no label adds no empty line to the prompt.
+    assert "Question:" not in plain

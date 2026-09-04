@@ -85,6 +85,26 @@ client knows how to read, and that is a compatible change rather than a failed
 solve. Adding a request field, an operation, or a constraint is not compatible
 and moves the version.
 
+## When Ethnos asks Facet
+
+Choosing the Facet engine chooses where the *remainder* of a lesson goes, not
+where all of it goes. Ethnos reads the page's MathML, runs the exact solvers
+over it, and answers from them whenever they can answer: that path costs a
+millisecond, needs no accelerator and no network, and produces a result that is
+checkable rather than merely plausible. Trading it for a model would be the
+wrong trade on exactly the questions least in need of one.
+
+Facet is asked only about what genuinely falls past those solvers -- a prompt
+whose verb matches no exact operation, or one where SymPy declines. Those are
+the questions that otherwise cost a screenshot, two independent vision
+readings, and the better part of a minute. Ethnos hands over the instruction
+and the exact expressions it already holds, so nothing is transcribed and no
+picture is taken; the answer comes back through the same validation, the same
+provenance, and the same insertion policy as any other.
+
+A Facet failure at that point is reported as a failure. The exact solvers have
+already declined, and nothing else may answer in their place.
+
 ## Security properties
 
 - **Constrained SSH.** One fixed argv: `BatchMode` refuses to prompt for a

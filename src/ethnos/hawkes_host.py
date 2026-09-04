@@ -230,10 +230,19 @@ def solve(request: SolveRequest, report=None) -> SolveResponse:
     )
 
 
-def _facet_prompt(instruction: str, expressions: list[str]) -> str:
+def _facet_prompt(instruction: str, expressions: list[str], *, label: str = "") -> str:
+    """State the question in the terms Ethnos already holds exactly.
+
+    Every part of this came off the page as markup, so nothing here is a
+    transcription and none of it needed a picture. The question's own label is
+    context rather than instruction: it is sometimes the only thing that
+    distinguishes one step of a problem from the next.
+    """
     rendered = "\n".join(f"- {expression}" for expression in expressions)
+    heading = f"Question: {label.strip()}\n" if label.strip() else ""
     return (
         "Solve this Hawkes precalculus question.\n"
+        f"{heading}"
         f"Instruction: {instruction}\n"
         f"Expression(s):\n{rendered}\n"
         "Your entire response must be one line beginning with the exact words "
@@ -246,6 +255,15 @@ def _facet_prompt(instruction: str, expressions: list[str]) -> str:
 def _solve_with_facet(
     request: SolveRequest, instruction: str, prompt_seen: bool, announce
 ) -> SolveResponse:
+    """Exact mathematics first, then Facet for what genuinely falls past it.
+
+    Facet is the reasoning fallback, not a replacement for the exact solvers.
+    Anything SymPy can settle is settled here, in milliseconds, with no model,
+    no accelerator and no network -- and its answer is checkable rather than
+    merely plausible. Facet is asked only about the questions that would
+    otherwise cost a screenshot, two vision readings, and the better part of a
+    minute, which is the one place a reasoning model is worth its latency.
+    """
     from .answer_image import extract_final_math, keyboard_entry_for_math
     from .facet_client import FacetError, generate_text, safe_request_id
     from .hawkes_mathml import UnsupportedMathML, mathml_to_latex
@@ -274,13 +292,36 @@ def _solve_with_facet(
         )
 
     announce("reading", "exact page markup")
-    announce("solving", "Facet")
+    announce("solving", "exact solver")
+    # The deterministic path keeps everything it can answer. Sending one of
+    # these to Facet would trade a checkable millisecond for an unverifiable
+    # second, and would do it on exactly the questions least in need of a
+    # model. The engine the browser chose decides where the *rest* goes.
+    exact, decline = _solve_from_markup(instruction, problem.mathml)
+    if exact is not None:
+        return SolveResponse(
+            request_id=request.request_id,
+            status="ready",
+            problem_text=instruction,
+            answer=exact,
+            certainty=Certainty(
+                prompt_seen=prompt_seen,
+                source="markup",
+                transcription="exact",
+                insertable=True,
+                issues=[],
+            ),
+        )
+
+    # Past the exact solvers. `decline` names which of the two gaps this was,
+    # which is the thing a live fallback otherwise cannot tell you.
+    announce("solving", f"Facet ({decline})")
     # A need, not a device. Ethnos requires accelerated execution and refuses a
     # fallback; which accelerator satisfies that is Facet's to decide and
     # Facet's to report, so nothing here assumes a GPU or a particular host.
     try:
         result = generate_text(
-            _facet_prompt(instruction, expressions),
+            _facet_prompt(instruction, expressions, label=problem.question_label),
             request_id=safe_request_id(request.request_id),
             accelerator_required=True,
             allow_fallback=False,
