@@ -18,17 +18,24 @@ The agent begins with one command:
 
 ```console
 $ python3 scripts/inspect_live_firefox.py inspect
+$ python3 scripts/inspect_live_firefox.py inspect --match hawkes
 ```
 
 That command:
 
-- finds exactly one existing normal Firefox window and fails closed otherwise;
+- picks the Firefox window to look at — `--match` names it by a substring of
+  its title, and without that it needs exactly one window and lists the
+  captions it found so you can choose;
 - confirms the installed extension version, enabled state, and signing state;
-- briefly focuses Firefox, captures only that window through KDE Spectacle,
-  and restores the previously active window;
+- briefly focuses that window, captures only it through KDE Spectacle, and
+  restores the previously active window;
 - reports whether the native host is currently running;
 - never launches Firefox, opens a URL, changes a profile, reads browser
   history, or sends input to Hawkes.
+
+The owner having several Firefox windows open is normal and is not a reason to
+stop; name the one you mean. Ambiguity still fails closed, because focusing and
+photographing the wrong window is both useless and an intrusion.
 
 Inspect the reported PNG locally, then delete it because it contains
 coursework. Use `status` when no screenshot is needed and `shot` for another
@@ -38,6 +45,11 @@ visual check:
 $ python3 scripts/inspect_live_firefox.py status
 $ python3 scripts/inspect_live_firefox.py shot
 ```
+
+Often no screenshot is needed at all. `scripts/read_extension_log.py` decodes
+the add-on's own diagnostic ring out of a throwaway copy of the profile
+database, which is safe while Firefox is running and says more about a failed
+solve than a picture does.
 
 The live loop is deliberately short:
 
@@ -51,9 +63,9 @@ The live loop is deliberately short:
 6. Record pass/fail and remove the temporary screenshot.
 
 This mode is visual and process-level inspection. A normal Firefox that was
-not launched with a remote-control server cannot safely acquire full DOM
-automation halfway through a session. Do not solve that limitation by
-restarting it, changing its profile, or opening a competing browser.
+not launched with a remote-control server cannot acquire full DOM automation
+halfway through a session. Do not solve that limitation by restarting it or
+changing its profile — reach for mode B's separate browser instead, or ask.
 
 ## B. Isolated Marionette Firefox — automated development only
 
@@ -62,18 +74,26 @@ separate throwaway Firefox profile with remote automation enabled. They are
 for local fixtures and invasive editor development—not the owner's current
 session and not signed-artifact physical acceptance.
 
-Use this mode only when the owner explicitly authorizes a separate automated
-browser and no live-session instruction conflicts with it. Label its evidence
-as isolated-harness evidence; never present it as proof that the signed XPI
-works in the normal profile.
+They run headless on a throwaway profile, so they may be used while the owner's
+session is open: they are a different browser and cannot reach it. The earlier
+rule against that came from a real incident — under Wayland, `xvfb-run` alone
+does not isolate Firefox and the harness opened windows over the owner's
+screen. Headless removed the cause; the launcher still drops the Wayland handle.
+
+Label their evidence as isolated-harness evidence. It proves the code works,
+never that the signed XPI works in the owner's normal profile, which is a
+separate claim that only mode A can support.
 
 ## Decision rule
 
 ```text
-Owner's real Hawkes session or signed release test?
-  yes -> inspect_live_firefox.py; never start or navigate Firefox
-  no  -> local fixture automation may use the isolated Marionette harness
+A claim about the owner's real session or the signed artifact?
+  yes -> mode A. Inspect it; do not restart, re-profile, or navigate it.
+  no  -> mode B is free to use, live session open or not.
 ```
 
-If there is any doubt, stay in mode A. Capturing too little is recoverable;
-launching the wrong browser or authentication flow disrupts the test.
+Mode A's caution is about the owner's session and their coursework, not about
+looking. Look freely: focus a window to capture it, read the log, re-run a
+solve, exercise the panel. What stays off limits is navigating away from the
+question under investigation, restarting or re-profiling their browser, and
+pressing Hawkes Submit/Check/Next — which spends a graded attempt.

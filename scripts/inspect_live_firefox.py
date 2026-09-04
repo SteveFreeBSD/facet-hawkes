@@ -3,19 +3,25 @@
 
 This is the normal-profile counterpart to ``scripts/live_browser.py``.
 It never launches Firefox, opens a URL, changes a profile, or sends page input.
-On KDE Wayland it can briefly focus the one existing Firefox window, capture
-that window through Spectacle, and restore whichever window was active.
+On KDE Wayland it can briefly focus an existing Firefox window, capture that
+window through Spectacle, and restore whichever window was active.
 
     python3 scripts/inspect_live_firefox.py status
     python3 scripts/inspect_live_firefox.py shot
     python3 scripts/inspect_live_firefox.py inspect
+    python3 scripts/inspect_live_firefox.py inspect --match hawkes
 
 ``inspect`` prints status and takes a screenshot. Screenshots default to /tmp;
 inspect them locally, then delete them because a Hawkes page is coursework.
+
+More than one Firefox window open is ordinary. ``--match`` names which one by a
+case-insensitive substring of its title; without it the command needs exactly
+one and reports the captions it found.
 """
 
 from __future__ import annotations
 
+import argparse
 import configparser
 import json
 import os
@@ -135,17 +141,42 @@ for (const window of workspace.windowList()) {{
     return windows
 
 
-def _one_firefox_window(windows: list[dict[str, object]]) -> dict[str, object]:
+def _one_firefox_window(
+    windows: list[dict[str, object]], match: str | None = None
+) -> dict[str, object]:
+    """The Firefox window to inspect.
+
+    Several Firefox windows open at once is ordinary -- the owner has the
+    question under investigation in one and their own browsing in another --
+    so `match` names which is meant by a case-insensitive substring of the
+    caption. Ambiguity still fails closed: focusing and photographing the wrong
+    window is both useless and an intrusion.
+    """
     matches = [
         window
         for window in windows
         if str(window.get("resourceClass", "")).lower() == FIREFOX_CLASS
         and window.get("normalWindow")
     ]
+    if match:
+        wanted = match.casefold()
+        narrowed = [
+            window
+            for window in matches
+            if wanted in str(window.get("caption", "")).casefold()
+        ]
+        if len(narrowed) != 1:
+            captions = [str(window.get("caption", "")) for window in matches]
+            raise InspectionError(
+                f"expected exactly one Firefox window matching {match!r}, "
+                f"found {len(narrowed)} among {captions}"
+            )
+        return narrowed[0]
     if len(matches) != 1:
         captions = [str(window.get("caption", "")) for window in matches]
         raise InspectionError(
-            f"expected exactly one normal Firefox window, found {len(matches)}: {captions}"
+            f"expected exactly one normal Firefox window, found {len(matches)}: "
+            f"{captions}; pass --match with part of the title to choose one"
         )
     return matches[0]
 
@@ -279,9 +310,9 @@ def _matching_processes(needles: tuple[str, ...]) -> list[dict[str, object]]:
     return sorted(found, key=lambda item: int(item["pid"]))
 
 
-def status() -> dict[str, object]:
+def status(match: str | None = None) -> dict[str, object]:
     windows = _kwin_windows()
-    firefox = _one_firefox_window(windows)
+    firefox = _one_firefox_window(windows, match)
     active = next((window for window in windows if window.get("active")), None)
     return {
         "mode": "existing-normal-firefox-read-only",
@@ -299,11 +330,11 @@ def status() -> dict[str, object]:
     }
 
 
-def shot(output: Path | None = None) -> Path:
-    """Capture the one Firefox window and restore the previous active window."""
+def shot(output: Path | None = None, match: str | None = None) -> Path:
+    """Capture the chosen Firefox window and restore the previous active one."""
     _require_commands("spectacle")
     windows = _kwin_windows()
-    firefox = _one_firefox_window(windows)
+    firefox = _one_firefox_window(windows, match)
     previous = next((window for window in windows if window.get("active")), None)
     if output is None:
         descriptor, name = tempfile.mkstemp(
@@ -337,19 +368,26 @@ def shot(output: Path | None = None) -> Path:
 
 
 def main() -> int:
-    if len(sys.argv) not in (2, 3) or sys.argv[1] not in {"status", "shot", "inspect"}:
-        print(
-            f"usage: {sys.argv[0]} {{status|shot [output.png]|inspect}}",
-            file=sys.stderr,
-        )
-        return 2
-    command = sys.argv[1]
+    parser = argparse.ArgumentParser(
+        description="Inspect the owner's running Firefox without driving it."
+    )
+    parser.add_argument("command", choices=("status", "shot", "inspect"))
+    parser.add_argument(
+        "output", nargs="?", type=Path, help="screenshot path (shot/inspect)"
+    )
+    parser.add_argument(
+        "--match",
+        help=(
+            "part of the window title, when more than one Firefox window is "
+            "open (case-insensitive)"
+        ),
+    )
+    arguments = parser.parse_args()
     try:
-        if command in {"status", "inspect"}:
-            print(json.dumps(status(), indent=2))
-        if command in {"shot", "inspect"}:
-            target = Path(sys.argv[2]) if len(sys.argv) == 3 else None
-            print(f"screenshot: {shot(target)}")
+        if arguments.command in {"status", "inspect"}:
+            print(json.dumps(status(arguments.match), indent=2))
+        if arguments.command in {"shot", "inspect"}:
+            print(f"screenshot: {shot(arguments.output, arguments.match)}")
             print("delete the screenshot after inspection; it may contain coursework")
     except (InspectionError, subprocess.SubprocessError, OSError) as error:
         print(f"inspection refused: {error}", file=sys.stderr)

@@ -31,9 +31,38 @@ def test_exactly_one_normal_firefox_window_is_accepted():
 
 
 @pytest.mark.parametrize("windows", [[], [window("firefox"), window("firefox")]])
-def test_zero_or_multiple_firefox_windows_fail_closed(windows):
+def test_an_unnamed_target_among_zero_or_many_fails_closed(windows):
     with pytest.raises(MODULE.InspectionError, match="exactly one"):
         MODULE._one_firefox_window(windows)
+
+
+def test_the_window_to_inspect_can_be_named_when_several_are_open():
+    """The owner having their own browsing open beside the question is normal.
+
+    Refusing outright made the supported entry point unusable in exactly the
+    situation it exists for, and the way round it was to stop looking.
+    """
+    hawkes = window("firefox", caption="Lesson 1.5 | Hawkes Learning — Mozilla Firefox")
+    windows = [window("firefox", caption="Minisforum HX 370 — Mozilla Firefox"), hawkes]
+
+    assert MODULE._one_firefox_window(windows, "hawkes") is hawkes
+    # Case-insensitive, and any distinguishing part of the title will do.
+    assert MODULE._one_firefox_window(windows, "Lesson 1.5") is hawkes
+
+
+def test_a_name_matching_more_than_one_window_still_fails_closed():
+    """Focusing and photographing the wrong window is useless and an intrusion,
+    so ambiguity is refused rather than guessed at."""
+    windows = [
+        window("firefox", caption="Hawkes Learning — one"),
+        window("firefox", caption="Hawkes Learning — two"),
+    ]
+
+    with pytest.raises(MODULE.InspectionError, match="matching 'hawkes'"):
+        MODULE._one_firefox_window(windows, "hawkes")
+
+    with pytest.raises(MODULE.InspectionError, match="matching 'absent'"):
+        MODULE._one_firefox_window(windows, "absent")
 
 
 def test_a_non_normal_firefox_surface_is_not_a_browser_target():
