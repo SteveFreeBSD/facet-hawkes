@@ -595,6 +595,10 @@ def _solve_from_markup(
     if realness is not None:
         return realness, ""
 
+    rational = _rational_equation_answer(instruction, expressions)
+    if rational is not None:
+        return rational, ""
+
     result = answer_symbolic_math(problem_text=instruction, expressions=expressions)
     if result is None:
         result = answer_polynomial_product(f"{instruction}\n{expressions[0]}")
@@ -633,6 +637,52 @@ def _polynomial_classification(
             )
         return AnswerPayload(display_text="Polynomial", keyboard_entry="Polynomial")
     return None
+
+
+def _rational_equation_answer(
+    instruction: str, expressions: list[str]
+) -> AnswerPayload | None:
+    """Solve an equation whose unknown sits in a denominator.
+
+    The polynomial path cannot take this shape at all: `sympy.Poly` refuses a
+    generator raised to a negative power, and `1/x` is exactly that. So every
+    solve route declined and the question fell through to a model -- which, on
+    `1/x + 1/(x+2) = 3/4`, twice produced nothing at all and once produced a
+    confident "No solution" for an equation with two roots.
+
+    Only the shape is claimed here, never the instruction alone: the equation
+    must genuinely divide by the unknown, so this cannot take a question the
+    linear, quadratic or absolute-value solvers own.
+    """
+    from .answer_image import keyboard_entry_for_math
+    from .symbolic_solver import solve_rational_equation
+
+    if not re.search(r"\bsolve\b", instruction, re.IGNORECASE):
+        return None
+    if len(expressions) != 1:
+        return None
+    result = solve_rational_equation(
+        expressions[0], variable=answer_prefix(instruction) or None
+    )
+    if result is None:
+        return None
+    if not result.solutions:
+        # "No Solution" and "Infinite Solutions" are answers Hawkes offers as
+        # words, and they are typed as written rather than converted.
+        return AnswerPayload(
+            display_text=result.classification,
+            keyboard_entry=result.classification,
+        )
+    entries = [keyboard_entry_for_math(value) for value in result.solutions]
+    if len(entries) == 1:
+        return AnswerPayload(
+            display_text=result.display_text, keyboard_entry=entries[0]
+        )
+    # Two roots stay two values all the way to the two-field writer. No single
+    # string can be typed into two boxes, which is why the entry is left empty.
+    return AnswerPayload(
+        display_text=result.display_text, keyboard_entry="", parts=entries
+    )
 
 
 def _realness_answer(instruction: str, expressions: list[str]) -> AnswerPayload | None:

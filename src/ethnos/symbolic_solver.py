@@ -225,6 +225,159 @@ def solve_symbolic_operation(
     return None
 
 
+@dataclass(frozen=True)
+class RationalEquationResult:
+    """Exact real solutions of one equation with the unknown in a denominator.
+
+    `excluded` is carried beside the solutions because it is the whole
+    difficulty of this shape. Clearing denominators produces an equation that
+    is not the one that was asked: it is satisfied at values where the
+    original is not even defined, and such a root verifies perfectly against
+    the cleared form while being a wrong answer to the actual question.
+    """
+
+    variable: str
+    solutions: tuple[str, ...]
+    excluded: tuple[str, ...]
+    classification: str
+
+    @property
+    def display_text(self) -> str:
+        if not self.solutions:
+            return self.classification
+        return " or ".join(f"{self.variable} = {value}" for value in self.solutions)
+
+
+def _denominators_of(expression: sympy.Expr, symbol: sympy.Symbol) -> list[sympy.Expr]:
+    """Everything this expression divides by that involves the unknown.
+
+    Read from the expression as written rather than from a single combined
+    fraction. `together` and `cancel` are entitled to remove a common factor,
+    and a cancelled factor is a restriction that has silently disappeared:
+    `(x^2-4)/(x-2) = 0` cancels to `x+2 = 0`, which would offer two roots for
+    a question that admits one, because the equation as asked is not defined
+    at two at all.
+    """
+    found: list[sympy.Expr] = []
+    for part in sympy.preorder_traversal(expression):
+        if part.is_Pow and part.exp.is_negative and part.base.has(symbol):
+            found.append(part.base)
+    unique: list[sympy.Expr] = []
+    for item in found:
+        if not any(sympy.simplify(item - seen) == 0 for seen in unique):
+            unique.append(item)
+    return unique
+
+
+def solve_rational_equation(
+    expression: str, *, variable: str | None = None
+) -> RationalEquationResult | None:
+    """Solve an equation whose unknown appears in a denominator, over the reals.
+
+    The polynomial solvers decline this shape by construction: `sympy.Poly`
+    refuses an expression with its own generator raised to a negative power,
+    which is exactly what `1/x` is. So the restrictions are collected from the
+    equation as written, the equation is solved, and every candidate is then
+    checked against both the restrictions and the original -- because the
+    step that makes this solvable is the same step that makes it possible to
+    produce an answer the question does not admit.
+
+    Declines rather than guesses when a candidate is not real, when there are
+    more solutions than the answer shapes carry, or when SymPy will not settle
+    it: a rational equation this cannot answer belongs to whatever comes next,
+    not to a plausible-looking result.
+    """
+    candidate = expression.strip().strip("$`").rstrip(".,;")
+    if candidate.count("=") != 1:
+        return None
+    left_text, right_text = candidate.split("=", 1)
+    try:
+        left = _safe_sympy_expression(left_text)
+        right = _safe_sympy_expression(right_text)
+    except (SyntaxError, TypeError, ValueError, ZeroDivisionError):
+        return None
+
+    symbols = left.free_symbols | right.free_symbols
+    if variable is None:
+        if len(symbols) != 1:
+            return None
+        (symbol,) = symbols
+    else:
+        symbol = next((item for item in symbols if item.name == variable), None)
+        if symbol is None or symbols != {symbol}:
+            return None
+
+    restrictions = _denominators_of(left, symbol) + _denominators_of(right, symbol)
+    if not restrictions:
+        # Nothing is divided by the unknown, so this is not the shape this
+        # solver exists for. The polynomial paths own it.
+        return None
+
+    excluded: list[sympy.Expr] = []
+    for denominator in restrictions:
+        try:
+            roots = sympy.solve(sympy.Eq(denominator, 0), symbol)
+        except (NotImplementedError, TypeError, ValueError, ZeroDivisionError):
+            return None
+        for root in roots:
+            # A denominator with no real zero restricts nothing over the reals.
+            if root.is_real and not any(
+                sympy.simplify(root - seen) == 0 for seen in excluded
+            ):
+                excluded.append(root)
+    shown_exclusions = tuple(
+        _display(value) for value in sorted(excluded, key=sympy.default_sort_key)
+    )
+
+    # True wherever it is defined at all. Still not true at the excluded
+    # values, which is why they are reported rather than dropped.
+    if sympy.simplify(left - right) == 0:
+        return RationalEquationResult(
+            symbol.name, (), shown_exclusions, "Infinite Solutions"
+        )
+
+    try:
+        found = sympy.solve(sympy.Eq(left, right), symbol)
+    except (NotImplementedError, TypeError, ValueError, ZeroDivisionError):
+        return None
+    if any(root.is_real is not True for root in found):
+        return None
+    if not found:
+        # These symbols are real, so SymPy has already answered over the reals
+        # and an equation with only complex roots comes back empty -- which is
+        # indistinguishable here from one with no roots at all. They are not
+        # the same answer: a lesson that has covered complex numbers wants the
+        # roots, and "No Solution" would be confidently wrong. Ask again with
+        # nothing assumed, and hand back anything that turns out to have them.
+        unrestricted = sympy.Symbol(symbol.name)
+        try:
+            anywhere = sympy.solve(
+                sympy.Eq(left, right).subs(symbol, unrestricted), unrestricted
+            )
+        except (NotImplementedError, TypeError, ValueError, ZeroDivisionError):
+            return None
+        if any(root.is_real is not True for root in anywhere):
+            return None
+
+    kept: list[sympy.Expr] = []
+    for root in sorted(set(found), key=sympy.default_sort_key):
+        if any(sympy.simplify(root - value) == 0 for value in excluded):
+            continue  # introduced by clearing denominators; not a solution
+        residual = sympy.simplify((left - right).subs(symbol, root))
+        if residual == 0:
+            kept.append(root)
+    if len(kept) > 2:
+        # One or two is what every answer shape here carries. More than that
+        # is a question this cannot present, not one it should approximate.
+        return None
+    return RationalEquationResult(
+        symbol.name,
+        tuple(_display(root) for root in kept),
+        shown_exclusions,
+        {0: "No Solution", 1: "One Solution", 2: "Two Solutions"}[len(kept)],
+    )
+
+
 def _assume_positive(problem_text: str, candidate: str, operation: str) -> bool:
     """Whether to treat the variables in a radical exercise as non-negative.
 
