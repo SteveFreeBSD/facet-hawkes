@@ -26,6 +26,7 @@ program.
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 from dataclasses import dataclass
@@ -38,10 +39,10 @@ FACET_PROTOCOL_VERSION = 1
 #: set; this one exists so a typo here fails locally rather than remotely.
 FACET_OPERATIONS: tuple[str, ...] = ("generate_text",)
 
-# Deployment configuration: the only two lines in Ethnos that know where Facet
-# runs today. Nothing in the protocol or in any caller depends on them, so
-# moving Facet to another machine is an edit here and nothing else.
-FACET_SSH_TARGET = "steve@192.168.0.247"
+# Deployment configuration. Nothing in the protocol or in any caller depends
+# on where Facet runs; an alternate transport address can be selected before
+# this client starts without changing the fixed SSH command during its run.
+FACET_SSH_TARGET = os.environ.get("FACET_SSH_TARGET", "steve@192.168.0.247")
 FACET_REMOTE_HELPER = "/home/steve/.local/bin/facet-remote"
 
 #: A fixed argv, in full. `BatchMode` refuses to prompt for a credential,

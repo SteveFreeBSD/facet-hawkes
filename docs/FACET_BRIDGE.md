@@ -113,10 +113,11 @@ and moves the version.
 
 ## Where the host is configured
 
-`FACET_SSH_TARGET` and `FACET_REMOTE_HELPER` in `src/ethnos/facet_client.py` are
-the only two lines in Ethnos that know where Facet runs. `casbox` is the current
-Facet host, not part of the contract; moving Facet is an edit to those two lines
-and nothing else.
+Ethnos uses `steve@192.168.0.247` as the default LAN SSH target. Set the
+`FACET_SSH_TARGET` environment variable to use an optional transport target;
+for example, the current `casbox` Tailscale address is `100.105.86.101`, so its
+target is `steve@100.105.86.101`. Facet itself is transport-agnostic: neither
+address is part of its protocol, validation, or provenance contract.
 
 The Facet side is `src/facet_runtime/remote.py` in the `facet-runtime` repository,
 installed as the `facet-remote` executable.

@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
+import sys
 
 import pytest
 
@@ -165,6 +167,26 @@ def test_the_ssh_argv_is_a_constant_that_forwards_nothing() -> None:
     helper = argv[-1]
     assert helper.startswith("/") and " " not in helper
     assert not any(character in helper for character in ";|&$`<>()")
+
+
+def test_the_transport_target_may_be_overridden_by_the_environment() -> None:
+    environment = os.environ.copy()
+    environment["FACET_SSH_TARGET"] = "steve@100.105.86.101"
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "from ethnos.facet_client import FACET_SSH_COMMAND; "
+            "print(FACET_SSH_COMMAND[-2])",
+        ],
+        text=True,
+        capture_output=True,
+        check=True,
+        env=environment,
+    )
+
+    assert completed.stdout.strip() == "steve@100.105.86.101"
 
 
 @pytest.mark.parametrize(
