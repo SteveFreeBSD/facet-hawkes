@@ -20,6 +20,28 @@ PROTOCOL_VERSION = 1
 MAX_MESSAGE_BYTES = 1024 * 1024
 
 
+class AnswerShape(BaseModel):
+    """How the page takes an answer, as the add-on observed it.
+
+    Deliberately one enumerated word rather than a description of the page.
+    The add-on already normalises every Hawkes answer control it supports into
+    one of these three, and this is the only distinction that changes what an
+    answer has to *be*: a single box takes one value, a paired `y = [] or []`
+    editor takes two, and an option question is answered by choosing rather
+    than by typing. Everything else about the page -- which field, what
+    characters it accepts, which templates it offers, where the caret goes --
+    stays on the browser side, because none of it changes the mathematics.
+
+    What the shape *means* is decided by the host, not here. A single box is
+    still a two-value answer when the question says to separate them with a
+    comma, and reading that out of the instruction is Ethnos's job.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["field", "option", "pair"] = "field"
+
+
 class ProblemPayload(BaseModel):
     """What the add-on saw. Every field is optional except the screenshot."""
 
@@ -31,6 +53,9 @@ class ProblemPayload(BaseModel):
     # Presentation MathML read from the page. When present the question needs
     # no transcription at all: it is exact, and costs nothing.
     mathml: list[str] = Field(default_factory=list, max_length=8)
+    #: How the page will take the answer. Absent when the add-on did not say,
+    #: which is read as the single-box shape every earlier version implied.
+    answer_shape: AnswerShape | None = None
 
 
 class SolveRequest(BaseModel):
@@ -49,6 +74,10 @@ class AnswerPayload(BaseModel):
 
     display_text: str = ""
     keyboard_entry: str = ""
+    # Distinct values for the one currently supported multi-editor shape:
+    # two roots separated by Hawkes' visible "or". Keeping these structured
+    # avoids recovering mathematical boundaries from display prose later.
+    parts: list[str] = Field(default_factory=list, max_length=2)
 
 
 class Certainty(BaseModel):

@@ -230,26 +230,123 @@ def solve(request: SolveRequest, report=None) -> SolveResponse:
     )
 
 
-def _facet_prompt(instruction: str, expressions: list[str], *, label: str = "") -> str:
+#: How many separate values a question wants, read out of its own wording.
+#: Hawkes states this in the instruction whenever one box takes two answers.
+COMMA_SEPARATED = re.compile(
+    r"separate\s+multiple\s+answers\s+with\s+a\s+comma", re.IGNORECASE
+)
+
+#: The variable a formula question isolates, which Hawkes then prints beside
+#: the answer box as `r =`. Read here rather than borrowed from the solver:
+#: this is a fact about what the page displays, not about how to solve.
+ANSWER_PREFIX = re.compile(r"\bsolve\s+for\s+([A-Za-z])\b", re.IGNORECASE)
+
+
+def answer_prefix(instruction: str) -> str:
+    """The label the page already prints beside the box, or an empty string."""
+    match = ANSWER_PREFIX.search(instruction)
+    return match.group(1) if match else ""
+
+
+#: `PART 1: ...` from a multi-part Facet reply. Structured on purpose: the
+#: alternative is recovering mathematical boundaries out of display prose,
+#: which is exactly the reparsing this exists to avoid.
+FACET_PART = re.compile(r"(?im)^\s*PART\s+(\d+)\s*:\s*(.+?)\s*$")
+
+
+def required_answer_parts(shape, instruction: str) -> int:
+    """How many separate values this page will take.
+
+    Ethnos owns this reading, not the add-on and not Facet. The browser
+    reports the control it saw; what that control means for an answer depends
+    on the question as much as on the page, because a single box is still a
+    two-value answer when the instruction says to separate them with a comma.
+    """
+    if shape is not None and shape.kind == "pair":
+        return 2
+    if COMMA_SEPARATED.search(instruction):
+        return 2
+    return 1
+
+
+def _facet_prompt(
+    instruction: str,
+    expressions: list[str],
+    *,
+    label: str = "",
+    parts: int = 1,
+    prefix: str = "",
+) -> str:
     """State the question in the terms Ethnos already holds exactly.
 
     Every part of this came off the page as markup, so nothing here is a
     transcription and none of it needed a picture. The question's own label is
     context rather than instruction: it is sometimes the only thing that
     distinguishes one step of a problem from the next.
+
+    The answer shape is stated as a requirement on the reply, never as a
+    description of the page. Facet is told how many values to produce and what
+    a value may contain; it is told nothing about fields, editors, or where an
+    answer is going to be typed, because none of that is its to reason about.
     """
     rendered = "\n".join(f"- {expression}" for expression in expressions)
     heading = f"Question: {label.strip()}\n" if label.strip() else ""
+    # The page already prints the variable and the equals sign beside the box,
+    # so repeating them would be entered literally and be wrong.
+    labelled = (
+        f"The page already prints `{prefix} =` beside the answer, so give only "
+        "the value that follows it.\n"
+        if prefix
+        else ""
+    )
+    if parts > 1:
+        contract = (
+            f"This question takes {parts} separate answers.\n"
+            f"Reply with exactly {parts + 1} labelled lines and nothing else, "
+            "and keep every label exactly as written here:\n"
+            "FINAL ANSWER: both answers as the page would display them\n"
+            + "".join(
+                f"PART {index}: answer number {index} by itself\n"
+                for index in range(1, parts + 1)
+            )
+            + "Every line must begin with its own label, including each PART "
+            "line. A PART line holds only what belongs in that one answer box: "
+            "no label repeated inside it, no variable name, no equals sign, no "
+            '"or", no explanation.'
+        )
+    else:
+        contract = (
+            "Your entire response must be one line beginning with the exact words "
+            "FINAL ANSWER: followed by only what belongs in the Hawkes answer box. "
+            "Do not repeat the input expression or output an equals sign. Never output "
+            "angle brackets or a trailing period. Do not explain."
+        )
     return (
         "Solve this Hawkes precalculus question.\n"
         f"{heading}"
         f"Instruction: {instruction}\n"
         f"Expression(s):\n{rendered}\n"
-        "Your entire response must be one line beginning with the exact words "
-        "FINAL ANSWER: followed by only what belongs in the Hawkes answer box. "
-        "Do not repeat the input expression or output an equals sign. Never output "
-        "angle brackets or a trailing period. Do not explain."
+        f"{labelled}"
+        f"{contract}"
     )
+
+
+def _facet_answer_parts(text: str, expected: int) -> list[str] | None:
+    """Read the `PART n:` lines of a multi-part reply, or refuse.
+
+    Returns None unless the reply carries exactly the parts that were asked
+    for, numbered from one and in order. A reply that produced a different
+    count did not answer the question that was asked -- it answered a
+    differently shaped one -- and an answer of the wrong shape is worse than
+    no answer, because the insertion path would place it into real fields.
+    """
+    found = FACET_PART.findall(text)
+    if len(found) != expected:
+        return None
+    if [index for index, _ in found] != [str(n) for n in range(1, expected + 1)]:
+        return None
+    values = [value.strip() for _, value in found]
+    return values if all(values) else None
 
 
 def _solve_with_facet(
@@ -316,12 +413,23 @@ def _solve_with_facet(
     # Past the exact solvers. `decline` names which of the two gaps this was,
     # which is the thing a live fallback otherwise cannot tell you.
     announce("solving", f"Facet ({decline})")
+    # What the page will take, decided here and stated to Facet as a
+    # requirement on its reply. Facet is never told about fields or editors:
+    # how many values an answer needs is a property of the question, and
+    # where they are typed is nobody's business but Ethnos's.
+    parts_required = required_answer_parts(problem.answer_shape, instruction)
     # A need, not a device. Ethnos requires accelerated execution and refuses a
     # fallback; which accelerator satisfies that is Facet's to decide and
     # Facet's to report, so nothing here assumes a GPU or a particular host.
     try:
         result = generate_text(
-            _facet_prompt(instruction, expressions, label=problem.question_label),
+            _facet_prompt(
+                instruction,
+                expressions,
+                label=problem.question_label,
+                parts=parts_required,
+                prefix=answer_prefix(instruction),
+            ),
             request_id=safe_request_id(request.request_id),
             accelerator_required=True,
             allow_fallback=False,
@@ -338,16 +446,38 @@ def _solve_with_facet(
             "Facet returned no FINAL ANSWER for this question.",
             "ambiguous",
         )
-    prose = re.fullmatch(r"[A-Za-z][A-Za-z ]*", final_math) is not None
+
+    def entry_for(value: str) -> str:
+        """Machine form, unless the answer is prose like "No Solution"."""
+        prose = re.fullmatch(r"[A-Za-z][A-Za-z ]*", value) is not None
+        return value if prose else keyboard_entry_for_math(value)
+
+    answer_parts: list[str] = []
+    if parts_required > 1:
+        values = _facet_answer_parts(result.text, parts_required)
+        if values is None:
+            # Fail closed. The question needs a known number of values and
+            # this reply does not carry them, so there is nothing here that
+            # may reach an answer field.
+            return error_response(
+                request.request_id,
+                f"Facet did not return the {parts_required} separate answers "
+                "this question needs.",
+                "ambiguous",
+            )
+        answer_parts = [entry_for(value) for value in values]
+
     return SolveResponse(
         request_id=request.request_id,
         status="ready",
         problem_text="\n".join((instruction, *expressions)),
         answer=AnswerPayload(
             display_text=final_math,
-            keyboard_entry=(
-                final_math if prose else keyboard_entry_for_math(final_math)
-            ),
+            # A multi-part answer is carried in `parts`. Leaving the single
+            # entry empty is what the exact two-root path already does: there
+            # is no one string that can be typed into two separate boxes.
+            keyboard_entry="" if answer_parts else entry_for(final_math),
+            parts=answer_parts,
         ),
         certainty=Certainty(
             prompt_seen=prompt_seen,

@@ -390,6 +390,29 @@ async function describeEditor(tabId, frameId, attempts = 5) {
   return { ok: false, code: "editor-model-missing" };
 }
 
+/**
+ * The one word the host needs about how this page takes an answer.
+ *
+ * The described editor carries everything the browser needs to *enter* an
+ * answer — character sets, templates, slots, field ids — and none of that
+ * crosses to the host, because none of it changes the mathematics. What does
+ * change it is whether the page wants one value or two, and whether it is
+ * answered by typing at all. Those collapse to three names.
+ *
+ * Anything unrecognised is reported as the single box, which is what every
+ * version before this one implied and what the host still assumes when the
+ * field is absent.
+ */
+function answerShapeOf(editor) {
+  if (editor?.kind === "pair") {
+    return { kind: "pair" };
+  }
+  if (editor?.kind === "option") {
+    return { kind: "option" };
+  }
+  return { kind: "field" };
+}
+
 // --- Ethnos ----------------------------------------------------------------
 
 /**
@@ -865,6 +888,7 @@ async function solve(windowId = state.windowId) {
             prompt_text: question.promptText || "",
             mathml: question.expressions,
             screenshot_png_base64: image,
+            answer_shape: answerShapeOf(state.editor),
           },
         },
         Math.max(1, solveDeadline - Date.now()),

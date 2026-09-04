@@ -105,6 +105,40 @@ provenance, and the same insertion policy as any other.
 A Facet failure at that point is reported as a failure. The exact solvers have
 already declined, and nothing else may answer in their place.
 
+### Saying what shape an answer must take
+
+Some Hawkes questions want two answers rather than one: a paired `y = [] or []`
+editor, or a single box the question says to fill with comma-separated values.
+The add-on already normalises every answer control it supports into one word --
+`field`, `option`, or `pair` -- and that word, and nothing else about the page,
+crosses to the host as `answer_shape`. Character sets, templates, slot rules and
+field ids stay in the browser, because none of them change the mathematics.
+
+What the word *means* is Ethnos's reading, not the browser's and not Facet's: a
+single box is still a two-value answer when the instruction says to separate
+answers with a comma, and that is read out of the question.
+
+Facet is then told how many values to produce, as a requirement on its reply:
+
+```text
+This question takes 2 separate answers.
+Reply with exactly 3 labelled lines and nothing else, …
+FINAL ANSWER: both answers as the page would display them
+PART 1: answer number 1 by itself
+PART 2: answer number 2 by itself
+```
+
+The parts come back as parts. Recovering two answers by splitting display prose
+on the word "or" would be guessing at mathematical boundaries after the fact,
+which is the failure this shape exists to avoid. A reply that does not carry
+exactly the parts that were asked for, numbered from one and in order, is
+refused outright rather than repaired: an answer of the wrong shape is worse
+than no answer, because the insertion path would type it into real fields.
+
+Facet is never told about fields, editors, or where an answer is going. How many
+values a question has is a property of the question; where they are typed is
+Ethnos's alone.
+
 ## Security properties
 
 - **Constrained SSH.** One fixed argv: `BatchMode` refuses to prompt for a

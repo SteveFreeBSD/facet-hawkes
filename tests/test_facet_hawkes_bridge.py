@@ -8,6 +8,8 @@ Facet failure is reported rather than quietly answered locally.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from ethnos import hawkes_host
@@ -23,17 +25,22 @@ from ethnos.hawkes_protocol import AnswerPayload, SolveRequest
 MATHML = "<math><msup><mi>x</mi><mn>2</mn></msup></math>"
 
 
-def request(*, engine="facet", mathml=None, instruction="Simplify x squared."):
+def request(
+    *, engine="facet", mathml=None, instruction="Simplify x squared.", shape=None
+):
+    problem = {
+        "prompt_text": instruction,
+        "mathml": [MATHML] if mathml is None else mathml,
+    }
+    if shape is not None:
+        problem["answer_shape"] = {"kind": shape}
     return {
         "protocol_version": 1,
         "operation": "solve_hawkes_problem",
         "request_id": "hawkes-1",
         "origin": "https://learn.hawkeslearning.com",
         "solve_engine": engine,
-        "problem": {
-            "prompt_text": instruction,
-            "mathml": [MATHML] if mathml is None else mathml,
-        },
+        "problem": problem,
     }
 
 
@@ -341,3 +348,236 @@ def test_the_question_label_reaches_facet_when_the_page_supplied_one() -> None:
     assert "Question: Question 4 of 12" in labelled
     # A page that supplied no label adds no empty line to the prompt.
     assert "Question:" not in plain
+
+
+# A real Hawkes shape with two answers and no exact operation to match: the
+# roots of a quadratic asked for as intercepts rather than as a solve.
+QUADRATIC = (
+    "<math><mrow><msup><mi>y</mi><mn>2</mn></msup><mo>−</mo><mn>4</mn>"
+    "<mo>⁢</mo><mi>y</mi><mo>−</mo><mn>5</mn><mo>=</mo><mn>0</mn></mrow></math>"
+)
+INTERCEPTS = "Find the x-intercepts of the following function."
+TWO_PART_REPLY = "FINAL ANSWER: y = -1 or y = 5\nPART 1: -1\nPART 2: 5"
+
+
+def test_a_single_field_answer_is_unchanged_by_the_shape_field(monkeypatch) -> None:
+    """The one-box path is exactly what it was before shapes existed."""
+    seen = answering(monkeypatch, facet_result())
+
+    response = handle(request(shape="field"))
+
+    # The single-value contract, word for word as it was.
+    assert "Your entire response must be one line" in seen["prompt"]
+    assert "PART 1:" not in seen["prompt"]
+    assert seen["prompt"] == _facet_prompt("Simplify x squared.", ["x^2"])
+    assert response.answer.display_text == "x^2"
+    assert response.answer.keyboard_entry == "x^2"
+    assert response.answer.parts == []
+
+
+def test_an_absent_shape_is_read_as_the_single_box_it_always_was(
+    monkeypatch,
+) -> None:
+    """An add-on that says nothing gets exactly the old behaviour."""
+    seen = answering(monkeypatch, facet_result())
+
+    handle(request())
+
+    assert seen["prompt"] == _facet_prompt("Simplify x squared.", ["x^2"])
+
+
+def test_a_paired_answer_shape_reaches_facet_as_a_two_part_contract(
+    monkeypatch,
+) -> None:
+    """The shape crosses as a requirement on the reply, not as a page."""
+    seen = answering(monkeypatch, facet_result(text=TWO_PART_REPLY))
+
+    handle(request(mathml=[QUADRATIC], instruction=INTERCEPTS, shape="pair"))
+
+    assert "This question takes 2 separate answers." in seen["prompt"]
+    assert "PART 1: answer number 1 by itself" in seen["prompt"]
+    assert "PART 2: answer number 2 by itself" in seen["prompt"]
+    # Facet is told what to produce, never what the page is made of.
+    for leak in ("field", "editor", "input", "box id", "DOM", "radio"):
+        assert leak not in seen["prompt"].replace("answer box", "")
+
+
+def test_a_structured_two_part_reply_survives_validation_intact(
+    monkeypatch,
+) -> None:
+    """The parts arrive as parts, never as prose to be split later."""
+    answering(monkeypatch, facet_result(text=TWO_PART_REPLY))
+
+    response = handle(request(mathml=[QUADRATIC], instruction=INTERCEPTS, shape="pair"))
+
+    assert response.status == "ready"
+    assert response.answer.display_text == "y = -1 or y = 5"
+    assert response.answer.parts == ["-1", "5"]
+    # No single string can be typed into two separate boxes, and the exact
+    # two-root path already leaves this empty for the same reason.
+    assert response.answer.keyboard_entry == ""
+    assert response.certainty.source == "Facet · GPU"
+    assert response.certainty.insertable is True
+
+
+def test_the_comma_instruction_makes_one_box_a_two_value_answer(
+    monkeypatch,
+) -> None:
+    """Ethnos reads the shape out of the question, not only out of the page."""
+    seen = answering(monkeypatch, facet_result(text=TWO_PART_REPLY))
+
+    handle(
+        request(
+            mathml=[QUADRATIC],
+            instruction=(
+                "Find the x-intercepts of the following function. "
+                "Separate multiple answers with a comma."
+            ),
+            shape="field",
+        )
+    )
+
+    assert "This question takes 2 separate answers." in seen["prompt"]
+
+
+@pytest.mark.parametrize(
+    ("reply", "why"),
+    [
+        ("FINAL ANSWER: y = -1 or y = 5", "no PART lines at all"),
+        ("FINAL ANSWER: -1\nPART 1: -1", "one part where two were asked for"),
+        (
+            "FINAL ANSWER: a\nPART 1: -1\nPART 2: 5\nPART 3: 7",
+            "three parts where two were asked for",
+        ),
+        (
+            "FINAL ANSWER: a\nPART 1: -1\nPART 3: 5",
+            "parts that are not numbered from one",
+        ),
+        (
+            "FINAL ANSWER: a\nPART 2: 5\nPART 1: -1",
+            "parts out of order, so which box is which is a guess",
+        ),
+    ],
+)
+def test_a_mismatched_part_count_fails_closed(monkeypatch, reply, why) -> None:
+    """An answer of the wrong shape is worse than no answer.
+
+    Nothing downstream would question it: the insertion path takes `parts` and
+    types them into real answer fields.
+    """
+    answering(monkeypatch, facet_result(text=reply))
+
+    response = handle(request(mathml=[QUADRATIC], instruction=INTERCEPTS, shape="pair"))
+
+    assert response.status == "ambiguous", why
+    assert response.answer is None
+    assert "2 separate answers" in response.message
+
+
+def test_a_paired_shape_still_never_preempts_the_exact_solver(monkeypatch) -> None:
+    """Shape changes what Facet is asked for, never whether it is asked."""
+    monkeypatch.setattr(
+        "ethnos.facet_client.generate_text",
+        lambda *_a, **_k: pytest.fail("an exactly solvable question reached Facet"),
+    )
+
+    response = handle(
+        request(
+            mathml=[RATIONAL_EXPONENTS],
+            instruction="Simplify. Express your answer using rational exponents.",
+            shape="pair",
+        )
+    )
+
+    assert response.status == "ready"
+    assert response.certainty.source == "markup"
+
+
+def test_the_page_prefix_is_stated_so_facet_does_not_repeat_it() -> None:
+    """`r = [box]` already prints the label; repeating it would be typed in."""
+    prompt = _facet_prompt(
+        "Solve the following formula for the indicated variable. Solve for r.",
+        ["C=2*pi*r"],
+        prefix="r",
+    )
+
+    assert "already prints `r =` beside the answer" in prompt
+
+
+def test_the_browser_cannot_invent_an_answer_shape() -> None:
+    with pytest.raises(ValueError):
+        SolveRequest.model_validate(request(shape="freeform"))
+    with pytest.raises(ValueError):
+        SolveRequest.model_validate(
+            {
+                **request(),
+                "problem": {"mathml": [MATHML], "answer_shape": {"fieldId": "QBase1"}},
+            }
+        )
+
+
+EXTENSION = Path(__file__).resolve().parents[1] / "extension"
+
+
+def _lift(source: str, name: str) -> str:
+    """Lift one brace-balanced function out of `background.js`.
+
+    The event page is an ES module and cannot be evaluated whole here, but the
+    normaliser is pure and has no imports, so it runs on its own.
+    """
+    start = source.index(f"function {name}(")
+    depth, index = 0, source.index("{", start)
+    for cursor in range(index, len(source)):
+        if source[cursor] == "{":
+            depth += 1
+        elif source[cursor] == "}":
+            depth -= 1
+            if depth == 0:
+                return source[start : cursor + 1]
+    raise AssertionError(f"{name} is not brace-balanced")
+
+
+@pytest.mark.parametrize(
+    ("described", "expected"),
+    [
+        ({"kind": "pair"}, "pair"),
+        ({"kind": "option"}, "option"),
+        ({"kind": "dynamic"}, "field"),
+        ({"kind": "textbox"}, "field"),
+        # An editor the browser could not describe is the single box, which is
+        # what every version before answer shapes existed implied.
+        ({"kind": "something-new"}, "field"),
+        (None, "field"),
+    ],
+)
+def test_the_browser_normalises_every_editor_into_one_shape_word(
+    described, expected
+) -> None:
+    quickjs = pytest.importorskip("quickjs", reason="pip install quickjs")
+    import json
+
+    source = (EXTENSION / "background.js").read_text(encoding="utf-8")
+    context = quickjs.Context()
+    context.eval(_lift(source, "answerShapeOf"))
+
+    shape = json.loads(
+        context.eval(f"JSON.stringify(answerShapeOf({json.dumps(described)}))")
+    )
+
+    assert shape == {"kind": expected}
+    # Whatever the browser reports, the protocol must accept it.
+    assert (
+        SolveRequest.model_validate(
+            {**request(), "problem": {"mathml": [MATHML], "answer_shape": shape}}
+        ).problem.answer_shape.kind
+        == expected
+    )
+
+
+def test_the_editor_description_itself_never_crosses_to_the_host() -> None:
+    """Character sets, templates and field ids stay on the browser side."""
+    source = (EXTENSION / "background.js").read_text(encoding="utf-8")
+    normaliser = _lift(source, "answerShapeOf")
+
+    for browser_only in ("allowedCharacters", "templates", "slots", "fieldId"):
+        assert browser_only not in normaliser
