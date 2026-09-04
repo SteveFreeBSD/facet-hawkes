@@ -891,6 +891,31 @@ def test_live_complex_sum_reduces_i_squared_before_collecting_terms():
     assert extract_final_math(result.raw_response) == "-7 - 2i"
 
 
+def test_parenthesized_negative_i_power_reduces_beside_a_negative_square_root():
+    """Lesson 1.5 Q9: both input `i` values must be the same imaginary unit."""
+    result = answer_symbolic_math(
+        problem_text="Evaluate the following square root expression.",
+        expressions=[r"(-i)^6\sqrt{-100}"],
+    )
+
+    assert result is not None
+    assert extract_final_math(result.raw_response) == "-10i"
+
+
+def test_signed_parenthesized_powers_of_i_are_fully_reduced():
+    for expression, expected in (
+        ("(-i)^2", "-1"),
+        ("(-i)^3", "i"),
+        ("(-i)^4", "1"),
+        ("(-i)^6", "-1"),
+    ):
+        result = answer_symbolic_math(
+            problem_text="Simplify the following expression.", expressions=[expression]
+        )
+        assert result is not None, expression
+        assert extract_final_math(result.raw_response) == expected
+
+
 def test_i_remains_an_ordinary_variable_outside_complex_simplification():
     """The contextual rule must not globally redefine a legitimate variable."""
     factored = answer_symbolic_math(

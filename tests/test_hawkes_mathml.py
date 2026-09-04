@@ -42,6 +42,11 @@ COMPLEX_Q8 = (
     "<mo>+</mo><mo>(</mo><mn>4</mn><mo>+</mo><mn>7</mn><mi>i</mi><mo>)</mo>"
     "</mrow></mstyle></math>"
 )
+COMPLEX_Q9 = (
+    "<math><mstyle><mrow><msup><mrow><mo>(</mo><mo>−</mo><mi>i</mi><mo>)</mo>"
+    "</mrow><mn>6</mn></msup><msqrt><mrow><mo>−</mo><mn>100</mn></mrow>"
+    "</msqrt></mrow></mstyle></math>"
+)
 
 
 def test_a_dot_product_of_rational_powers():
@@ -67,6 +72,11 @@ def test_an_indexed_root():
 
 def test_live_complex_sum_keeps_i_and_its_power_exactly():
     assert mathml_to_latex(COMPLEX_Q8) == "(11i^2-9i)+(4+7i)"
+
+
+def test_live_complex_root_has_a_power_then_an_unindexed_square_root():
+    """The visible 6 belongs to `(-i)`, while `<msqrt>` has implicit index 2."""
+    assert mathml_to_latex(COMPLEX_Q9) == r"(-i)^6\sqrt{-100}"
 
 
 def test_namespaced_markup_is_read():
@@ -112,6 +122,7 @@ def test_what_cannot_be_read_exactly_is_refused(markup):
         (NEGATIVE_BASE, "Simplify the following expression.", "64"),
         (INDEXED_ROOT, "Simplify the following radical expression.", "x^6y^7z^4"),
         (COMPLEX_Q8, "Simplify the following expression.", "-7 - 2i"),
+        (COMPLEX_Q9, "Evaluate the following square root expression.", "-10i"),
     ],
 )
 def test_the_solver_answers_straight_from_the_markup(markup, problem, expected):
@@ -166,6 +177,28 @@ def test_the_host_answers_live_complex_q8_from_markup():
     assert response.status == "ready"
     assert response.answer.display_text == "-7 - 2i"
     assert response.answer.keyboard_entry == "-7-2*i"
+    assert response.certainty.source == "markup"
+
+
+def test_the_host_answers_live_complex_q9_from_markup():
+    from ethnos.hawkes_host import handle
+
+    response = handle(
+        {
+            "protocol_version": 1,
+            "operation": "solve_hawkes_problem",
+            "request_id": "complex-q9",
+            "origin": "https://learn.hawkeslearning.com",
+            "problem": {
+                "prompt_text": "Evaluate the following square root expression.",
+                "mathml": [COMPLEX_Q9],
+            },
+        }
+    )
+
+    assert response.status == "ready"
+    assert response.answer.display_text == "-10i"
+    assert response.answer.keyboard_entry == "-10*i"
     assert response.certainty.source == "markup"
 
 

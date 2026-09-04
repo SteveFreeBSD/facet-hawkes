@@ -334,7 +334,8 @@ def _uses_imaginary_unit(problem_text: str, candidate: str, operation: str) -> b
     if operation != "simplify" or variables != {"i"}:
         return False
     powers = re.finditer(
-        r"(?<![A-Za-z])i(?![A-Za-z])\s*(?:\^|\*\*)\s*\{?\s*([+-]?\d+)",
+        r"(?<![A-Za-z])(?:i|\(\s*[+-]?\s*i\s*\))(?![A-Za-z])"
+        r"\s*(?:\^|\*\*)\s*\{?\s*([+-]?\d+)",
         candidate,
     )
     return any(abs(int(match.group(1))) >= 2 for match in powers)

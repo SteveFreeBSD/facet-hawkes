@@ -63,6 +63,21 @@ DYNAMIC_POLYNOMIAL = {
     },
 }
 
+COMPLEX_EDITOR = {
+    "ok": True,
+    "kind": "dynamic",
+    "enabled": True,
+    "allowedCharacters": "0123456789-+i",
+    "maxLength": 16,
+    "slots": {"base": "0123456789-+i", "exponent": "0123456789"},
+    "templates": {
+        "fraction": False,
+        "radical": True,
+        "exponent": True,
+        "parentheses": True,
+    },
+}
+
 
 def test_live_polynomial_question_survives_solver_to_keypad_plan(plan_entry):
     result = answer_symbolic_math(
@@ -85,6 +100,25 @@ def test_live_polynomial_question_survives_solver_to_keypad_plan(plan_entry):
             {"op": "base"},
             {"op": "type", "text": "+2y+2"},
         ],
+    }
+
+
+def test_live_complex_q9_survives_markup_answer_to_insertable_plan(plan_entry):
+    from ethnos.answer_image import keyboard_entry_for_math
+
+    result = answer_symbolic_math(
+        problem_text="Evaluate the following square root expression.",
+        expressions=[r"(-i)^6\sqrt{-100}"],
+    )
+
+    assert result is not None
+    display = extract_final_math(result.raw_response)
+    machine = keyboard_entry_for_math(display)
+    assert display == "-10i"
+    assert machine == "-10*i"
+    assert plan_entry(machine, COMPLEX_EDITOR) == {
+        "ok": True,
+        "steps": [{"op": "type", "text": "-10i"}],
     }
 
 

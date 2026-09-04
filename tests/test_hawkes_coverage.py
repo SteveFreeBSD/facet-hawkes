@@ -55,6 +55,16 @@ def test_live_complex_q8_is_pinned_in_the_coverage_corpus():
     assert result.answer == "-7 - 2i"
 
 
+def test_live_complex_q9_is_pinned_in_the_coverage_corpus():
+    case = next(case for case in load_cases(CORPUS) if case.id == "complex-q9")
+
+    assert case.prompt == "Evaluate the following square root expression."
+    assert case.expressions == [r"(-i)^6\sqrt{-100}"]
+    result = evaluate(case)
+    assert result.verdict == "exact"
+    assert result.answer == "-10i"
+
+
 def test_a_gap_says_which_kind_of_gap_it_is():
     """The two fall through to a model identically and are fixed in completely
     different places, so the sweep separates them."""

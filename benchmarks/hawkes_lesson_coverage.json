@@ -201,6 +201,15 @@
       "expected": "-7 - 2i"
     },
     {
+      "id": "complex-q9",
+      "topic": "complex numbers",
+      "prompt": "Evaluate the following square root expression.",
+      "expressions": [
+        "(-i)^6\\sqrt{-100}"
+      ],
+      "expected": "-10i"
+    },
+    {
       "id": "factor-then-order",
       "topic": "guards",
       "prompt": "Factor completely, then write the answer in descending order.",
