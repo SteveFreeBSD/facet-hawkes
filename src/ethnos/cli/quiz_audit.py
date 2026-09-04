@@ -9,7 +9,7 @@ from ..quiz_validation import (
     INCOMPLETE_ITEM_WARNINGS,
     validate_quiz_item as _validate_quiz_item,
 )
-from ..text_utils import compact_text
+from ..text_utils import compact_text, normalized_phrase_index
 
 
 def build_source_grounding_record(
@@ -150,6 +150,7 @@ def verify_answer_key_report(
             audit_items, "source_missing_in_local_pdf"
         ),
         "incomplete_count": audit_status_count(audit_items, "incomplete"),
+        "invalid_anchor_count": audit_status_count(audit_items, "invalid_anchor"),
         "invalid_response_count": audit_status_count(audit_items, "invalid_response"),
         "disputed_key_count": sum(
             item.get("key_review_status") == "disputed" for item in audit_items
@@ -179,8 +180,18 @@ def audit_keyed_report_item(item: dict[str, object]) -> dict[str, object]:
         "skipped_external_source": "source_missing_in_local_pdf",
         "skipped_source_missing": "source_missing_in_local_pdf",
         "skipped_incomplete": "incomplete",
+        "invalid_anchor": "invalid_anchor",
         "invalid_response": "invalid_response",
     }.get(status, "unclassified")
+    source_status = str(source_grounding.get("source_status") or "")
+    defensive_source_statuses = {
+        "invalid_anchor": "invalid_anchor",
+        "source_missing_in_local_pdf": "source_missing_in_local_pdf",
+        "incomplete": "incomplete",
+        "ungrounded": "no_pdf_context",
+    }
+    if source_status in defensive_source_statuses:
+        audit_status = defensive_source_statuses[source_status]
     answer = item.get("answer") if isinstance(item.get("answer"), dict) else {}
     source_citations = []
     if isinstance(answer, dict) and isinstance(answer.get("source_citations"), list):
@@ -215,7 +226,7 @@ def anchor_snippet(text: str, target: str, max_chars: int) -> str:
     if len(compact) <= max_chars:
         return compact
     target = target.strip()
-    index = compact.lower().find(target.lower()) if target else -1
+    index = normalized_phrase_index(compact, target) if target else -1
     if index < 0:
         return compact_text(compact, max_chars)
     half_window = max((max_chars - len(target)) // 2, 0)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
@@ -20,9 +21,18 @@ from .db import (
 from .qa import RetrievalResult, answer_query_candidates, normalize_answer_role
 from .quiz_validation import (
     INCOMPLETE_ITEM_WARNINGS,
+    anchored_source_context_rows,
+    source_retrieval_exclusion_reason,
     validate_quiz_item as _validate_quiz_item,
 )
-from .text_utils import CORE_STOPWORDS, compact_text
+from .text_utils import (
+    CORE_STOPWORDS,
+    compact_text,
+    normalize_match_text,
+    normalized_match_variants,
+    normalized_phrase_found,
+    normalized_phrase_index,
+)
 
 
 COMMON_ANSWER_SPELLING_FIXES = {
@@ -36,6 +46,7 @@ STRENGTH_CONFIDENCE = {
     "weak": 0.35,
     "missing": 0.0,
 }
+NEGATION_TERMS = {"neither", "never", "no", "not", "without"}
 
 
 class AgentTool(Protocol):
@@ -154,14 +165,24 @@ def _ground_quiz_item(
     role = normalize_answer_role(str(arguments.get("role") or "core"))
     section = arguments.get("section")
     limit = _positive_int(arguments.get("limit"), default=5)
-    retrieval = _retrieve_quiz_item_context(
-        context,
-        item,
-        limit=limit,
-        role=role,
-        section=section,
-    )
     retrieval_questions = _quiz_item_retrieval_queries(item)
+    exclusion_reason = source_retrieval_exclusion_reason(item)
+    if exclusion_reason:
+        retrieval = RetrievalResult(
+            original_question=str(item.get("question") or ""),
+            queries_tried=[],
+            selected_query=None,
+            rows=[],
+            stopped_reason=exclusion_reason,
+        )
+    else:
+        retrieval = _retrieve_quiz_item_context(
+            context,
+            item,
+            limit=limit,
+            role=role,
+            section=section,
+        )
     record = _build_source_grounding_record(
         context.conn,
         document_id=context.document_id,
@@ -171,10 +192,18 @@ def _ground_quiz_item(
         retrieval_questions=retrieval_questions,
         chars=_positive_int(arguments.get("chars"), default=500),
     )
+    focus_phrases = _quiz_item_focus_phrases(item)
     return {
         "grounding": record,
         "context_rows": [
-            _compact_chunk_row(row, text_chars=900) for row in retrieval.rows[:limit]
+            _compact_chunk_row(
+                row,
+                text_chars=900,
+                focus_phrases=focus_phrases,
+            )
+            for row in (
+                retrieval.rows if item.get("source_chunks") else retrieval.rows[:limit]
+            )
         ],
     }
 
@@ -188,6 +217,15 @@ def _retrieve_quiz_item_context(
     section: str | None,
 ) -> RetrievalResult:
     queries = _quiz_item_retrieval_queries(item)
+    if item.get("source_chunks"):
+        rows = anchored_source_context_rows(context.conn, context.document_id, item)
+        return RetrievalResult(
+            original_question=str(item.get("question") or ""),
+            queries_tried=[],
+            selected_query=None,
+            rows=rows,
+            stopped_reason="anchored_context" if rows else "invalid_anchor",
+        )
     rows_by_id: dict[int, dict[str, Any]] = {}
     row_queries: dict[int, list[str]] = {}
     tried: list[str] = []
@@ -389,7 +427,7 @@ def _grounding_evidence_summary(
     compact = " ".join(text.split())
     if len(compact) <= chars:
         return compact
-    index = compact.lower().find(target.strip().lower()) if target.strip() else -1
+    index = normalized_phrase_index(compact, target) if target.strip() else -1
     if index < 0:
         return compact[: chars - 3].rstrip() + "..."
     start = max(index - chars // 2, 0)
@@ -419,6 +457,9 @@ def answer_support_details(
         for phrase in [original_phrase, *_canonical_answer_queries(text)]
         if phrase
     ]
+    required_terms = NEGATION_TERMS.intersection(_tokenize_terms(text))
+    qualified_answer_terms = [term for term in terms if term not in NEGATION_TERMS]
+    acronym = _uppercase_acronym(text)
     best = _support_result(
         supported=False,
         evidence_strength="missing",
@@ -427,14 +468,41 @@ def answer_support_details(
         hit_terms=[],
     )
     for row in rows:
-        evidence = _normalized_search_text(
-            str(row.get("text") or row.get("snippet") or "")
+        raw_evidence = str(row.get("text") or row.get("snippet") or "")
+        evidence = " ".join(normalized_match_variants(raw_evidence))
+        acronym_match = bool(acronym and _acronym_found(acronym, raw_evidence))
+        hit_terms = _hit_terms(terms, evidence) if not acronym or acronym_match else []
+        phrase_match = acronym_match or (
+            not acronym
+            and any(
+                phrase and normalized_phrase_found(phrase, raw_evidence)
+                for phrase in canonical_phrases
+            )
         )
-        hit_terms = _hit_terms(terms, evidence)
-        phrase_match = any(
-            phrase and phrase in evidence for phrase in canonical_phrases
-        )
-        candidate = _score_answer_support(terms, hit_terms, phrase_match)
+        evidence_tokens = _token_sequence(raw_evidence)
+        missing_required = {
+            qualifier
+            for qualifier in required_terms
+            if not _qualifier_binds_answer_term(
+                qualifier,
+                qualified_answer_terms,
+                evidence_tokens,
+            )
+        }
+        if missing_required:
+            candidate = _support_result(
+                supported=False,
+                evidence_strength="weak" if hit_terms else "missing",
+                confidence_score=(STRENGTH_CONFIDENCE["weak"] if hit_terms else 0.0),
+                support_reason=(
+                    "The retrieved evidence is missing required qualifier(s): "
+                    + ", ".join(sorted(missing_required))
+                    + "."
+                ),
+                hit_terms=hit_terms,
+            )
+        else:
+            candidate = _score_answer_support(terms, hit_terms, phrase_match)
         if candidate["confidence_score"] > best["confidence_score"]:
             best = candidate
     return best
@@ -504,7 +572,9 @@ def _support_result(
 
 
 def _canonical_answer_queries(text: str) -> list[str]:
-    canonical_terms = _significant_terms(text)
+    canonical_terms = [
+        _canonical_term_variants(term)[0] for term in _significant_terms(text)
+    ]
     compact = " ".join(canonical_terms)
     original = " ".join(_tokenize_terms(text))
     if compact and compact != original:
@@ -666,7 +736,12 @@ def _positive_int(value: object, *, default: int) -> int:
     return parsed if parsed > 0 else default
 
 
-def _compact_chunk_row(row: dict[str, Any], *, text_chars: int) -> dict[str, Any]:
+def _compact_chunk_row(
+    row: dict[str, Any],
+    *,
+    text_chars: int,
+    focus_phrases: list[str] | None = None,
+) -> dict[str, Any]:
     return {
         "id": row.get("id"),
         "document_id": row.get("document_id"),
@@ -677,7 +752,11 @@ def _compact_chunk_row(row: dict[str, Any], *, text_chars: int) -> dict[str, Any
         "section_label": row.get("section_label"),
         "content_role": row.get("content_role"),
         "snippet": row.get("snippet"),
-        "text": compact_text(row.get("text") or "", text_chars),
+        "text": _focused_compact_text(
+            row.get("text") or "",
+            text_chars,
+            focus_phrases or [],
+        ),
     }
 
 
@@ -688,24 +767,99 @@ def _clip(text: str, max_chars: int) -> str:
 def _significant_terms(text: str) -> list[str]:
     terms = []
     for term in _tokenize_terms(text):
-        for canonical in _canonical_term_variants(term):
-            if (
-                len(canonical) >= 4
-                and canonical not in CORE_STOPWORDS
-                and canonical not in terms
-            ):
-                terms.append(canonical)
+        canonical = _canonical_term_variants(term)[0]
+        if (
+            len(canonical) >= 3
+            and canonical not in CORE_STOPWORDS
+            and canonical not in terms
+        ):
+            terms.append(canonical)
     return terms
 
 
 def _tokenize_terms(text: str) -> list[str]:
+    terms = []
+    for term in _token_sequence(text):
+        if term not in terms:
+            terms.append(term)
+    return terms
+
+
+def _token_sequence(text: str) -> list[str]:
     normalized = _normalized_search_text(text)
     terms = []
     for raw in normalized.split():
         term = "".join(ch for ch in raw if ch.isalnum())
-        if term and term not in terms:
+        if term:
             terms.append(term)
     return terms
+
+
+def _qualifier_binds_answer_term(
+    qualifier: str,
+    answer_terms: list[str],
+    evidence_tokens: list[str],
+    *,
+    window: int = 5,
+) -> bool:
+    if not answer_terms:
+        return qualifier in evidence_tokens
+    answer_variants = {
+        variant for term in answer_terms for variant in _canonical_term_variants(term)
+    }
+    for index, token in enumerate(evidence_tokens):
+        if token != qualifier:
+            continue
+        following = evidence_tokens[index + 1 : index + 1 + window]
+        if answer_variants.intersection(following):
+            return True
+    return False
+
+
+def _quiz_item_focus_phrases(item: dict[str, Any]) -> list[str]:
+    phrases: list[str] = []
+    options = item.get("options") if isinstance(item.get("options"), dict) else {}
+    correct = item.get("correct")
+    keyed_text = options.get(correct) if isinstance(correct, str) else None
+    target = str(item.get("target") or "").strip()
+    for phrase in (str(keyed_text or "").strip(), target):
+        if phrase and phrase not in phrases:
+            phrases.append(phrase)
+    if "/" in target:
+        for part in target.split("/"):
+            part = part.strip()
+            if part and part not in phrases:
+                phrases.append(part)
+    for phrase in tuple(phrases):
+        for term in _significant_terms(phrase):
+            if term not in phrases:
+                phrases.append(term)
+    return phrases
+
+
+def _focused_compact_text(text: object, max_chars: int, phrases: list[str]) -> str:
+    compact = " ".join(str(text).split())
+    if len(compact) <= max_chars:
+        return compact
+    focus_index = -1
+    for phrase in phrases:
+        focus_index = normalized_phrase_index(compact, phrase)
+        if focus_index >= 0:
+            break
+    if focus_index < 0:
+        return compact_text(compact, max_chars)
+    if max_chars <= 6:
+        return compact_text(compact, max_chars)
+    body_chars = max_chars - 6
+    start = max(focus_index - body_chars // 3, 0)
+    end = min(start + body_chars, len(compact))
+    start = max(end - body_chars, 0)
+    snippet = compact[start:end].strip()
+    if start > 0:
+        snippet = "..." + snippet
+    if end < len(compact):
+        snippet = snippet.rstrip() + "..."
+    return snippet
 
 
 def _canonical_term_variants(term: str) -> list[str]:
@@ -719,21 +873,37 @@ def _canonical_term_variants(term: str) -> list[str]:
 
 
 def _normalized_search_text(text: str) -> str:
-    return (
-        text.lower()
-        .replace("-\n", "")
-        .replace("- ", "")
-        .replace("&", " ")
-        .replace("/", " ")
-    )
+    return normalize_match_text(text)
+
+
+def _uppercase_acronym(text: str) -> str | None:
+    letters = "".join(char for char in text if char.isalpha())
+    if 2 <= len(letters) <= 6 and letters == letters.upper():
+        return letters
+    return None
+
+
+def _acronym_found(acronym: str, text: str) -> bool:
+    separated_letters = r"[\W_]*".join(re.escape(letter) for letter in acronym)
+    return re.search(rf"(?<!\w){separated_letters}(?!\w)", text) is not None
 
 
 def _term_hit_count(terms: list[str], text: str) -> int:
-    return sum(1 for term in terms if term in text)
+    evidence_terms = set(text.split())
+    return sum(
+        1
+        for term in terms
+        if any(variant in evidence_terms for variant in _canonical_term_variants(term))
+    )
 
 
 def _hit_terms(terms: list[str], text: str) -> list[str]:
-    return [term for term in terms if term in text]
+    evidence_terms = set(text.split())
+    return [
+        term
+        for term in terms
+        if any(variant in evidence_terms for variant in _canonical_term_variants(term))
+    ]
 
 
 def _plain_tool_payload(value: object) -> dict[str, Any]:

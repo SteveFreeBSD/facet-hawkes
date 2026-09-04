@@ -147,7 +147,9 @@ def solve_symbolic_operation(
                 value = _substitution(problem_text.lower())
                 if value is None or value[0] != symbol.name:
                     continue
-                answer = sympy.nsimplify(original.subs(symbol, sympy.Rational(value[1])))
+                answer = sympy.nsimplify(
+                    original.subs(symbol, sympy.Rational(value[1]))
+                )
         elif operation in {"descending_order", "ascending_order"}:
             # "Descending order" names a single variable's powers. With two or
             # more symbols the intended ordering is genuinely ambiguous, so
@@ -696,7 +698,9 @@ def _fold_absolute_powers(expression: sympy.Expr) -> sympy.Expr:
         if absorbed == 0 and extra != 0:
             merged.append(sympy.Pow(inner, extra, evaluate=False))
     for symbol, exponent in plain.items():
-        merged.append(symbol if exponent == 1 else sympy.Pow(symbol, exponent, evaluate=False))
+        merged.append(
+            symbol if exponent == 1 else sympy.Pow(symbol, exponent, evaluate=False)
+        )
     return sympy.Mul(*rest, *merged, evaluate=False)
 
 

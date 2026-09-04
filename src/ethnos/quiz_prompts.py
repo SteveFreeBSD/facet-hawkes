@@ -8,7 +8,12 @@ from typing import Any
 
 from .prompt_cache import read_prompt_template
 from .quiz_core import limit_option_text, normalize_options, _normalize_option
-from .text_utils import GUIDANCE_STOPWORDS
+from .text_utils import (
+    GUIDANCE_STOPWORDS,
+    normalized_match_variants,
+    normalized_phrase_found,
+    normalized_phrase_index,
+)
 
 
 DEFAULT_MC_PROMPT = Path(__file__).resolve().parents[2] / "prompts" / "mc_answer.md"
@@ -340,7 +345,7 @@ def _option_text_supported(option_text: str, context: str) -> bool:
         return False
     if _decline_paraphrase_supported(option_norm, context_norm):
         return True
-    if re.search(rf"\b{re.escape(option_norm)}\b", context_norm) is not None:
+    if normalized_phrase_found(option_text, context):
         return True
     option_terms = _guidance_significant_terms(option_norm)
     if len(option_terms) < 3:
@@ -365,8 +370,7 @@ def _decline_paraphrase_supported(option_norm: str, context_norm: str) -> bool:
 
 
 def _guidance_normalized_text(text: str) -> str:
-    dehyphenated = re.sub(r"(\w)-\s+(\w)", r"\1\2", str(text))
-    return " ".join(re.sub(r"[^a-z0-9]+", " ", dehyphenated.lower()).split())
+    return " ".join(normalized_match_variants(text))
 
 
 def _guidance_significant_terms(text: str) -> list[str]:
@@ -502,7 +506,7 @@ def _targeted_context_text(text: str, max_chars: int, target: str | None) -> str
     target = (target or "").strip()
     if not target:
         return limit_option_text(compact, max_chars)
-    index = compact.lower().find(target.lower())
+    index = normalized_phrase_index(compact, target)
     if index < 0:
         index = _best_token_window_center(compact, target, max_chars)
     if index < 0:

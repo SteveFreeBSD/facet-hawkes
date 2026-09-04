@@ -131,7 +131,8 @@ def test_the_profile_uuid_is_stripped_from_a_stack(context):
 def test_a_stack_is_kept_short_enough_to_read(context):
     frames = "\\n".join(f"frame{index}@/a.js:1:1" for index in range(40))
     described = evaluate(
-        context, f'describeError(Object.assign(new Error("deep"), {{stack: "{frames}"}}))'
+        context,
+        f'describeError(Object.assign(new Error("deep"), {{stack: "{frames}"}}))',
     )
 
     assert len(described["stack"]) == 6
@@ -142,7 +143,9 @@ def test_a_stack_is_kept_short_enough_to_read(context):
 
 def test_nothing_below_the_chosen_level_is_recorded(context):
     context.eval('recorded = []; initLog("test", { level: "warn" });')
-    context.eval('log.info("ignored"); log.debug("ignored"); log.warn("kept"); log.error("kept");')
+    context.eval(
+        'log.info("ignored"); log.debug("ignored"); log.warn("kept"); log.error("kept");'
+    )
 
     recorded = evaluate(context, "recorded.map((entry) => entry[1])")
     assert recorded == ["[ethnos:test] kept", "[ethnos:test] kept"]
@@ -150,7 +153,9 @@ def test_nothing_below_the_chosen_level_is_recorded(context):
 
 def test_off_records_nothing_at_all(context):
     context.eval('recorded = []; setLogLevel("off");')
-    context.eval('log.error("suppressed"); log.warn("suppressed"); log.info("suppressed");')
+    context.eval(
+        'log.error("suppressed"); log.warn("suppressed"); log.info("suppressed");'
+    )
 
     assert evaluate(context, "recorded.length") == 0
     context.eval('setLogLevel("info");')
@@ -198,7 +203,13 @@ def test_the_log_never_leaves_the_machine():
 
     # There is no transport anywhere in this add-on, and the log does not add
     # the first one. `storage.local` is not sync storage, either.
-    for transport in ("fetch(", "XMLHttpRequest", "sendBeacon", "storage.sync", "WebSocket"):
+    for transport in (
+        "fetch(",
+        "XMLHttpRequest",
+        "sendBeacon",
+        "storage.sync",
+        "WebSocket",
+    ):
         assert transport not in source
 
 
@@ -211,22 +222,25 @@ def test_every_default_survives_a_round_trip(context):
     assert set(defaults) == set(evaluate(context, "SETTING_KEYS"))
     for key, value in defaults.items():
         assert evaluate(context, f"coerce({json.dumps(key)}, {json.dumps(value)})") == {
-            "ok": True, "value": value,
+            "ok": True,
+            "value": value,
         }
 
 
 @pytest.mark.parametrize(
     ("key", "offered", "expected"),
     [
-        ("solveTimeoutSeconds", 5, 240),        # below the floor
-        ("solveTimeoutSeconds", 100000, 240),   # above the ceiling
-        ("solveTimeoutSeconds", "240", 240),    # a string from an input element
+        ("solveTimeoutSeconds", 5, 240),  # below the floor
+        ("solveTimeoutSeconds", 100000, 240),  # above the ceiling
+        ("solveTimeoutSeconds", "240", 240),  # a string from an input element
         ("panelWidth", 9000, 360),
         ("autoSolve", "yes", True),
         ("logLevel", "chatty", "info"),
     ],
 )
-def test_a_value_the_schema_rejects_falls_back_to_the_default(context, key, offered, expected):
+def test_a_value_the_schema_rejects_falls_back_to_the_default(
+    context, key, offered, expected
+):
     """A corrupt preference should cost you the preference, not the add-on."""
     verdict = evaluate(context, f"coerce({json.dumps(key)}, {json.dumps(offered)})")
 
@@ -245,6 +259,116 @@ def test_the_timeout_the_solver_uses_is_the_one_that_was_set():
     assert "SOLVE_TIMEOUT_MS" not in background
     # And a change made while the event page is loaded takes effect.
     assert "onSettingsChanged" in background
+
+
+def test_cadence_presets_resolve_to_distinct_serializable_arrangements(context):
+    defaults = evaluate(context, "defaultSettings()")
+    resolved = {}
+    for genre in ("classical", "jazz", "lofi", "electronic"):
+        offered = {**defaults, "entryGenre": genre}
+        resolved[genre] = evaluate(
+            context, f"resolveEntryCadence({json.dumps(offered)})"
+        )
+
+    assert resolved["classical"]["rhythmWeights"] != resolved["jazz"]["rhythmWeights"]
+    assert resolved["lofi"]["swingRatio"] == 0.12
+    assert resolved["electronic"]["variationRatio"] == 0.06
+    for cadence in resolved.values():
+        assert cadence["durationMinMs"] == 5000
+        assert cadence["durationMaxMs"] == 10000
+
+
+def test_custom_cadence_uses_advanced_controls_and_orders_its_window(context):
+    defaults = evaluate(context, "defaultSettings()")
+    offered = {
+        **defaults,
+        "entryGenre": "custom",
+        "entryPattern": "syncopated",
+        "entryTempoBpm": 144,
+        "entryDurationMinSeconds": 11,
+        "entryDurationMaxSeconds": 4,
+        "entrySwingPercent": 37,
+        "entryVariationPercent": 25,
+        "entrySymbolRestPercent": 66,
+    }
+
+    cadence = evaluate(context, f"resolveEntryCadence({json.dumps(offered)})")
+
+    assert cadence == {
+        "tempoBpm": 144,
+        "durationMinMs": 4000,
+        "durationMaxMs": 11000,
+        "rhythmWeights": [1, 0.56, 0.9, 1.24],
+        "swingRatio": 0.37,
+        "variationRatio": 0.25,
+        "symbolRestRatio": 0.66,
+    }
+
+
+def test_editor_cadence_offsets_stay_bounded_and_respond_to_tempo():
+    editor = (EXTENSION_DIR / "content" / "hawkes-editor.js").read_text()
+    public_return = "    originAllowed,\n  };"
+    test_return = (
+        "    originAllowed,\n"
+        "    __normalizeCadence: normalizedCadence,\n"
+        "    __entryBeatOffsets: entryBeatOffsets,\n"
+        "  };"
+    )
+    assert public_return in editor
+
+    cadence_context = quickjs.Context()
+    cadence_context.eval(
+        PRELUDE
+        + """
+        var __cadenceSeed = 2463534242;
+        var crypto = { getRandomValues: function (sample) {
+          __cadenceSeed ^= __cadenceSeed << 13;
+          __cadenceSeed ^= __cadenceSeed >>> 17;
+          __cadenceSeed ^= __cadenceSeed << 5;
+          sample[0] = __cadenceSeed >>> 0;
+          return sample;
+        } };
+    """
+        + _modules("log.js", "settings.js")
+    )
+    cadence_context.eval(editor.replace(public_return, test_return))
+
+    formula = json.dumps("x^2 + 18x + 81")
+    defaults = evaluate(cadence_context, "defaultSettings()")
+    for genre in ("classical", "jazz", "lofi", "electronic"):
+        offered = json.dumps({**defaults, "entryGenre": genre})
+        offsets = evaluate(
+            cadence_context,
+            "(function () {"
+            f"const cadence = ethnosHawkes.__normalizeCadence(resolveEntryCadence({offered}));"
+            f"return ethnosHawkes.__entryBeatOffsets([...{formula}], cadence);"
+            "})()",
+        )
+        assert len(offsets) == len("x^2 + 18x + 81")
+        assert offsets == sorted(offsets)
+        assert 5000 <= offsets[-1] <= 10000
+
+    def duration_at(tempo):
+        offered = json.dumps(
+            {
+                **defaults,
+                "entryGenre": "custom",
+                "entryTempoBpm": tempo,
+                "entryDurationMinSeconds": 2,
+                "entryDurationMaxSeconds": 12,
+            }
+        )
+        cadence_context.eval("__cadenceSeed = 2463534242")
+        return evaluate(
+            cadence_context,
+            "(function () {"
+            f"const cadence = ethnosHawkes.__normalizeCadence(resolveEntryCadence({offered}));"
+            f"const offsets = ethnosHawkes.__entryBeatOffsets([...{formula}], cadence);"
+            "return offsets[offsets.length - 1];"
+            "})()",
+        )
+
+    assert duration_at(180) < duration_at(45)
 
 
 def test_every_declared_setting_has_a_control_and_every_control_a_setting(context):
@@ -280,7 +404,9 @@ def test_the_build_rejects_a_read_above_its_own_declaration(tmp_path, monkeypatc
     assert "broken.js:2" in problems[0]
 
 
-def test_the_build_allows_a_reference_from_a_function_called_later(tmp_path, monkeypatch):
+def test_the_build_allows_a_reference_from_a_function_called_later(
+    tmp_path, monkeypatch
+):
     """Hoisting makes this legal, and a check that cried wolf would be turned off."""
     tree = tmp_path / "extension"
     tree.mkdir()
@@ -320,7 +446,9 @@ def test_a_name_inside_a_comment_or_a_string_is_not_a_read(tmp_path, monkeypatch
     assert problems == []
 
 
-def test_the_build_rejects_a_selector_for_an_element_that_is_not_there(tmp_path, monkeypatch):
+def test_the_build_rejects_a_selector_for_an_element_that_is_not_there(
+    tmp_path, monkeypatch
+):
     """The same total failure, reached by renaming an element instead."""
     tree = tmp_path / "extension"
     (tree / "page").mkdir(parents=True)
@@ -438,13 +566,15 @@ def test_an_entry_logged_during_a_write_is_not_left_behind(writer):
 
 
 def test_the_ring_drops_the_oldest_rather_than_growing(writer):
-    writer.eval("for (let index = 0; index < 260; index += 1) { log.info('e' + index); }")
+    writer.eval(
+        "for (let index = 0; index < 260; index += 1) { log.info('e' + index); }"
+    )
     writer.eval("var done = false; flushLog().then(function () { done = true; });")
     writer.pump()
 
     events = _events(writer)
     assert len(events) == 200
-    assert events[0] == "e60"      # the oldest 60 were dropped
+    assert events[0] == "e60"  # the oldest 60 were dropped
     assert events[-1] == "e259"
 
 
@@ -460,8 +590,8 @@ def test_clearing_leaves_nothing_queued_either(writer):
 @pytest.mark.parametrize(
     ("key", "typed", "expected"),
     [
-        ("solveTimeoutSeconds", 9999, 900),   # pulled to the ceiling, not reset
-        ("solveTimeoutSeconds", 1, 30),       # and to the floor
+        ("solveTimeoutSeconds", 9999, 900),  # pulled to the ceiling, not reset
+        ("solveTimeoutSeconds", 1, 30),  # and to the floor
         ("panelWidth", 10000, 560),
         ("solveTimeoutSeconds", "nonsense", 240),  # not a number: fall back
     ],
@@ -474,6 +604,12 @@ def test_a_number_typed_out_of_range_is_pulled_into_it(context, key, typed, expe
 
 
 def test_clamping_leaves_a_value_already_in_range_alone(context):
-    assert evaluate(context, 'clamp("solveTimeoutSeconds", 120)') == {"ok": True, "value": 120}
+    assert evaluate(context, 'clamp("solveTimeoutSeconds", 120)') == {
+        "ok": True,
+        "value": 120,
+    }
     # Only integers are clamped; everything else defers to the schema check.
-    assert evaluate(context, 'clamp("logLevel", "chatty")') == {"ok": False, "value": "info"}
+    assert evaluate(context, 'clamp("logLevel", "chatty")') == {
+        "ok": False,
+        "value": "info",
+    }

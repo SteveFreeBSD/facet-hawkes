@@ -25,9 +25,9 @@ quickjs = pytest.importorskip("quickjs", reason="pip install quickjs")
 
 @pytest.fixture(scope="module")
 def layout():
-    source = IMPORT_LINE.sub(
-        "", (COMMON / "answer-math.js").read_text()
-    ).replace("export ", "")
+    source = IMPORT_LINE.sub("", (COMMON / "answer-math.js").read_text()).replace(
+        "export ", ""
+    )
     context = quickjs.Context()
     context.eval(source)
 
@@ -137,15 +137,22 @@ def test_every_form_the_solver_produces_is_handled(layout):
     ):
         row = layout(answer)
         assert row["items"], answer
+
         # Nothing is silently dropped: every character is still accounted for.
         def text_of(node):
             out = ""
             for item in node["items"]:
                 if item["kind"] == "text":
                     out += item["text"]
-                for field in ("exponent", "numerator", "denominator", "radicand", "body"):
+                for field in (
+                    "exponent",
+                    "numerator",
+                    "denominator",
+                    "radicand",
+                    "body",
+                ):
                     if field in item:
                         out += text_of(item[field])
             return out
-        stripped = re.sub(r"[\\^{}|()]|frac|√|∛|∜", "", answer)
+
         assert re.sub(r"[\s]", "", text_of(row)).replace("(", "").replace(")", "") != ""

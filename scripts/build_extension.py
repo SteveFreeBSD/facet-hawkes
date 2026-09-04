@@ -135,7 +135,9 @@ def packaged_files() -> list[Path]:
     for path in sorted(EXTENSION_DIR.rglob("*")):
         if not path.is_file():
             continue
-        if any(part in EXCLUDED_DIR_NAMES for part in path.relative_to(EXTENSION_DIR).parts):
+        if any(
+            part in EXCLUDED_DIR_NAMES for part in path.relative_to(EXTENSION_DIR).parts
+        ):
             continue
         if path.name in EXCLUDED_NAMES or path.suffix not in PACKAGED_SUFFIXES:
             continue
@@ -180,7 +182,9 @@ def _check_manifest(manifest: dict, problems: list[str]) -> None:
         if background.get("persistent"):
             problems.append("the background page must stay non-persistent")
         if "service_worker" in background:
-            problems.append("service_worker is Chrome's model; Firefox uses event pages")
+            problems.append(
+                "service_worker is Chrome's model; Firefox uses event pages"
+            )
     if manifest.get("permissions") != ALLOWED_PERMISSIONS:
         pass  # already reported above
     for key in ("declarative_net_request", "webRequest", "chrome_settings_overrides"):
@@ -191,7 +195,9 @@ def _check_manifest(manifest: dict, problems: list[str]) -> None:
     if not gecko.get("id"):
         problems.append("browser_specific_settings.gecko.id is required for signing")
     if not gecko.get("strict_min_version"):
-        problems.append("browser_specific_settings.gecko.strict_min_version is required")
+        problems.append(
+            "browser_specific_settings.gecko.strict_min_version is required"
+        )
     collection = gecko.get("data_collection_permissions", {}).get("required")
     if collection != ["websiteContent"]:
         problems.append(
@@ -269,7 +275,9 @@ def _check_scripts(problems: list[str]) -> None:
             if re.search(r"<script(?![^>]*\bsrc=)", text):
                 problems.append(f"{path}: inline <script> is blocked by the page CSP")
             if re.search(r"\son[a-z]+=", text):
-                problems.append(f"{path}: inline event handler is blocked by the page CSP")
+                problems.append(
+                    f"{path}: inline event handler is blocked by the page CSP"
+                )
         if path.parts[0] == CONTENT_DIR.name:
             for token in CONTENT_SCRIPT_FORBIDDEN:
                 if token in text:
@@ -283,8 +291,10 @@ INJECTED_PATH = re.compile(r"""_SCRIPT = ["']([^"']+)["']""")
 # The two files allowed to run in the page's own world, and nothing else.
 # Hawkes drives its editor through page-owned JavaScript, so reading the rules
 # and building structure both require it.
-MAIN_WORLD_SCRIPT = Path("content/hawkes-describe.js")   # reads only
-MAIN_WORLD_WRITER = Path("common/page-actions.js")       # the one writer
+MAIN_WORLD_SCRIPT = Path("content/hawkes-describe.js")  # reads only
+MAIN_WORLD_WRITER = Path("common/page-actions.js")  # the one writer
+
+
 def _check_main_world(problems: list[str]) -> None:
     """The page-world probe must read and never write."""
     path = EXTENSION_DIR / MAIN_WORLD_SCRIPT
@@ -305,7 +315,9 @@ def _check_main_world(problems: list[str]) -> None:
     )
     for pattern, what in writes:
         if re.search(pattern, text):
-            problems.append(f"{MAIN_WORLD_SCRIPT}: {what}; the page-world probe is read-only")
+            problems.append(
+                f"{MAIN_WORLD_SCRIPT}: {what}; the page-world probe is read-only"
+            )
     _check_main_world_writer(problems)
 
     # No other script may reach the page model.
@@ -349,8 +361,12 @@ def _check_main_world_writer(problems: list[str]) -> None:
 
     # The single page method it is allowed to call.
     if "keyPadButtonClick" not in text:
-        problems.append(f"{MAIN_WORLD_WRITER}: expected to press templates via the editor")
-    if "func: enterPlan" not in (EXTENSION_DIR / "background.js").read_text(encoding="utf-8"):
+        problems.append(
+            f"{MAIN_WORLD_WRITER}: expected to press templates via the editor"
+        )
+    if "func: enterPlan" not in (EXTENSION_DIR / "background.js").read_text(
+        encoding="utf-8"
+    ):
         problems.append("background.js must pass enterPlan as the injected function")
 
 
@@ -380,7 +396,9 @@ def _check_injected_paths(problems: list[str]) -> None:
 def _check_shared_constants(problems: list[str]) -> None:
     """The content scripts are self-contained, so their copies must not drift."""
     config = (EXTENSION_DIR / "common" / "config.js").read_text(encoding="utf-8")
-    editor = (EXTENSION_DIR / "content" / "hawkes-editor.js").read_text(encoding="utf-8")
+    editor = (EXTENSION_DIR / "content" / "hawkes-editor.js").read_text(
+        encoding="utf-8"
+    )
 
     for name in (
         "MAX_ANSWER_LENGTH",
@@ -416,7 +434,9 @@ MESSAGE_KEY = re.compile(
 )
 
 # `const`/`let`, including a simple destructuring pattern.
-DECLARATION = re.compile(r"\b(?:const|let)\s+(\{[^{}]*\}|\[[^\[\]]*\]|[A-Za-z_$][\w$]*)")
+DECLARATION = re.compile(
+    r"\b(?:const|let)\s+(\{[^{}]*\}|\[[^\[\]]*\]|[A-Za-z_$][\w$]*)"
+)
 IDENTIFIER = re.compile(r"[A-Za-z_$][\w$]*")
 
 
@@ -437,7 +457,9 @@ def _blank_literals(source: str) -> str:
                 out[index] = " "
                 index += 1
         elif char == "/" and index + 1 < length and source[index + 1] == "*":
-            while index < length and not (source[index] == "*" and source[index + 1 : index + 2] == "/"):
+            while index < length and not (
+                source[index] == "*" and source[index + 1 : index + 2] == "/"
+            ):
                 if source[index] != "\n":
                     out[index] = " "
                 index += 1
@@ -512,11 +534,14 @@ def _check_declaration_order(problems: list[str]) -> None:
                 continue
             block = block_of[match.start()]
             names = [
-                name for name in IDENTIFIER.findall(match.group(1))
+                name
+                for name in IDENTIFIER.findall(match.group(1))
                 if name not in {"of", "in"}
             ]
             for name in names:
-                for use in re.finditer(rf"\b{re.escape(name)}\b", blanked[: match.start()]):
+                for use in re.finditer(
+                    rf"\b{re.escape(name)}\b", blanked[: match.start()]
+                ):
                     if block_of[use.start()] != block:
                         continue
                     if use.start() > 0 and blanked[use.start() - 1] in ".":
@@ -532,7 +557,9 @@ def _check_declaration_order(problems: list[str]) -> None:
 
 # Which script each extension page loads, so a selector can be checked against
 # the markup it will actually run against.
-PAGE_SELECTOR = re.compile(r"""(?:querySelector\(|getElementById\()["']#?([A-Za-z][\w-]*)["']""")
+PAGE_SELECTOR = re.compile(
+    r"""(?:querySelector\(|getElementById\()["']#?([A-Za-z][\w-]*)["']"""
+)
 HTML_ID = re.compile(r"""\bid="([^"]+)\"""")
 PAGE_SCRIPT = re.compile(r"""<script[^>]*\bsrc="([^"]+)\"""")
 
@@ -575,7 +602,9 @@ def _check_view_message_keys(messages: dict, problems: list[str]) -> None:
     source = (EXTENSION_DIR / path).read_text(encoding="utf-8")
     for name in sorted(set(MESSAGE_KEY.findall(source))):
         if name not in messages:
-            problems.append(f"{path}: returns message key {name!r}, which is not defined")
+            problems.append(
+                f"{path}: returns message key {name!r}, which is not defined"
+            )
 
 
 def _check_undefined_constants(problems: list[str]) -> None:
@@ -596,8 +625,12 @@ def _check_undefined_constants(problems: list[str]) -> None:
         used = set(re.findall(r"\b([A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+)\b", blanked))
         if not used:
             continue
-        declared = set(re.findall(r"(?:const|let|var|function|class)\s+([A-Z][A-Z0-9_]*)", blanked))
-        declared |= set(re.findall(r"^\s*([A-Z][A-Z0-9_]+)\s*[,}]", blanked, re.MULTILINE))
+        declared = set(
+            re.findall(r"(?:const|let|var|function|class)\s+([A-Z][A-Z0-9_]*)", blanked)
+        )
+        declared |= set(
+            re.findall(r"^\s*([A-Z][A-Z0-9_]+)\s*[,}]", blanked, re.MULTILINE)
+        )
         for statement in re.findall(r"import\s*\{([^}]*)\}", blanked):
             declared |= {
                 name.split(" as ")[-1].strip()
@@ -646,7 +679,16 @@ def render_icons() -> None:
     for size in ICON_SIZES:
         target = EXTENSION_DIR / "icons" / f"icon-{size}.png"
         subprocess.run(
-            [converter, "-w", str(size), "-h", str(size), "-o", str(target), str(source)],
+            [
+                converter,
+                "-w",
+                str(size),
+                "-h",
+                str(size),
+                "-o",
+                str(target),
+                str(source),
+            ],
             check=True,
         )
         print(f"rendered {target.relative_to(PROJECT_ROOT)}")
@@ -670,8 +712,12 @@ def build(output_dir: Path = DIST_DIR) -> Path:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--check", action="store_true", help="validate without packaging")
-    parser.add_argument("--icons", action="store_true", help="re-render PNG icons first")
+    parser.add_argument(
+        "--check", action="store_true", help="validate without packaging"
+    )
+    parser.add_argument(
+        "--icons", action="store_true", help="re-render PNG icons first"
+    )
     parser.add_argument("--out", type=Path, default=DIST_DIR, help="output directory")
     args = parser.parse_args(argv)
 

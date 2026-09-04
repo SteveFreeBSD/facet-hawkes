@@ -35,6 +35,17 @@ body {
   font-size: 15px;
 }
 
+.card__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.card__heading .eyebrow {
+  margin-bottom: 2px;
+}
+
 .page__footer {
   display: flex;
   align-items: center;
@@ -60,6 +71,10 @@ body {
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.field__control--range {
+  flex-wrap: nowrap;
 }
 
 .field__unit {
@@ -90,6 +105,106 @@ body {
   flex: 1;
   min-width: 180px;
   accent-color: var(--accent);
+}
+
+/* --- answer cadence --------------------------------------------------- */
+
+.cadence-card {
+  overflow: hidden;
+}
+
+.cadence-summary {
+  flex: none;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.cadence-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  gap: 14px;
+}
+
+.cadence-grid .input--select {
+  width: 100%;
+  min-width: 0;
+}
+
+.duration-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.duration-divider {
+  color: var(--text-faint);
+}
+
+.cadence-preview {
+  display: flex;
+  align-items: end;
+  gap: 8px;
+  height: 52px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-sunken);
+}
+
+.cadence-preview__beat {
+  flex: 1;
+  min-width: 18px;
+  height: calc(var(--beat-weight, 1) * 22px);
+  max-height: 44px;
+  border-radius: 3px 3px 1px 1px;
+  background: var(--accent);
+  opacity: 0.8;
+}
+
+.cadence-note {
+  min-height: 2.8em;
+}
+
+.custom-panel {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin: 0;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface-sunken);
+}
+
+.custom-panel[hidden] {
+  display: none;
+}
+
+.custom-panel legend {
+  padding: 0 5px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.custom-slider {
+  grid-column: span 1;
+}
+
+@media (max-width: 520px) {
+  .cadence-grid,
+  .custom-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .custom-slider {
+    grid-column: auto;
+  }
 }
 
 .check {

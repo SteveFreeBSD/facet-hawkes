@@ -27,7 +27,9 @@ def _literal(payload: bytes) -> bytes:
 
 
 def test_snappy_reads_a_plain_literal():
-    assert reader.snappy_decompress(_literal(b"event-page-loaded")) == b"event-page-loaded"
+    assert (
+        reader.snappy_decompress(_literal(b"event-page-loaded")) == b"event-page-loaded"
+    )
 
 
 def test_snappy_follows_a_back_reference():
@@ -57,17 +59,24 @@ def _string(text: str) -> bytes:
 def test_a_log_entry_decodes_to_its_fields():
     """One entry, shaped exactly as `common/log.js` writes it."""
     clone = (
-        _pair(3, 0xFFF10000)                       # header
+        _pair(3, 0xFFF10000)  # header
         + _pair(0, reader.TAG_OBJECT)
-        + _string("level") + _string("warn")
-        + _string("scope") + _string("background")
-        + _string("event") + _string("failed")
-        + _string("seq") + _pair(7, reader.TAG_INT32)
+        + _string("level")
+        + _string("warn")
+        + _string("scope")
+        + _string("background")
+        + _string("event")
+        + _string("failed")
+        + _string("seq")
+        + _pair(7, reader.TAG_INT32)
         + _pair(0, reader.TAG_END_OF_KEYS)
     )
 
     assert reader.Clone(clone).read() == {
-        "level": "warn", "scope": "background", "event": "failed", "seq": 7,
+        "level": "warn",
+        "scope": "background",
+        "event": "failed",
+        "seq": 7,
     }
 
 

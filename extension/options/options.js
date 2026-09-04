@@ -5,8 +5,8 @@
  *
  * Controls are bound by `data-setting="<key>"`, and the key is looked up in
  * `common/settings.js` to decide how to read the control and how to validate
- * what comes out of it. Adding a preference is therefore one schema entry and
- * one labelled control — the page has no per-setting code at all.
+ * what comes out of it. The cadence card adds only presentation behaviour: a
+ * live beat preview, linked duration endpoints, and preset tempo suggestions.
  *
  * The rest of the page is the two things you cannot put in a schema: the
  * keyboard shortcut, which Firefox owns and which is changed through
@@ -15,10 +15,12 @@
 
 import { localizeDocument, message } from "../common/i18n.js";
 import {
+  ENTRY_GENRE_PRESETS,
   SETTINGS,
   clamp,
   readSettings,
   resetSettings,
+  resolveEntryCadence,
   writeSetting,
 } from "../common/settings.js";
 import { clearLog, describeError, formatEntry, initLog, log, readLog, setLogLevel } from "../common/log.js";
@@ -36,7 +38,35 @@ const logView = document.querySelector("#log");
 const logSummary = document.querySelector("#log-summary");
 const logStatus = document.querySelector("#log-status");
 const resetStatus = document.querySelector("#reset-status");
-const widthValue = document.querySelector("#panelWidth-value");
+const cadenceCustom = document.querySelector("#cadence-custom");
+const cadenceNote = document.querySelector("#cadence-note");
+const cadencePreview = document.querySelector("#cadence-preview");
+const cadenceSummary = document.querySelector("#cadence-summary");
+const cadenceBars = [...cadencePreview.querySelectorAll(".cadence-preview__beat")];
+
+const SETTING_OUTPUT_KEYS = Object.freeze({
+  panelWidth: "optionsWidthValue",
+  entryTempoBpm: "optionsCadenceTempoValue",
+  entrySwingPercent: "optionsCadencePercentValue",
+  entryVariationPercent: "optionsCadencePercentValue",
+  entrySymbolRestPercent: "optionsCadencePercentValue",
+});
+
+const GENRE_LABEL_KEYS = Object.freeze({
+  classical: "optionsCadenceGenreClassical",
+  jazz: "optionsCadenceGenreJazz",
+  lofi: "optionsCadenceGenreLofi",
+  electronic: "optionsCadenceGenreElectronic",
+  custom: "optionsCadenceGenreCustom",
+});
+
+const GENRE_HELP_KEYS = Object.freeze({
+  classical: "optionsCadenceGenreClassicalHelp",
+  jazz: "optionsCadenceGenreJazzHelp",
+  lofi: "optionsCadenceGenreLofiHelp",
+  electronic: "optionsCadenceGenreElectronicHelp",
+  custom: "optionsCadenceGenreCustomHelp",
+});
 
 /**
  * @param {Element} element
@@ -55,6 +85,15 @@ function boundControls() {
   return [...document.querySelectorAll("[data-setting]")];
 }
 
+/** Update the small unit readout paired with a range control. */
+function showReadout(control, value) {
+  const outputKey = SETTING_OUTPUT_KEYS[control.id];
+  const output = outputKey && document.querySelector(`#${control.id}-value`);
+  if (output) {
+    output.textContent = message(outputKey, [String(value)]);
+  }
+}
+
 /** Put a stored value into whichever kind of control holds it. */
 function showValue(control, value) {
   if (control.type === "checkbox") {
@@ -62,9 +101,7 @@ function showValue(control, value) {
   } else {
     control.value = String(value);
   }
-  if (control.id === "panelWidth") {
-    widthValue.textContent = message("optionsWidthValue", [String(value)]);
-  }
+  showReadout(control, value);
 }
 
 /** Read whichever kind of control this is, in the type the schema expects. */
@@ -75,6 +112,56 @@ function controlValue(control) {
   return SETTINGS[control.dataset.setting].kind === "integer"
     ? Number(control.value)
     : control.value;
+}
+
+/** Current control values, in the same shape as readSettings(). */
+function visibleSettings() {
+  const values = {};
+  for (const control of boundControls()) {
+    const key = control.dataset.setting;
+    values[key] = clamp(key, controlValue(control)).value;
+  }
+  return values;
+}
+
+/** Draw the selected arrangement without playing sound or touching a page. */
+function showCadence() {
+  const values = visibleSettings();
+  const genre = values.entryGenre;
+  const resolved = resolveEntryCadence(values);
+  const genreName = message(GENRE_LABEL_KEYS[genre]);
+  cadenceCustom.hidden = genre !== "custom";
+  cadenceNote.textContent = message(GENRE_HELP_KEYS[genre]);
+  cadenceSummary.textContent = message(
+    "optionsCadenceSummary", [genreName, String(resolved.tempoBpm)]
+  );
+  cadencePreview.setAttribute(
+    "aria-label",
+    message("optionsCadencePreviewLabel", [genreName, String(resolved.tempoBpm)])
+  );
+  for (let index = 0; index < cadenceBars.length; index += 1) {
+    const bar = cadenceBars[index];
+    const weight = resolved.rhythmWeights[index];
+    bar.hidden = weight === undefined;
+    if (weight !== undefined) {
+      bar.style.setProperty("--beat-weight", String(weight));
+    }
+  }
+}
+
+/** Keep the two ends of the hard timing window in chronological order. */
+function alignDurationWindow(changedKey, settledValue) {
+  const minimum = document.querySelector("#entryDurationMinSeconds");
+  const maximum = document.querySelector("#entryDurationMaxSeconds");
+  if (changedKey === "entryDurationMinSeconds" && settledValue > Number(maximum.value)) {
+    showValue(maximum, settledValue);
+    return writeSetting("entryDurationMaxSeconds", settledValue);
+  }
+  if (changedKey === "entryDurationMaxSeconds" && settledValue < Number(minimum.value)) {
+    showValue(minimum, settledValue);
+    return writeSetting("entryDurationMinSeconds", settledValue);
+  }
+  return Promise.resolve(true);
 }
 
 async function bindSettings() {
@@ -90,13 +177,20 @@ async function bindSettings() {
     }
     showValue(control, stored[key]);
 
+    // Reset reuses this function to repaint defaults. Listeners belong to the
+    // controls, not to a particular paint, so attach each one only once.
+    if (control.dataset.bound === "true") {
+      continue;
+    }
+    control.dataset.bound = "true";
+
     // `input` drives the readout only. A slider fires it for every pixel of a
     // drag, and none of those are a preference the user has settled on.
     control.addEventListener("input", () => {
-      if (control.id === "panelWidth") {
-        widthValue.textContent = message(
-          "optionsWidthValue", [String(clamp(key, controlValue(control)).value)]
-        );
+      const settled = clamp(key, controlValue(control));
+      showReadout(control, settled.value);
+      if (key.startsWith("entry")) {
+        showCadence();
       }
     });
 
@@ -106,10 +200,23 @@ async function bindSettings() {
     control.addEventListener("change", () => {
       const settled = clamp(key, controlValue(control));
       showValue(control, settled.value);
-      writeSetting(key, settled.value)
+      const writes = [
+        writeSetting(key, settled.value),
+        alignDurationWindow(key, settled.value),
+      ];
+      if (key === "entryGenre" && settled.value !== "custom") {
+        const recommendedTempo = ENTRY_GENRE_PRESETS[settled.value].tempoBpm;
+        const tempo = document.querySelector("#entryTempoBpm");
+        showValue(tempo, recommendedTempo);
+        writes.push(writeSetting("entryTempoBpm", recommendedTempo));
+      }
+      Promise.all(writes)
         .then(() => {
           if (key === "logLevel") {
             setLogLevel(settled.value);
+          }
+          if (key.startsWith("entry")) {
+            showCadence();
           }
           say(resetStatus, message("optionsSaved"), "ready");
         })
@@ -117,8 +224,9 @@ async function bindSettings() {
           log.error("setting-write-failed", { key, error: describeError(error) });
           say(resetStatus, message("optionsSaveFailed"), "error");
         });
-    });
+      });
   }
+  showCadence();
 }
 
 // --- keyboard shortcut -----------------------------------------------------

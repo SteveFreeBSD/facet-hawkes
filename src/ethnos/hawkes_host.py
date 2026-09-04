@@ -44,7 +44,9 @@ def read_message(stream: BinaryIO) -> dict | None:
         return None  # Firefox closed the pipe; this is an ordinary shutdown.
     (length,) = LENGTH_PREFIX.unpack(header)
     if length > MAX_MESSAGE_BYTES:
-        raise ValueError(f"message of {length} bytes exceeds the {MAX_MESSAGE_BYTES} limit")
+        raise ValueError(
+            f"message of {length} bytes exceeds the {MAX_MESSAGE_BYTES} limit"
+        )
     body = stream.read(length)
     if len(body) < length:
         raise ValueError("message body ended early")
@@ -293,7 +295,9 @@ def _solve_from_markup(
     ), ""
 
 
-def _polynomial_classification(instruction: str, expressions: list[str]) -> AnswerPayload | None:
+def _polynomial_classification(
+    instruction: str, expressions: list[str]
+) -> AnswerPayload | None:
     """Classify polynomial-choice questions without needing a screenshot."""
     if not re.search(r"polynomial\s+or\s+a\s+non[- ]polynomial", instruction, re.I):
         return None
@@ -305,7 +309,9 @@ def _polynomial_classification(instruction: str, expressions: list[str]) -> Answ
             if not value.is_polynomial(*value.free_symbols):
                 raise ValueError("fractional or negative exponent")
         except (SyntaxError, TypeError, ValueError, ZeroDivisionError):
-            return AnswerPayload(display_text="Non-Polynomial", keyboard_entry="Non-Polynomial")
+            return AnswerPayload(
+                display_text="Non-Polynomial", keyboard_entry="Non-Polynomial"
+            )
         return AnswerPayload(display_text="Polynomial", keyboard_entry="Polynomial")
     return None
 
@@ -346,7 +352,9 @@ def _realness_answer(instruction: str, expressions: list[str]) -> AnswerPayload 
 
     from .symbolic_solver import _safe_sympy_expression
 
-    match = re.fullmatch(r"\\sqrt(?:\[(\d+)\])?\{(.+)\}", expressions[0].strip(), re.DOTALL)
+    match = re.fullmatch(
+        r"\\sqrt(?:\[(\d+)\])?\{(.+)\}", expressions[0].strip(), re.DOTALL
+    )
     if match is None:
         return None
     index = int(match.group(1) or 2)
@@ -374,12 +382,18 @@ def handle(raw: dict, report=None) -> SolveResponse:
     try:
         request = SolveRequest.model_validate(raw)
     except ValueError as exc:
-        return error_response(str(raw.get("request_id", ""))[:64], f"Invalid request: {exc}")
+        return error_response(
+            str(raw.get("request_id", ""))[:64], f"Invalid request: {exc}"
+        )
 
     if request.operation == "health":
-        return SolveResponse(request_id=request.request_id, status="ok", message="ethnos ready")
+        return SolveResponse(
+            request_id=request.request_id, status="ok", message="ethnos ready"
+        )
     if request.origin != "https://learn.hawkeslearning.com":
-        return error_response(request.request_id, "The requesting origin is not allowed.")
+        return error_response(
+            request.request_id, "The requesting origin is not allowed."
+        )
     try:
         return solve(request, report)
     except Exception as exc:  # noqa: BLE001 - the pipeline must never kill the host
@@ -392,12 +406,16 @@ def main() -> int:
         try:
             raw = read_message(stdin)
         except (ValueError, json.JSONDecodeError) as exc:
-            write_message(stdout, error_response("", f"Malformed message: {exc}").model_dump())
+            write_message(
+                stdout, error_response("", f"Malformed message: {exc}").model_dump()
+            )
             return 1
         if raw is None:
             return 0
         if not isinstance(raw, dict):
-            write_message(stdout, error_response("", "Message was not an object").model_dump())
+            write_message(
+                stdout, error_response("", "Message was not an object").model_dump()
+            )
             continue
         request_id = str(raw.get("request_id", ""))[:64]
 

@@ -94,8 +94,11 @@ def test_what_cannot_be_read_exactly_is_refused(markup):
 @pytest.mark.parametrize(
     ("markup", "problem", "expected"),
     [
-        (RATIONAL_EXPONENTS,
-         "Simplify. Express your answer using rational exponents.", "y^(27/20)"),
+        (
+            RATIONAL_EXPONENTS,
+            "Simplify. Express your answer using rational exponents.",
+            "y^(27/20)",
+        ),
         (NEGATIVE_BASE, "Simplify the following expression.", "64"),
         (INDEXED_ROOT, "Simplify the following radical expression.", "x^6y^7z^4"),
     ],
@@ -112,16 +115,18 @@ def test_the_solver_answers_straight_from_the_markup(markup, problem, expected):
 def test_the_host_reports_an_exact_reading():
     from ethnos.hawkes_host import handle
 
-    response = handle({
-        "protocol_version": 1,
-        "operation": "solve_hawkes_problem",
-        "request_id": "m1",
-        "origin": "https://learn.hawkeslearning.com",
-        "problem": {
-            "prompt_text": "Simplify. Express your answer using rational exponents.",
-            "mathml": [RATIONAL_EXPONENTS],
-        },
-    })
+    response = handle(
+        {
+            "protocol_version": 1,
+            "operation": "solve_hawkes_problem",
+            "request_id": "m1",
+            "origin": "https://learn.hawkeslearning.com",
+            "problem": {
+                "prompt_text": "Simplify. Express your answer using rational exponents.",
+                "mathml": [RATIONAL_EXPONENTS],
+            },
+        }
+    )
 
     assert response.status == "ready"
     assert response.answer.display_text == "y^(27/20)"
@@ -139,13 +144,18 @@ def test_markup_that_cannot_be_solved_exactly_does_not_reach_the_model():
     """
     from ethnos.hawkes_host import handle
 
-    response = handle({
-        "protocol_version": 1,
-        "operation": "solve_hawkes_problem",
-        "request_id": "m2",
-        "origin": "https://learn.hawkeslearning.com",
-        "problem": {"prompt_text": "Graph the function.", "mathml": ["<math><mi>x</mi></math>"]},
-    })
+    response = handle(
+        {
+            "protocol_version": 1,
+            "operation": "solve_hawkes_problem",
+            "request_id": "m2",
+            "origin": "https://learn.hawkeslearning.com",
+            "problem": {
+                "prompt_text": "Graph the function.",
+                "mathml": ["<math><mi>x</mi></math>"],
+            },
+        }
+    )
 
     assert response.status == "unsupported"
     assert response.answer is None

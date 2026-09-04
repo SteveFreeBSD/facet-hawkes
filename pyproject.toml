@@ -8,11 +8,13 @@ dependencies = [
     "ollama>=0.6.0",
     "pydantic>=2.11.0",
     "pymupdf>=1.26.0",
+    "sympy>=1.14.0",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0.0",
+    "quickjs>=1.19.4",
     "ruff>=0.15.0",
     "vulture>=2.14",
 ]

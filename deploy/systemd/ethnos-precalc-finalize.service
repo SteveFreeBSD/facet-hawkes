@@ -1,0 +1,10 @@
+[Unit]
+Description=Finish, normalize, and verify all Ethnos Precalculus chunks
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/steve/apps/ethnos
+ExecStart=/home/steve/apps/ethnos/scripts/finalize_precalculus.sh
+
+[Install]
+WantedBy=default.target

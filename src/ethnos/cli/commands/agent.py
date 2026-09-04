@@ -48,7 +48,15 @@ def register(subcommands):
         choices=["auto", "off", "on"],
         help="Allow rendered PDF page image inspection with a vision model.",
     )
-    parser.add_argument("--max-steps", type=int, default=8)
+    parser.add_argument(
+        "--max-steps",
+        type=int,
+        default=8,
+        help=(
+            "Maximum model tool-loop steps per item; 0 runs deterministic "
+            "preflight/fallback only."
+        ),
+    )
     parser.add_argument(
         "--item-timeout",
         type=float,
@@ -59,8 +67,8 @@ def register(subcommands):
 
 
 def agent_review_cmd(args) -> int:
-    if args.max_steps < 1:
-        raise SystemExit("--max-steps must be 1 or greater.")
+    if args.max_steps < 0:
+        raise SystemExit("--max-steps must be 0 or greater.")
     if args.item_timeout < 0:
         raise SystemExit("--item-timeout must be 0 or greater.")
     settings, conn = open_db(args)
@@ -103,7 +111,11 @@ def agent_review_cmd(args) -> int:
     try:
         from .. import create_client as _create_client
 
-        client = _create_client(settings.ollama_host, settings.ollama_timeout)
+        client = (
+            None
+            if args.max_steps == 0
+            else _create_client(settings.ollama_host, settings.ollama_timeout)
+        )
         report = run_agent_review(
             conn=conn,
             document_id=args.document_id,
@@ -141,6 +153,8 @@ def agent_review_cmd(args) -> int:
     print(f"  items: {report.item_count}")
     print(f"  verdicts: {json.dumps(report.verdict_counts, sort_keys=True)}")
     print(f"  quality findings: {json.dumps(report.quality_counts, sort_keys=True)}")
+    print(f"  model finalized: {getattr(report, 'model_finalized_count', 0)}")
+    print(f"  deterministic fallback: {getattr(report, 'fallback_item_count', 0)}")
     return 0
 
 

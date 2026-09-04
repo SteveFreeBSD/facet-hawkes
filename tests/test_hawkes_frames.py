@@ -37,9 +37,7 @@ def select_answer_frame():
 
     def call(results):
         payload = json.dumps(results)
-        return json.loads(
-            context.eval(f"JSON.stringify(selectAnswerFrame({payload}))")
-        )
+        return json.loads(context.eval(f"JSON.stringify(selectAnswerFrame({payload}))"))
 
     return call
 

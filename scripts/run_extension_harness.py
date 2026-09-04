@@ -65,20 +65,20 @@ FOCUSED_FIELD = '<input id="answer" type="text"><script>answer.focus()</script>'
 # One Hawkes answer control, named as Hawkes names them so the question probe's
 # "everything above the answer area" boundary is computed the way it is live.
 HAWKES_FIELD = (
-    '<div>Answer</div>'
+    "<div>Answer</div>"
     '<input id="txtAns1" class="qbaseCSS" type="text">'
-    '<script>txtAns1.focus()</script>'
+    "<script>txtAns1.focus()</script>"
 )
 
 # The polynomial, as MathJax leaves it in the document. The probe reads this
 # rather than a screenshot, and `questionSignature` returns null without it.
 POLYNOMIAL = (
     '<math xmlns="http://www.w3.org/1998/Math/MathML"><mrow>'
-    '<mo>-</mo><mn>3</mn><msup><mi>x</mi><mn>11</mn></msup>'
-    '<mo>-</mo><msup><mi>x</mi><mn>13</mn></msup>'
-    '<mo>+</mo><mn>5</mn>'
-    '<mo>+</mo><mn>2</mn><msup><mi>x</mi><mn>12</mn></msup>'
-    '</mrow></math>'
+    "<mo>-</mo><mn>3</mn><msup><mi>x</mi><mn>11</mn></msup>"
+    "<mo>-</mo><msup><mi>x</mi><mn>13</mn></msup>"
+    "<mo>+</mo><mn>5</mn>"
+    "<mo>+</mo><mn>2</mn><msup><mi>x</mi><mn>12</mn></msup>"
+    "</mrow></math>"
 )
 
 
@@ -141,7 +141,7 @@ def hawkes_step(step_line: str, *, split: bool) -> str:
     step = (
         f'<div><span class="stepLabel">{marker} :</span> {instruction}</div>'
         if split
-        else f'<div>{marker} : {instruction}</div>'
+        else f"<div>{marker} : {instruction}</div>"
     )
     return (
         "<!doctype html><title>hawkes</title>"
@@ -179,8 +179,7 @@ def build_scenarios(site: str, foreign: str) -> list[Scenario]:
         Scenario(
             "same-origin-frame",
             {
-                "same-origin-frame.html":
-                    f'<!doctype html><title>same</title><iframe src="{site}/child.html"></iframe>',
+                "same-origin-frame.html": f'<!doctype html><title>same</title><iframe src="{site}/child.html"></iframe>',
                 "child.html": f"<!doctype html><title>child</title>{FOCUSED_FIELD}",
             },
             expect_enabled=False,
@@ -191,9 +190,8 @@ def build_scenarios(site: str, foreign: str) -> list[Scenario]:
             # cross-origin frame -- an ad, an embed, analytics.
             "top-with-foreign-frame",
             {
-                "top-with-foreign-frame.html":
-                    f'<!doctype html><title>mixed</title>'
-                    f'<iframe src="{foreign}/blank.html"></iframe>{FOCUSED_FIELD}',
+                "top-with-foreign-frame.html": f"<!doctype html><title>mixed</title>"
+                f'<iframe src="{foreign}/blank.html"></iframe>{FOCUSED_FIELD}',
                 "blank.html": "<!doctype html><title>blank</title><p>unrelated</p>",
             },
             expect_enabled=False,
@@ -202,8 +200,7 @@ def build_scenarios(site: str, foreign: str) -> list[Scenario]:
         Scenario(
             "cross-origin-editor",
             {
-                "cross-origin-editor.html":
-                    f'<!doctype html><title>cross</title><iframe src="{foreign}/editor.html"></iframe>',
+                "cross-origin-editor.html": f'<!doctype html><title>cross</title><iframe src="{foreign}/editor.html"></iframe>',
                 "editor.html": f"<!doctype html><title>editor</title>{FOCUSED_FIELD}",
             },
             expect_enabled=False,
@@ -217,32 +214,44 @@ def build_scenarios(site: str, foreign: str) -> list[Scenario]:
         # signature re-check before insertion compared the same blind value.
         Scenario(
             "hawkes-step-two",
-            {"hawkes-step-two.html": hawkes_step(
-                "Step 2 of 3 : Identify the degree of the polynomial.", split=False)},
+            {
+                "hawkes-step-two.html": hawkes_step(
+                    "Step 2 of 3 : Identify the degree of the polynomial.", split=False
+                )
+            },
             expect_enabled=False,
             expect_fragment="Answer field found",
             distinct="steps-inline",
         ),
         Scenario(
             "hawkes-step-three",
-            {"hawkes-step-three.html": hawkes_step(
-                "Step 3 of 3 : Identify the leading coefficient.", split=False)},
+            {
+                "hawkes-step-three.html": hawkes_step(
+                    "Step 3 of 3 : Identify the leading coefficient.", split=False
+                )
+            },
             expect_enabled=False,
             expect_fragment="Answer field found",
             distinct="steps-inline",
         ),
         Scenario(
             "hawkes-step-two-split",
-            {"hawkes-step-two-split.html": hawkes_step(
-                "Step 2 of 3 : Identify the degree of the polynomial.", split=True)},
+            {
+                "hawkes-step-two-split.html": hawkes_step(
+                    "Step 2 of 3 : Identify the degree of the polynomial.", split=True
+                )
+            },
             expect_enabled=False,
             expect_fragment="Answer field found",
             distinct="steps-split",
         ),
         Scenario(
             "hawkes-step-three-split",
-            {"hawkes-step-three-split.html": hawkes_step(
-                "Step 3 of 3 : Identify the leading coefficient.", split=True)},
+            {
+                "hawkes-step-three-split.html": hawkes_step(
+                    "Step 3 of 3 : Identify the leading coefficient.", split=True
+                )
+            },
             expect_enabled=False,
             expect_fragment="Answer field found",
             distinct="steps-split",
@@ -258,36 +267,46 @@ def build_scenarios(site: str, foreign: str) -> list[Scenario]:
         ),
         Scenario(
             "hawkes-short-coefficient",
-            {"hawkes-short-coefficient.html":
-                hawkes_short_step("Identify the leading coefficient.")},
+            {
+                "hawkes-short-coefficient.html": hawkes_short_step(
+                    "Identify the leading coefficient."
+                )
+            },
             expect_enabled=False,
             expect_fragment="Answer field found",
             distinct="short-instructions",
         ),
         Scenario(
             "hawkes-detached-degree",
-            {"hawkes-detached-degree.html":
-                hawkes_detached_short_step("Identify the degree.")},
+            {
+                "hawkes-detached-degree.html": hawkes_detached_short_step(
+                    "Identify the degree."
+                )
+            },
             expect_enabled=False,
             expect_fragment="Answer field found",
             distinct="detached-short",
         ),
         Scenario(
             "hawkes-detached-constant",
-            {"hawkes-detached-constant.html":
+            {
+                "hawkes-detached-constant.html":
                 # Both instructions in this group must be short enough for the
                 # old rule to drop, or the longer one survives it and the pages
                 # differ for the wrong reason -- which is exactly how an
                 # earlier version of this fixture passed its own negative
                 # control.
-                hawkes_detached_short_step("Find the constant.")},
+                hawkes_detached_short_step("Find the constant.")
+            },
             expect_enabled=False,
             expect_fragment="Answer field found",
             distinct="detached-short",
         ),
         Scenario(
             "no-field-focused",
-            {"no-field-focused.html": "<!doctype html><title>none</title><p>no field here</p>"},
+            {
+                "no-field-focused.html": "<!doctype html><title>none</title><p>no field here</p>"
+            },
             expect_enabled=False,
             expect_fragment="click the empty Hawkes answer box",
         ),
@@ -315,16 +334,18 @@ def captured_scenarios() -> list[Scenario]:
     for path in sorted(CAPTURED_DOM.glob("*.html")):
         name = f"captured-{path.stem}"
         group, dash, _ = path.stem.rpartition("-")
-        scenarios.append(Scenario(
-            name,
-            {f"{name}.html": path.read_text(encoding="utf-8")},
-            expect_enabled=False,
-            # Captured markup carries whatever state the page was in. What is
-            # under test is the signature, so the status is only required to
-            # show the field was found at all.
-            expect_fragment="Answer field found",
-            distinct=f"captured-{group}" if dash else None,
-        ))
+        scenarios.append(
+            Scenario(
+                name,
+                {f"{name}.html": path.read_text(encoding="utf-8")},
+                expect_enabled=False,
+                # Captured markup carries whatever state the page was in. What is
+                # under test is the signature, so the status is only required to
+                # show the field was found at all.
+                expect_fragment="Answer field found",
+                distinct=f"captured-{group}" if dash else None,
+            )
+        )
     return scenarios
 
 
@@ -458,9 +479,11 @@ def run(selected: str | None, headless: bool = True) -> int:
     build_test_extension(extension, site, report_origin)
 
     reports: dict[str, dict] = {}
-    servers = [make_server(web, "127.0.0.1", site_port, reports),
-               make_server(web, "127.0.0.1", report_port, reports),
-               make_server(web, "127.0.0.2", foreign_port, reports)]
+    servers = [
+        make_server(web, "127.0.0.1", site_port, reports),
+        make_server(web, "127.0.0.1", report_port, reports),
+        make_server(web, "127.0.0.2", foreign_port, reports),
+    ]
 
     profile = tempfile.mkdtemp(prefix="ethnos-profile-")
     marionette_port = free_port()
@@ -591,8 +614,10 @@ def judge_distinct(scenarios, signatures) -> int:
             failures += 1
             continue
         if len(set(seen.values())) != len(names):
-            say(f"FAIL {group}: steps share one signature, so they are one "
-                f"question to the add-on: {seen}")
+            say(
+                f"FAIL {group}: steps share one signature, so they are one "
+                f"question to the add-on: {seen}"
+            )
             failures += 1
             continue
         say(f"ok   {group}: {len(names)} steps, {len(set(seen.values()))} signatures")
@@ -602,10 +627,16 @@ def judge_distinct(scenarios, signatures) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--scenario", help="run only this scenario")
-    parser.add_argument("--show", action="store_true",
-                        help="Render the browser instead of running it headless.")
-    parser.add_argument("--headless", action="store_true",
-                        help="MOZ_HEADLESS instead of a virtual display")
+    parser.add_argument(
+        "--show",
+        action="store_true",
+        help="Render the browser instead of running it headless.",
+    )
+    parser.add_argument(
+        "--headless",
+        action="store_true",
+        help="MOZ_HEADLESS instead of a virtual display",
+    )
     args = parser.parse_args()
     if not shutil.which("firefox"):
         print("firefox is not installed", file=sys.stderr)

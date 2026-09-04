@@ -72,6 +72,48 @@ def register(subcommands):
         help="Write one local JSON trace file for this answered question.",
     )
     ask_parser.add_argument(
+        "--answer-image",
+        type=Path,
+        help="Render the answer and symbol key commands to a PNG image.",
+    )
+    image_source = ask_parser.add_mutually_exclusive_group()
+    image_source.add_argument(
+        "--question-image",
+        type=Path,
+        help="Read the question from a PNG, JPG, or WebP image before answering.",
+    )
+    image_source.add_argument(
+        "--capture-question",
+        action="store_true",
+        help=(
+            "Select a screen region, then transcribe, solve, trace, and render "
+            "an answer-only PNG automatically."
+        ),
+    )
+    ask_parser.add_argument(
+        "--vision-model",
+        help="Primary Ollama OCR model used to transcribe --question-image.",
+    )
+    ask_parser.add_argument(
+        "--vision-verifier-model",
+        help="Independent vision model used to verify the first transcription.",
+    )
+    ask_parser.add_argument(
+        "--vision-num-predict",
+        type=int,
+        help="Output-token budget for each image transcription pass.",
+    )
+    ask_parser.add_argument(
+        "--accept-image-uncertainty",
+        action="store_true",
+        help="Solve even when two vision passes disagree or report ambiguity.",
+    )
+    ask_parser.add_argument(
+        "--no-question-image-cache",
+        action="store_true",
+        help="Reread the screenshot instead of reusing a compatible transcription.",
+    )
+    ask_parser.add_argument(
         "--agentic",
         action="store_true",
         help="Use opt-in agentic local-PDF search/inspect before answering.",
@@ -144,27 +186,142 @@ def ask_cmd(args) -> int:
     settings, conn = open_db(args)
     _validate_answer_options(args, settings)
     _validate_agentic_options(args)
+    question = args.question
+    question_image = args.question_image
+    answer_image = args.answer_image
+    trace_dir = args.trace_dir
+    if getattr(args, "capture_question", False):
+        from ...screen_capture import (
+            capture_question_region,
+            default_capture_answer_path,
+            default_capture_trace_dir,
+        )
+
+        print("Select only the question panel in the screen overlay.")
+        question_image = capture_question_region(settings.question_capture_dir)
+        answer_image = answer_image or default_capture_answer_path(question_image)
+        trace_dir = trace_dir or default_capture_trace_dir(question_image)
+        print(f"Captured question: {question_image}")
+    answer_image_question = None
+    client = None
+    question_image_trace = None
+    answer_model_name = args.model or settings.ollama_model
+    if question_image is not None:
+        from .. import create_client as _create_client
+        from ...question_image import build_solver_question, transcribe_question_image
+
+        client = _create_client(settings.ollama_host, settings.ollama_timeout)
+        vision_num_predict = (
+            args.vision_num_predict
+            if args.vision_num_predict is not None
+            else settings.ollama_vision_num_predict
+        )
+        if vision_num_predict < 1:
+            raise SystemExit("--vision-num-predict must be 1 or greater.")
+        image_result = transcribe_question_image(
+            image_path=question_image,
+            instruction=args.question,
+            model_name=args.vision_model or settings.ollama_vision_model,
+            verifier_model_name=(
+                args.vision_verifier_model or settings.ollama_vision_verifier_model
+            ),
+            client=client,
+            num_predict=vision_num_predict,
+            num_ctx=ollama_num_ctx(args, settings),
+            cache_dir=(
+                None
+                if args.no_question_image_cache
+                else settings.question_image_cache_dir
+            ),
+        )
+        question = build_solver_question(args.question, image_result.transcription)
+        if args.model is None:
+            answer_model_name = settings.ollama_math_model
+        answer_image_question = image_result.transcription.problem_text
+        question_image_trace = {
+            "image_path": str(image_result.image_path),
+            "vision_model": image_result.vision_model,
+            "verifier_model": image_result.verifier_model,
+            "transcription": image_result.transcription.model_dump(),
+            "initial_transcription": image_result.initial_transcription.model_dump(),
+            "verification_issues": image_result.verification_issues,
+            "response_summary": image_result.response_summary,
+            "cache_hit": image_result.cache_hit,
+        }
+        _print_question_image_transcription(image_result)
+        if image_result.verification_issues and not args.accept_image_uncertainty:
+            print(
+                "Refusing to solve an image transcription that did not pass "
+                "two-pass verification. Crop or clarify the image, type the "
+                "ambiguous expression, or use --accept-image-uncertainty."
+            )
+            return 1
     _answer_once(
         settings=settings,
         conn=conn,
         document_id=args.document_id,
-        question=args.question,
+        question=question,
+        retrieval_question=answer_image_question,
         role=args.role,
         section=args.section,
         limit=args.limit,
         chars=args.chars,
-        model_name=args.model or settings.ollama_model,
+        model_name=answer_model_name,
         num_predict=answer_num_predict(args, settings),
         num_ctx=ollama_num_ctx(args, settings),
         think=settings.ollama_think,
         debug_retrieval=args.debug_retrieval,
         debug_ollama=args.debug_ollama,
-        trace_dir=args.trace_dir,
+        trace_dir=trace_dir,
+        answer_image=answer_image,
         mode="ask",
+        client=client,
+        question_image_trace=question_image_trace,
+        answer_image_question=answer_image_question,
         agentic=args.agentic,
         agent_max_steps=args.agent_max_steps,
     )
+    if getattr(args, "capture_question", False) and answer_image is not None:
+        from ...screen_capture import open_answer_image
+
+        if not open_answer_image(answer_image):
+            print(f"Open the answer image at: {answer_image.expanduser().resolve()}")
     return 0
+
+
+def _print_question_image_transcription(result) -> None:
+    transcription = result.transcription
+    print(f"Question image: {result.image_path}")
+    print(f"Primary OCR model: {result.vision_model}")
+    print(f"Verification model: {result.verifier_model}")
+    print(f"Vision cache: {'hit' if result.cache_hit else 'miss'}")
+    print()
+    print("Recognized problem:")
+    print(transcription.problem_text)
+    if transcription.expressions:
+        print("Recognized expressions:")
+        for expression in transcription.expressions:
+            print(f"  - {expression}")
+    if transcription.answer_choices:
+        print("Recognized answer choices:")
+        for choice in transcription.answer_choices:
+            print(f"  - {choice}")
+    if transcription.diagram_description:
+        print("Recognized graph/diagram:")
+        print(transcription.diagram_description)
+    print("Image-reading uncertainties:")
+    if transcription.uncertainties:
+        for uncertainty in transcription.uncertainties:
+            print(f"  - {uncertainty}")
+    else:
+        print("  none")
+    print("Two-pass verification:")
+    if result.verification_issues:
+        for issue in result.verification_issues:
+            print(f"  - {issue}")
+    else:
+        print("  passed")
+    print()
 
 
 def chat_cmd(args) -> int:
@@ -219,7 +376,10 @@ def chat_cmd(args) -> int:
                 debug_retrieval=args.debug_retrieval,
                 debug_ollama=args.debug_ollama,
                 trace_dir=args.trace_dir,
+                answer_image=None,
                 mode="chat",
+                question_image_trace=None,
+                answer_image_question=None,
                 followup=followup,
                 client=ollama_client,
                 agentic=args.agentic,
@@ -250,11 +410,14 @@ def _answer_once(
     debug_retrieval: bool,
     debug_ollama: bool,
     trace_dir: Path | None,
+    answer_image: Path | None,
     mode: str,
     followup=None,
     client: OllamaClientProtocol | None = None,
     agentic: bool = False,
     agent_max_steps: int = 4,
+    question_image_trace: dict | None = None,
+    answer_image_question: str | None = None,
 ):
     # Late import to support monkeypatching via "ethnos.cli.answer_question"
     from .. import answer_question as _answer_question
@@ -336,6 +499,14 @@ def _answer_once(
                     retrieval_question if retrieval_question != question else None
                 ),
                 agentic_trace=agentic_trace,
+                question_image=question_image_trace,
+            )
+            _maybe_write_answer_image(
+                answer_image=answer_image,
+                question=answer_image_question or question,
+                answer_text=agent_result.answer_text,
+                rows=agent_result.retrieval.rows,
+                include_key_commands=question_image_trace is None,
             )
             return agent_result.retrieval
 
@@ -380,6 +551,14 @@ def _answer_once(
                 retrieval_question if retrieval_question != question else None
             ),
             agentic_trace=agentic_trace,
+            question_image=question_image_trace,
+        )
+        _maybe_write_answer_image(
+            answer_image=answer_image,
+            question=answer_image_question or question,
+            answer_text=answer_text,
+            rows=[],
+            include_key_commands=question_image_trace is None,
         )
         return retrieval
 
@@ -391,16 +570,43 @@ def _answer_once(
             f"{question}\nResolved follow-up for retrieval: {retrieval_question}"
         )
     prompt = build_answer_prompt(prompt_question, retrieval.rows, max_chars=chars)
-    result = _answer_question(
-        prompt=prompt,
-        model_name=model_name,
-        host=settings.ollama_host,
-        timeout=settings.ollama_timeout,
-        num_predict=num_predict,
-        num_ctx=num_ctx,
-        think=think,
-        client=client,
-    )
+    if question_image_trace is not None:
+        from ...polynomial_solver import answer_polynomial_product
+        from ...question_image import answer_question_image
+        from ...symbolic_solver import answer_symbolic_math
+
+        transcription = question_image_trace["transcription"]
+        result = answer_symbolic_math(
+            problem_text=transcription["problem_text"],
+            expressions=transcription.get("expressions") or [],
+        )
+        if result is None:
+            result = answer_polynomial_product(question)
+        if result is None:
+            if client is None:
+                from .. import create_client as _create_client
+
+                client = _create_client(settings.ollama_host, settings.ollama_timeout)
+            result = answer_question_image(
+                question=question,
+                context_rows=retrieval.rows,
+                max_chars=chars,
+                model_name=model_name,
+                client=client,
+                num_predict=num_predict,
+                num_ctx=num_ctx,
+            )
+    else:
+        result = _answer_question(
+            prompt=prompt,
+            model_name=model_name,
+            host=settings.ollama_host,
+            timeout=settings.ollama_timeout,
+            num_predict=num_predict,
+            num_ctx=num_ctx,
+            think=think,
+            client=client,
+        )
     elapsed = time.monotonic() - started_at
     if debug_ollama:
         _print_ollama_debug(None, result.debug_info)
@@ -438,8 +644,42 @@ def _answer_once(
             retrieval_question if retrieval_question != question else None
         ),
         agentic_trace=agentic_trace,
+        question_image=question_image_trace,
+    )
+    _maybe_write_answer_image(
+        answer_image=answer_image,
+        question=answer_image_question or question,
+        answer_text=answer_text,
+        rows=retrieval.rows,
+        include_key_commands=question_image_trace is None,
     )
     return retrieval
+
+
+def _maybe_write_answer_image(
+    *,
+    answer_image: Path | None,
+    question: str,
+    answer_text: str,
+    rows: list[dict],
+    include_key_commands: bool = True,
+):
+    if answer_image is None:
+        return None
+    from ...answer_image import render_answer_image
+
+    artifacts = render_answer_image(
+        image_path=answer_image,
+        question=question,
+        answer_text=answer_text,
+        sources=[row["source_citation"] for row in rows],
+        include_key_commands=include_key_commands,
+    )
+    print()
+    print(f"Answer image: {artifacts.image_path}")
+    if artifacts.keys_path is not None:
+        print(f"Symbol key commands: {artifacts.keys_path}")
+    return artifacts
 
 
 def _maybe_write_answer_trace(
@@ -459,6 +699,7 @@ def _maybe_write_answer_trace(
     ollama_debug_info=None,
     rewritten_retrieval_question=None,
     agentic_trace=None,
+    question_image=None,
 ) -> Path | None:
     if trace_dir is None:
         return None
@@ -504,6 +745,8 @@ def _maybe_write_answer_trace(
     }
     if agentic_trace is not None:
         trace["agentic"] = agentic_trace
+    if question_image is not None:
+        trace["question_image"] = question_image
     path.write_text(json.dumps(trace, indent=2, sort_keys=True), encoding="utf-8")
     print()
     print(f"Trace: {path}")

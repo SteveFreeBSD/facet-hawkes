@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .config import OllamaThink
 
@@ -175,23 +175,37 @@ class AgentReviewItem(BaseModel):
     tool_calls: list[str] = Field(default_factory=list)
     needs_human_review_reason: str | None = None
     review_priority: ReviewPriority = "inspect"
+    model_finalized: bool = False
 
 
 class AgentAction(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    tool: AgentToolName
-    arguments: dict[str, Any] = Field(default_factory=dict)
-    final_review: AgentReviewItem | None = None
+    tool: AgentToolName = Field(
+        description=(
+            "Choose exactly one tool. Use finalize_item_review only when returning "
+            "a completed final_review."
+        )
+    )
+    arguments: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Arguments for the selected tool; use an empty object to finalize.",
+    )
+    final_review: AgentReviewItem | None = Field(
+        default=None,
+        description=(
+            "Required only when tool is finalize_item_review; otherwise this field "
+            "must be null or omitted."
+        ),
+    )
 
-    @field_validator("final_review")
-    @classmethod
-    def require_final_for_finalize(
-        _cls, value: AgentReviewItem | None, info
-    ) -> AgentReviewItem | None:
-        if info.data.get("tool") == "finalize_item_review" and value is None:
+    @model_validator(mode="after")
+    def validate_final_review_placement(self) -> AgentAction:
+        if self.tool == "finalize_item_review" and self.final_review is None:
             raise ValueError("finalize_item_review requires final_review")
-        return value
+        if self.tool != "finalize_item_review" and self.final_review is not None:
+            raise ValueError("final_review is only valid with finalize_item_review")
+        return self
 
 
 class AgentToolResult(BaseModel):
@@ -216,5 +230,7 @@ class AgentReviewReport(BaseModel):
     verdict_counts: dict[str, int]
     quality_counts: dict[str, int]
     priority_counts: dict[str, int] = Field(default_factory=dict)
+    model_finalized_count: int = 0
+    fallback_item_count: int = 0
     items: list[AgentReviewItem]
     tool_trace_path: str | None = None

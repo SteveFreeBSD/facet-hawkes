@@ -108,6 +108,8 @@ def agent_report_summary(report: AgentReviewReport) -> dict[str, Any]:
         "verdict_counts": report.verdict_counts,
         "quality_counts": report.quality_counts,
         "priority_counts": report.priority_counts,
+        "model_finalized_count": getattr(report, "model_finalized_count", 0),
+        "fallback_item_count": getattr(report, "fallback_item_count", 0),
     }
 
 

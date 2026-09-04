@@ -21,16 +21,16 @@ import xml.etree.ElementTree as ElementTree
 # MathJax emits these for operators; the solver wants plain ASCII or its own
 # LaTeX spellings.
 OPERATORS = {
-    "⋅": "*",     # dot operator
-    "·": "*",     # middle dot
-    "×": "*",     # multiplication sign
-    "−": "-",     # minus sign
-    "–": "-",     # en dash
-    "⁄": "/",     # fraction slash
+    "⋅": "*",  # dot operator
+    "·": "*",  # middle dot
+    "×": "*",  # multiplication sign
+    "−": "-",  # minus sign
+    "–": "-",  # en dash
+    "⁄": "/",  # fraction slash
     "÷": "/",
-    "⁡": "",      # function application (invisible)
-    "⁢": "*",     # invisible times
-    "⁣": "",      # invisible separator
+    "⁡": "",  # function application (invisible)
+    "⁢": "*",  # invisible times
+    "⁣": "",  # invisible separator
     "±": r"\pm",
     "≤": r"\leq",
     "≥": r"\geq",
@@ -70,7 +70,11 @@ def _text(element) -> str:
 def _children(element) -> list:
     # Annotations carry alternative encodings of the same expression; taking
     # them as well would duplicate everything.
-    return [child for child in element if _tag(child) not in {"annotation", "annotation-xml"}]
+    return [
+        child
+        for child in element
+        if _tag(child) not in {"annotation", "annotation-xml"}
+    ]
 
 
 def _join(element) -> str:

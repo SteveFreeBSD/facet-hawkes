@@ -3,6 +3,43 @@
 All notable changes to the Ethnos Hawkes Assistant add-on. Versions follow
 `major.minor.patch` as required by the Firefox manifest.
 
+## 0.42.0
+
+### Added
+
+- Plain-text answers now arrive on a musical presentation cadence for
+  number-and-symbol voice-over. Settings offers Classical, Jazz, Lo-fi,
+  Electronic and Custom arrangements; tempo and a 2–12 second hard performance
+  window remain independently adjustable, while Custom exposes beat shape,
+  swing, timing variation and symbol rests. Contenteditable answers use the
+  same character-at-a-time path instead of arriving in one burst. Beat weights
+  are normalised to the chosen duration, keeping the performance inside the
+  existing 15-second injected-operation deadline. The default remains a varied
+  5–10 second performance.
+
+- Structured answers built with the keypad templates perform on the same
+  cadence. They previously arrived in one burst, because `enterPlan` is
+  serialized into the page's own world and never received the cadence at all,
+  and its `typeInto` wrote every character of a step in a single synchronous
+  loop. One performance now covers every typed character of the whole plan;
+  templates sit on the same clock, so a slow `settle` eats into the notes that
+  follow rather than adding to the length.
+
+### Fixed
+
+- A one-character answer is struck on the downbeat instead of after the whole
+  window. It used to hold the field empty for five to ten seconds and then fill
+  it on the last beat, which reads as a hang -- and one-character answers are
+  common in this course.
+
+- A paced entry re-checks its target on every beat. Entry now spans seconds
+  rather than one burst, so the field can be closed, replaced, or lose the
+  caret part-way through. The contenteditable path is the one that mattered:
+  `execCommand` writes wherever the selection happens to be, so losing focus
+  mid-performance put the rest of the answer somewhere else on the page. It
+  now stops with `editor-lost-focus`. The keypad path re-reads its box by id
+  for the same reason.
+
 ## 0.41.4
 
 ### Changed

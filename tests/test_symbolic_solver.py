@@ -275,20 +275,29 @@ def test_the_positive_convention_is_limited_to_radical_simplification():
     # the two differ in sign for every negative y. Hawkes marked `y^5z^4/3`
     # wrong for the fourth root of y^20z^16/81 on lesson 1.2 question 7 for
     # exactly this reason.
-    assert _assume_positive(
-        "Simplify the following radical expression.", r"\sqrt{9y^2}", "simplify"
-    ) is False
+    assert (
+        _assume_positive(
+            "Simplify the following radical expression.", r"\sqrt{9y^2}", "simplify"
+        )
+        is False
+    )
     # An odd index needs no bars -- the fifth root of y^5 is y for every real
     # y -- and the assumption is what lets SymPy extract the root at all.
-    assert _assume_positive(
-        "Simplify the following radical expression.", r"\sqrt[5]{y^5}", "simplify"
-    ) is True
+    assert (
+        _assume_positive(
+            "Simplify the following radical expression.", r"\sqrt[5]{y^5}", "simplify"
+        )
+        is True
+    )
     # A question that says so licenses dropping the bars.
-    assert _assume_positive(
-        "Simplify. Assume all variables represent positive real numbers.",
-        r"\sqrt{9y^2}",
-        "simplify",
-    ) is True
+    assert (
+        _assume_positive(
+            "Simplify. Assume all variables represent positive real numbers.",
+            r"\sqrt{9y^2}",
+            "simplify",
+        )
+        is True
+    )
     # A plain algebraic simplify with no radical gets no assumption either.
     assert _assume_positive("Simplify.", "x^2+2x", "simplify") is False
 
@@ -322,9 +331,10 @@ def test_a_braced_fraction_exponent_parses():
 
 
 def test_rational_exponents_is_chosen_over_plain_simplify():
-    assert _requested_operation(
-        "Simplify. Express your answer using rational exponents."
-    ) == "rational_exponents"
+    assert (
+        _requested_operation("Simplify. Express your answer using rational exponents.")
+        == "rational_exponents"
+    )
     assert _requested_operation("Simplify the expression.") == "simplify"
 
 
@@ -379,12 +389,19 @@ def test_a_non_unit_rational_exponent_is_accepted():
 
 def test_the_exponent_guard_still_refuses_absurd_powers():
     # The bound is the safety property, and it is still there.
-    assert solve_symbolic_operation(
-        operation="simplify", problem_text="Simplify.", expressions=["2^999999"]
-    ) is None
-    assert solve_symbolic_operation(
-        operation="simplify", problem_text="Simplify.", expressions=["x^(1/500)"]
-    ) is None
+    assert (
+        solve_symbolic_operation(
+            operation="simplify", problem_text="Simplify.", expressions=["2^999999"]
+        )
+        is None
+    )
+    assert (
+        solve_symbolic_operation(
+            operation="simplify", problem_text="Simplify.", expressions=["x^(1/500)"]
+        )
+        is None
+    )
+
 
 def test_an_even_root_keeps_its_absolute_value():
     """Regression from live question 7 of lesson 1.2, marked incorrect.
@@ -419,7 +436,9 @@ def test_the_even_root_answer_is_numerically_right_for_negative_variables():
     without = y**5 * z**4 / 3
     for point in ({y: -2, z: 3}, {y: 2, z: 3}, {y: -1, z: -2}):
         assert sympy.simplify(radical.subs(point) - with_bars.subs(point)) == 0
-    assert sympy.simplify(radical.subs({y: -2, z: 3}) - without.subs({y: -2, z: 3})) != 0
+    assert (
+        sympy.simplify(radical.subs({y: -2, z: 3}) - without.subs({y: -2, z: 3})) != 0
+    )
 
 
 def test_an_odd_root_needs_no_absolute_value():
@@ -476,20 +495,28 @@ def test_a_polynomial_already_in_order_is_answered_by_itself():
 def test_ordering_declines_when_the_variable_to_order_by_is_ambiguous():
     """Two symbols means "descending" names no particular sequence, so this
     hands the question back rather than guessing at one."""
-    assert answer_symbolic_math(
-        problem_text="Express the polynomial in descending order.",
-        expressions=["a x^2 + b y^3"],
-    ) is None
+    assert (
+        answer_symbolic_math(
+            problem_text="Express the polynomial in descending order.",
+            expressions=["a x^2 + b y^3"],
+        )
+        is None
+    )
 
 
 def test_a_rewriting_verb_beside_an_ordering_wins():
-    """"Factor completely, then write the answer in descending order" is a
+    """ "Factor completely, then write the answer in descending order" is a
     factoring question. Answering it by reordering the unfactored polynomial
     would be confidently wrong."""
-    assert _requested_operation(
-        "Factor completely, then write the answer in descending order."
-    ) == "factor"
-    assert _requested_operation("Simplify and express in descending order.") == "simplify"
+    assert (
+        _requested_operation(
+            "Factor completely, then write the answer in descending order."
+        )
+        == "factor"
+    )
+    assert (
+        _requested_operation("Simplify and express in descending order.") == "simplify"
+    )
     assert _requested_operation("Express the polynomial in descending order.") == (
         "descending_order"
     )
@@ -533,10 +560,13 @@ def test_an_extraction_answer_is_allowed_to_differ_from_its_input():
 
 
 def test_extraction_declines_when_there_is_no_single_variable():
-    assert answer_symbolic_math(
-        problem_text="Identify the leading coefficient.",
-        expressions=["a x^2 + b y^3"],
-    ) is None
+    assert (
+        answer_symbolic_math(
+            problem_text="Identify the leading coefficient.",
+            expressions=["a x^2 + b y^3"],
+        )
+        is None
+    )
 
 
 def test_the_constant_term_is_the_coefficient_not_the_last_thing_written():
@@ -560,7 +590,9 @@ def test_the_constant_term_is_the_coefficient_not_the_last_thing_written():
 
 def test_a_polynomial_is_classified_by_counting_its_terms():
     for expression, expected in (
-        ("5x^3", "monomial"), ("x^2 - 9", "binomial"), ("x^2 + 3x + 2", "trinomial"),
+        ("5x^3", "monomial"),
+        ("x^2 - 9", "binomial"),
+        ("x^2 + 3x + 2", "trinomial"),
     ):
         result = answer_symbolic_math(
             problem_text="Classify the polynomial as a monomial, binomial, or trinomial.",
@@ -577,11 +609,16 @@ def test_naming_a_trinomial_is_not_asking_what_kind_it_is():
     factoring question. Matching on the word alone answered "trinomial" to a
     request to factor -- fast, confident, and wrong.
     """
-    assert _requested_operation("Factor the following trinomial completely.") == "factor"
+    assert (
+        _requested_operation("Factor the following trinomial completely.") == "factor"
+    )
     assert _requested_operation("Factor the following binomial completely.") == "factor"
-    assert _requested_operation(
-        "Classify the polynomial as a monomial, binomial, or trinomial."
-    ) == "classify"
+    assert (
+        _requested_operation(
+            "Classify the polynomial as a monomial, binomial, or trinomial."
+        )
+        == "classify"
+    )
 
 
 def test_evaluating_needs_a_value_to_evaluate_at():
@@ -599,11 +636,14 @@ def test_evaluating_needs_a_value_to_evaluate_at():
 
 
 def test_evaluation_declines_when_the_named_variable_is_not_the_one_present():
-    """"for t = 2" against a polynomial in x names nothing to substitute."""
-    assert answer_symbolic_math(
-        problem_text="Evaluate the polynomial for t = 2.",
-        expressions=["x^3 - 4x + 1"],
-    ) is None
+    """ "for t = 2" against a polynomial in x names nothing to substitute."""
+    assert (
+        answer_symbolic_math(
+            problem_text="Evaluate the polynomial for t = 2.",
+            expressions=["x^3 - 4x + 1"],
+        )
+        is None
+    )
 
 
 def test_a_prime_polynomial_is_answered_when_the_question_offers_that_answer():
@@ -620,15 +660,20 @@ def test_a_prime_polynomial_is_answered_when_the_question_offers_that_answer():
     assert extract_final_math(result.raw_response) == "Not Factorable"
 
     # And one that does factor is unaffected.
-    ordinary = answer_symbolic_math(problem_text=offered, expressions=["y^2 + 13y + 40"])
+    ordinary = answer_symbolic_math(
+        problem_text=offered, expressions=["y^2 + 13y + 40"]
+    )
     assert extract_final_math(ordinary.raw_response) == "(y + 5)(y + 8)"
 
 
 def test_an_unfactorable_polynomial_is_handed_back_when_no_escape_is_offered():
     """A question that just says "factor" has not licensed prose as an answer."""
-    assert answer_symbolic_math(
-        problem_text="Factor completely.", expressions=["y^2 + y + 17"]
-    ) is None
+    assert (
+        answer_symbolic_math(
+            problem_text="Factor completely.", expressions=["y^2 + y + 17"]
+        )
+        is None
+    )
 
 
 def test_a_named_product_beats_the_word_factor_appearing_in_a_noun():
@@ -656,10 +701,11 @@ def test_a_named_product_beats_the_word_factor_appearing_in_a_noun():
 def test_classification_needs_all_three_names_or_the_verb():
     """Counting mentions is too loose: a question may name one of them in
     passing while asking something else entirely."""
-    assert _requested_operation(
-        "Classify the polynomial as a monomial, binomial, or trinomial."
-    ) == "classify"
+    assert (
+        _requested_operation(
+            "Classify the polynomial as a monomial, binomial, or trinomial."
+        )
+        == "classify"
+    )
     assert _requested_operation("Factor the following binomial completely.") == "factor"
-    assert _requested_operation(
-        "Find the product of the binomial factors."
-    ) == "expand"
+    assert _requested_operation("Find the product of the binomial factors.") == "expand"

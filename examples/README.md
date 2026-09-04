@@ -8,8 +8,11 @@ and are intentionally ignored by git.
   a compact Agent Review summary for the History chapter 20 Canvas quiz.
 - [`history_ch20_agent_review_summary.json`](history_ch20_agent_review_summary.json):
   the same result as structured data.
+- [`history_ch27_e2e_findings.md`](history_ch27_e2e_findings.md): the complete
+  Canvas import, source-grounding, benchmark, key-audit, Agent Review, and
+  content-quality findings for History chapter 27.
 
-The source command for the example is:
+The source command for the Chapter 20 example is:
 
 ```bash
 uv run ethnos agent-review 2 \

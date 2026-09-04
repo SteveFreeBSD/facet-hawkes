@@ -72,24 +72,48 @@ for (const window of workspace.windowList()) {{
         script_path = Path(directory) / "scan.js"
         script_path.write_text(script, encoding="utf-8")
         try:
-            _run([
-                "qdbus6", "org.kde.KWin", "/Scripting",
-                "org.kde.kwin.Scripting.loadScript", str(script_path), plugin,
-            ])
-            _run([
-                "qdbus6", "org.kde.KWin", "/Scripting",
-                "org.kde.kwin.Scripting.start",
-            ])
+            _run(
+                [
+                    "qdbus6",
+                    "org.kde.KWin",
+                    "/Scripting",
+                    "org.kde.kwin.Scripting.loadScript",
+                    str(script_path),
+                    plugin,
+                ]
+            )
+            _run(
+                [
+                    "qdbus6",
+                    "org.kde.KWin",
+                    "/Scripting",
+                    "org.kde.kwin.Scripting.start",
+                ]
+            )
             time.sleep(0.25)
         finally:
-            _run([
-                "qdbus6", "org.kde.KWin", "/Scripting",
-                "org.kde.kwin.Scripting.unloadScript", plugin,
-            ], check=False)
+            _run(
+                [
+                    "qdbus6",
+                    "org.kde.KWin",
+                    "/Scripting",
+                    "org.kde.kwin.Scripting.unloadScript",
+                    plugin,
+                ],
+                check=False,
+            )
 
-    journal = _run([
-        "journalctl", "--user", "--since", f"@{started}", "--no-pager", "-o", "cat",
-    ]).stdout
+    journal = _run(
+        [
+            "journalctl",
+            "--user",
+            "--since",
+            f"@{started}",
+            "--no-pager",
+            "-o",
+            "cat",
+        ]
+    ).stdout
     windows: list[dict[str, object]] = []
     for line in journal.splitlines():
         if marker not in line:
@@ -105,13 +129,16 @@ for (const window of workspace.windowList()) {{
             item.pop("marker", None)
             windows.append(item)
     if not windows:
-        raise InspectionError("KWin returned no windows; live inspection is unavailable")
+        raise InspectionError(
+            "KWin returned no windows; live inspection is unavailable"
+        )
     return windows
 
 
 def _one_firefox_window(windows: list[dict[str, object]]) -> dict[str, object]:
     matches = [
-        window for window in windows
+        window
+        for window in windows
         if str(window.get("resourceClass", "")).lower() == FIREFOX_CLASS
         and window.get("normalWindow")
     ]
@@ -139,20 +166,36 @@ for (const window of workspace.windowList()) {{
         script_path = Path(directory) / "focus.js"
         script_path.write_text(script, encoding="utf-8")
         try:
-            _run([
-                "qdbus6", "org.kde.KWin", "/Scripting",
-                "org.kde.kwin.Scripting.loadScript", str(script_path), plugin,
-            ])
-            _run([
-                "qdbus6", "org.kde.KWin", "/Scripting",
-                "org.kde.kwin.Scripting.start",
-            ])
+            _run(
+                [
+                    "qdbus6",
+                    "org.kde.KWin",
+                    "/Scripting",
+                    "org.kde.kwin.Scripting.loadScript",
+                    str(script_path),
+                    plugin,
+                ]
+            )
+            _run(
+                [
+                    "qdbus6",
+                    "org.kde.KWin",
+                    "/Scripting",
+                    "org.kde.kwin.Scripting.start",
+                ]
+            )
             time.sleep(0.35)
         finally:
-            _run([
-                "qdbus6", "org.kde.KWin", "/Scripting",
-                "org.kde.kwin.Scripting.unloadScript", plugin,
-            ], check=False)
+            _run(
+                [
+                    "qdbus6",
+                    "org.kde.KWin",
+                    "/Scripting",
+                    "org.kde.kwin.Scripting.unloadScript",
+                    plugin,
+                ],
+                check=False,
+            )
 
 
 def _profile_candidates() -> list[Path]:
@@ -173,11 +216,21 @@ def _profile_candidates() -> list[Path]:
             preferred: list[Path] = []
             others: list[Path] = []
             for section in parser.sections():
-                if not section.startswith("Profile") or not parser.has_option(section, "Path"):
+                if not section.startswith("Profile") or not parser.has_option(
+                    section, "Path"
+                ):
                     continue
                 raw = Path(parser.get(section, "Path"))
-                path = root / raw if parser.getboolean(section, "IsRelative", fallback=True) else raw
-                (preferred if parser.getboolean(section, "Default", fallback=False) else others).append(path)
+                path = (
+                    root / raw
+                    if parser.getboolean(section, "IsRelative", fallback=True)
+                    else raw
+                )
+                (
+                    preferred
+                    if parser.getboolean(section, "Default", fallback=False)
+                    else others
+                ).append(path)
             profiles.extend(preferred + others)
         elif root.is_dir():
             profiles.extend(path.parent for path in root.glob("*/extensions.json"))
@@ -190,7 +243,9 @@ def _extension_status() -> dict[str, object]:
         if not addons_path.is_file():
             continue
         try:
-            addons = json.loads(addons_path.read_text(encoding="utf-8")).get("addons", [])
+            addons = json.loads(addons_path.read_text(encoding="utf-8")).get(
+                "addons", []
+            )
         except (json.JSONDecodeError, OSError):
             continue
         for addon in addons:
@@ -214,7 +269,9 @@ def _matching_processes(needles: tuple[str, ...]) -> list[dict[str, object]]:
         if not entry.name.isdigit():
             continue
         try:
-            command = (entry / "cmdline").read_bytes().replace(b"\0", b" ").decode().strip()
+            command = (
+                (entry / "cmdline").read_bytes().replace(b"\0", b" ").decode().strip()
+            )
         except (OSError, UnicodeDecodeError):
             continue
         if command and any(needle in command for needle in needles):
@@ -232,9 +289,13 @@ def status() -> dict[str, object]:
         "previouslyActive": {
             "caption": active.get("caption"),
             "resourceClass": active.get("resourceClass"),
-        } if active else None,
+        }
+        if active
+        else None,
         "extension": _extension_status(),
-        "nativeHosts": _matching_processes(("ethnos.hawkes_host", "ethnos-hawkes-host")),
+        "nativeHosts": _matching_processes(
+            ("ethnos.hawkes_host", "ethnos-hawkes-host")
+        ),
     }
 
 
@@ -245,7 +306,9 @@ def shot(output: Path | None = None) -> Path:
     firefox = _one_firefox_window(windows)
     previous = next((window for window in windows if window.get("active")), None)
     if output is None:
-        descriptor, name = tempfile.mkstemp(prefix="ethnos-firefox-live-", suffix=".png")
+        descriptor, name = tempfile.mkstemp(
+            prefix="ethnos-firefox-live-", suffix=".png"
+        )
         os.close(descriptor)
         output = Path(name)
     output = output.expanduser().resolve()
@@ -253,10 +316,16 @@ def shot(output: Path | None = None) -> Path:
 
     try:
         _focus_window(str(firefox["handle"]))
-        _run([
-            "spectacle", "--activewindow", "--background", "--nonotify",
-            "--output", str(output),
-        ])
+        _run(
+            [
+                "spectacle",
+                "--activewindow",
+                "--background",
+                "--nonotify",
+                "--output",
+                str(output),
+            ]
+        )
     finally:
         if previous and previous.get("handle") != firefox.get("handle"):
             _focus_window(str(previous["handle"]))
@@ -269,7 +338,10 @@ def shot(output: Path | None = None) -> Path:
 
 def main() -> int:
     if len(sys.argv) not in (2, 3) or sys.argv[1] not in {"status", "shot", "inspect"}:
-        print(f"usage: {sys.argv[0]} {{status|shot [output.png]|inspect}}", file=sys.stderr)
+        print(
+            f"usage: {sys.argv[0]} {{status|shot [output.png]|inspect}}",
+            file=sys.stderr,
+        )
         return 2
     command = sys.argv[1]
     try:

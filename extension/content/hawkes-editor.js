@@ -242,26 +242,161 @@ var ethnosHawkes = (function () {
   }
 
   /**
-   * How long to leave between characters, in milliseconds.
+   * Presentation cadence for plain-text answers.
    *
-   * A field driven by a framework re-renders on each input event, and that
-   * work is asynchronous. Writing the whole answer in one assignment gave it a
-   * single event carrying a whole string -- which is not the shape it is built
-   * to receive, and is the likeliest reading of both the half-entered
-   * structured answers of 0.19 and an unexplained failure at the write
-   * boundary seen live.
+   * Each answer receives a small settings snapshot from the event page. Tempo
+   * suggests its natural length, the chosen genre supplies a beat shape, and
+   * the duration window remains a hard bound. Operators and separators get a
+   * longer rest so a voice-over has room to name them. Normalising the final
+   * weights keeps the complete entry inside its chosen duration.
    *
-   * Fixed, and small. It is set to what the editor absorbs, and is not varied,
-   * randomised, or shaped to resemble anything: the add-on does not conceal
-   * that it is the one typing.
+   * This is presentation timing, not an attempt to imitate or conceal human
+   * input. The synthetic InputEvents remain observable as such by the page.
    */
-  const CHARACTER_PAUSE_MS = 40;
-
-  /** A ceiling, so a long answer cannot leave the editor held open for ever. */
-  const ENTRY_BUDGET_MS = 1500;
+  const FALLBACK_CADENCE = Object.freeze({
+    tempoBpm: 82,
+    durationMinMs: 5000,
+    durationMaxMs: 10000,
+    rhythmWeights: Object.freeze([1, 0.68, 1.18, 0.78]),
+    swingRatio: 0.12,
+    variationRatio: 0.18,
+    symbolRestRatio: 0.42,
+  });
 
   function pause(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  function randomUnit() {
+    const sample = new Uint32Array(1);
+    crypto.getRandomValues(sample);
+    return sample[0] / 0x100000000;
+  }
+
+  function boundedNumber(value, minimum, maximum, fallback) {
+    return typeof value === "number" && Number.isFinite(value)
+      ? Math.min(maximum, Math.max(minimum, value))
+      : fallback;
+  }
+
+  /** Treat the event page's snapshot as data, even though it is trusted. */
+  function normalizedCadence(offered = {}) {
+    const weights = Array.isArray(offered.rhythmWeights)
+      ? offered.rhythmWeights
+          .slice(0, 8)
+          .map((weight) => boundedNumber(weight, 0.25, 2.5, 1))
+      : [];
+    const firstDuration = boundedNumber(
+      offered.durationMinMs, 2000, 12000, FALLBACK_CADENCE.durationMinMs
+    );
+    const secondDuration = boundedNumber(
+      offered.durationMaxMs, 2000, 12000, FALLBACK_CADENCE.durationMaxMs
+    );
+    return {
+      tempoBpm: boundedNumber(offered.tempoBpm, 45, 180, FALLBACK_CADENCE.tempoBpm),
+      durationMinMs: Math.min(firstDuration, secondDuration),
+      durationMaxMs: Math.max(firstDuration, secondDuration),
+      rhythmWeights: weights.length > 1 ? weights : [...FALLBACK_CADENCE.rhythmWeights],
+      swingRatio: boundedNumber(
+        offered.swingRatio, 0, 0.6, FALLBACK_CADENCE.swingRatio
+      ),
+      variationRatio: boundedNumber(
+        offered.variationRatio, 0, 0.35, FALLBACK_CADENCE.variationRatio
+      ),
+      symbolRestRatio: boundedNumber(
+        offered.symbolRestRatio, 0, 1, FALLBACK_CADENCE.symbolRestRatio
+      ),
+    };
+  }
+
+  function randomBetween(minimum, maximum) {
+    return minimum + Math.floor(randomUnit() * (maximum - minimum + 1));
+  }
+
+  function rhythmicWeight(character, index, cadence) {
+    let weight = cadence.rhythmWeights[index % cadence.rhythmWeights.length];
+    if (index % 2 === 0) {
+      weight *= 1 + cadence.swingRatio;
+    } else {
+      weight *= 1 - cadence.swingRatio * 0.5;
+    }
+    if (/\s/u.test(character)) {
+      weight *= 1 + cadence.symbolRestRatio * 1.35;
+    } else if (/[-=+*/^,;:]/u.test(character)) {
+      weight *= 1 + cadence.symbolRestRatio;
+    } else if (/[)\]}]/u.test(character)) {
+      weight *= 1 + cadence.symbolRestRatio * 0.5;
+    }
+    const variation = 1 + ((randomUnit() * 2) - 1) * cadence.variationRatio;
+    return weight * variation;
+  }
+
+  /**
+   * Blend the metronome's natural length with a random point in the selected
+   * window. Tempo remains audible in the result, while short or long formulas
+   * do not collapse onto one boundary quite so often. The window wins last.
+   */
+  function entryDuration(weights, cadence) {
+    const randomWindowDuration = randomBetween(
+      cadence.durationMinMs, cadence.durationMaxMs
+    );
+    const beatMs = 60000 / cadence.tempoBpm;
+    const musicalDuration = Math.max(
+      1, weights.reduce((total, weight) => total + weight, 0)
+    ) * beatMs;
+    const blended = Math.round((musicalDuration * 0.72) + (randomWindowDuration * 0.28));
+    return Math.min(
+      cadence.durationMaxMs,
+      Math.max(cadence.durationMinMs, blended)
+    );
+  }
+
+  /** Return the elapsed-time cue for every character in one performance. */
+  function entryBeatOffsets(characters, cadence) {
+    if (characters.length === 0) {
+      return [];
+    }
+    const weights = characters
+      .slice(0, -1)
+      .map((character, index) => rhythmicWeight(character, index, cadence));
+    const duration = entryDuration(weights, cadence);
+    if (characters.length === 1) {
+      // One note, struck on the downbeat. Holding an empty field for the whole
+      // window and filling it on the last beat is silence, not cadence -- and
+      // one-character answers are common enough that it read as a hang.
+      return [0];
+    }
+
+    const totalWeight = weights.reduce((total, weight) => total + weight, 0);
+    const offsets = [0];
+    let elapsedWeight = 0;
+    for (const weight of weights) {
+      elapsedWeight += weight;
+      offsets.push(Math.round(duration * elapsedWeight / totalWeight));
+    }
+    // Avoid any accumulated floating-point or rounding drift at the last beat.
+    offsets[offsets.length - 1] = duration;
+    return offsets;
+  }
+
+  /**
+   * Run one write on every beat. The callback may return a failure outcome to
+   * stop the performance without writing any remaining characters.
+   */
+  async function playEntryCadence(characters, write, cadence) {
+    const offsets = entryBeatOffsets(characters, cadence);
+    const startedAt = performance.now();
+    for (let index = 0; index < characters.length; index += 1) {
+      const wait = offsets[index] - (performance.now() - startedAt);
+      if (wait > 0) {
+        await pause(wait);
+      }
+      const failure = write(characters[index]);
+      if (failure) {
+        return failure;
+      }
+    }
+    return null;
   }
 
   /**
@@ -293,7 +428,7 @@ var ethnosHawkes = (function () {
     );
   }
 
-  async function insertIntoNativeField(target, value) {
+  async function insertIntoNativeField(target, value, cadence) {
     if (target.disabled || target.readOnly) {
       return { ok: false, code: "field-not-editable" };
     }
@@ -302,26 +437,22 @@ var ethnosHawkes = (function () {
     }
 
     target.focus();
-    const characters = [...value];
-    const gap = Math.min(
-      CHARACTER_PAUSE_MS,
-      Math.floor(ENTRY_BUDGET_MS / Math.max(characters.length, 1))
-    );
-    for (let index = 0; index < characters.length; index += 1) {
+    const failure = await playEntryCadence([...value], (character) => {
       if (target.disabled || target.readOnly) {
         // The field closed under us part-way through. Stop rather than write
         // into something that has stopped accepting input.
         return { ok: false, code: "field-not-editable" };
       }
-      writeCharacter(target, characters[index]);
-      if (gap > 0 && index < characters.length - 1) {
-        await pause(gap);
-      }
+      writeCharacter(target, character);
+      return null;
+    }, cadence);
+    if (failure) {
+      return failure;
     }
     return { ok: true, code: "native-input" };
   }
 
-  function insertIntoEditable(target, value) {
+  async function insertIntoEditable(target, value, cadence) {
     target.focus();
     const selection = window.getSelection();
     if (
@@ -339,9 +470,23 @@ var ethnosHawkes = (function () {
       return { ok: false, code: "input-cancelled" };
     }
     // execCommand remains the only insertion path a MathQuill-style editor
-    // reliably observes. It inserts text only and never markup.
-    if (!document.execCommand("insertText", false, value)) {
-      return { ok: false, code: "editor-rejected-insert" };
+    // reliably observes. Each call inserts text only and never markup.
+    const failure = await playEntryCadence([...value], (character) => {
+      // `execCommand` writes wherever the selection happens to be, and a
+      // performance now spans seconds rather than one burst. Confirm the
+      // caret is still ours on every beat, or the rest of the answer lands
+      // in whatever the page focused in the meantime.
+      const live = window.getSelection();
+      if (!live || live.rangeCount === 0 || !target.contains(live.anchorNode)) {
+        return { ok: false, code: "editor-lost-focus" };
+      }
+      if (!document.execCommand("insertText", false, character)) {
+        return { ok: false, code: "editor-rejected-insert" };
+      }
+      return null;
+    }, cadence);
+    if (failure) {
+      return failure;
     }
     return { ok: true, code: "contenteditable" };
   }
@@ -351,7 +496,7 @@ var ethnosHawkes = (function () {
    *
    * @returns {{ok: boolean, code: string}}
    */
-  async function insertAnswer(value) {
+  async function insertAnswer(value, cadenceOptions = {}) {
     if (!originAllowed()) {
       return { ok: false, code: "wrong-site" };
     }
@@ -368,12 +513,13 @@ var ethnosHawkes = (function () {
     if (!target) {
       return { ok: false, code: "no-focused-answer-field" };
     }
+    const cadence = normalizedCadence(cadenceOptions);
     if (isNativeField(target)) {
       // Returns a promise: entry is paced, and `executeScript` awaits it.
-      return insertIntoNativeField(target, value);
+      return insertIntoNativeField(target, value, cadence);
     }
     if (target.isContentEditable || target.getAttribute("role") === "textbox") {
-      return insertIntoEditable(target, value);
+      return insertIntoEditable(target, value, cadence);
     }
     return { ok: false, code: "unsupported-field" };
   }

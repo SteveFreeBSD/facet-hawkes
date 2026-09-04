@@ -34,9 +34,11 @@ def plan():
     context.eval(source)
 
     def call(answer, editor):
-        return json.loads(context.eval(
-            f"JSON.stringify(planEntry({json.dumps(answer)}, {json.dumps(editor)}))"
-        ))
+        return json.loads(
+            context.eval(
+                f"JSON.stringify(planEntry({json.dumps(answer)}, {json.dumps(editor)}))"
+            )
+        )
 
     return call
 
@@ -54,7 +56,10 @@ FRACTIONS = {
 
 
 def test_plain_answer_is_one_typing_step(plan):
-    assert plan("3y", EXPONENTS) == {"ok": True, "steps": [{"op": "type", "text": "3y"}]}
+    assert plan("3y", EXPONENTS) == {
+        "ok": True,
+        "steps": [{"op": "type", "text": "3y"}],
+    }
 
 
 def test_the_exponent_plan_matches_what_worked_live(plan):
@@ -99,10 +104,13 @@ def test_explicit_multiplication_is_dropped(plan):
 
 
 def test_display_spacing_is_dropped(plan):
-    assert plan("x^2 + 16x + 64", {
-        "allowedCharacters": "-0123456789+xy",
-        "templates": {"fraction": False, "radical": False, "exponent": True},
-    }) == {
+    assert plan(
+        "x^2 + 16x + 64",
+        {
+            "allowedCharacters": "-0123456789+xy",
+            "templates": {"fraction": False, "radical": False, "exponent": True},
+        },
+    ) == {
         "ok": True,
         "steps": [
             {"op": "type", "text": "x"},
@@ -118,7 +126,9 @@ def test_factored_product_uses_parenthesis_templates(plan):
     editor = {
         "allowedCharacters": "0123456789-+y",
         "templates": {
-            "fraction": False, "radical": False, "exponent": True,
+            "fraction": False,
+            "radical": False,
+            "exponent": True,
             "parentheses": True,
         },
     }
@@ -138,7 +148,9 @@ def test_factor_variable_is_typed_before_parenthesis_template(plan):
     editor = {
         "allowedCharacters": "0123456789-+xy",
         "templates": {
-            "fraction": False, "radical": False, "exponent": True,
+            "fraction": False,
+            "radical": False,
+            "exponent": True,
             "parentheses": True,
         },
     }
@@ -158,7 +170,10 @@ def test_an_exponent_needs_something_to_raise(plan):
 
 
 def test_a_template_the_question_forbids_is_refused(plan):
-    no_exponent = {**EXPONENTS, "templates": {**EXPONENTS["templates"], "exponent": False}}
+    no_exponent = {
+        **EXPONENTS,
+        "templates": {**EXPONENTS["templates"], "exponent": False},
+    }
     verdict = plan("x^2", no_exponent)
     assert verdict["code"] == "template-refused-by-question"
     assert verdict["detail"] == "exponent"
@@ -232,7 +247,10 @@ def test_a_rational_exponent_nests_a_fraction_in_the_exponent(plan):
 
 
 def test_a_rational_exponent_needs_the_fraction_template_too(plan):
-    no_fraction = {**FRACTIONS, "templates": {**FRACTIONS["templates"], "fraction": False}}
+    no_fraction = {
+        **FRACTIONS,
+        "templates": {**FRACTIONS["templates"], "fraction": False},
+    }
     verdict = plan("y^(3/2)", no_fraction)
 
     assert verdict["code"] == "template-refused-by-question"
@@ -361,8 +379,17 @@ def test_the_even_root_answer_is_buildable(plan):
     assert built["ok"] is True
     names = [step.get("name") or step["op"] for step in built["steps"]]
     assert names == [
-        "Fraction", "type", "Exponent", "type", "base",
-        "Mod", "type", "Exponent", "type", "denominator", "type",
+        "Fraction",
+        "type",
+        "Exponent",
+        "type",
+        "base",
+        "Mod",
+        "type",
+        "Exponent",
+        "type",
+        "denominator",
+        "type",
     ]
 
 

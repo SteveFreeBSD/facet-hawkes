@@ -27,24 +27,32 @@ def fits():
     context.eval(source)
 
     def call(answer, editor):
-        return json.loads(context.eval(
-            f"JSON.stringify(answerFitsEditor({json.dumps(answer)}, {json.dumps(editor)}))"
-        ))
+        return json.loads(
+            context.eval(
+                f"JSON.stringify(answerFitsEditor({json.dumps(answer)}, {json.dumps(editor)}))"
+            )
+        )
 
     return call
 
 
 # Observed on lesson 1.2, question 8: sqrt(9y^2), answer 3y.
 DYNAMIC_Y = {
-    "ok": True, "kind": "dynamic", "enabled": True,
-    "allowedCharacters": "0123456789y", "maxLength": 16,
+    "ok": True,
+    "kind": "dynamic",
+    "enabled": True,
+    "allowedCharacters": "0123456789y",
+    "maxLength": 16,
     "templates": {"fraction": False, "radical": False, "exponent": True},
 }
 
 # Observed on question 7: sqrt(-324), an integer-or-decimal answer box.
 TEXTBOX_NUMERIC = {
-    "ok": True, "kind": "textbox", "enabled": True,
-    "allowedCharacters": "[0-9.-]", "maxLength": 9,
+    "ok": True,
+    "kind": "textbox",
+    "enabled": True,
+    "allowedCharacters": "[0-9.-]",
+    "maxLength": 9,
     "templates": {"fraction": False, "radical": False, "exponent": False},
 }
 
@@ -151,23 +159,34 @@ def test_an_option_question_is_never_typed_into():
 
     import quickjs as _quickjs
 
-    rules = _re.sub(r"^export ", "", (PROJECT_ROOT / "extension" / "common"
-                                      / "editor-rules.js").read_text(), flags=_re.M)
+    rules = _re.sub(
+        r"^export ",
+        "",
+        (PROJECT_ROOT / "extension" / "common" / "editor-rules.js").read_text(),
+        flags=_re.M,
+    )
     plan = (PROJECT_ROOT / "extension" / "common" / "editor-plan.js").read_text()
-    plan = _re.sub(r"^import .*\n", "", _re.sub(r"^export ", "", plan, flags=_re.M), flags=_re.M)
+    plan = _re.sub(
+        r"^import .*\n", "", _re.sub(r"^export ", "", plan, flags=_re.M), flags=_re.M
+    )
     context = _quickjs.Context()
     context.eval(rules)
     context.eval(plan)
 
     option = {
-        "ok": True, "kind": "option", "enabled": True, "allowedCharacters": "",
+        "ok": True,
+        "kind": "option",
+        "enabled": True,
+        "allowedCharacters": "",
         "maxLength": None,
         "templates": {"fraction": False, "radical": False, "exponent": False},
     }
-    verdict = _json.loads(context.eval(
-        "JSON.stringify(planEntry(%s, %s))"
-        % (_json.dumps("Not a Real Number"), _json.dumps(option))
-    ))
+    verdict = _json.loads(
+        context.eval(
+            "JSON.stringify(planEntry(%s, %s))"
+            % (_json.dumps("Not a Real Number"), _json.dumps(option))
+        )
+    )
     assert verdict["ok"] is False
     assert verdict["code"] == "editor-option-answer"
 

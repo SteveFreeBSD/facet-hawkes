@@ -221,6 +221,15 @@ Solve; if the host takes longer than 30 seconds the panel reports the timeout
 rather than the old four-minute one. Settings → Panel: move **Panel width** and
 reopen the panel; it opens at the width you set.
 
+Settings → Answer cadence: choose each genre and confirm the beat preview and
+suggested tempo change. Choose **Custom** and confirm the beat-shape, swing,
+variation and symbol-rest panel appears. Set the window to 5–10 seconds, insert
+a plain-text formula, and time from its first to last character. It must finish
+inside that window; operators and separators should carry visibly longer
+rests. Repeat with a contenteditable formula if the question supplies one.
+Structured keypad answers have their own settling path and are not governed by
+these controls.
+
 The event page holds preferences in memory, so a change applies to the next
 question without restarting Firefox.
 

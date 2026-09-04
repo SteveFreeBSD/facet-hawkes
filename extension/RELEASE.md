@@ -4,17 +4,17 @@ This runbook produces a Mozilla-signed add-on that installs permanently in a
 normal Firefox profile. A locally built XPI is unsigned and is only a release
 candidate; do not weaken Firefox signature enforcement to install it.
 
-## Frozen 0.41.4 candidate
+## Frozen 0.42.0 candidate
 
 The accepted local candidate is frozen. Do not rebuild or alter packaged
 source before submission unless AMO requires a source change:
 
 ```text
-dist/ethnos-hawkes-0.41.4-unsigned.xpi
-SHA-256 3154e9ba50b3e500e4d3d7f464973bb4b32a6b64694d0130f99f6fcbac3dd9ee
+dist/ethnos-hawkes-0.42.0-unsigned.xpi
+SHA-256 3937c19699e0284acc901f8d86cd6a0086c4da099223be459ad4a7a3f5684df5
 ```
 
-0.39.0 through 0.41.3 were development builds and must not be uploaded. The
+0.39.0 through 0.41.4 were development builds and must not be uploaded. The
 last signed release is retained for rollback:
 
 ```text
@@ -24,10 +24,11 @@ candidate  dist/ethnos-hawkes-0.39.2-unsigned.xpi
 SHA-256    57e0ac32081a038110b2ac5d439b26035fe074e522131ebe01523cbbb3fe55b7
 ```
 
-0.41.4 changes no permission, host, or data-collection declaration. Gates on
-this candidate: repository validator, 633 tests,
-`web-ext lint --warnings-as-errors` at 0 errors / 0 warnings / 0 notices, an
-identical rebuild, and 11 of 11 checks in the real-browser harness.
+0.42.0 changes no permission, host, or data-collection declaration. Completed
+gates on this candidate: repository validator, 653 tests,
+`web-ext lint --warnings-as-errors` at 0 errors / 0 warnings / 0 notices, and an
+identical rebuild. The real-browser harness and signed-artifact physical
+acceptance remain release gates; neither is replaced by the local checks.
 
 Documentation-only updates do not change that archive. If any packaged file
 must change, bump the version, rerun every gate, and record a new candidate
@@ -61,7 +62,7 @@ $ export PATH="$HOME/.local/opt/node-v22.23.2-linux-x64/bin:$HOME/.local/bin:$PA
 $ npm install -g --prefix ~/.local web-ext
 $ web-ext --version
 $ release_lint_dir=$(mktemp -d)
-$ unzip -q dist/ethnos-hawkes-0.41.4-unsigned.xpi -d "$release_lint_dir"
+$ unzip -q dist/ethnos-hawkes-0.42.0-unsigned.xpi -d "$release_lint_dir"
 $ web-ext lint --source-dir "$release_lint_dir" --warnings-as-errors
 ```
 
@@ -170,7 +171,7 @@ substitute the separate Marionette profile for signed-artifact acceptance.
    duplicate-insertion guard, and removal footprint. Never press Hawkes submit
    as part of the extension smoke test.
 
-Only after the signed XPI passes this physical-browser acceptance is 0.41.4
+Only after the signed XPI passes this physical-browser acceptance is 0.42.0
 **released**. Until then its status remains **release candidate complete**.
 
 Firefox Release and Beta require Mozilla-signed extensions. Mozilla documents

@@ -13,7 +13,9 @@ INSTALLER_PATH = PROJECT_ROOT / "deploy" / "firefox" / "install_native_host.py"
 
 
 def _installer():
-    spec = importlib.util.spec_from_file_location("ethnos_native_installer", INSTALLER_PATH)
+    spec = importlib.util.spec_from_file_location(
+        "ethnos_native_installer", INSTALLER_PATH
+    )
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

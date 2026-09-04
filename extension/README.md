@@ -123,6 +123,14 @@ deliberate refusal.
 [`docs/HAWKES_EDITOR_FINDINGS.md`](../docs/HAWKES_EDITOR_FINDINGS.md) for how
 the editor was reverse-engineered.
 
+Plain-text insertion is presented one character at a time. It defaults to a
+randomised Lo-fi cadence inside a 5–10 second window, leaving longer rests
+after operators and separators so a demonstration voice-over can name each
+part of the expression. Settings offers Classical, Jazz, Lo-fi, Electronic and
+Custom arrangements, an independent tempo, and a configurable 2–12 second hard
+window. The timing is theatrical, not an attempt to imitate human input: the
+synthetic events remain observable to the page.
+
 ## Site-footprint contract and hard limit
 
 Opening and solving leave no persistent, site-visible artifact in the Hawkes
@@ -408,6 +416,9 @@ costs you the preference rather than the add-on.
 | Give up on a solve after | 240s | 30–900. A larger vision model on a slower machine needs longer. |
 | Panel width | 360px | 300–560. Firefox sizes a popup to its content, so this is the whole of the control there is over it. |
 | Show the recognized problem expanded | off | Costs a little panel height. |
+| Cadence genre | Lo-fi | Classical, Jazz, Lo-fi and Electronic supply distinct beat shapes, swing, variation and symbol rests. Custom exposes those controls directly. |
+| Cadence tempo | 82 BPM | 45–180. Choosing a genre loads its suggested tempo; the slider can then override it. |
+| Performance window | 5–10s | A hard 2–12 second range around the tempo-derived length, kept below the injected operation's 15-second deadline. |
 | Keyboard shortcut | `Alt+Shift+E` | Rebound through Firefox's own `browser.commands`. |
 | Record | Normal activity | What reaches the diagnostic log. |
 

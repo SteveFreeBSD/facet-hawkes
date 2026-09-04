@@ -16,6 +16,7 @@ from .agent_models import (
     AgentAction,
     AgentReviewItem,
     AgentReviewReport,
+    AgentToolResult,
     DistractorReview,
     EvidenceCitation,
     ModelProfile,
@@ -57,6 +58,7 @@ def run_agent_review(
     quiz_items = {str(item["id"]): item for item in items}
     duplicate_findings = _duplicate_question_findings(items)
     typo_findings = _typo_findings(items)
+    instructor_note_findings = _instructor_note_findings(items)
     tool_context = AgentToolContext(
         conn=conn,
         document_id=document_id,
@@ -72,6 +74,8 @@ def run_agent_review(
     registry = build_agent_tool_registry(tool_context)
     output_dir.mkdir(parents=True, exist_ok=True)
     trace_path = output_dir / "tool_trace.jsonl" if debug_agent else None
+    if trace_path is not None:
+        trace_path.write_text("", encoding="utf-8")
     reviews = []
     for index, item in enumerate(items, start=1):
         if progress is not None:
@@ -79,6 +83,7 @@ def run_agent_review(
         quality_findings = [
             *duplicate_findings.get(str(item["id"]), []),
             *typo_findings.get(str(item["id"]), []),
+            *instructor_note_findings.get(str(item["id"]), []),
         ]
         try:
             with _item_timeout(item_timeout):
@@ -189,6 +194,20 @@ def review_quiz_item(
             "result": preflight.model_dump(mode="json"),
         },
     )
+    grounding = preflight.result.get("grounding") if preflight.ok else None
+    if _deterministic_grounding_terminal(grounding):
+        return _fallback_review(item, observations, quality_findings, tool_calls)
+    messages.append(
+        {
+            "role": "user",
+            "content": (
+                "Deterministic preflight grounding is complete. Finalize now if "
+                "this evidence is sufficient; otherwise call one different tool. "
+                "Do not repeat ground_quiz_item.\n"
+                + json.dumps(preflight.model_dump(mode="json"), sort_keys=True)
+            ),
+        }
+    )
 
     for _step in range(max_steps):
         if client is None:
@@ -207,8 +226,34 @@ def review_quiz_item(
             break
         try:
             action = AgentAction.model_validate(parsed_json)
-        except ValidationError:
-            break
+        except ValidationError as exc:
+            _write_trace(
+                trace_path,
+                {
+                    "item_id": item.get("id"),
+                    "kind": "model_action_invalid",
+                    "action": parsed_json,
+                    "error": str(exc),
+                },
+            )
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": json.dumps(parsed_json, sort_keys=True),
+                }
+            )
+            messages.append(
+                {
+                    "role": "user",
+                    "content": (
+                        "That action failed runtime schema validation. Correct it "
+                        "and return one schema-valid action. final_review is required "
+                        "only with finalize_item_review and forbidden for every other "
+                        f"tool. Validation error: {exc}"
+                    ),
+                }
+            )
+            continue
         action = _repair_item_scoped_action(action, item)
         tool_calls.append(action.tool)
         _write_trace(
@@ -219,7 +264,7 @@ def review_quiz_item(
             final = action.final_review
             if final is None:
                 break
-            evidence = _evidence_from_observations(observations)
+            evidence = _evidence_from_observations(observations, item=item)
             return _merge_review_defaults(
                 item,
                 final,
@@ -228,7 +273,17 @@ def review_quiz_item(
                 grounding=_latest_grounding(observations),
                 evidence=evidence,
             )
-        result = call_agent_tool(registry, action.tool, action.arguments)
+        if action.tool == "ground_quiz_item":
+            result = AgentToolResult(
+                tool=action.tool,
+                ok=False,
+                error=(
+                    "ground_quiz_item already ran as deterministic preflight; "
+                    "finalize or call a different inspection tool"
+                ),
+            )
+        else:
+            result = call_agent_tool(registry, action.tool, action.arguments)
         observations.append(result.model_dump(mode="json"))
         _write_trace(
             trace_path,
@@ -255,6 +310,18 @@ def review_quiz_item(
     return _fallback_review(item, observations, quality_findings, tool_calls)
 
 
+def _deterministic_grounding_terminal(grounding: object) -> bool:
+    """Whether grounding already determines that a model cannot change the verdict."""
+    if not isinstance(grounding, dict):
+        return False
+    return grounding.get("source_status") in {
+        "source_missing_in_local_pdf",
+        "ungrounded",
+        "invalid_anchor",
+        "incomplete",
+    }
+
+
 def _repair_item_scoped_action(
     action: AgentAction,
     item: dict[str, Any],
@@ -263,13 +330,10 @@ def _repair_item_scoped_action(
         return action
     arguments = dict(action.arguments)
     item_id = item.get("id")
-    if "item_id" not in arguments:
-        for alias in ("question_id", "id"):
-            if alias in arguments:
-                arguments["item_id"] = arguments[alias]
-                break
-    if "item_id" not in arguments and item_id:
-        arguments["item_id"] = item_id
+    arguments.pop("question_id", None)
+    arguments.pop("id", None)
+    if item_id is not None:
+        arguments["item_id"] = str(item_id)
     return action.model_copy(update={"arguments": arguments})
 
 
@@ -297,6 +361,8 @@ def render_agent_review_markdown(report: AgentReviewReport) -> str:
         f"- verdicts: {json.dumps(report.verdict_counts, sort_keys=True)}",
         f"- quality findings: {json.dumps(report.quality_counts, sort_keys=True)}",
         f"- review priorities: {json.dumps(getattr(report, 'priority_counts', {}), sort_keys=True)}",
+        f"- model finalized: {getattr(report, 'model_finalized_count', 0)}",
+        f"- deterministic fallback: {getattr(report, 'fallback_item_count', 0)}",
         "",
         "## Review Queue",
         "",
@@ -389,9 +455,9 @@ def _initial_messages(item: dict[str, Any]) -> list[dict[str, str]]:
         {
             "role": "user",
             "content": (
-                "Review this quiz item. Start by calling ground_quiz_item or "
-                "compare_options, then finalize with a verdict.\n"
-                + json.dumps(item, sort_keys=True)
+                "Review this quiz item. A deterministic grounding preflight will "
+                "follow. Use it, inspect further only when needed, then finalize "
+                "with a verdict.\n" + json.dumps(item, sort_keys=True)
             ),
         },
     ]
@@ -408,7 +474,7 @@ def _fallback_review(
     options = item.get("options") if isinstance(item.get("options"), dict) else {}
     correct = item.get("correct")
     keyed_text = options.get(correct) if isinstance(correct, str) else None
-    evidence = _evidence_from_observations(observations)
+    evidence = _evidence_from_observations(observations, item=item)
     evidence_rows = _evidence_rows(evidence)
     key_support = _key_support_details(
         grounding=grounding,
@@ -419,14 +485,36 @@ def _fallback_review(
         source_status=source_status,
         key_support=key_support,
     )
-    review_reason = (
-        None if verdict == "key_supported" else "model_final_review_unavailable"
+    if verdict == "source_missing":
+        key_support = _missing_source_support_details()
+        evidence = []
+        evidence_rows = []
+    if verdict == "key_supported":
+        review_reason = None
+    elif verdict == "source_missing":
+        review_reason = str(source_status or "source_missing")
+    else:
+        review_reason = "model_final_review_unavailable"
+    explanation = (
+        _blocking_grounding_explanation(str(source_status))
+        if source_status in {"invalid_anchor", "incomplete"}
+        else _fallback_explanation(verdict, key_support)
     )
-    explanation = _fallback_explanation(verdict, key_support)
+    distractor_verdicts = (
+        {}
+        if verdict == "source_missing"
+        else _distractor_verdicts(
+            options=options,
+            correct=correct,
+            evidence_rows=evidence_rows,
+        )
+    )
     review_priority = _review_priority(
         verdict=verdict,
         evidence_strength=str(key_support["evidence_strength"]),
+        confidence_score=float(key_support["confidence_score"]),
         quality_findings=quality_findings,
+        distractor_verdicts=distractor_verdicts,
     )
     return AgentReviewItem(
         id=str(item.get("id") or ""),
@@ -438,12 +526,7 @@ def _fallback_review(
         evidence_strength=str(key_support["evidence_strength"]),
         confidence_score=float(key_support["confidence_score"]),
         support_reason=str(key_support["support_reason"]),
-        distractor_verdicts=_distractor_verdicts(
-            options=options,
-            correct=correct,
-            evidence_rows=evidence_rows,
-            key_supported=verdict == "key_supported",
-        ),
+        distractor_verdicts=distractor_verdicts,
         evidence=evidence,
         quality_findings=quality_findings,
         source_status=str(source_status) if source_status else None,
@@ -460,6 +543,8 @@ def _fallback_verdict(
 ) -> str:
     if source_status in {"ungrounded", "source_missing_in_local_pdf"}:
         return "source_missing"
+    if source_status in {"invalid_anchor", "incomplete"}:
+        return "needs_human_review"
     if key_support.get("supported") is True:
         return "key_supported"
     return "needs_human_review"
@@ -468,18 +553,33 @@ def _fallback_verdict(
 def _fallback_explanation(verdict: str, key_support: dict[str, object]) -> str:
     if verdict == "key_supported":
         return (
-            "The model did not produce a validated final review, but deterministic "
-            "retrieval found PDF evidence supporting the keyed answer. "
+            "No validated model final review was used; deterministic retrieval "
+            "found PDF evidence supporting the keyed answer. "
             f"Evidence strength is {key_support['evidence_strength']}."
         )
     if verdict == "source_missing":
         return (
-            "The model did not produce a validated final review, and deterministic "
-            "retrieval did not find usable local PDF evidence for this item."
+            "No validated model final review was used, and deterministic retrieval "
+            "did not find usable local PDF evidence for this item."
         )
     return (
-        "The deterministic agent tools collected available context, but the model "
-        "did not produce a validated final review. This item needs human review."
+        "The deterministic agent tools collected available context, but no "
+        "validated model final review was used. This item needs human review."
+    )
+
+
+def _source_grounding_explanation(source_status: object) -> str:
+    status = str(source_status or "source_missing")
+    return (
+        f"Source grounding status is {status}; no usable local PDF evidence can "
+        "be cited to validate this item."
+    )
+
+
+def _blocking_grounding_explanation(source_status: str) -> str:
+    return (
+        f"Source grounding status is {source_status}; the declared anchors or "
+        "item completeness must be fixed before the review can pass."
     )
 
 
@@ -503,12 +603,21 @@ def _key_support_details(
     }
 
 
+def _missing_source_support_details() -> dict[str, object]:
+    return {
+        "supported": False,
+        "evidence_strength": "missing",
+        "confidence_score": 0.0,
+        "support_reason": "No usable local PDF evidence was available for this item.",
+        "hit_terms": [],
+    }
+
+
 def _distractor_verdicts(
     *,
     options: dict[str, Any],
     correct: object,
     evidence_rows: list[dict[str, object]],
-    key_supported: bool,
 ) -> dict[str, DistractorReview]:
     verdicts: dict[str, DistractorReview] = {}
     for option, option_text in options.items():
@@ -518,10 +627,10 @@ def _distractor_verdicts(
         support = answer_support_details(text, evidence_rows)
         strength = str(support["evidence_strength"])
         if support["supported"]:
-            verdict = "ambiguous" if key_supported else "plausible_but_wrong"
+            verdict = "plausible_but_wrong"
             rationale = (
-                "The retrieved evidence also contains direct or sufficient terms "
-                "for this distractor, so a reviewer should inspect the item."
+                "The anchored context mentions this option, but lexical presence "
+                "alone does not establish that it also answers the question."
             )
         elif strength == "weak":
             verdict = "plausible_but_wrong"
@@ -548,15 +657,24 @@ def _review_priority(
     *,
     verdict: str,
     evidence_strength: str,
+    confidence_score: float,
     quality_findings: list[QuestionQualityFinding],
+    distractor_verdicts: dict[str, DistractorReview] | None = None,
 ) -> str:
     if verdict in {"source_missing", "key_conflict_candidate", "ambiguous_question"}:
         return "fix"
     if verdict != "key_supported":
         return "inspect"
-    if evidence_strength in {"missing", "weak"}:
+    if evidence_strength in {"missing", "weak", "partial"}:
+        return "inspect"
+    if confidence_score < 0.75:
         return "inspect"
     if quality_findings:
+        return "inspect"
+    if any(
+        distractor.verdict == "ambiguous"
+        for distractor in (distractor_verdicts or {}).values()
+    ):
         return "inspect"
     return "pass"
 
@@ -572,8 +690,16 @@ def _merge_review_defaults(
 ) -> AgentReviewItem:
     options = item.get("options") if isinstance(item.get("options"), dict) else {}
     correct = item.get("correct")
-    merged_findings = [*review.quality_findings, *quality_findings]
-    merged_evidence = review.evidence or evidence or []
+    merged_findings = _dedupe_quality_findings(
+        [*review.quality_findings, *quality_findings]
+    )
+    warnings = item.get("warnings")
+    declared_source_missing = (
+        isinstance(warnings, list) and "external_source_item" in warnings
+    )
+    # Citations are derived only from successful tool observations. Model-supplied
+    # citations are prose claims and are not authoritative evidence provenance.
+    merged_evidence = [] if declared_source_missing else list(evidence or [])
     evidence_rows = _evidence_rows(merged_evidence)
     keyed_text = options.get(correct) if isinstance(correct, str) else None
     key_support = _key_support_details(
@@ -581,47 +707,106 @@ def _merge_review_defaults(
         keyed_option_text=keyed_text,
         evidence_rows=evidence_rows,
     )
+    grounding_status = (grounding or {}).get("source_status")
+    blocking_grounding = grounding_status in {"invalid_anchor", "incomplete"}
+    missing_grounding = grounding_status in {
+        "ungrounded",
+        "source_missing_in_local_pdf",
+    }
+    source_missing = (
+        declared_source_missing
+        or missing_grounding
+        or (not blocking_grounding and review.verdict == "source_missing")
+    )
+    if source_missing:
+        verdict = "source_missing"
+    elif blocking_grounding:
+        verdict = "needs_human_review"
+    else:
+        verdict = review.verdict
+    if source_missing:
+        key_support = _missing_source_support_details()
+        merged_evidence = []
+        evidence_rows = []
     evidence_strength = (
         str(key_support["evidence_strength"])
-        if review.evidence_strength == "missing"
+        if source_missing or review.evidence_strength == "missing"
         else review.evidence_strength
     )
     confidence_score = (
         float(key_support["confidence_score"])
-        if review.confidence_score == 0
+        if source_missing or review.confidence_score == 0
         else review.confidence_score
     )
-    review_priority = (
-        _review_priority(
-            verdict=review.verdict,
-            evidence_strength=evidence_strength,
-            quality_findings=merged_findings,
+    distractor_verdicts = (
+        {}
+        if source_missing
+        else review.distractor_verdicts
+        or _distractor_verdicts(
+            options=options,
+            correct=correct,
+            evidence_rows=evidence_rows,
         )
-        if review.review_priority == "inspect"
-        else review.review_priority
     )
+    derived_priority = _review_priority(
+        verdict=verdict,
+        evidence_strength=evidence_strength,
+        confidence_score=confidence_score,
+        quality_findings=merged_findings,
+        distractor_verdicts=distractor_verdicts,
+    )
+    priority_rank = {"pass": 0, "inspect": 1, "fix": 2}
+    if "review_priority" not in review.model_fields_set:
+        review_priority = derived_priority
+    else:
+        review_priority = max(
+            (review.review_priority, derived_priority),
+            key=lambda priority: priority_rank[priority],
+        )
     return review.model_copy(
         update={
-            "id": review.id or str(item.get("id") or ""),
-            "question": review.question or str(item.get("question") or ""),
-            "keyed_option": review.keyed_option
-            or (str(correct) if isinstance(correct, str) else None),
-            "keyed_option_text": review.keyed_option_text
-            or (options.get(correct) if isinstance(correct, str) else None),
+            "verdict": verdict,
+            "id": str(item.get("id") or ""),
+            "question": str(item.get("question") or ""),
+            "keyed_option": str(correct) if isinstance(correct, str) else None,
+            "keyed_option_text": (
+                options.get(correct) if isinstance(correct, str) else None
+            ),
+            "explanation": (
+                _source_grounding_explanation(grounding_status)
+                if source_missing
+                else (
+                    _blocking_grounding_explanation(str(grounding_status))
+                    if blocking_grounding
+                    else review.explanation
+                )
+            ),
             "quality_findings": merged_findings,
             "evidence": merged_evidence,
             "evidence_strength": evidence_strength,
             "confidence_score": confidence_score,
-            "support_reason": review.support_reason or key_support["support_reason"],
-            "distractor_verdicts": review.distractor_verdicts
-            or _distractor_verdicts(
-                options=options,
-                correct=correct,
-                evidence_rows=evidence_rows,
-                key_supported=review.verdict == "key_supported",
+            "support_reason": (
+                key_support["support_reason"]
+                if source_missing
+                else (
+                    f"Source grounding status is {grounding_status}; "
+                    "the item cannot pass review."
+                    if blocking_grounding
+                    else review.support_reason or key_support["support_reason"]
+                )
             ),
+            "distractor_verdicts": distractor_verdicts,
             "review_priority": review_priority,
-            "tool_calls": [*tool_calls, *review.tool_calls],
+            "source_status": (
+                str(grounding_status) if grounding_status else review.source_status
+            ),
+            "needs_human_review_reason": (
+                str(grounding_status)
+                if blocking_grounding
+                else review.needs_human_review_reason
+            ),
+            "model_finalized": True,
+            "tool_calls": tool_calls,
         }
     )
 
@@ -636,8 +821,18 @@ def _latest_grounding(observations: list[dict[str, Any]]) -> dict[str, Any]:
 
 def _evidence_from_observations(
     observations: list[dict[str, Any]],
+    *,
+    item: dict[str, Any] | None = None,
 ) -> list[EvidenceCitation]:
     citations: list[EvidenceCitation] = []
+    seen: set[tuple[object, str]] = set()
+    allowed_chunk_ids: set[int] | None = None
+    if item and isinstance(item.get("source_chunks"), list) and item["source_chunks"]:
+        allowed_chunk_ids = {
+            int(chunk_id)
+            for chunk_id in item["source_chunks"]
+            if isinstance(chunk_id, int) and not isinstance(chunk_id, bool)
+        }
     for observation in observations:
         result = observation.get("result")
         if not isinstance(result, dict):
@@ -645,9 +840,16 @@ def _evidence_from_observations(
         rows = result.get("context_rows") or result.get("rows") or []
         if not isinstance(rows, list):
             continue
-        for row in rows[:3]:
+        for row in rows:
             if not isinstance(row, dict):
                 continue
+            chunk_id = row.get("id")
+            if allowed_chunk_ids is not None and chunk_id not in allowed_chunk_ids:
+                continue
+            identity = (row.get("id"), str(row.get("source_citation") or ""))
+            if identity in seen:
+                continue
+            seen.add(identity)
             citations.append(
                 EvidenceCitation(
                     source="pdf",
@@ -656,10 +858,10 @@ def _evidence_from_observations(
                     if isinstance(row.get("page_start"), int)
                     else None,
                     citation=str(row.get("source_citation") or ""),
-                    snippet=str(row.get("text") or row.get("snippet") or "")[:500],
+                    snippet=str(row.get("text") or row.get("snippet") or "")[:900],
                 )
             )
-    return citations[:5]
+    return citations
 
 
 def _evidence_rows(evidence: list[EvidenceCitation]) -> list[dict[str, object]]:
@@ -690,6 +892,7 @@ def _build_report(
         finding.finding_type for item in reviews for finding in item.quality_findings
     )
     priority_counts = Counter(item.review_priority for item in reviews)
+    model_finalized_count = sum(item.model_finalized for item in reviews)
     return AgentReviewReport(
         document_id=document_id,
         quiz=str(quiz_path),
@@ -701,6 +904,8 @@ def _build_report(
         verdict_counts=dict(sorted(verdict_counts.items())),
         quality_counts=dict(sorted(quality_counts.items())),
         priority_counts=dict(sorted(priority_counts.items())),
+        model_finalized_count=model_finalized_count,
+        fallback_item_count=len(reviews) - model_finalized_count,
         items=reviews,
         tool_trace_path=str(trace_path) if trace_path else None,
     )
@@ -727,6 +932,38 @@ def _duplicate_question_findings(
                 )
             )
     return findings
+
+
+def _instructor_note_findings(
+    items: list[dict[str, Any]],
+) -> dict[str, list[QuestionQualityFinding]]:
+    findings: dict[str, list[QuestionQualityFinding]] = {}
+    for item in items:
+        note = str(item.get("instructor_key_note") or "").strip()
+        if not note:
+            continue
+        findings.setdefault(str(item.get("id")), []).append(
+            QuestionQualityFinding(
+                severity="low",
+                finding_type="instructor_key_note",
+                message=note,
+            )
+        )
+    return findings
+
+
+def _dedupe_quality_findings(
+    findings: list[QuestionQualityFinding],
+) -> list[QuestionQualityFinding]:
+    deduped: list[QuestionQualityFinding] = []
+    seen: set[tuple[str, str, str]] = set()
+    for finding in findings:
+        identity = (finding.severity, finding.finding_type, finding.message)
+        if identity in seen:
+            continue
+        seen.add(identity)
+        deduped.append(finding)
+    return deduped
 
 
 def _typo_findings(

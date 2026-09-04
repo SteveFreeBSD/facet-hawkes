@@ -80,6 +80,126 @@
         </div>
       </section>
 
+      <section class="card cadence-card">
+        <div class="card__heading">
+          <div>
+            <p class="eyebrow" data-i18n="optionsCadenceEyebrow">Presentation</p>
+            <h1 data-i18n="optionsCadenceHeading">Answer cadence</h1>
+          </div>
+          <span id="cadence-summary" class="cadence-summary"></span>
+        </div>
+
+        <p class="note" data-i18n="optionsCadenceHelp">
+          Plain-text formulas arrive one character at a time. Pick a musical feel, then set the pace and performance window for demonstrations and voice-over.
+        </p>
+
+        <div class="cadence-grid">
+          <div class="field">
+            <label class="field__label" for="entryGenre"
+                   data-i18n="optionsCadenceGenreLabel">Genre</label>
+            <select id="entryGenre" class="input input--select" data-setting="entryGenre">
+              <option value="classical" data-i18n="optionsCadenceGenreClassical">Classical</option>
+              <option value="jazz" data-i18n="optionsCadenceGenreJazz">Jazz</option>
+              <option value="lofi" data-i18n="optionsCadenceGenreLofi">Lo-fi</option>
+              <option value="electronic" data-i18n="optionsCadenceGenreElectronic">Electronic</option>
+              <option value="custom" data-i18n="optionsCadenceGenreCustom">Custom</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label class="field__label" for="entryTempoBpm"
+                   data-i18n="optionsCadenceTempoLabel">Tempo</label>
+            <div class="field__control field__control--range">
+              <input id="entryTempoBpm" class="range" type="range"
+                     data-setting="entryTempoBpm" step="1">
+              <output id="entryTempoBpm-value" class="field__unit"
+                      for="entryTempoBpm"></output>
+            </div>
+          </div>
+        </div>
+
+        <div class="field">
+          <span class="field__label" data-i18n="optionsCadenceWindowLabel">Performance window</span>
+          <div class="field__control">
+            <label class="duration-field">
+              <span data-i18n="optionsCadenceMinimumLabel">Minimum</span>
+              <input id="entryDurationMinSeconds" class="input input--number" type="number"
+                     data-setting="entryDurationMinSeconds" inputmode="numeric">
+            </label>
+            <span class="duration-divider" aria-hidden="true">—</span>
+            <label class="duration-field">
+              <span data-i18n="optionsCadenceMaximumLabel">Maximum</span>
+              <input id="entryDurationMaxSeconds" class="input input--number" type="number"
+                     data-setting="entryDurationMaxSeconds" inputmode="numeric">
+            </label>
+            <span class="field__unit" data-i18n="optionsCadenceSecondsUnit">seconds</span>
+          </div>
+          <p class="note" data-i18n="optionsCadenceWindowHelp">
+            Tempo suggests the natural length; this window keeps every insertion between your limits. Maximum 12 seconds leaves room under the 15-second operation deadline.
+          </p>
+        </div>
+
+        <div id="cadence-preview" class="cadence-preview" role="img">
+          <span class="cadence-preview__beat"></span>
+          <span class="cadence-preview__beat"></span>
+          <span class="cadence-preview__beat"></span>
+          <span class="cadence-preview__beat"></span>
+        </div>
+        <p id="cadence-note" class="note cadence-note"></p>
+
+        <fieldset id="cadence-custom" class="custom-panel" hidden>
+          <legend data-i18n="optionsCadenceCustomHeading">Custom arrangement</legend>
+
+          <div class="field">
+            <label class="field__label" for="entryPattern"
+                   data-i18n="optionsCadencePatternLabel">Beat shape</label>
+            <select id="entryPattern" class="input input--select" data-setting="entryPattern">
+              <option value="steady" data-i18n="optionsCadencePatternSteady">Steady four</option>
+              <option value="waltz" data-i18n="optionsCadencePatternWaltz">Waltz three</option>
+              <option value="backbeat" data-i18n="optionsCadencePatternBackbeat">Backbeat</option>
+              <option value="syncopated" data-i18n="optionsCadencePatternSyncopated">Syncopated</option>
+            </select>
+          </div>
+
+          <div class="field custom-slider">
+            <label class="field__label" for="entrySwingPercent"
+                   data-i18n="optionsCadenceSwingLabel">Swing</label>
+            <div class="field__control field__control--range">
+              <input id="entrySwingPercent" class="range" type="range"
+                     data-setting="entrySwingPercent" step="1">
+              <output id="entrySwingPercent-value" class="field__unit"
+                      for="entrySwingPercent"></output>
+            </div>
+          </div>
+
+          <div class="field custom-slider">
+            <label class="field__label" for="entryVariationPercent"
+                   data-i18n="optionsCadenceVariationLabel">Timing variation</label>
+            <div class="field__control field__control--range">
+              <input id="entryVariationPercent" class="range" type="range"
+                     data-setting="entryVariationPercent" step="1">
+              <output id="entryVariationPercent-value" class="field__unit"
+                      for="entryVariationPercent"></output>
+            </div>
+          </div>
+
+          <div class="field custom-slider">
+            <label class="field__label" for="entrySymbolRestPercent"
+                   data-i18n="optionsCadenceSymbolRestLabel">Rest after symbols</label>
+            <div class="field__control field__control--range">
+              <input id="entrySymbolRestPercent" class="range" type="range"
+                     data-setting="entrySymbolRestPercent" step="1">
+              <output id="entrySymbolRestPercent-value" class="field__unit"
+                      for="entrySymbolRestPercent"></output>
+            </div>
+          </div>
+        </fieldset>
+
+        <p class="note" data-i18n="optionsCadenceDisclosure">
+          This is presentation timing, not concealment. Hawkes can still identify the synthetic input events.
+        </p>
+      </section>
+
       <section class="card">
         <h1 data-i18n="optionsConnectionHeading">Ethnos connection</h1>
         <p class="note" data-i18n="optionsConnectionHelp">

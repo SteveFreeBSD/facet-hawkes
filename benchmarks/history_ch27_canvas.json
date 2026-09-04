@@ -1,0 +1,569 @@
+{
+  "document_id": 2,
+  "generated_count": 20,
+  "import_warnings": [],
+  "questions": [
+    {
+      "correct": "B",
+      "id": "ch27-q001",
+      "options": {
+        "A": "Lyndon B. Johnson",
+        "B": "John F. Kennedy",
+        "C": "Dwight D. Eisenhower",
+        "D": "Richard Nixon"
+      },
+      "points": 5,
+      "position": 1,
+      "question": "Who won the 1960 presidential election?",
+      "question_type": "multiple_choice",
+      "retrieval_questions": [
+        "1960 presidential election Kennedy Nixon winner"
+      ],
+      "source_chunks": [
+        210
+      ],
+      "source_citation": "history.pdf pp. 327-329, chunk 110",
+      "source_pages": [
+        327,
+        328,
+        329
+      ],
+      "target": "Kennedy bested Nixon"
+    },
+    {
+      "correct": "A",
+      "id": "ch27-q002",
+      "options": {
+        "A": "Brown v. Board of Education",
+        "B": "Shelley v. Kraemer",
+        "C": "Loving v. Virginia",
+        "D": "Plessy v. Ferguson"
+      },
+      "points": 5,
+      "position": 2,
+      "question": "Which Supreme Court case overturned the \"separate but equal\" doctrine in public education?",
+      "question_type": "multiple_choice",
+      "retrieval_questions": [
+        "Brown Board Education separate inherently unequal public schools"
+      ],
+      "source_chunks": [
+        203,
+        204
+      ],
+      "source_citation": "history.pdf pp. 311-313, chunk 104",
+      "source_pages": [
+        308,
+        309,
+        310,
+        311,
+        312,
+        313
+      ],
+      "target": "Brown repudiated Plessy"
+    },
+    {
+      "correct": "D",
+      "id": "ch27-q003",
+      "options": {
+        "A": "The New Frontier",
+        "B": "The Fair Deal",
+        "C": "The New Deal",
+        "D": "The Great Society"
+      },
+      "points": 5,
+      "position": 3,
+      "question": "What was the name of President Lyndon B. Johnson's domestic agenda?",
+      "question_type": "multiple_choice",
+      "retrieval_questions": [
+        "Lyndon Johnson domestic agenda Great Society"
+      ],
+      "source_chunks": [
+        213
+      ],
+      "source_citation": "history.pdf pp. 336-339, chunk 113",
+      "source_pages": [
+        336,
+        337,
+        338,
+        339
+      ],
+      "target": "package of domestic reforms known as the Great Society"
+    },
+    {
+      "correct": "D",
+      "id": "ch27-q004",
+      "options": {
+        "A": "The Black Panthers",
+        "B": "The Brown Berets",
+        "C": "The Young Lords",
+        "D": "The American Indian Movement (AIM)"
+      },
+      "points": 5,
+      "position": 4,
+      "question": "What was the name of the Native American activist group formed in the 1960s?",
+      "question_type": "multiple_choice",
+      "retrieval_questions": [
+        "Native American activist group American Indian Movement AIM"
+      ],
+      "source_chunks": [
+        217
+      ],
+      "source_citation": "history.pdf pp. 348-349, chunk 117",
+      "source_pages": [
+        348,
+        349
+      ],
+      "target": "The American Indian Movement (AIM)"
+    },
+    {
+      "correct": "B",
+      "id": "ch27-q005",
+      "instructor_key_note": "Cesar Chavez is the intended answer. The source also identifies Dolores Huerta as a cofounder, and the pasted Canvas distractor 'Reies Tijerin' appears to misspell Reies Tijerina; both wording issues are preserved for source fidelity.",
+      "key_review_status": "confirmed",
+      "options": {
+        "A": "Rodolfo Gonzales",
+        "B": "Cesar Chavez",
+        "C": "Alejandro Yau",
+        "D": "Reies Tijerin"
+      },
+      "points": 5,
+      "position": 5,
+      "question": "Who was the leader of the United Farm Workers union?",
+      "question_type": "multiple_choice",
+      "retrieval_questions": [
+        "Cesar Chavez United Farm Workers leader"
+      ],
+      "source_chunks": [
+        217
+      ],
+      "source_citation": "history.pdf pp. 348-349, chunk 117",
+      "source_pages": [
+        348,
+        349
+      ],
+      "target": "Cesar Chavez became the most well-known figure/became the United Farm Workers of America"
+    },
+    {
+      "correct": "C",
+      "id": "ch27-q006",
+      "instructor_key_note": "Pesticide use is the intended answer, although the Canvas prompt's phrase 'environmental disaster' is imprecise; Silent Spring addressed the environmental and health dangers of pesticide overuse.",
+      "key_review_status": "confirmed",
+      "options": {
+        "A": "Air pollution",
+        "B": "Water pollution",
+        "C": "Pesticide use",
+        "D": "Nuclear waste"
+      },
+      "points": 5,
+      "position": 6,
+      "question": "What environmental disaster did Rachel Carson's book \"Silent Spring\" address?",
+      "question_type": "multiple_choice",
+      "retrieval_questions": [
+        "Rachel Carson Silent Spring pesticide use environmental health"
+      ],
+      "source_chunks": [
+        218
+      ],
+      "source_citation": "history.pdf pp. 350-352, chunk 118",
+      "source_pages": [
+        350,
+        351,
+        352
+      ],
+      "target": "Pesticides, Carson argued, also posed a threat"
+    },
+    {
+      "correct": "B",
+      "id": "ch27-q007",
+      "options": {
+        "A": "Montgomery Bus Boycott",
+        "B": "Freedom Summer",
+        "C": "Selma to Montgomery March",
+        "D": "March on Washington"
+      },
+      "points": 5,
+      "position": 7,
+      "question": "What was the name of the 1964 civil rights campaign in Mississippi?",
+      "question_type": "multiple_choice",
+      "retrieval_questions": [
+        "1964 civil rights campaign Mississippi Freedom Summer"
+      ],
+      "source_chunks": [
+        213
+      ],
+      "source_citation": "history.pdf pp. 336-339, chunk 113",
+      "source_pages": [
+        336,
+        337,
+        338,
+        339
+      ],
+      "target": "Freedom Summer in Mississippi"
+    },
+    {
+      "correct": "C",
+      "id": "ch27-q008",
+      "options": {
+        "A": "The Church Committee Report",
+        "B": "The 9/11 Commission Report",
+        "C": "The Kerner Commission Report",
+        "D": "The Warren Commission Report"
+      },
+      "points": 5,
+      "position": 8,
+      "question": "What was the name of the 1968 report on urban riots?",
+      "question_type": "multiple_choice",
+      "retrieval_questions": [
+        "1968 report urban riots Kerner Commission"
+      ],
+      "source_chunks": [
+        222
+      ],
+      "source_citation": "history.pdf pp. 362-364, chunk 122",
+      "source_pages": [
+        362,
+        363,
+        364
+      ],
+      "target": "Kerner Commission/Their report became an unexpected best seller"
+    },
+    {
+      "correct": "D",
+      "id": "ch27-q009",
+      "instructor_key_note": "D is the best available option and is retained from the supplied key. The PDF describes a tactical communist defeat that nevertheless exposed the U.S. credibility gap; the option's phrase 'military stalemate' is therefore imprecise even though its psychological-victory conclusion is the intended distinction.",
+      "key_review_status": "confirmed",
+      "options": {
+        "A": "A North Vietnamese military victory",
+        "B": "A decisive U.S. military victory",
+        "C": "The end of the Vietnam War",
+        "D": "A military stalemate but a psychological victory for North Vietnam"
+      },
+      "points": 5,
+      "position": 9,
+      "question": "What was the outcome of the 1968 Tet Offensive?",
+      "question_type": "multiple_choice",
+      "retrieval_questions": [
+        "Tet Offensive military stalemate psychological victory North Vietnam"
+      ],
+      "source_chunks": [
+        221
+      ],
+      "source_citation": "history.pdf pp. 359-361, chunk 121",
+      "source_pages": [
+        359,
+        360,
+        361
+      ],
+      "target": "evidence of a stalemate mounted"
+    },
+    {
+      "correct": "C",
+      "id": "ch27-q010",
+      "instructor_key_note": "Bloody Sunday is the intended answer among the supplied choices. More precisely, it names the violent March 7 first attempt, not the entire later successful Selma-to-Montgomery march.",
+      "key_review_status": "confirmed",
+      "options": {
+        "A": "March on Washington",
+        "B": "Freedom Rides",
+        "C": "Bloody Sunday",
+        "D": "Birmingham Campaign"
+      },
+      "points": 5,
+      "position": 10,
+      "question": "What was the name of the 1965 voting rights march from Selma to Montgomery?",
+      "question_type": "multiple_choice",
+      "retrieval_questions": [
+        "1965 Selma Montgomery march Bloody Sunday voting rights"
+      ],
+      "source_chunks": [
+        213
+      ],
+      "source_citation": "history.pdf pp. 336-339, chunk 113",
+      "source_pages": [
+        336,
+        337,
+        338,
+        339
+      ],
+      "target": "Bloody Sunday"
+    },
+    {
+      "correct": "D",
+      "id": "ch27-q011",
+      "options": {
+        "A": "Judicial nullification of federal law",
+        "B": "Armed self-defense",
+        "C": "Black separatism",
+        "D": "Civil disobedience and moral appeal to public opinion"
+      },
+      "points": 5,
+      "position": 11,
+      "question": "The Civil Rights Movement\u2019s strategy of nonviolent direct action was most closely associated with which principle?",
+      "question_type": "multiple_choice",
+      "retrieval_questions": [
+        "civil rights nonviolent direct action civil disobedience moral appeal public opinion"
+      ],
+      "source_chunks": [
+        212
+      ],
+      "source_citation": "history.pdf pp. 333-335, chunk 112",
+      "source_pages": [
+        333,
+        334,
+        335
+      ],
+      "target": "nonviolent resistance. The moral thrust of the movement"
+    },
+    {
+      "correct": "C",
+      "id": "ch27-q012",
+      "options": {
+        "A": "supporting segregationist policies in the South",
+        "B": "focusing exclusively on labor union activism",
+        "C": "organizing young activists in sit-ins and voter registration drives",
+        "D": "opposing all federal civil rights legislation"
+      },
+      "points": 5,
+      "position": 12,
+      "question": "The Student Nonviolent Coordinating Committee (SNCC) is best known for:",
+      "question_type": "multiple_choice",
+      "retrieval_questions": [
+        "SNCC young activists sit-ins voter registration drives"
+      ],
+      "source_chunks": [
+        211,
+        213
+      ],
+      "source_citation": "history.pdf pp. 330-332, chunk 111",
+      "source_pages": [
+        330,
+        331,
+        332,
+        336,
+        337,
+        338,
+        339
+      ],
+      "target": "student-led direct action/Freedom Summer in Mississippi"
+    },
+    {
+      "correct": "C",
+      "id": "ch27-q013",
+      "options": {
+        "A": "the abolition of poll taxes",
+        "B": "voting rights protections for African Americans",
+        "C": "desegregation of public accommodations and employment discrimination",
+        "D": "affirmative action in higher education"
+      },
+      "points": 5,
+      "position": 13,
+      "question": "The Civil Rights Act of 1964 primarily addressed:",
+      "question_type": "multiple_choice",
+      "retrieval_questions": [
+        "Civil Rights Act 1964 public accommodations employment discrimination"
+      ],
+      "source_chunks": [
+        213
+      ],
+      "source_citation": "history.pdf pp. 336-339, chunk 113",
+      "source_pages": [
+        336,
+        337,
+        338,
+        339
+      ],
+      "target": "job discrimination/public accommodations"
+    },
+    {
+      "correct": "C",
+      "id": "ch27-q014",
+      "options": {
+        "A": "required states to adopt proportional representation systems",
+        "B": "eliminated all literacy tests and federal oversight of elections nationwide",
+        "C": "authorized federal enforcement to protect minority voting rights in the South",
+        "D": "granted voting rights exclusively to African American men"
+      },
+      "points": 5,
+      "position": 14,
+      "question": "The Voting Rights Act of 1965 was significant because it:",
+      "question_type": "multiple_choice",
+      "retrieval_questions": [
+        "Voting Rights Act 1965 federal enforcement minority voting rights South"
+      ],
+      "source_chunks": [
+        213
+      ],
+      "source_citation": "history.pdf pp. 336-339, chunk 113",
+      "source_pages": [
+        336,
+        337,
+        338,
+        339
+      ],
+      "target": "vigorous federal oversight of southern states\u2019 election laws"
+    },
+    {
+      "correct": "C",
+      "id": "ch27-q015",
+      "options": {
+        "A": "exclusive focus on labor rights",
+        "B": "support for Cold War militarization",
+        "C": "rejection of mainstream values, experimentation, and opposition to authority",
+        "D": "strict adherence to traditional social norms"
+      },
+      "points": 5,
+      "position": 15,
+      "question": "The counterculture of the 1960s is best characterized by:",
+      "question_type": "multiple_choice",
+      "retrieval_questions": [
+        "1960s counterculture rejected mainstream values experimentation opposition authority"
+      ],
+      "source_chunks": [
+        215,
+        216
+      ],
+      "source_citation": "history.pdf pp. 342-344, chunk 115",
+      "source_pages": [
+        342,
+        343,
+        344,
+        345,
+        346,
+        347
+      ],
+      "target": "freedom, rebellion, and individuality/spiritual-psychedelic experience"
+    },
+    {
+      "correct": "B",
+      "id": "ch27-q016",
+      "options": {
+        "A": "led to immediate withdrawal of U.S. troops",
+        "B": "authorized broad presidential military action in Vietnam without a formal declaration of war",
+        "C": "established the peace negotiations with North Vietnam",
+        "D": "formally ended U.S. involvement in Vietnam"
+      },
+      "points": 5,
+      "position": 16,
+      "question": "The Gulf of Tonkin Resolution is significant because it:",
+      "question_type": "multiple_choice",
+      "retrieval_questions": [
+        "Gulf Tonkin Resolution presidential military action Vietnam without declaration war"
+      ],
+      "source_chunks": [
+        215
+      ],
+      "source_citation": "history.pdf pp. 342-344, chunk 115",
+      "source_pages": [
+        342,
+        343,
+        344
+      ],
+      "target": "granting President Johnson the authority to deploy the American military"
+    },
+    {
+      "correct": "A",
+      "id": "ch27-q017",
+      "options": {
+        "A": "televised coverage and rising casualties undermined public support",
+        "B": "the United States refused to use military force",
+        "C": "Congress unanimously supported escalation",
+        "D": "the war was widely viewed as a defensive war for U.S. territory"
+      },
+      "points": 5,
+      "position": 17,
+      "question": "Opposition to the Vietnam War grew in part because:",
+      "question_type": "multiple_choice",
+      "retrieval_questions": [
+        "Vietnam War opposition televised coverage rising casualties public support"
+      ],
+      "source_chunks": [
+        220
+      ],
+      "source_citation": "history.pdf pp. 355-358, chunk 120",
+      "source_pages": [
+        355,
+        356,
+        357,
+        358
+      ],
+      "target": "Stalemates, body counts/Television, print media"
+    },
+    {
+      "correct": "D",
+      "id": "ch27-q018",
+      "options": {
+        "A": "ended the Vietnam War immediately",
+        "B": "led to Vietnam joining NATO",
+        "C": "resulted in a decisive U.S. military victory",
+        "D": "demonstrated that the war was far from over despite U.S. claims of progress"
+      },
+      "points": 5,
+      "position": 18,
+      "question": "The Tet Offensive was important because it:",
+      "question_type": "multiple_choice",
+      "retrieval_questions": [
+        "Tet Offensive war far from over despite United States claims progress"
+      ],
+      "source_chunks": [
+        221
+      ],
+      "source_citation": "history.pdf pp. 359-361, chunk 121",
+      "source_pages": [
+        359,
+        360,
+        361
+      ],
+      "target": "Tet demonstrated that despite the repeated claims of administration officials, the enemy could still strike at will"
+    },
+    {
+      "correct": "B",
+      "id": "ch27-q019",
+      "options": {
+        "A": "restricting civil liberties and expanding executive power",
+        "B": "expanding civil rights and protections for defendants in criminal cases",
+        "C": "ending desegregation rulings from Brown v. Board of Education",
+        "D": "eliminating judicial review of federal laws"
+      },
+      "points": 5,
+      "position": 19,
+      "question": "The Warren Court is associated with:",
+      "question_type": "multiple_choice",
+      "source_chunks": [],
+      "source_missing_note": "The current local history.pdf extraction does not contain the phrase Warren Court or discussion of Miranda, Gideon, or criminal-defendant protections. Keep the instructor key, but report this as source coverage missing rather than claiming PDF grounding.",
+      "source_pages": [],
+      "warnings": [
+        "external_source_item"
+      ]
+    },
+    {
+      "correct": "A",
+      "id": "ch27-q020",
+      "options": {
+        "A": "Expansion of civil rights, social movements, and widespread cultural conflict",
+        "B": "Economic decline and isolationism",
+        "C": "Political stability and consensus across all major social groups",
+        "D": "Reduction in federal government involvement in social policy"
+      },
+      "points": 5,
+      "position": 20,
+      "question": "Which of the following best describes a major theme of \u201cThe Sixties\u201d?",
+      "question_type": "multiple_choice",
+      "retrieval_questions": [
+        "The Sixties major theme civil rights social movements cultural conflict"
+      ],
+      "source_chunks": [
+        210
+      ],
+      "source_citation": "history.pdf pp. 327-329, chunk 110",
+      "source_pages": [
+        327,
+        328,
+        329
+      ],
+      "target": "social, cultural, and political upheaval"
+    }
+  ],
+  "source": "canvas_pasted_text",
+  "title": "Quiz CH 27",
+  "total_points": 100,
+  "version": "external-quiz-v2"
+}

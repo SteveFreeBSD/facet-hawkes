@@ -43,10 +43,11 @@ def test_a_non_normal_firefox_surface_is_not_a_browser_target():
 
 def test_script_has_no_browser_launch_or_navigation_code():
     source = SCRIPT.read_text(encoding="utf-8")
+    compacted = " ".join(source.split())
 
     assert "firefox --" not in source
     assert "WebDriver:Navigate" not in source
     assert "OpenURL" not in source
     assert "Marionette" not in source
     assert "workspace.activeWindow = window" in source
-    assert '"spectacle", "--activewindow"' in source
+    assert '"spectacle", "--activewindow"' in compacted

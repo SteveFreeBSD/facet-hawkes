@@ -62,9 +62,10 @@ from ...quiz import (
 )
 from ...quiz_compare import compare_mc_bench_reports, load_mc_bench_report
 from ...quiz_validation import (
-    INCOMPLETE_ITEM_WARNINGS,
+    anchored_source_context_rows,
     is_incomplete_item,
     normalize_review_text as _normalize_review_text,
+    source_retrieval_exclusion_reason,
     validate_mc_quiz_item as _validate_mc_quiz_item,
     validate_quiz_item as _validate_quiz_item,
 )
@@ -510,6 +511,7 @@ def verify_answer_key_cmd(args) -> int:
     print(f"  no PDF context: {audit['no_pdf_context_count']}")
     print(f"  source missing in local PDF: {audit['source_missing_count']}")
     print(f"  incomplete: {audit['incomplete_count']}")
+    print(f"  invalid anchors: {audit['invalid_anchor_count']}")
     print(f"  invalid responses: {audit['invalid_response_count']}")
     print(f"  disputed keys: {audit['disputed_key_count']}")
     print()
@@ -549,7 +551,11 @@ def verify_answer_key_cmd(args) -> int:
         )
         print()
         print(f"wrote audit: {args.output}")
-    return 1 if audit["key_conflict_candidate_count"] else 0
+    return (
+        1
+        if audit["key_conflict_candidate_count"] or audit["invalid_anchor_count"]
+        else 0
+    )
 
 
 def ground_quiz_cmd(args) -> int:
@@ -1381,6 +1387,9 @@ def quiz_bench_cmd(args) -> int:
         elif is_incomplete_item(item):
             status = "skipped_incomplete"
             print("  status: skipped_incomplete")
+        elif source_grounding.get("source_status") == "invalid_anchor":
+            status = "invalid_anchor"
+            print("  status: invalid_anchor")
         elif question_type == "matching":
             status = "skipped_matching"
             print("  status: skipped_matching")
@@ -1543,6 +1552,9 @@ def quiz_bench_cmd(args) -> int:
 
         item_elapsed = time.monotonic() - item_started_at
         options = item.get("options") if isinstance(item.get("options"), dict) else {}
+        scoring_eligible = bool(
+            keyed and not disputed_key and status in {"correct", "incorrect"}
+        )
         report_item = {
             "id": item["id"],
             "position": item.get("position"),
@@ -1554,7 +1566,7 @@ def quiz_bench_cmd(args) -> int:
             "target": item.get("target"),
             "key_review_status": item.get("key_review_status"),
             "instructor_key_note": item.get("instructor_key_note"),
-            "scoring_eligible": bool(keyed and not disputed_key),
+            "scoring_eligible": scoring_eligible,
             "selected_option": selected_option,
             "selected_option_text": options.get(selected_option)
             if selected_option
@@ -1580,7 +1592,9 @@ def quiz_bench_cmd(args) -> int:
         if keyed:
             report_item["correct"] = item["correct"]
             report_item["correct_option_text"] = options.get(item["correct"])
-            report_item["is_correct"] = status == "correct"
+            report_item["is_correct"] = (
+                status == "correct" if scoring_eligible else None
+            )
             _add_selected_option_provenance(report_item, item, selected_option)
         if question_type == "matching":
             report_item["matching_prompts"] = item.get("matching_prompts", [])
@@ -1616,6 +1630,7 @@ def quiz_bench_cmd(args) -> int:
     skipped_incomplete_count = counts["skipped_incomplete_count"]
     skipped_source_missing_count = counts["skipped_source_missing_count"]
     no_context_count = counts["no_context_count"]
+    invalid_anchor_count = counts["invalid_anchor_count"]
     invalid_count = counts["invalid_response_count"]
     retried_item_count = counts["retried_item_count"]
     answer_retry_count = counts["answer_retry_count"]
@@ -1647,6 +1662,7 @@ def quiz_bench_cmd(args) -> int:
     print(f"  skipped incomplete: {skipped_incomplete_count}")
     print(f"  skipped source-missing: {skipped_source_missing_count}")
     print(f"  no-context cases: {no_context_count}")
+    print(f"  invalid anchors: {invalid_anchor_count}")
     print(f"  invalid responses: {invalid_count}")
     print(f"  retried items: {retried_item_count}")
     print(f"  answer retries: {answer_retry_count}")
@@ -1769,10 +1785,14 @@ def _run_quiz_pipeline_step(
 
 def _quiz_bench_counts(report_items: list[dict[str, object]]) -> dict[str, object]:
     statuses = [str(item.get("status") or "") for item in report_items]
+    invalid_anchor_count = sum(
+        _report_item_has_invalid_anchor(item) for item in report_items
+    )
     key_comparisons = [
         item
         for item in report_items
         if str(item.get("status") or "") in {"correct", "incorrect"}
+        and _report_item_non_scoring_source_status(item) is None
     ]
     scoring_eligible = [
         item for item in key_comparisons if item.get("scoring_eligible") is not False
@@ -1816,6 +1836,7 @@ def _quiz_bench_counts(report_items: list[dict[str, object]]) -> dict[str, objec
         "skipped_incomplete_count": statuses.count("skipped_incomplete"),
         "skipped_source_missing_count": skipped_source_missing_count,
         "no_context_count": statuses.count("no_context"),
+        "invalid_anchor_count": invalid_anchor_count,
         "invalid_response_count": statuses.count("invalid_response"),
         "retried_item_count": sum(
             bool(item.get("answer_retry_reasons")) for item in report_items
@@ -1900,7 +1921,9 @@ def _validate_quiz_bench_resume(
         isinstance(item, dict) for item in raw_report_items
     ):
         raise ValueError("Resume checkpoint items must be a list of objects.")
-    report_items = list(raw_report_items)
+    report_items = [
+        _normalize_checkpoint_report_item(dict(item)) for item in raw_report_items
+    ]
     if checkpoint.get("processed_total") != len(report_items):
         raise ValueError("Resume checkpoint processed_total does not match its items.")
     if checkpoint.get("complete") is not (len(report_items) == len(items)):
@@ -1915,6 +1938,55 @@ def _validate_quiz_bench_resume(
     if not isinstance(elapsed_seconds, (int, float)) or elapsed_seconds < 0:
         raise ValueError("Resume checkpoint elapsed_seconds must be non-negative.")
     return report_items, float(elapsed_seconds)
+
+
+def _report_item_has_invalid_anchor(item: dict[str, object]) -> bool:
+    return _report_item_non_scoring_source_status(item) == "invalid_anchor"
+
+
+def _report_item_non_scoring_source_status(
+    item: dict[str, object],
+) -> str | None:
+    benchmark_status = str(item.get("status") or "")
+    if benchmark_status == "invalid_anchor":
+        return "invalid_anchor"
+    source_grounding = item.get("source_grounding")
+    if not isinstance(source_grounding, dict):
+        return None
+    source_status = str(source_grounding.get("source_status") or "")
+    if source_status in {
+        "invalid_anchor",
+        "source_missing_in_local_pdf",
+        "incomplete",
+        "ungrounded",
+    }:
+        return source_status
+    return None
+
+
+def _normalize_checkpoint_report_item(
+    item: dict[str, object],
+) -> dict[str, object]:
+    source_status = _report_item_non_scoring_source_status(item)
+    if source_status is None:
+        return item
+    if str(item.get("status") or "") in {
+        "correct",
+        "incorrect",
+        "answered_unscored",
+        "drafted",
+        "unkeyed",
+    }:
+        item["status"] = {
+            "invalid_anchor": "invalid_anchor",
+            "source_missing_in_local_pdf": "skipped_source_missing",
+            "incomplete": "skipped_incomplete",
+            "ungrounded": "no_context",
+        }[source_status]
+    item["scoring_eligible"] = False
+    if "correct" in item:
+        item["is_correct"] = None
+    return item
 
 
 def mc_bench_cmd(args) -> int:
@@ -1940,6 +2012,7 @@ def mc_bench_cmd(args) -> int:
     ollama_client = None
     report_items = []
     keyed_total = correct_count = scored_total = no_context_count = invalid_count = 0
+    invalid_anchor_count = 0
 
     print("MC benchmark")
     print(f"  document id: {args.document_id}")
@@ -2004,7 +2077,11 @@ def mc_bench_cmd(args) -> int:
             f"  selected chunks: {', '.join(str(chunk) for chunk in selected_chunks) or 'none'}"
         )
 
-        if not context_rows:
+        if source_grounding.get("source_status") == "invalid_anchor":
+            status = "invalid_anchor"
+            invalid_anchor_count += 1
+            print("  status: invalid_anchor")
+        elif not context_rows:
             status = "no_context"
             no_context_count += 1
             print("  status: no_context")
@@ -2082,11 +2159,14 @@ def mc_bench_cmd(args) -> int:
                 "answer_seconds": answer_elapsed,
             },
             "status": status,
+            "scoring_eligible": bool(keyed and status in {"correct", "incorrect"}),
         }
         if keyed:
             report_item["correct"] = item["correct"]
             report_item["correct_option_text"] = item["options"].get(item["correct"])
-            report_item["is_correct"] = status == "correct"
+            report_item["is_correct"] = (
+                status == "correct" if report_item["scoring_eligible"] else None
+            )
             _add_selected_option_provenance(report_item, item, selected_option)
         report_items.append(report_item)
 
@@ -2099,6 +2179,7 @@ def mc_bench_cmd(args) -> int:
     print(f"  correct: {correct_count}")
     print(f"  accuracy: {accuracy:.1%}" if accuracy is not None else "  accuracy: n/a")
     print(f"  no-context cases: {no_context_count}")
+    print(f"  invalid anchors: {invalid_anchor_count}")
     print(f"  invalid responses: {invalid_count}")
     print(f"  elapsed: {format_elapsed(elapsed)}")
 
@@ -2113,6 +2194,7 @@ def mc_bench_cmd(args) -> int:
             "correct_count": correct_count,
             "accuracy": accuracy,
             "no_context_count": no_context_count,
+            "invalid_anchor_count": invalid_anchor_count,
             "invalid_response_count": invalid_count,
             "elapsed_seconds": elapsed,
             "items": report_items,
@@ -2205,6 +2287,30 @@ def _retrieve_quiz_context_for_item(
 ):
     retrieval = None
     retrieval_questions = _quiz_retrieval_report_questions(item)
+    exclusion_reason = source_retrieval_exclusion_reason(item)
+    if exclusion_reason:
+        return (
+            RetrievalResult(
+                original_question=str(item.get("question") or ""),
+                queries_tried=[],
+                selected_query=None,
+                rows=[],
+                stopped_reason=exclusion_reason,
+            ),
+            retrieval_questions,
+        )
+    if item.get("source_chunks"):
+        rows = anchored_source_context_rows(conn, document_id, item)
+        return (
+            RetrievalResult(
+                original_question=str(item.get("question") or ""),
+                queries_tried=[],
+                selected_query=None,
+                rows=rows,
+                stopped_reason="anchored_context" if rows else "invalid_anchor",
+            ),
+            retrieval_questions,
+        )
     for query in _quiz_retrieval_query_order(item):
         retrieval = _retrieve_mc_context(
             conn,
@@ -2239,6 +2345,8 @@ def _with_option_aware_retrieval(
     role: str | None,
     section: str | None,
 ) -> tuple[RetrievalResult, list[str]]:
+    if source_retrieval_exclusion_reason(item) or item.get("source_chunks"):
+        return retrieval, retrieval_questions
     option_query = compact_question_with_options(item)
     retrieval_questions = _dedupe_quiz_queries([*retrieval_questions, option_query])
     option_retrieval = _retrieve_mc_context(
@@ -2314,44 +2422,8 @@ def _add_quiz_source_context(
     role: str | None,
     section: str | None,
 ) -> list[dict]:
-    warnings = item.get("warnings")
-    if isinstance(warnings, list) and {
-        "external_source_item",
-        *INCOMPLETE_ITEM_WARNINGS,
-    }.intersection(warnings):
+    if source_retrieval_exclusion_reason(item):
         return []
-    source_chunks = []
-    for chunk_id in item.get("source_chunks", []):
-        try:
-            source_chunks.append(int(chunk_id))
-        except (TypeError, ValueError):
-            continue
-    if not source_chunks:
+    if not item.get("source_chunks"):
         return rows
-    filters = [
-        "id IN (" + ", ".join("?" for _ in source_chunks) + ")",
-        "document_id = ?",
-    ]
-    params: list[object] = [*source_chunks, document_id]
-    source_rows = conn.execute(
-        f"""
-        SELECT
-            id,
-            document_id,
-            chunk_index,
-            page_start,
-            page_end,
-            source_citation,
-            section_label,
-            content_role,
-            '' AS snippet,
-            0.0 AS score,
-            text
-        FROM chunks
-        WHERE {" AND ".join(filters)}
-        """,
-        params,
-    ).fetchall()
-    by_id = {int(row["id"]): dict(row) for row in source_rows}
-    anchored = [by_id[chunk_id] for chunk_id in source_chunks if chunk_id in by_id]
-    return anchored
+    return anchored_source_context_rows(conn, document_id, item)

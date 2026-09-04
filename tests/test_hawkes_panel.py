@@ -56,15 +56,21 @@ def view():
 
 # The editor description Hawkes publishes for a question answered by typing.
 DYNAMIC_Y = {
-    "ok": True, "kind": "dynamic", "enabled": True,
-    "allowedCharacters": "0123456789y", "maxLength": 16,
+    "ok": True,
+    "kind": "dynamic",
+    "enabled": True,
+    "allowedCharacters": "0123456789y",
+    "maxLength": 16,
     "templates": {"fraction": False, "radical": False, "exponent": True},
 }
 
 # One answered by choosing an option, which the add-on never does for you.
 OPTION = {
-    "ok": True, "kind": "option", "enabled": True,
-    "allowedCharacters": "", "maxLength": None,
+    "ok": True,
+    "kind": "option",
+    "enabled": True,
+    "allowedCharacters": "",
+    "maxLength": None,
     "templates": {"fraction": False, "radical": False, "exponent": False},
 }
 
@@ -72,18 +78,38 @@ OPTION = {
 def state(**overrides):
     """A state shaped exactly as `background.js` builds it."""
     base = {
-        "phase": "idle", "tabId": None, "frameId": None, "editor": None,
-        "problemText": "", "answer": "", "displayText": "", "entryText": "",
-        "placedText": "", "promptSeen": True, "stage": "",
-        "stageDetail": "", "signature": "", "source": "", "detail": "",
-        "errorKey": "", "errorArgs": [], "startedAt": 0,
+        "phase": "idle",
+        "tabId": None,
+        "frameId": None,
+        "editor": None,
+        "problemText": "",
+        "answer": "",
+        "displayText": "",
+        "entryText": "",
+        "placedText": "",
+        "promptSeen": True,
+        "stage": "",
+        "stageDetail": "",
+        "signature": "",
+        "source": "",
+        "detail": "",
+        "errorKey": "",
+        "errorArgs": [],
+        "startedAt": 0,
     }
     base.update(overrides)
     return base
 
 
 PHASES = [
-    "idle", "checking", "ready", "solving", "solved", "inserting", "inserted", "failed",
+    "idle",
+    "checking",
+    "ready",
+    "solving",
+    "solved",
+    "inserting",
+    "inserted",
+    "failed",
 ]
 
 
@@ -110,7 +136,9 @@ def test_a_state_that_never_arrived_says_so_rather_than_rendering_blank(view):
 
 
 def test_insert_becomes_the_primary_action_once_there_is_an_answer(view):
-    described = view(state(phase="solved", answer="3y", displayText="3y", editor=DYNAMIC_Y))
+    described = view(
+        state(phase="solved", answer="3y", displayText="3y", editor=DYNAMIC_Y)
+    )
 
     assert described["insert"] == {"enabled": True, "primary": True}
     # Solve stays available -- a doubted answer is re-solved from here -- but
@@ -120,7 +148,9 @@ def test_insert_becomes_the_primary_action_once_there_is_an_answer(view):
 
 
 def test_an_option_question_reads_as_your_turn_rather_than_a_failure(view):
-    described = view(state(phase="solved", answer="3y", displayText="3y", editor=OPTION))
+    described = view(
+        state(phase="solved", answer="3y", displayText="3y", editor=OPTION)
+    )
 
     assert described["insert"]["enabled"] is False
     assert described["status"]["key"] == "errorOptionAnswer"
@@ -132,26 +162,39 @@ def test_an_option_question_reads_as_your_turn_rather_than_a_failure(view):
 
 def test_non_real_answer_in_numeric_box_reads_as_manual_choice(view):
     numeric = {
-        "ok": True, "kind": "textbox", "enabled": True,
-        "allowedCharacters": "[0-9.-]", "maxLength": 9,
+        "ok": True,
+        "kind": "textbox",
+        "enabled": True,
+        "allowedCharacters": "[0-9.-]",
+        "maxLength": 9,
         "templates": {"fraction": False, "radical": False, "exponent": False},
     }
-    described = view(state(
-        phase="solved",
-        answer="Not a Real Number",
-        displayText="Not a Real Number",
-        editor=numeric,
-    ))
+    described = view(
+        state(
+            phase="solved",
+            answer="Not a Real Number",
+            displayText="Not a Real Number",
+            editor=numeric,
+        )
+    )
 
     assert described["insert"]["enabled"] is False
     assert described["status"] == {
-        "key": "errorOptionAnswer", "args": [], "kind": "note",
+        "key": "errorOptionAnswer",
+        "args": [],
+        "kind": "note",
     }
 
 
 def test_a_reported_error_wins_over_the_phase(view):
-    described = view(state(phase="solved", answer="3y", editor=DYNAMIC_Y,
-                           errorKey="errorTranscriptionDisputed"))
+    described = view(
+        state(
+            phase="solved",
+            answer="3y",
+            editor=DYNAMIC_Y,
+            errorKey="errorTranscriptionDisputed",
+        )
+    )
 
     assert described["status"]["key"] == "errorTranscriptionDisputed"
     assert described["status"]["kind"] == "error"
@@ -184,13 +227,15 @@ def test_a_running_solve_reports_its_stage_and_how_long_it_has_taken(view):
 
 def test_the_bar_advances_monotonically_through_the_stages(view):
     fractions = [
-        view(state(phase="solving", stage=stage, startedAt=1, editor=DYNAMIC_Y))["progress"]["fraction"]
+        view(state(phase="solving", stage=stage, startedAt=1, editor=DYNAMIC_Y))[
+            "progress"
+        ]["fraction"]
         for stage in ("checking-host", "capturing", "reading", "checking", "solving")
     ]
 
     assert fractions == sorted(fractions)
-    assert fractions[0] > 0          # pressing Solve does something visible at once
-    assert fractions[-1] < 1         # and the bar is never full while work remains
+    assert fractions[0] > 0  # pressing Solve does something visible at once
+    assert fractions[-1] < 1  # and the bar is never full while work remains
 
 
 def test_a_finished_insertion_shows_what_it_placed_rather_than_an_em_dash(view):
@@ -250,9 +295,16 @@ def test_the_footer_hint_never_names_an_action_the_panel_would_refuse(view):
     """One rule: the hint is whatever Enter is actually bound to."""
     cases = [
         (state(phase="ready", editor=DYNAMIC_Y), "solve", "popupHintSolve"),
-        (state(phase="solving", stage="reading", startedAt=1), "cancel", "popupHintCancel"),
-        (state(phase="solved", answer="3y", displayText="3y", editor=DYNAMIC_Y),
-         "insert", "popupHintInsert"),
+        (
+            state(phase="solving", stage="reading", startedAt=1),
+            "cancel",
+            "popupHintCancel",
+        ),
+        (
+            state(phase="solved", answer="3y", displayText="3y", editor=DYNAMIC_Y),
+            "insert",
+            "popupHintInsert",
+        ),
         (state(phase="inserting"), "none", None),
         (state(phase="inserted", placedText="3y"), "none", None),
     ]
@@ -286,8 +338,14 @@ def test_the_shown_answer_is_the_readable_form_not_the_typeable_one(view):
     would have to be typed. Gating the display on typeability showed the wrong
     one of the two.
     """
-    described = view(state(phase="solved", answer="sqrt(30yz)/(5z)",
-                           displayText="√(30yz)/(5z)", editor=DYNAMIC_Y))
+    described = view(
+        state(
+            phase="solved",
+            answer="sqrt(30yz)/(5z)",
+            displayText="√(30yz)/(5z)",
+            editor=DYNAMIC_Y,
+        )
+    )
 
     assert described["answer"]["text"] == "√(30yz)/(5z)"
     assert described["copy"]["text"] == "√(30yz)/(5z)"
@@ -296,7 +354,9 @@ def test_the_shown_answer_is_the_readable_form_not_the_typeable_one(view):
 def test_the_recognized_problem_is_dimmed_rather_than_removed_when_absent(view):
     """The panel keeps one shape, so nothing may appear or vanish."""
     empty = view(state(phase="ready"))
-    filled = view(state(phase="solved", problemText="Simplify √(9y²)", editor=DYNAMIC_Y))
+    filled = view(
+        state(phase="solved", problemText="Simplify √(9y²)", editor=DYNAMIC_Y)
+    )
 
     assert empty["problem"] == {"text": "", "idle": True}
     assert filled["problem"]["idle"] is False
@@ -304,8 +364,11 @@ def test_the_recognized_problem_is_dimmed_rather_than_removed_when_absent(view):
 
 def test_the_source_badge_is_absent_rather_than_empty_until_something_answered(view):
     assert view(state(phase="ready"))["badge"] is None
-    assert view(state(phase="solved", source="symbolic", editor=DYNAMIC_Y))["badge"] == {
-        "key": "popupSourceBadge", "args": ["symbolic"],
+    assert view(state(phase="solved", source="symbolic", editor=DYNAMIC_Y))[
+        "badge"
+    ] == {
+        "key": "popupSourceBadge",
+        "args": ["symbolic"],
     }
 
 
@@ -317,10 +380,16 @@ def test_an_answer_reached_without_the_question_says_so(view):
     is still offered -- it is often right, and nothing is inserted unreviewed
     -- but it must not read identically to one derived exactly.
     """
-    unread = view(state(phase="solved", answer="13", displayText="13",
-                        editor=DYNAMIC_Y, promptSeen=False))
-    read = view(state(phase="solved", answer="13", displayText="13",
-                      editor=DYNAMIC_Y))
+    unread = view(
+        state(
+            phase="solved",
+            answer="13",
+            displayText="13",
+            editor=DYNAMIC_Y,
+            promptSeen=False,
+        )
+    )
+    read = view(state(phase="solved", answer="13", displayText="13", editor=DYNAMIC_Y))
 
     assert unread["status"] == {"key": "statusSolvedUnread", "args": [], "kind": "note"}
     assert read["status"]["key"] == "statusSolved"
@@ -332,7 +401,14 @@ def test_an_answer_reached_without_the_question_says_so(view):
 
 def test_the_caution_needs_an_explicit_denial_not_a_missing_field(view):
     """A host too old to report it must not make every answer look doubtful."""
-    described = view(state(phase="solved", answer="13", displayText="13",
-                           editor=DYNAMIC_Y, promptSeen=None))
+    described = view(
+        state(
+            phase="solved",
+            answer="13",
+            displayText="13",
+            editor=DYNAMIC_Y,
+            promptSeen=None,
+        )
+    )
 
     assert described["status"]["key"] == "statusSolved"

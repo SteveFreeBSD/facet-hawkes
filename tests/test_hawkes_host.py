@@ -10,8 +10,6 @@ from __future__ import annotations
 
 import io
 import json
-import struct
-
 import pytest
 
 from ethnos.hawkes_host import (
@@ -65,11 +63,13 @@ def test_response_larger_than_the_limit_is_refused():
 
 
 def test_health_answers_without_touching_the_pipeline():
-    response = handle({
-        "protocol_version": PROTOCOL_VERSION,
-        "operation": "health",
-        "request_id": "r1",
-    })
+    response = handle(
+        {
+            "protocol_version": PROTOCOL_VERSION,
+            "operation": "health",
+            "request_id": "r1",
+        }
+    )
 
     assert response.status == "ok"
     assert response.request_id == "r1"
@@ -103,13 +103,18 @@ def test_markup_refuses_a_partial_conversion():
 
 
 def test_a_solve_from_any_other_origin_is_refused_at_the_native_boundary():
-    response = handle({
-        "protocol_version": PROTOCOL_VERSION,
-        "operation": "solve_hawkes_problem",
-        "request_id": "r1",
-        "origin": "https://example.com",
-        "problem": {"prompt_text": "Simplify.", "mathml": ["<math><mn>4</mn></math>"]},
-    })
+    response = handle(
+        {
+            "protocol_version": PROTOCOL_VERSION,
+            "operation": "solve_hawkes_problem",
+            "request_id": "r1",
+            "origin": "https://example.com",
+            "problem": {
+                "prompt_text": "Simplify.",
+                "mathml": ["<math><mn>4</mn></math>"],
+            },
+        }
+    )
 
     assert response.status == "error"
     assert response.answer is None
@@ -121,18 +126,22 @@ def test_a_solve_from_any_other_origin_is_refused_at_the_native_boundary():
     ["", "solve", "run_shell", "eval", "../../etc/passwd", "solve_hawkes_problem_v2"],
 )
 def test_unknown_operations_are_refused(operation):
-    response = handle({
-        "protocol_version": PROTOCOL_VERSION,
-        "operation": operation,
-        "request_id": "r1",
-    })
+    response = handle(
+        {
+            "protocol_version": PROTOCOL_VERSION,
+            "operation": operation,
+            "request_id": "r1",
+        }
+    )
 
     assert response.status == "error"
     assert response.answer is None
 
 
 def test_a_foreign_protocol_version_is_refused():
-    response = handle({"protocol_version": 99, "operation": "health", "request_id": "r1"})
+    response = handle(
+        {"protocol_version": 99, "operation": "health", "request_id": "r1"}
+    )
 
     assert response.status == "error"
 
@@ -141,36 +150,42 @@ def test_unexpected_fields_are_refused_rather_than_ignored():
     # extra="forbid" is what stops the browser from smuggling a model name,
     # a path, or a command into the request.
     for extra in ({"model": "llama"}, {"path": "/etc/shadow"}, {"command": "rm -rf /"}):
-        response = handle({
-            "protocol_version": PROTOCOL_VERSION,
-            "operation": "health",
-            "request_id": "r1",
-            **extra,
-        })
+        response = handle(
+            {
+                "protocol_version": PROTOCOL_VERSION,
+                "operation": "health",
+                "request_id": "r1",
+                **extra,
+            }
+        )
         assert response.status == "error", extra
 
 
 def test_solve_without_a_screenshot_is_unsupported():
-    response = handle({
-        "protocol_version": PROTOCOL_VERSION,
-        "operation": "solve_hawkes_problem",
-        "request_id": "r1",
-        "origin": "https://learn.hawkeslearning.com",
-        "problem": {"prompt_text": "simplify"},
-    })
+    response = handle(
+        {
+            "protocol_version": PROTOCOL_VERSION,
+            "operation": "solve_hawkes_problem",
+            "request_id": "r1",
+            "origin": "https://learn.hawkeslearning.com",
+            "problem": {"prompt_text": "simplify"},
+        }
+    )
 
     assert response.status == "unsupported"
     assert response.answer is None
 
 
 def test_a_non_png_screenshot_is_refused_before_any_model_call():
-    response = handle({
-        "protocol_version": PROTOCOL_VERSION,
-        "operation": "solve_hawkes_problem",
-        "request_id": "r1",
-        "origin": "https://learn.hawkeslearning.com",
-        "problem": {"screenshot_png_base64": "bm90IGEgcG5n"},  # "not a png"
-    })
+    response = handle(
+        {
+            "protocol_version": PROTOCOL_VERSION,
+            "operation": "solve_hawkes_problem",
+            "request_id": "r1",
+            "origin": "https://learn.hawkeslearning.com",
+            "problem": {"screenshot_png_base64": "bm90IGEgcG5n"},  # "not a png"
+        }
+    )
 
     assert response.status == "error"
     assert "PNG" in response.message
@@ -178,13 +193,15 @@ def test_a_non_png_screenshot_is_refused_before_any_model_call():
 
 
 def test_invalid_base64_is_refused():
-    response = handle({
-        "protocol_version": PROTOCOL_VERSION,
-        "operation": "solve_hawkes_problem",
-        "request_id": "r1",
-        "origin": "https://learn.hawkeslearning.com",
-        "problem": {"screenshot_png_base64": "!!!not base64!!!"},
-    })
+    response = handle(
+        {
+            "protocol_version": PROTOCOL_VERSION,
+            "operation": "solve_hawkes_problem",
+            "request_id": "r1",
+            "origin": "https://learn.hawkeslearning.com",
+            "problem": {"screenshot_png_base64": "!!!not base64!!!"},
+        }
+    )
 
     assert response.status == "error"
     assert response.answer is None
@@ -278,7 +295,10 @@ def test_realness_stays_out_of_other_questions():
         "Determine if the following radical expression is a real number. "
         "If it is, you are to evaluate the expression."
     )
-    assert _realness_answer("Simplify the following radical expression.", [r"\sqrt{-100}"]) is None
+    assert (
+        _realness_answer("Simplify the following radical expression.", [r"\sqrt{-100}"])
+        is None
+    )
     assert _realness_answer(prompt, [r"\sqrt{y}"]) is None
     # An irrational value is not what the two options are asking about.
     assert _realness_answer(prompt, [r"\sqrt{20}"]) is None

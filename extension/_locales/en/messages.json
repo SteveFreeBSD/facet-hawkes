@@ -359,6 +359,174 @@
     "message": "Reload panel",
     "description": "Button that reloads the panel document after a fault."
   },
+  "optionsCadenceEyebrow": {
+    "message": "Presentation",
+    "description": "Small category label above the answer-cadence settings heading."
+  },
+  "optionsCadenceHeading": {
+    "message": "Answer cadence",
+    "description": "Heading for the musical answer-entry preferences."
+  },
+  "optionsCadenceHelp": {
+    "message": "Plain-text formulas arrive one character at a time. Pick a musical feel, then set the pace and performance window for demonstrations and voice-over.",
+    "description": "Introduction to the musical answer-entry preferences."
+  },
+  "optionsCadenceGenreLabel": {
+    "message": "Genre",
+    "description": "Label for the answer-cadence genre selector."
+  },
+  "optionsCadenceGenreClassical": {
+    "message": "Classical",
+    "description": "Name of the classical answer-cadence preset."
+  },
+  "optionsCadenceGenreJazz": {
+    "message": "Jazz",
+    "description": "Name of the jazz answer-cadence preset."
+  },
+  "optionsCadenceGenreLofi": {
+    "message": "Lo-fi",
+    "description": "Name of the lo-fi answer-cadence preset."
+  },
+  "optionsCadenceGenreElectronic": {
+    "message": "Electronic",
+    "description": "Name of the electronic answer-cadence preset."
+  },
+  "optionsCadenceGenreCustom": {
+    "message": "Custom",
+    "description": "Name of the user-defined answer-cadence preset."
+  },
+  "optionsCadenceGenreClassicalHelp": {
+    "message": "A measured three-beat phrase with restrained variation and clean rests.",
+    "description": "Description shown when the classical cadence is selected."
+  },
+  "optionsCadenceGenreJazzHelp": {
+    "message": "A syncopated phrase with pronounced swing, loose timing and generous symbol rests.",
+    "description": "Description shown when the jazz cadence is selected."
+  },
+  "optionsCadenceGenreLofiHelp": {
+    "message": "A relaxed backbeat with soft swing and warm, uneven spacing.",
+    "description": "Description shown when the lo-fi cadence is selected."
+  },
+  "optionsCadenceGenreElectronicHelp": {
+    "message": "A fast, even four-beat pulse with tight timing and shorter symbol rests.",
+    "description": "Description shown when the electronic cadence is selected."
+  },
+  "optionsCadenceGenreCustomHelp": {
+    "message": "Your arrangement uses the beat shape, swing, variation and symbol rests below.",
+    "description": "Description shown when the custom cadence is selected."
+  },
+  "optionsCadenceTempoLabel": {
+    "message": "Tempo",
+    "description": "Label for the answer-cadence tempo slider."
+  },
+  "optionsCadenceTempoValue": {
+    "message": "$TEMPO$ BPM",
+    "description": "Current musical tempo beside the cadence slider.",
+    "placeholders": {
+      "tempo": {
+        "content": "$1",
+        "example": "82"
+      }
+    }
+  },
+  "optionsCadenceWindowLabel": {
+    "message": "Performance window",
+    "description": "Label for the minimum and maximum answer-entry duration controls."
+  },
+  "optionsCadenceMinimumLabel": {
+    "message": "Minimum",
+    "description": "Label for the minimum answer-entry duration."
+  },
+  "optionsCadenceMaximumLabel": {
+    "message": "Maximum",
+    "description": "Label for the maximum answer-entry duration."
+  },
+  "optionsCadenceSecondsUnit": {
+    "message": "seconds",
+    "description": "Unit beside the answer-entry duration controls."
+  },
+  "optionsCadenceWindowHelp": {
+    "message": "Tempo suggests the natural length; this window keeps every insertion between your limits. Maximum 12 seconds leaves room under the 15-second operation deadline.",
+    "description": "Explanation of how tempo and the hard duration window interact."
+  },
+  "optionsCadenceSummary": {
+    "message": "$GENRE$ · $TEMPO$ BPM",
+    "description": "Compact summary of the selected cadence preset and tempo.",
+    "placeholders": {
+      "genre": {
+        "content": "$1",
+        "example": "Lo-fi"
+      },
+      "tempo": {
+        "content": "$2",
+        "example": "82"
+      }
+    }
+  },
+  "optionsCadencePreviewLabel": {
+    "message": "$GENRE$ beat preview at $TEMPO$ BPM",
+    "description": "Accessible label for the visual cadence bars.",
+    "placeholders": {
+      "genre": {
+        "content": "$1",
+        "example": "Jazz"
+      },
+      "tempo": {
+        "content": "$2",
+        "example": "112"
+      }
+    }
+  },
+  "optionsCadenceCustomHeading": {
+    "message": "Custom arrangement",
+    "description": "Heading for the advanced custom-cadence controls."
+  },
+  "optionsCadencePatternLabel": {
+    "message": "Beat shape",
+    "description": "Label for the custom rhythmic pattern selector."
+  },
+  "optionsCadencePatternSteady": {
+    "message": "Steady four",
+    "description": "Name of the even four-beat custom pattern."
+  },
+  "optionsCadencePatternWaltz": {
+    "message": "Waltz three",
+    "description": "Name of the three-beat custom pattern."
+  },
+  "optionsCadencePatternBackbeat": {
+    "message": "Backbeat",
+    "description": "Name of the backbeat custom pattern."
+  },
+  "optionsCadencePatternSyncopated": {
+    "message": "Syncopated",
+    "description": "Name of the syncopated custom pattern."
+  },
+  "optionsCadenceSwingLabel": {
+    "message": "Swing",
+    "description": "Label for the custom cadence swing slider."
+  },
+  "optionsCadenceVariationLabel": {
+    "message": "Timing variation",
+    "description": "Label for the custom random timing variation slider."
+  },
+  "optionsCadenceSymbolRestLabel": {
+    "message": "Rest after symbols",
+    "description": "Label for the custom extra-rest-after-symbols slider."
+  },
+  "optionsCadencePercentValue": {
+    "message": "$PERCENT$%",
+    "description": "Current percentage beside a custom cadence slider.",
+    "placeholders": {
+      "percent": {
+        "content": "$1",
+        "example": "18"
+      }
+    }
+  },
+  "optionsCadenceDisclosure": {
+    "message": "This is presentation timing, not concealment. Hawkes can still identify the synthetic input events.",
+    "description": "Disclosure beneath the musical cadence controls."
+  },
   "optionsSolvingHeading": {
     "message": "Solving",
     "description": "Heading for the solving preferences."

@@ -321,6 +321,168 @@
           "retrieval_questions": ["Cold War expansion presidential authority military interventions limited congressional approval"]
         }
       }
+    },
+    "27": {
+      "title": "Quiz CH 27",
+      "expected_questions": 20,
+      "expected_total_points": 100,
+      "expected_keyed_choices": 20,
+      "expected_question_types": {
+        "multiple_choice": 20
+      },
+      "allowed_warnings": [
+        "external_source_item"
+      ],
+      "notes": "Chapter 27 is a keyed Canvas multiple-choice quiz for The Sixties. Nineteen items have relevant local PDF evidence. Question 19 is retained as an instructor-keyed external-source item because the local history.pdf does not discuss the Warren Court or criminal-defendant protections.",
+      "item_overrides": {
+        "ch27-q001": {
+          "target": "Kennedy bested Nixon",
+          "source_chunks": [210],
+          "source_pages": [327, 328, 329],
+          "source_citation": "history.pdf pp. 327-329, chunk 110",
+          "retrieval_questions": ["1960 presidential election Kennedy Nixon winner"]
+        },
+        "ch27-q002": {
+          "target": "Brown repudiated Plessy",
+          "source_chunks": [203, 204],
+          "source_pages": [308, 309, 310, 311, 312, 313],
+          "source_citation": "history.pdf pp. 311-313, chunk 104",
+          "retrieval_questions": ["Brown Board Education separate inherently unequal public schools"]
+        },
+        "ch27-q003": {
+          "target": "package of domestic reforms known as the Great Society",
+          "source_chunks": [213],
+          "source_pages": [336, 337, 338, 339],
+          "source_citation": "history.pdf pp. 336-339, chunk 113",
+          "retrieval_questions": ["Lyndon Johnson domestic agenda Great Society"]
+        },
+        "ch27-q004": {
+          "target": "The American Indian Movement (AIM)",
+          "source_chunks": [217],
+          "source_pages": [348, 349],
+          "source_citation": "history.pdf pp. 348-349, chunk 117",
+          "retrieval_questions": ["Native American activist group American Indian Movement AIM"]
+        },
+        "ch27-q005": {
+          "target": "Cesar Chavez became the most well-known figure/became the United Farm Workers of America",
+          "source_chunks": [217],
+          "source_pages": [348, 349],
+          "source_citation": "history.pdf pp. 348-349, chunk 117",
+          "retrieval_questions": ["Cesar Chavez United Farm Workers leader"],
+          "key_review_status": "confirmed",
+          "instructor_key_note": "Cesar Chavez is the intended answer. The source also identifies Dolores Huerta as a cofounder, and the pasted Canvas distractor 'Reies Tijerin' appears to misspell Reies Tijerina; both wording issues are preserved for source fidelity."
+        },
+        "ch27-q006": {
+          "target": "Pesticides, Carson argued, also posed a threat",
+          "source_chunks": [218],
+          "source_pages": [350, 351, 352],
+          "source_citation": "history.pdf pp. 350-352, chunk 118",
+          "retrieval_questions": ["Rachel Carson Silent Spring pesticide use environmental health"],
+          "key_review_status": "confirmed",
+          "instructor_key_note": "Pesticide use is the intended answer, although the Canvas prompt's phrase 'environmental disaster' is imprecise; Silent Spring addressed the environmental and health dangers of pesticide overuse."
+        },
+        "ch27-q007": {
+          "target": "Freedom Summer in Mississippi",
+          "source_chunks": [213],
+          "source_pages": [336, 337, 338, 339],
+          "source_citation": "history.pdf pp. 336-339, chunk 113",
+          "retrieval_questions": ["1964 civil rights campaign Mississippi Freedom Summer"]
+        },
+        "ch27-q008": {
+          "target": "Kerner Commission/Their report became an unexpected best seller",
+          "source_chunks": [222],
+          "source_pages": [362, 363, 364],
+          "source_citation": "history.pdf pp. 362-364, chunk 122",
+          "retrieval_questions": ["1968 report urban riots Kerner Commission"]
+        },
+        "ch27-q009": {
+          "target": "evidence of a stalemate mounted",
+          "source_chunks": [221],
+          "source_pages": [359, 360, 361],
+          "source_citation": "history.pdf pp. 359-361, chunk 121",
+          "retrieval_questions": ["Tet Offensive military stalemate psychological victory North Vietnam"],
+          "key_review_status": "confirmed",
+          "instructor_key_note": "D is the best available option and is retained from the supplied key. The PDF describes a tactical communist defeat that nevertheless exposed the U.S. credibility gap; the option's phrase 'military stalemate' is therefore imprecise even though its psychological-victory conclusion is the intended distinction."
+        },
+        "ch27-q010": {
+          "target": "Bloody Sunday",
+          "source_chunks": [213],
+          "source_pages": [336, 337, 338, 339],
+          "source_citation": "history.pdf pp. 336-339, chunk 113",
+          "retrieval_questions": ["1965 Selma Montgomery march Bloody Sunday voting rights"],
+          "key_review_status": "confirmed",
+          "instructor_key_note": "Bloody Sunday is the intended answer among the supplied choices. More precisely, it names the violent March 7 first attempt, not the entire later successful Selma-to-Montgomery march."
+        },
+        "ch27-q011": {
+          "target": "nonviolent resistance. The moral thrust of the movement",
+          "source_chunks": [212],
+          "source_pages": [333, 334, 335],
+          "source_citation": "history.pdf pp. 333-335, chunk 112",
+          "retrieval_questions": ["civil rights nonviolent direct action civil disobedience moral appeal public opinion"]
+        },
+        "ch27-q012": {
+          "target": "student-led direct action/Freedom Summer in Mississippi",
+          "source_chunks": [211, 213],
+          "source_pages": [330, 331, 332, 336, 337, 338, 339],
+          "source_citation": "history.pdf pp. 330-332, chunk 111",
+          "retrieval_questions": ["SNCC young activists sit-ins voter registration drives"]
+        },
+        "ch27-q013": {
+          "target": "job discrimination/public accommodations",
+          "source_chunks": [213],
+          "source_pages": [336, 337, 338, 339],
+          "source_citation": "history.pdf pp. 336-339, chunk 113",
+          "retrieval_questions": ["Civil Rights Act 1964 public accommodations employment discrimination"]
+        },
+        "ch27-q014": {
+          "target": "vigorous federal oversight of southern states’ election laws",
+          "source_chunks": [213],
+          "source_pages": [336, 337, 338, 339],
+          "source_citation": "history.pdf pp. 336-339, chunk 113",
+          "retrieval_questions": ["Voting Rights Act 1965 federal enforcement minority voting rights South"]
+        },
+        "ch27-q015": {
+          "target": "freedom, rebellion, and individuality/spiritual-psychedelic experience",
+          "source_chunks": [215, 216],
+          "source_pages": [342, 343, 344, 345, 346, 347],
+          "source_citation": "history.pdf pp. 342-344, chunk 115",
+          "retrieval_questions": ["1960s counterculture rejected mainstream values experimentation opposition authority"]
+        },
+        "ch27-q016": {
+          "target": "granting President Johnson the authority to deploy the American military",
+          "source_chunks": [215],
+          "source_pages": [342, 343, 344],
+          "source_citation": "history.pdf pp. 342-344, chunk 115",
+          "retrieval_questions": ["Gulf Tonkin Resolution presidential military action Vietnam without declaration war"]
+        },
+        "ch27-q017": {
+          "target": "Stalemates, body counts/Television, print media",
+          "source_chunks": [220],
+          "source_pages": [355, 356, 357, 358],
+          "source_citation": "history.pdf pp. 355-358, chunk 120",
+          "retrieval_questions": ["Vietnam War opposition televised coverage rising casualties public support"]
+        },
+        "ch27-q018": {
+          "target": "Tet demonstrated that despite the repeated claims of administration officials, the enemy could still strike at will",
+          "source_chunks": [221],
+          "source_pages": [359, 360, 361],
+          "source_citation": "history.pdf pp. 359-361, chunk 121",
+          "retrieval_questions": ["Tet Offensive war far from over despite United States claims progress"]
+        },
+        "ch27-q019": {
+          "source_missing_note": "The current local history.pdf extraction does not contain the phrase Warren Court or discussion of Miranda, Gideon, or criminal-defendant protections. Keep the instructor key, but report this as source coverage missing rather than claiming PDF grounding.",
+          "warnings": [
+            "external_source_item"
+          ]
+        },
+        "ch27-q020": {
+          "target": "social, cultural, and political upheaval",
+          "source_chunks": [210],
+          "source_pages": [327, 328, 329],
+          "source_citation": "history.pdf pp. 327-329, chunk 110",
+          "retrieval_questions": ["The Sixties major theme civil rights social movements cultural conflict"]
+        }
+      }
     }
   }
 }

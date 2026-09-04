@@ -88,9 +88,9 @@ def snappy_decompress(data: bytes) -> bytes:
                 count += 1
             else:
                 width = count - 59
-                count = int.from_bytes(data[pos:pos + width], "little") + 1
+                count = int.from_bytes(data[pos : pos + width], "little") + 1
                 pos += width
-            out += data[pos:pos + count]
+            out += data[pos : pos + count]
             pos += count
             continue
         if kind == 1:
@@ -99,11 +99,11 @@ def snappy_decompress(data: bytes) -> bytes:
             pos += 1
         elif kind == 2:
             count = (tag >> 2) + 1
-            offset = int.from_bytes(data[pos:pos + 2], "little")
+            offset = int.from_bytes(data[pos : pos + 2], "little")
             pos += 2
         else:
             count = (tag >> 2) + 1
-            offset = int.from_bytes(data[pos:pos + 4], "little")
+            offset = int.from_bytes(data[pos : pos + 4], "little")
             pos += 4
         start = len(out) - offset
         if start < 0:
@@ -134,7 +134,7 @@ class Clone:
         latin1 = bool(data & 0x80000000)
         length = data & 0x7FFFFFFF
         width = length if latin1 else length * 2
-        chars = self.raw[self.pos:self.pos + width]
+        chars = self.raw[self.pos : self.pos + width]
         # Every value is 8-byte aligned.
         self.pos += (width + 7) & ~7
         return chars.decode("latin-1" if latin1 else "utf-16-le", errors="replace")
@@ -212,9 +212,7 @@ def find_store(profile: Path) -> Path:
     if not uuid:
         raise Unreadable(f"{ADDON_ID} is not installed in {profile.name}")
     found = sorted(
-        (profile / "storage" / "default").glob(
-            f"moz-extension+++{uuid}*/idb/*.sqlite"
-        )
+        (profile / "storage" / "default").glob(f"moz-extension+++{uuid}*/idb/*.sqlite")
     )
     if not found:
         raise Unreadable("the add-on has written no storage yet")
@@ -276,8 +274,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--profile", help="Profile directory; default is the newest.")
     parser.add_argument("--grep", help="Only lines matching this (case-insensitive).")
-    parser.add_argument("--level", choices=("debug", "info", "warn", "error"),
-                        help="Only this level and worse.")
+    parser.add_argument(
+        "--level",
+        choices=("debug", "info", "warn", "error"),
+        help="Only this level and worse.",
+    )
     parser.add_argument("--last", type=int, help="Only the last N lines.")
     parser.add_argument("--json", action="store_true", help="Emit raw entries.")
     args = parser.parse_args()
@@ -292,8 +293,7 @@ def main() -> int:
     order = ("debug", "info", "warn", "error")
     if args.level:
         floor = order.index(args.level)
-        entries = [e for e in entries
-                   if e.get("level") in order[floor:]]
+        entries = [e for e in entries if e.get("level") in order[floor:]]
     lines = [format_entry(entry) for entry in entries]
     if args.grep:
         needle = args.grep.lower()
@@ -301,7 +301,7 @@ def main() -> int:
         entries = [entries[i] for i in keep]
         lines = [lines[i] for i in keep]
     if args.last:
-        entries, lines = entries[-args.last:], lines[-args.last:]
+        entries, lines = entries[-args.last :], lines[-args.last :]
 
     if args.json:
         print(json.dumps(entries, indent=2, default=str))

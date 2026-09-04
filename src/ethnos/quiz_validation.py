@@ -6,6 +6,8 @@ import re
 import sqlite3
 from typing import Any
 
+from .text_utils import normalize_match_text, normalized_phrase_found
+
 
 CHOICE_TYPES = {"multiple_choice", "true_false"}
 QUIZ_TYPES = {"multiple_choice", "true_false", "matching", "essay"}
@@ -17,6 +19,59 @@ def is_incomplete_item(item: dict[str, object]) -> bool:
     return isinstance(warnings, list) and bool(
         INCOMPLETE_ITEM_WARNINGS.intersection(warnings)
     )
+
+
+def source_retrieval_exclusion_reason(item: dict[str, object]) -> str | None:
+    warnings = item.get("warnings")
+    if not isinstance(warnings, list):
+        return None
+    if "external_source_item" in warnings:
+        return "declared_source_missing"
+    if INCOMPLETE_ITEM_WARNINGS.intersection(str(warning) for warning in warnings):
+        return "declared_incomplete"
+    return None
+
+
+def anchored_source_context_rows(
+    conn: sqlite3.Connection,
+    document_id: int,
+    item: dict[str, object],
+) -> list[dict[str, Any]]:
+    raw_chunk_ids = item.get("source_chunks")
+    if not isinstance(raw_chunk_ids, list):
+        return []
+    chunk_ids: list[int] = []
+    for chunk_id in raw_chunk_ids:
+        try:
+            normalized = int(chunk_id)
+        except (TypeError, ValueError):
+            continue
+        if normalized not in chunk_ids:
+            chunk_ids.append(normalized)
+    if not chunk_ids:
+        return []
+    rows = conn.execute(
+        f"""
+        SELECT
+            id,
+            document_id,
+            chunk_index,
+            page_start,
+            page_end,
+            source_citation,
+            section_label,
+            content_role,
+            '' AS snippet,
+            0.0 AS score,
+            text
+        FROM chunks
+        WHERE id IN ({", ".join("?" for _ in chunk_ids)})
+          AND document_id = ?
+        """,
+        [*chunk_ids, document_id],
+    ).fetchall()
+    by_id = {int(row["id"]): dict(row) for row in rows}
+    return [by_id[chunk_id] for chunk_id in chunk_ids if chunk_id in by_id]
 
 
 def validate_mc_quiz_item(
@@ -105,24 +160,18 @@ def _looks_like_unsupported_multiple_response(question: str) -> bool:
 
 
 def normalize_review_text(value: str) -> str:
-    return " ".join(value.lower().replace("-", " ").split())
+    return normalize_match_text(value)
 
 
 def target_text_found(target: str, source_text: str) -> bool:
-    normalized_target = normalize_review_text(target)
-    normalized_source = normalize_review_text(source_text)
-    if not normalized_target:
+    if not normalize_review_text(target):
         return True
-    if normalized_target in normalized_source:
+    if normalized_phrase_found(target, source_text):
         return True
     if "/" not in target:
         return False
-    parts = [
-        normalize_review_text(part)
-        for part in target.split("/")
-        if normalize_review_text(part)
-    ]
-    return bool(parts) and all(part in normalized_source for part in parts)
+    parts = [part for part in target.split("/") if part.strip()]
+    return bool(parts) and all(target_text_found(part, source_text) for part in parts)
 
 
 def is_true_false_item_options(options: object) -> bool:
@@ -143,10 +192,7 @@ def _anchor_errors(
 ) -> list[str]:
     errors: list[str] = []
     anchor_fields = ("target", "source_chunks", "source_pages", "source_citation")
-    warnings = item.get("warnings")
-    anchor_exempt = isinstance(warnings, list) and bool(
-        {"external_source_item", *INCOMPLETE_ITEM_WARNINGS}.intersection(warnings)
-    )
+    anchor_exempt = source_retrieval_exclusion_reason(item) is not None
     if require_anchors and not anchor_exempt:
         for field in anchor_fields:
             if not item.get(field):
@@ -158,9 +204,13 @@ def _anchor_errors(
         chunk_ids = []
     chunk_rows = []
     for chunk_id in chunk_ids:
+        if isinstance(chunk_id, bool) or not isinstance(chunk_id, int) or chunk_id < 1:
+            if "source_chunks must contain positive integers" not in errors:
+                errors.append("source_chunks must contain positive integers")
+            continue
         row = conn.execute(
             """
-            SELECT id, source_citation, text
+            SELECT id, page_start, page_end, source_citation, text
             FROM chunks
             WHERE id = ? AND document_id = ?
             """,
@@ -173,9 +223,33 @@ def _anchor_errors(
         else:
             chunk_rows.append(row)
 
+    source_pages = item.get("source_pages")
+    normalized_pages: list[int] = []
+    if source_pages is not None and not isinstance(source_pages, list):
+        errors.append("source_pages must be a list")
+    elif isinstance(source_pages, list):
+        for page in source_pages:
+            if isinstance(page, bool) or not isinstance(page, int) or page < 1:
+                errors.append("source_pages must contain positive integers")
+                break
+            if page not in normalized_pages:
+                normalized_pages.append(page)
+    if normalized_pages and chunk_rows:
+        covered_pages = {
+            page
+            for row in chunk_rows
+            for page in range(int(row["page_start"]), int(row["page_end"]) + 1)
+        }
+        outside_pages = [page for page in normalized_pages if page not in covered_pages]
+        if outside_pages:
+            errors.append(
+                "source_pages contains pages outside source_chunks: "
+                + ", ".join(str(page) for page in outside_pages)
+            )
+
     target = str(item.get("target") or "").strip()
     if target and chunk_rows:
-        source_text = normalize_review_text(" ".join(row["text"] for row in chunk_rows))
+        source_text = " ".join(row["text"] for row in chunk_rows)
         if not target_text_found(
             target, source_text
         ) and not _source_record_matches_anchor(

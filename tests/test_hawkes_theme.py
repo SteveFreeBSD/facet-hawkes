@@ -43,8 +43,16 @@ def _colour_tokens(body: str) -> dict[str, str]:
     return {
         name: value
         for name, value in TOKEN.findall(body)
-        if name not in {"--radius", "--radius-card", "--control-height",
-                        "--font", "--font-mono", "--font-math", "--panel-width"}
+        if name
+        not in {
+            "--radius",
+            "--radius-card",
+            "--control-height",
+            "--font",
+            "--font-mono",
+            "--font-math",
+            "--panel-width",
+        }
     }
 
 
@@ -116,7 +124,7 @@ def test_the_panel_width_is_a_preference_rather_than_a_constant():
     script = (EXTENSION_DIR / "popup" / "popup.js").read_text()
 
     assert "width: var(--panel-width)" in css
-    assert '--panel-width' in script
+    assert "--panel-width" in script
     # Firefox clamps a popup at 600px tall and would otherwise scroll it in a
     # scrollbar of its own.
     assert "max-height: 600px" in css
@@ -132,8 +140,8 @@ def test_the_panel_still_keeps_one_shape():
     # its chips comes out of this height rather than adding to it. The rendered
     # height is what it has always been: 84 content + 20 padding + 2 border.
     assert "box-sizing: border-box" in css
-    assert "min-height: 106px" in css      # the answer area
-    assert "min-height: 32px" in css       # two lines reserved for the status
-    assert "grid-template-columns: 1fr 1fr" in css   # two buttons, never four
+    assert "min-height: 106px" in css  # the answer area
+    assert "min-height: 32px" in css  # two lines reserved for the status
+    assert "grid-template-columns: 1fr 1fr" in css  # two buttons, never four
     # The copy affordance is positioned out of flow so it reserves no row.
     assert "position: absolute" in css

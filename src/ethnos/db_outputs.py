@@ -273,7 +273,9 @@ def _chunk_source_pages(conn: sqlite3.Connection, chunk_id: int) -> list[int]:
 def _record_source_pages(
     model_pages: list[int], fallback_pages: list[int]
 ) -> list[int]:
-    return model_pages if model_pages else fallback_pages
+    allowed_pages = set(fallback_pages)
+    valid_model_pages = [page for page in model_pages if page in allowed_pages]
+    return valid_model_pages if valid_model_pages else fallback_pages
 
 
 def _should_persist_study_records(conn: sqlite3.Connection, chunk_id: int) -> bool:

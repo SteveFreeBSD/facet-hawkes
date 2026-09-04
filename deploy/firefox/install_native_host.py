@@ -158,11 +158,13 @@ def check() -> int:
             print(f"error: {problem}", file=sys.stderr)
         return 1
 
-    request = json.dumps({
-        "protocol_version": 1,
-        "operation": "health",
-        "request_id": "installer-check",
-    }).encode("utf-8")
+    request = json.dumps(
+        {
+            "protocol_version": 1,
+            "operation": "health",
+            "request_id": "installer-check",
+        }
+    ).encode("utf-8")
     try:
         process = subprocess.run(
             [str(LAUNCHER)],
@@ -172,12 +174,21 @@ def check() -> int:
             check=False,
         )
         if len(process.stdout) < LENGTH_PREFIX.size:
-            raise ValueError(process.stderr.decode(errors="replace") or "no native reply")
+            raise ValueError(
+                process.stderr.decode(errors="replace") or "no native reply"
+            )
         (length,) = LENGTH_PREFIX.unpack(process.stdout[: LENGTH_PREFIX.size])
-        reply = json.loads(process.stdout[LENGTH_PREFIX.size : LENGTH_PREFIX.size + length])
+        reply = json.loads(
+            process.stdout[LENGTH_PREFIX.size : LENGTH_PREFIX.size + length]
+        )
         if process.returncode != 0 or reply.get("status") != "ok":
             raise ValueError(f"unexpected health reply: {reply}")
-    except (OSError, subprocess.TimeoutExpired, ValueError, json.JSONDecodeError) as exc:
+    except (
+        OSError,
+        subprocess.TimeoutExpired,
+        ValueError,
+        json.JSONDecodeError,
+    ) as exc:
         print(f"error: native host health check failed: {exc}", file=sys.stderr)
         return 1
     print(f"ok: {LAUNCHER}")
@@ -188,9 +199,15 @@ def check() -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--write", action="store_true", help="actually change the filesystem")
-    parser.add_argument("--uninstall", action="store_true", help="remove what was installed")
-    parser.add_argument("--check", action="store_true", help="verify the installed host")
+    parser.add_argument(
+        "--write", action="store_true", help="actually change the filesystem"
+    )
+    parser.add_argument(
+        "--uninstall", action="store_true", help="remove what was installed"
+    )
+    parser.add_argument(
+        "--check", action="store_true", help="verify the installed host"
+    )
     args = parser.parse_args()
     if args.check:
         if args.uninstall or args.write:

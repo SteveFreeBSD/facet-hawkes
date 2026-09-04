@@ -16,6 +16,7 @@ SECTION_LABELS = {
     "review_statement",
     "accessibility",
     "version_history",
+    "index",
     "blank_or_artifact",
     "unknown",
 }
@@ -164,7 +165,36 @@ HISTORY_PRESET = SectionPreset(
     ),
 )
 
-PRESETS = {"ethics": ETHICS_PRESET, "history": HISTORY_PRESET}
+PRECALC_PRESET = SectionPreset(
+    name="precalc",
+    page_ranges=(
+        SectionRange(1, 8, "front_matter", "admin"),
+        SectionRange(9, 11, "book_intro", "core"),
+        SectionRange(12, 12, "blank_or_artifact", "artifact"),
+        SectionRange(13, 161, "chapter_content", "core"),
+        SectionRange(162, 162, "blank_or_artifact", "artifact"),
+        SectionRange(163, 369, "chapter_content", "core"),
+        SectionRange(370, 370, "blank_or_artifact", "artifact"),
+        SectionRange(371, 427, "chapter_content", "core"),
+        SectionRange(428, 428, "blank_or_artifact", "artifact"),
+        SectionRange(429, 505, "chapter_content", "core"),
+        SectionRange(506, 506, "blank_or_artifact", "artifact"),
+        SectionRange(507, 1080, "chapter_content", "core"),
+        SectionRange(1081, 1094, "index", "support"),
+    ),
+    chunk_ranges=(
+        SectionRange(1, 7, "front_matter", "admin"),
+        SectionRange(8, 11, "book_intro", "core"),
+        SectionRange(12, 602, "chapter_content", "core"),
+        SectionRange(603, 609, "index", "support"),
+    ),
+)
+
+PRESETS = {
+    "ethics": ETHICS_PRESET,
+    "history": HISTORY_PRESET,
+    "precalc": PRECALC_PRESET,
+}
 
 
 def get_section_preset(name: str) -> SectionPreset:

@@ -121,6 +121,8 @@ export function accepts(allowed, character, kind) {
 export function insertErrorKey(code) {
   return {
     "no-focused-answer-field": "errorNoFocusedField",
+    // The caret left the field part-way through a paced entry.
+    "editor-lost-focus": "errorNoFocusedField",
     "field-not-editable": "errorFieldNotEditable",
     "unsupported-field": "errorUnsupportedField",
     "input-cancelled": "errorInsertRejected",

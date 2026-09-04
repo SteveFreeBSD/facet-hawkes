@@ -21,7 +21,9 @@ from ethnos.hawkes_coverage import (
 )
 from ethnos.symbolic_solver import _requested_operation, answer_symbolic_math
 
-CORPUS = Path(__file__).resolve().parents[1] / "benchmarks" / "hawkes_lesson_coverage.json"
+CORPUS = (
+    Path(__file__).resolve().parents[1] / "benchmarks" / "hawkes_lesson_coverage.json"
+)
 
 
 def test_the_shipped_corpus_loads_and_sweeps():
@@ -40,9 +42,7 @@ def test_no_question_in_the_corpus_is_answered_incorrectly():
     """
     wrong = [r for r in sweep(load_cases(CORPUS)) if r.verdict == "wrong"]
 
-    assert wrong == [], [
-        (r.case.id, r.answer, r.case.expected) for r in wrong
-    ]
+    assert wrong == [], [(r.case.id, r.answer, r.case.expected) for r in wrong]
 
 
 def test_a_gap_says_which_kind_of_gap_it_is():
@@ -50,14 +50,16 @@ def test_a_gap_says_which_kind_of_gap_it_is():
     different places, so the sweep separates them."""
     unrecognized = evaluate(
         CoverageCase(
-            id="x", topic="t",
+            id="x",
+            topic="t",
             prompt="Describe the end behavior of the polynomial.",
             expressions=["x^2 + 3x + 2"],
         )
     )
     declined = evaluate(
         CoverageCase(
-            id="y", topic="t",
+            id="y",
+            topic="t",
             prompt="Express the polynomial in descending order.",
             expressions=["a x^2 + b y^3"],
         )
@@ -77,7 +79,8 @@ def test_a_deliberate_guard_is_not_reported_as_a_gap():
     """
     guard = evaluate(
         CoverageCase(
-            id="g", topic="guards",
+            id="g",
+            topic="guards",
             prompt="Express the polynomial in descending order.",
             expressions=["a x^2 + b y^3"],
             expects_decline=True,
@@ -91,7 +94,8 @@ def test_a_deliberate_guard_is_not_reported_as_a_gap():
 def test_a_guard_that_answers_is_a_failed_guard():
     answered = evaluate(
         CoverageCase(
-            id="g", topic="guards",
+            id="g",
+            topic="guards",
             prompt="Factor the following trinomial completely.",
             expressions=["x^2 + 7x + 12"],
             expects_decline=True,
@@ -109,9 +113,12 @@ def test_multiply_and_simplify_is_a_multiplication():
     returned the already-simple factored form -- the question's own input,
     handed back as its answer.
     """
-    assert _requested_operation(
-        "Multiply the following polynomials and simplify your answer."
-    ) == "expand"
+    assert (
+        _requested_operation(
+            "Multiply the following polynomials and simplify your answer."
+        )
+        == "expand"
+    )
 
     result = answer_symbolic_math(
         problem_text="Multiply the following polynomials and simplify your answer.",
@@ -132,7 +139,9 @@ def test_factoring_out_the_gcf_stops_at_the_gcf():
     assert _requested_operation("Factor out the greatest common factor.") == "gcf"
     assert _requested_operation("Factor out the GCF.") == "gcf"
     # And a plain factoring question is still a plain factoring question.
-    assert _requested_operation("Factor the following trinomial completely.") == "factor"
+    assert (
+        _requested_operation("Factor the following trinomial completely.") == "factor"
+    )
 
     result = answer_symbolic_math(
         problem_text="Factor out the greatest common factor.",

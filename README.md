@@ -1,12 +1,100 @@
 # Ethnos
 
-Ethnos is a local-first study and review system for PDF course material. It
-ingests PDFs, builds searchable structured knowledge, answers questions from
-retrieved source text, imports and audits quizzes, benchmarks local models, and
-produces evidence-backed Agent Review reports.
+<p align="center">
+  <img src="extension/icons/icon-128.png" width="96" height="96" alt="Ethnos Hawkes Assistant icon">
+</p>
+
+<p align="center"><strong>A local-first Firefox assistant built for Hawkes math.</strong></p>
+
+Ethnos turns a Hawkes question into a checked, ready-to-place answer without
+handing the page to a cloud service. Focus the answer box, open the add-on, and
+review what Ethnos read alongside what it solved. One separate click places the
+answer using Hawkes' own math editor. **You stay in control: it never submits,
+checks, advances, or silently selects anything.**
+
+[![CI](https://github.com/SteveFreeBSD/ethnos/actions/workflows/ci.yml/badge.svg)](https://github.com/SteveFreeBSD/ethnos/actions/workflows/ci.yml)
+
+## The Firefox add-on
+
+The current add-on source is **0.42.0**. It combines a narrow Firefox interface
+with a local Python companion, exact symbolic solving, and an Ollama fallback:
+
+- **Exact before AI.** The add-on reads Hawkes' MathML and routes factoring,
+  expansion, simplification, rationalization, evaluation, polynomial ordering,
+  degree, coefficients, and classification through SymPy. Results are checked
+  algebraically and typically arrive in milliseconds.
+- **See what it saw.** The panel puts the recognized problem beside the answer.
+  Screenshot fallbacks use two different local readers and disable insertion
+  when they disagree about a sign, exponent, radical, or fraction.
+- **Native math entry.** Fractions, radicals, exponents, absolute values, and
+  tested combinations are assembled with Hawkes' own keypad templates instead
+  of pasted as ambiguous punctuation.
+- **A deliberate second click.** Solving never means submitting. Answers are
+  inserted only after review, only into the field you focused, and never into a
+  different tab, frame, window, or changed question.
+- **Local by design.** The browser package contains no network client. It talks
+  through Firefox native messaging to one registered companion process; keep
+  Ollama on loopback and the whole solve stays on your machine.
+- **No injected interface.** The toolbar panel and Settings are Firefox pages,
+  so the add-on leaves no persistent UI, styles, markers, or listeners in the
+  Hawkes page. Its synthetic insertion events can still be observed; Ethnos
+  does not claim or attempt concealment.
+
+### New in 0.42.0: answer cadence
+
+Answers now arrive as a short, controlled presentation rather than a sudden
+burst. Choose **Classical, Jazz, Lo-fi, Electronic, or Custom**, adjust the
+tempo, and bound the complete performance to **2–12 seconds**. Operators and
+separators can receive longer rests for a spoken walkthrough, and structured
+keypad answers share the same clock. The default Lo-fi arrangement varies
+inside a 5–10 second window.
+
+Cadence is presentation timing—not an attempt to mimic trusted human input.
+The add-on rechecks the target on every beat and stops if the field, caret, tab,
+frame, window, or question changes while an answer is being placed.
+
+### The workflow
+
+1. Focus the Hawkes answer field and open Ethnos with `Alt+Shift+E`.
+2. Let the exact solver answer immediately, or wait for the local vision/model
+   fallback when the page does not expose enough structured math.
+3. Compare **Recognized problem** with the question on screen.
+4. Click **Insert answer**. Review the field, then decide what to do in Hawkes.
+
+The add-on fails closed when it cannot identify one safe target, when the
+question changes mid-solve, when two screenshot readers disagree, or when the
+answer needs an editor template Hawkes has not enabled.
+
+### Install and verify
+
+Firefox 142 or newer, Python 3.11+, `uv`, and a local Ollama installation are
+required. Install the Python environment and register the native companion:
+
+```bash
+uv sync --extra dev
+python3 deploy/firefox/install_native_host.py --write
+python3 deploy/firefox/install_native_host.py --check
+```
+
+Normal Firefox requires a Mozilla-signed XPI. Follow the
+[release and installation runbook](extension/RELEASE.md) for signing,
+installation, physical acceptance, and rollback; do not disable Firefox's
+signature enforcement. For the complete behavior, permissions, privacy model,
+settings, and exact-operation table, read the
+[add-on guide](extension/README.md).
+
+Use assistance tools only where they are permitted.
+
+## The local study engine
+
+The same local companion is a full study and review system for PDF course
+material. It ingests PDFs, builds searchable structured knowledge, answers
+questions from retrieved source text, imports and audits quizzes, benchmarks
+local models, and produces evidence-backed Agent Review reports.
 
 All course data stays local by default. SQLite stores the processed knowledge,
-PyMuPDF reads PDFs, and Ollama runs the language model.
+PyMuPDF reads PDFs, SymPy handles exact mathematics, and Ollama runs the local
+models.
 
 ## Current supported baseline
 
@@ -31,7 +119,8 @@ Requirements:
 - Python 3.11 or newer
 - `uv`
 - SQLite with FTS5
-- Ollama with the `gemma-python` model alias
+- Ollama with the `gemma-python` model alias; screenshot questions additionally
+  use `qwen3.5:4b`
 
 Install the Python environment:
 
@@ -91,10 +180,10 @@ uv run ethnos structure DOCUMENT_ID --limit 1 --debug-ollama
 uv run ethnos structure DOCUMENT_ID
 ```
 
-Use `--preset ethics` for `ethics.pdf` and `--preset history` for
-`history.pdf`. For another book, inspect and label its sections before a full
-structure run. The one-chunk smoke prevents an expensive run with a broken
-model or prompt.
+Use `--preset ethics` for `ethics.pdf`, `--preset history` for `history.pdf`,
+and `--preset precalc` for the 1,094-page Stitz-Zeager corrected edition. For
+another book, inspect and label its sections before a full structure run. The
+one-chunk smoke prevents an expensive run with a broken model or prompt.
 
 `structure` processes core or unlabeled chunks that do not already have valid
 output. Use `--retry-failed` for failed chunks, `--all-roles` when summaries are
@@ -123,6 +212,57 @@ uv run ethnos ask 1 "What is methodological ethical naturalism?"
 uv run ethnos ask 1 "What is virtue ethics?" --trace-dir data/runs
 uv run ethnos chat 1 --trace-dir data/runs
 ```
+
+Render a grounded answer as a shareable PNG with the symbol-specific keyboard
+and LaTeX commands included in the image and written to a copyable companion
+file:
+
+```bash
+uv run ethnos ask 3 "Solve the equation shown in section 6.4" \
+  --model precalc-local \
+  --answer-image data/runs/precalc-answer.png
+```
+
+This creates `precalc-answer.png` and `precalc-answer.keys.txt`. Image rendering
+uses the local `pango-view` command and does not make an additional model call.
+
+For a photographed or screenshotted question, the default pipeline uses
+Qwen3.5 and an independent Gemma verification pass before the math solver:
+
+```bash
+uv run ethnos ask 3 "Solve the attached problem" \
+  --question-image path/to/problem.png \
+  --answer-image data/runs/precalc-answer.png
+```
+
+On the KDE desktop, Ethnos can perform the safe capture handoff itself:
+
+```bash
+uv run ethnos ask 3 "Solve the pictured problem" --capture-question
+```
+
+Drag a rectangle around only the question panel. Ethnos saves that region,
+performs the same two-reader verification and exact-math routing, writes an
+answer-only PNG plus a complete trace beside the capture, and opens the PNG in
+the desktop image viewer. The PNG contains only the answer in visual form,
+including stacked fractions and radical symbols; no directions, sources, or
+separate symbol-key file are produced. Files are stored under
+`data/runs/captures/`. This invokes Spectacle only; it does not attach to,
+navigate, restart, or modify the browser.
+
+The vision stage preserves expressions, answer choices, graph/diagram details,
+interface metadata, and explicit reading uncertainties. Two different readers
+must agree before solving. Scoreboard counters are excluded from answer choices.
+Exact polynomial factor/expansion questions take a safe SymPy-backed,
+zero-token path; other image problems use compact structured output from
+`qwen3.5:4b`. Screenshot answers render as concise answer-only
+cards. Use `--accept-image-uncertainty` only after manually checking the
+printed transcription. Identical screenshots reuse a content-addressed
+two-reader transcription cache; use `--no-question-image-cache` to force a
+fresh read.
+
+See [Vision and Exact-Math Architecture](docs/VISION_MATH_ARCHITECTURE.md) for
+model evidence, exact settings, acceptance requirements, and rollback commands.
 
 Add `--agentic` when the model should iteratively search and inspect local PDF
 evidence before answering:
@@ -228,6 +368,8 @@ documents are:
 
 - [Current Baseline](docs/CURRENT_BASELINE.md): known-good app, data, model,
   and benchmark state.
+- [Pre-calculus Setup](docs/PRECALCULUS.md): math model, benchmark, and course
+  ingestion workflow.
 - [Performance Tuning](docs/PERFORMANCE_TUNING.md): benchmark protocol,
   measured decisions, and rejected experiments.
 - [Caspian](docs/hosts/caspian.md): live hardware and persistent host settings.

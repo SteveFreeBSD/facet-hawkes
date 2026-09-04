@@ -12,7 +12,7 @@ from typing import Any, Callable, Protocol
 
 from pydantic import ValidationError
 
-from .config import OllamaThink
+from .config import DEFAULT_OLLAMA_KEEP_ALIVE, OllamaThink
 from .models import ChunkRecord, ExtractionResult
 from .prompt_cache import read_prompt_template
 
@@ -489,6 +489,11 @@ def _messages_with_images(messages: list[dict], images: list[str] | None) -> lis
 
 
 def _do_chat(client: OllamaClientProtocol, request_kwargs: dict) -> OllamaChatResult:
+    keep_alive = os.getenv(
+        "ETHNOS_OLLAMA_KEEP_ALIVE", DEFAULT_OLLAMA_KEEP_ALIVE
+    ).strip()
+    if keep_alive and "keep_alive" not in request_kwargs:
+        request_kwargs = {**request_kwargs, "keep_alive": keep_alive}
     response = client.chat(**request_kwargs)
     envelope = _plain_response(response)
     message = _plain_message(envelope.get("message") or {})

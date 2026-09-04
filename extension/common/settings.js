@@ -21,6 +21,43 @@
 
 import { LEVELS } from "/common/log.js";
 
+/** Beat shapes offered by the custom cadence panel. */
+export const ENTRY_PATTERNS = Object.freeze({
+  steady: Object.freeze([1, 1, 1, 1]),
+  waltz: Object.freeze([1.35, 0.82, 0.92]),
+  backbeat: Object.freeze([1, 0.68, 1.18, 0.78]),
+  syncopated: Object.freeze([1, 0.56, 0.9, 1.24]),
+});
+
+/**
+ * Musical starting points. Tempo is copied into its independent control when
+ * a genre is chosen; every other value remains owned by the preset until the
+ * user selects Custom.
+ */
+export const ENTRY_GENRE_PRESETS = Object.freeze({
+  classical: Object.freeze({
+    pattern: "waltz", tempoBpm: 72, swingPercent: 0,
+    variationPercent: 7, symbolRestPercent: 32,
+  }),
+  jazz: Object.freeze({
+    pattern: "syncopated", tempoBpm: 112, swingPercent: 30,
+    variationPercent: 22, symbolRestPercent: 58,
+  }),
+  lofi: Object.freeze({
+    pattern: "backbeat", tempoBpm: 82, swingPercent: 12,
+    variationPercent: 18, symbolRestPercent: 42,
+  }),
+  electronic: Object.freeze({
+    pattern: "steady", tempoBpm: 128, swingPercent: 0,
+    variationPercent: 6, symbolRestPercent: 24,
+  }),
+});
+
+export const ENTRY_GENRES = Object.freeze([
+  ...Object.keys(ENTRY_GENRE_PRESETS),
+  "custom",
+]);
+
 /**
  * @typedef {object} Setting
  * @property {"boolean" | "integer" | "enum"} kind
@@ -58,6 +95,24 @@ export const SETTINGS = {
      reasonable; it costs panel height, so wanting it folded is too. */
   problemOpen: { kind: "boolean", fallback: false },
 
+  /* Theatrical, audible-in-spirit pacing for demonstrations. Presets own the
+     beat shape and feel; tempo and the hard duration window stay independent
+     so any preset can be sped up without losing its character. */
+  entryGenre: { kind: "enum", fallback: "lofi", values: ENTRY_GENRES },
+  entryTempoBpm: { kind: "integer", fallback: 82, min: 45, max: 180 },
+  entryDurationMinSeconds: { kind: "integer", fallback: 5, min: 2, max: 12 },
+  entryDurationMaxSeconds: { kind: "integer", fallback: 10, min: 2, max: 12 },
+
+  /* These values are retained while a preset is active and become live when
+     Custom is selected, so experimentation never destroys a saved custom
+     arrangement. */
+  entryPattern: {
+    kind: "enum", fallback: "backbeat", values: Object.freeze(Object.keys(ENTRY_PATTERNS)),
+  },
+  entrySwingPercent: { kind: "integer", fallback: 12, min: 0, max: 60 },
+  entryVariationPercent: { kind: "integer", fallback: 18, min: 0, max: 35 },
+  entrySymbolRestPercent: { kind: "integer", fallback: 42, min: 0, max: 100 },
+
   /* What reaches the diagnostic log. Never the coursework itself -- see
      `common/log.js`. */
   logLevel: { kind: "enum", fallback: "info", values: LEVELS },
@@ -73,6 +128,44 @@ export function defaultSettings() {
     out[key] = setting.fallback;
   }
   return out;
+}
+
+/**
+ * Turn stored preferences into the small, serializable object passed to the
+ * isolated insertion script. Relational duration validation lives here: each
+ * field is valid on its own, but the order can still be reversed by hand in
+ * storage, and the insertion path must remain safe in that case.
+ */
+export function resolveEntryCadence(settings = {}) {
+  const genre = ENTRY_GENRES.includes(settings.entryGenre)
+    ? settings.entryGenre
+    : SETTINGS.entryGenre.fallback;
+  const custom = genre === "custom";
+  const feel = custom
+    ? {
+        pattern: settings.entryPattern,
+        swingPercent: settings.entrySwingPercent,
+        variationPercent: settings.entryVariationPercent,
+        symbolRestPercent: settings.entrySymbolRestPercent,
+      }
+    : ENTRY_GENRE_PRESETS[genre];
+  const pattern = ENTRY_PATTERNS[feel.pattern] ?? ENTRY_PATTERNS.backbeat;
+  const firstSeconds = coerce(
+    "entryDurationMinSeconds", settings.entryDurationMinSeconds
+  ).value;
+  const secondSeconds = coerce(
+    "entryDurationMaxSeconds", settings.entryDurationMaxSeconds
+  ).value;
+
+  return {
+    tempoBpm: coerce("entryTempoBpm", settings.entryTempoBpm).value,
+    durationMinMs: Math.min(firstSeconds, secondSeconds) * 1000,
+    durationMaxMs: Math.max(firstSeconds, secondSeconds) * 1000,
+    rhythmWeights: [...pattern],
+    swingRatio: coerce("entrySwingPercent", feel.swingPercent).value / 100,
+    variationRatio: coerce("entryVariationPercent", feel.variationPercent).value / 100,
+    symbolRestRatio: coerce("entrySymbolRestPercent", feel.symbolRestPercent).value / 100,
+  };
 }
 
 /**

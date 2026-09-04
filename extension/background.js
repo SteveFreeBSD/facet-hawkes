@@ -21,7 +21,12 @@ import { planEntry } from "/common/editor-plan.js";
 import { describeResults, selectAnswerFrame } from "/common/frames.js";
 import { enterPlan } from "/common/page-actions.js";
 import { describeError, initLog, log, setLogLevel } from "/common/log.js";
-import { defaultSettings, onSettingsChanged, readSettings } from "/common/settings.js";
+import {
+  defaultSettings,
+  onSettingsChanged,
+  readSettings,
+  resolveEntryCadence,
+} from "/common/settings.js";
 
 const NATIVE_HOST = "ethnos_hawkes";
 const PROTOCOL_VERSION = 1;
@@ -215,7 +220,7 @@ async function runInjection(injection) {
  * immediately beforehand; neither it nor this function is visible to page
  * JavaScript.
  */
-async function enterPlainAnswer(answer) {
+async function enterPlainAnswer(answer, cadence) {
   if (typeof ethnosHawkes === "undefined") {
     return { ok: false, code: "prelude-missing" };
   }
@@ -228,7 +233,7 @@ async function enterPlainAnswer(answer) {
   // Awaited: entry is paced character by character, so this is a promise.
   // Read without awaiting, `outcome.ok` is undefined and every insertion
   // reports a failure it did not have.
-  const outcome = await ethnosHawkes.insertAnswer(answer);
+  const outcome = await ethnosHawkes.insertAnswer(answer, cadence);
   return { ok: outcome.ok, code: outcome.code, answer };
 }
 
@@ -973,7 +978,7 @@ async function acceptReply(reply) {
  * beforehand from this question's permitted templates and character set, so
  * this either performs it or reports which step the editor refused.
  */
-async function buildStructured(answer) {
+async function buildStructured(answer, cadence) {
   // Planning consumes explicit machine notation (`sqrt(30)*y/30`), not the
   // compact display (`y√30/30`). Keeping those roles separate removes an
   // entire class of radical-boundary and implicit-multiplication bugs.
@@ -987,7 +992,7 @@ async function buildStructured(answer) {
       target: { tabId: state.tabId, frameIds: [state.frameId] },
       world: "MAIN",
       func: enterPlan,
-      args: [plan.steps],
+      args: [plan.steps, cadence],
     });
   } catch (error) {
     return { ok: false, code: errorKeyOf(error) };
@@ -1001,6 +1006,7 @@ async function insert() {
     return;
   }
   const reviewed = state.answer;
+  await settingsReady;
 
   // The tab is looked up by window when the field is found; this confirms the
   // pairing still holds at the moment of writing. An event can be missed, or
@@ -1054,10 +1060,20 @@ async function insert() {
 
   // A typeable answer goes in as text; anything with structure has to be
   // built with the keypad templates, one step at a time.
+  // Both entry paths perform on the same cadence; only the machinery differs.
+  const cadence = resolveEntryCadence(settings);
+  // A performance now runs for seconds, so how long it actually took is the
+  // one thing worth recording. The answer itself never enters the log.
+  const entryStartedAt = Date.now();
   const typeable = reviewed && answerFitsEditor(reviewed, state.editor).insertable;
   if (!typeable) {
-    const built = await buildStructured(reviewed);
+    const built = await buildStructured(reviewed, cadence);
     if (built.ok) {
+      log.info("inserted", {
+        via: "structured",
+        answerLength: reviewed.length,
+        elapsedMs: Date.now() - entryStartedAt,
+      });
       await finishInsertion(`entered: ${built.entered ?? ""}`);
     } else {
       fail(insertErrorKey(built.code), { detail: built.detail ?? built.code });
@@ -1073,7 +1089,7 @@ async function insert() {
     const [entry] = await runInjection({
       target,
       func: enterPlainAnswer,
-      args: [reviewed],
+      args: [reviewed, cadence],
     });
     const outcome = entry?.result;
     if (!outcome || typeof outcome !== "object") {
@@ -1088,6 +1104,12 @@ async function insert() {
       fail("errorAnswerChanged");
       return;
     }
+    log.info("inserted", {
+      via: "plain",
+      code: outcome.code,
+      answerLength: reviewed.length,
+      elapsedMs: Date.now() - entryStartedAt,
+    });
     await finishInsertion("");
   } catch (error) {
     fail(errorKeyOf(error));

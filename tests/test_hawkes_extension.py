@@ -52,7 +52,10 @@ def test_manifest_keeps_the_minimal_permission_surface(manifest):
     # nativeMessaging reaches exactly one registered local host and opens no
     # port; it is not standing access to anything on the web.
     assert manifest["permissions"] == [
-        "activeTab", "nativeMessaging", "scripting", "storage",
+        "activeTab",
+        "nativeMessaging",
+        "scripting",
+        "storage",
     ]
     # One host, declared rather than requested. activeTab is granted only by
     # the toolbar button, which left the sidebar with no access at all and made
@@ -325,7 +328,8 @@ def test_shared_prelude_survives_reinjection():
     # extension one scope per frame, so a top-level const or let would throw a
     # redeclaration error the second time. Only `var` tolerates that.
     top_level = [
-        line for line in source.splitlines()
+        line
+        for line in source.splitlines()
         if line.startswith(("const ", "let ", "class "))
     ]
     assert top_level == []
@@ -364,9 +368,10 @@ def test_operation_scripts_register_nothing_and_return_a_result():
         # is needed to keep repeat runs idempotent.
         assert "addEventListener" not in source
         assert "onMessage" not in source
-    assert "ethnosHawkes.inspectField()" in (
-        EXTENSION_DIR / "content" / "inspect-field.js"
-    ).read_text()
+    assert (
+        "ethnosHawkes.inspectField()"
+        in (EXTENSION_DIR / "content" / "inspect-field.js").read_text()
+    )
 
 
 def test_popup_requires_a_separate_insert_click(manifest):
@@ -401,7 +406,7 @@ def test_a_solve_survives_the_panel_closing():
 
     # A popup closes whenever anything takes focus, and a solve takes the
     # better part of a minute, so the work cannot live in the panel.
-    assert "await solve(asking)" in background   # started from the port handler
+    assert "await solve(asking)" in background  # started from the port handler
     assert "AbortController" in background
     # The panel only renders state and asks for operations.
     assert "captureVisibleTab" not in popup
@@ -431,9 +436,9 @@ def test_a_reviewed_answer_is_passed_directly_and_never_persisted():
     assert "DEFAULT_ANSWER" not in editor
     assert "previewAnswer" not in config
     assert not (EXTENSION_DIR / "content" / "insert-answer.js").exists()
-    assert "function enterPlainAnswer(answer)" in background
+    assert "function enterPlainAnswer(answer, cadence)" in background
     assert "func: enterPlainAnswer" in background
-    assert "args: [reviewed]" in background
+    assert "args: [reviewed, cadence]" in background
 
 
 def test_a_new_question_clears_the_previous_answer():
@@ -465,7 +470,12 @@ def test_the_panel_talks_to_the_background_over_a_port():
     assert "port.postMessage" in popup
     assert "port.onMessage" in popup
     assert "runtime.sendMessage" not in popup
-    for operation in ("ethnos:solve", "ethnos:insert", "ethnos:cancel", "ethnos:prepare"):
+    for operation in (
+        "ethnos:solve",
+        "ethnos:insert",
+        "ethnos:cancel",
+        "ethnos:prepare",
+    ):
         assert f'request("{operation}")' in popup
 
     assert "onConnect" in background
@@ -498,7 +508,7 @@ def test_an_open_hawkes_dialog_is_reported_rather_than_its_symptoms():
 
     # While a Hawkes message box is open it holds focus, the editor reports no
     # focused control, and every focus() fails silently.
-    assert 'querySelectorAll(\'[id*="customMessageBox"]\')' in editor
+    assert "querySelectorAll('[id*=\"customMessageBox\"]')" in editor
     assert '"editor-dialog-open"' in editor
     assert '"editor-dialog-open"' in frames
     assert '"editor-dialog-open": "errorEditorDialogOpen"' in background
@@ -594,7 +604,11 @@ def test_the_screenshot_is_cropped_to_the_question():
     assert "frameOffsetTop" in background
     assert "current.frameElement" in background
     assert 'fail("errorQuestionRegion")' in background
-    crop = background[background.index("async function cropToQuestion"):background.index("function decodeDataUrl")]
+    crop = background[
+        background.index("async function cropToQuestion") : background.index(
+            "function decodeDataUrl"
+        )
+    ]
     assert "return dataUrl" not in crop
     # No request API, even to decode a data URL.
     assert "fetch(" not in background
@@ -710,7 +724,7 @@ def test_the_placed_answer_is_dropped_by_new_work_like_every_other_result():
     assert 'placedText: ""' in background.split("async function solve(", 1)[1]
     assert 'placedText: ""' in background.split("function blankState()", 1)[1]
     # Carried across a re-check only for the very question it was placed into.
-    assert "placedText: alreadyInserted ? previous.placedText : \"\"" in background
+    assert 'placedText: alreadyInserted ? previous.placedText : ""' in background
     # And the panel's own optimistic paints clear it before the event page can.
     assert popup.count('placedText: ""') == 2
 
@@ -719,7 +733,7 @@ def test_structured_planning_uses_the_current_displayed_answer():
     background = (EXTENSION_DIR / "background.js").read_text()
     panel = (EXTENSION_DIR / "common" / "panel-view.js").read_text()
 
-    assert "async function buildStructured(answer)" in background
+    assert "async function buildStructured(answer, cadence)" in background
     assert "const plan = planEntry(answer, state.editor);" in background
     assert "state.entryText || state.answer" in panel
     assert "reply.answer.keyboard_entry" in background
@@ -728,9 +742,9 @@ def test_structured_planning_uses_the_current_displayed_answer():
 def test_insertion_fails_closed_when_final_question_or_editor_read_fails():
     background = (EXTENSION_DIR / "background.js").read_text()
 
-    assert 'if (!editor?.ok)' in background
+    assert "if (!editor?.ok)" in background
     assert 'fail("errorEditorUnknown")' in background
-    assert 'if (onScreen === null || state.signature === null)' in background
+    assert "if (onScreen === null || state.signature === null)" in background
     assert 'fail("errorQuestionUnverified")' in background
 
 
@@ -741,7 +755,7 @@ def test_solving_starts_without_a_second_click_unless_turned_off():
 
     # The preference is declared once and read from memory, so a solve never
     # waits on storage to find out whether it should have started.
-    assert "autoSolve: { kind: \"boolean\", fallback: true }" in settings
+    assert 'autoSolve: { kind: "boolean", fallback: true }' in settings
     assert "if (settings.autoSolve)" in background
     assert 'data-setting="autoSolve"' in options
 
@@ -829,7 +843,7 @@ def test_a_disabled_control_is_refused_before_anything_is_typed():
     """
     writer = (EXTENSION_DIR / "common" / "page-actions.js").read_text()
 
-    assert writer.count("enabled === false") >= 2   # up front, and per press
+    assert writer.count("enabled === false") >= 2  # up front, and per press
     assert '"editor-disabled"' in writer
 
 
@@ -855,6 +869,7 @@ def test_the_sidebar_can_recover_when_firefox_withholds_the_site_permission(mani
     assert "errorNeedsHostPermission" not in messages
     assert "popupGrantButton" not in messages
 
+
 def test_the_editor_description_retries_while_the_editor_is_rebuilt() -> None:
     """A probe landing between questions sees no editor model.
 
@@ -863,9 +878,13 @@ def test_the_editor_description_retries_while_the_editor_is_rebuilt() -> None:
     a second from existing sent the user back to the toolbar for no reason.
     """
     source = (EXTENSION_DIR / "background.js").read_text(encoding="utf-8")
-    body = source.split("async function describeEditor(", 1)[1].split("\nasync function", 1)[0]
+    body = source.split("async function describeEditor(", 1)[1].split(
+        "\nasync function", 1
+    )[0]
     assert "attempts = 5" in body, "describeEditor takes an attempt budget"
-    assert "for (let attempt" in body, "describeEditor retries rather than failing at once"
+    assert "for (let attempt" in body, (
+        "describeEditor retries rather than failing at once"
+    )
     assert "setTimeout" in body, "describeEditor waits between attempts"
     assert "described?.ok" in body, "only a successful description ends the retry loop"
 
@@ -908,7 +927,9 @@ def test_the_question_is_verified_before_the_answer_is_inserted() -> None:
         "the question is checked before the answer is measured against the editor"
     )
     messages = json.loads(
-        (EXTENSION_DIR / "_locales" / "en" / "messages.json").read_text(encoding="utf-8")
+        (EXTENSION_DIR / "_locales" / "en" / "messages.json").read_text(
+            encoding="utf-8"
+        )
     )
     assert "errorQuestionChanged" in messages
 
@@ -925,7 +946,9 @@ def test_the_parenthesis_family_templates_pass_their_type() -> None:
     assert 'Mod: [base.qualifyLoadParenthesis, ["Mod"]]' in source
     assert 'Mod: [base.loadParenthesis, ["Mod", true]]' in source
     assert "IndexedRadical: [base.loadRadical, [true, true]]" in source
-    assert "guard.apply(base, guardArgs)" in source, "guards are called with their arguments"
+    assert "guard.apply(base, guardArgs)" in source, (
+        "guards are called with their arguments"
+    )
     assert "loader.apply(base, loaderArgs)" in source
 
 
@@ -979,7 +1002,12 @@ def test_every_injected_script_path_is_declared() -> None:
     harness loads the reader file itself and never touches the constant.
     """
     source = (EXTENSION_DIR / "background.js").read_text(encoding="utf-8")
-    for name in ("QUESTION_SCRIPT", "DESCRIBE_SCRIPT", "INSPECT_SCRIPT", "EDITOR_SCRIPT"):
+    for name in (
+        "QUESTION_SCRIPT",
+        "DESCRIBE_SCRIPT",
+        "INSPECT_SCRIPT",
+        "EDITOR_SCRIPT",
+    ):
         assert f"const {name} =" in source, f"{name} is used but never declared"
         used = re.search(rf"\b{name}\b", source.split(f"const {name} =", 1)[1])
         assert used is not None, f"{name} is declared but never used"
@@ -1012,7 +1040,9 @@ def test_an_open_panel_notices_the_question_changing() -> None:
     assert "function watchQuestion()" in source
     assert "QUESTION_WATCH_MS" in source
     assert "const QUESTION_WATCH_MS" in source, "the interval is declared, not implied"
-    body = source.split("function watchQuestion()", 1)[1].split("\nfunction stopWatchingQuestion", 1)[0]
+    body = source.split("function watchQuestion()", 1)[1].split(
+        "\nfunction stopWatchingQuestion", 1
+    )[0]
     # Work in flight reads the question itself; the watch must not cut in.
     for phase in ("checking", "solving", "inserting"):
         assert phase in body, f"the watch must stand aside during {phase}"
@@ -1093,12 +1123,12 @@ def test_an_answer_solved_in_one_window_cannot_be_inserted_into_another():
     background = (EXTENSION_DIR / "background.js").read_text()
 
     assert "async function claim(windowId)" in background
-    claim = background.split("async function claim(windowId)", 1)[1].split(
-        "\n}\n", 1
-    )[0]
-    assert "state.windowId === windowId" in claim   # same window: nothing to do
-    assert "inFlight?.abort()" in claim             # a switch stops other work
-    assert "blankState()" in claim                  # and drops the old answer
+    claim = background.split("async function claim(windowId)", 1)[1].split("\n}\n", 1)[
+        0
+    ]
+    assert "state.windowId === windowId" in claim  # same window: nothing to do
+    assert "inFlight?.abort()" in claim  # a switch stops other work
+    assert "blankState()" in claim  # and drops the old answer
     # Both writing operations claim before they act.
     for operation in ("ethnos:solve", "ethnos:insert"):
         block = background.split(f'case "{operation}":', 1)[1].split("break;", 1)[0]
@@ -1117,7 +1147,9 @@ def test_a_tab_dragged_into_another_window_is_not_written_to():
     assert "function forgetMovedTab(tabId)" in background
     for event in ("onAttached", "onDetached", "onRemoved"):
         assert f"browser.tabs.{event}.addListener(forgetMovedTab)" in background
-    forget = background.split("function forgetMovedTab(tabId)", 1)[1].split("\n}\n", 1)[0]
+    forget = background.split("function forgetMovedTab(tabId)", 1)[1].split("\n}\n", 1)[
+        0
+    ]
     assert "inFlight?.abort()" in forget
     assert "blankState()" in forget
 
@@ -1160,7 +1192,9 @@ def test_the_panel_recovers_after_its_tab_changes_window():
     re-prepare there and find whatever is in front now."""
     background = (EXTENSION_DIR / "background.js").read_text()
 
-    forget = background.split("function forgetMovedTab(tabId)", 1)[1].split("\n}\n", 1)[0]
+    forget = background.split("function forgetMovedTab(tabId)", 1)[1].split("\n}\n", 1)[
+        0
+    ]
     assert "windowId: state.windowId" in forget
     assert "prepare(state.windowId)" in forget
 
@@ -1185,8 +1219,8 @@ def test_a_panel_is_never_shown_another_window_s_question():
 
     # Every delivery goes through it: the broadcast, the first post on connect,
     # and the post once a panel says which window it is in.
-    assert 'state: stateFor(entry.windowId) })' in background
-    assert 'state: stateFor(null) })' in background
+    assert "state: stateFor(entry.windowId) })" in background
+    assert "state: stateFor(null) })" in background
     # No delivery bypasses it.
     assert '"ethnos:state", state })' not in background
 
@@ -1202,9 +1236,11 @@ def test_an_unreadable_url_with_the_grant_held_is_the_wrong_site():
     """
     background = (EXTENSION_DIR / "background.js").read_text()
 
-    block = background.split('if (typeof tab.url !== "string")', 1)[1].split("\n  }\n", 1)[0]
-    assert 'throw new Error("errorTabAccessLost")' in block   # grant withheld
-    assert 'throw new Error("errorWrongSite")' in block       # grant held
+    block = background.split('if (typeof tab.url !== "string")', 1)[1].split(
+        "\n  }\n", 1
+    )[0]
+    assert 'throw new Error("errorTabAccessLost")' in block  # grant withheld
+    assert 'throw new Error("errorWrongSite")' in block  # grant held
     assert 'throw new Error("errorNoTab")' not in block
 
 
@@ -1222,10 +1258,10 @@ def test_the_question_watcher_rebuilds_what_it_watches_rather_than_giving_up():
     watcher = background.split("questionWatch = setInterval", 1)[1].split(
         "}, QUESTION_WATCH_MS)", 1
     )[0]
-    assert "watchFailures = 0" in watcher          # a good read clears the count
+    assert "watchFailures = 0" in watcher  # a good read clears the count
     assert "watchFailures += 1" in watcher
     assert "WATCH_FAILURES_BEFORE_REPREPARE" in watcher
-    assert "question-watch-lost-the-frame" in watcher   # and it is said out loud
+    assert "question-watch-lost-the-frame" in watcher  # and it is said out loud
     # Re-preparing is scoped to the window the state belongs to.
     assert "prepare(state.windowId)" in watcher
 
@@ -1243,9 +1279,9 @@ def test_closing_the_owning_window_hands_the_work_on():
     closed = background.split("browser.windows.onRemoved.addListener", 1)[1].split(
         "\n});\n", 1
     )[0]
-    assert "panels.delete(port)" in closed          # its panels go
-    assert "inFlight?.abort()" in closed            # its work stops
-    assert "survivor" in closed                     # and another window takes over
+    assert "panels.delete(port)" in closed  # its panels go
+    assert "inFlight?.abort()" in closed  # its work stops
+    assert "survivor" in closed  # and another window takes over
     assert "prepare(survivor.windowId)" in closed
 
 
@@ -1321,7 +1357,9 @@ def test_a_panel_only_takes_focus_in_the_window_being_used():
     jumping to another window the instant it was loaded."""
     popup = (EXTENSION_DIR / "popup" / "popup.js").read_text()
 
-    focus_primary = popup.split("function focusPrimary(view)", 1)[1].split("\n}\n", 1)[0]
+    focus_primary = popup.split("function focusPrimary(view)", 1)[1].split("\n}\n", 1)[
+        0
+    ]
     assert "document.hasFocus()" in focus_primary
     # Both places that take focus are guarded, not just the first.
     assert focus_primary.count("document.hasFocus()") == 2
@@ -1336,12 +1374,14 @@ def test_the_answer_is_entered_one_character_at_a_time():
     """
     editor = (EXTENSION_DIR / "content" / "hawkes-editor.js").read_text()
 
-    assert "const CHARACTER_PAUSE_MS" in editor
-    assert "const ENTRY_BUDGET_MS" in editor      # a long answer is still bounded
+    assert "durationMinMs: 5000" in editor
+    assert "durationMaxMs: 10000" in editor
     assert "function writeCharacter(target, character)" in editor
-    entry = editor.split("async function insertIntoNativeField", 1)[1].split("\n  }\n", 1)[0]
-    assert "for (let index = 0" in entry
-    assert "writeCharacter(target, characters[index])" in entry
+    entry = editor.split("async function insertIntoNativeField", 1)[1].split(
+        "\n  }\n", 1
+    )[0]
+    assert "playEntryCadence([...value]" in entry
+    assert "writeCharacter(target, character)" in entry
     # The field closing part-way through stops the write rather than continuing.
     assert "field-not-editable" in entry
 
@@ -1351,18 +1391,136 @@ def test_the_paced_insertion_is_awaited_by_its_caller():
     is undefined and every insertion reports a failure it did not have."""
     background = (EXTENSION_DIR / "background.js").read_text()
 
-    assert "async function enterPlainAnswer(answer)" in background
-    assert "await ethnosHawkes.insertAnswer(answer)" in background
+    assert "async function enterPlainAnswer(answer, cadence)" in background
+    assert "await ethnosHawkes.insertAnswer(answer, cadence)" in background
 
 
-def test_entry_pacing_is_fixed_rather_than_shaped():
-    """Paced to what the editor absorbs, and nothing else. The add-on does not
-    conceal that it is the one typing, and a cadence tuned to resemble a person
-    would be exactly that -- it carries no reliability benefit."""
+def test_entry_pacing_is_random_rhythmic_and_time_bounded():
+    """Demonstrations get a varied musical cadence inside a hard window.
+
+    Weight normalisation makes the random beat lengths add up to the one chosen
+    duration rather than allowing per-character jitter to accumulate forever.
+    """
     editor = (EXTENSION_DIR / "content" / "hawkes-editor.js").read_text()
 
-    for shaping in ("Math.random", "jitter", "humanize", "randomInt"):
-        assert shaping not in editor
+    assert "crypto.getRandomValues(sample)" in editor
+    assert "function normalizedCadence(offered = {})" in editor
+    assert "function rhythmicWeight(character, index, cadence)" in editor
+    assert "function entryBeatOffsets(characters, cadence)" in editor
+    assert "60000 / cadence.tempoBpm" in editor
+    assert "duration * elapsedWeight / totalWeight" in editor
+    assert "offsets[offsets.length - 1] = duration" in editor
+
+
+def test_cadence_settings_reach_the_isolated_insertion_path():
+    settings = (EXTENSION_DIR / "common" / "settings.js").read_text()
+    options = (EXTENSION_DIR / "options" / "options.html").read_text()
+    background = (EXTENSION_DIR / "background.js").read_text()
+
+    for genre in ("classical", "jazz", "lofi", "electronic", "custom"):
+        assert f'value="{genre}"' in options
+    for key in (
+        "entryGenre",
+        "entryTempoBpm",
+        "entryDurationMinSeconds",
+        "entryDurationMaxSeconds",
+        "entryPattern",
+        "entrySwingPercent",
+        "entryVariationPercent",
+        "entrySymbolRestPercent",
+    ):
+        assert f"{key}:" in settings
+        assert f'data-setting="{key}"' in options
+    assert 'id="cadence-custom"' in options and "hidden" in options
+    option_script = (EXTENSION_DIR / "options" / "options.js").read_text()
+    assert 'cadenceCustom.hidden = genre !== "custom"' in option_script
+    assert "ENTRY_GENRE_PRESETS[settled.value].tempoBpm" in option_script
+    assert "function alignDurationWindow" in option_script
+    assert "resolveEntryCadence(settings)" in background
+    assert "args: [reviewed, cadence]" in background
+
+
+def test_contenteditable_entry_uses_the_same_character_cadence():
+    """A MathQuill-style text target must not dump the expression at once."""
+    editor = (EXTENSION_DIR / "content" / "hawkes-editor.js").read_text()
+
+    entry = editor.split("async function insertIntoEditable", 1)[1].split("\n  }\n", 1)[
+        0
+    ]
+    assert "playEntryCadence([...value]" in entry
+    assert 'execCommand("insertText", false, character)' in entry
+
+
+def test_structured_keypad_entry_performs_on_the_same_cadence():
+    """A templated answer is the common case, and it used to arrive at once.
+
+    `enterPlan` is serialized into the page's own world, so it closes over
+    nothing and carries its own copy of the beat rules. What matters is that a
+    structured answer is paced at all: `typeInto` was a synchronous loop that
+    wrote every character in one tick, which is what a live session saw.
+    """
+    actions = (EXTENSION_DIR / "common" / "page-actions.js").read_text()
+    background = (EXTENSION_DIR / "background.js").read_text()
+
+    assert "export async function enterPlan(steps, cadence = {})" in actions
+    assert "const typeInto = async (id, text)" in actions
+    assert "await waitForNote()" in actions
+    assert "if (!(await typeInto(cursor, step.text)))" in actions
+    # One performance over every typed character of the whole plan, not one
+    # window per step.
+    assert 'filter((step) => step.op === "type")' in actions
+    assert "60000 / beat.tempoBpm" in actions
+    assert "args: [plan.steps, cadence]" in background
+    assert "await buildStructured(reviewed, cadence)" in background
+
+
+def test_a_completed_insertion_records_how_long_it_took():
+    """Only failures were logged, and a performance is now seconds long.
+
+    Whether the cadence finished inside the deadline is exactly the question a
+    live session needs answered, and nothing recorded it. The answer itself
+    still never reaches the log.
+    """
+    background = (EXTENSION_DIR / "background.js").read_text()
+
+    assert background.count('log.info("inserted"') == 2
+    # `path:` is reserved -- a neighbouring test forbids it anywhere in this
+    # file, so that a path can never be smuggled to the native host.
+    assert 'via: "structured"' in background and 'via: "plain"' in background
+    assert "elapsedMs: Date.now() - entryStartedAt" in background
+    inserted = background.split('log.info("inserted"', 1)[1].split("});", 1)[0]
+    assert "reviewed.length" in inserted
+    assert "answer:" not in inserted
+
+
+def test_a_paced_entry_rechecks_its_target_on_every_beat():
+    """Entry now spans seconds, so the field can go away mid-performance."""
+    editor = (EXTENSION_DIR / "content" / "hawkes-editor.js").read_text()
+    actions = (EXTENSION_DIR / "common" / "page-actions.js").read_text()
+
+    # `execCommand` writes wherever the selection is, not into a held handle.
+    entry = editor.split("async function insertIntoEditable", 1)[1].split("\n  }\n", 1)[
+        0
+    ]
+    assert "!target.contains(live.anchorNode)" in entry
+    assert '"editor-lost-focus"' in entry
+    rules = (EXTENSION_DIR / "common" / "editor-rules.js").read_text()
+    assert '"editor-lost-focus": "errorNoFocusedField"' in rules
+    # The keypad path holds an id, so it re-reads the box rather than a node.
+    assert "const live = document.getElementById(id);" in actions
+
+
+def test_a_one_character_answer_is_struck_on_the_downbeat():
+    """It used to hold an empty field for the whole window, then fill it.
+
+    One-character answers are common in this course, and the result read as a
+    hang: nothing on screen for five to ten seconds, then the character.
+    """
+    editor = (EXTENSION_DIR / "content" / "hawkes-editor.js").read_text()
+
+    branch = editor.split("if (characters.length === 1) {", 1)[1].split("}", 1)[0]
+    assert "return [0];" in branch
+    assert "return [duration];" not in branch
 
 
 def test_a_markup_fallback_records_why_it_fell_back():

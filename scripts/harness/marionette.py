@@ -77,7 +77,11 @@ class Marionette:
         self.socket.sendall(f"{len(payload)}:".encode() + payload)
         while True:
             message = self._receive()
-            if isinstance(message, list) and message[0] == 1 and message[1] == self.message_id:
+            if (
+                isinstance(message, list)
+                and message[0] == 1
+                and message[1] == self.message_id
+            ):
                 _, _, error, result = message
                 if error:
                     raise MarionetteError(f"{command}: {error.get('message', error)}")
@@ -96,13 +100,19 @@ class Marionette:
         self.send("WebDriver:Navigate", {"url": url})
 
     def execute(self, script: str, args: list | None = None):
-        return self.send("WebDriver:ExecuteScript", {"script": script, "args": args or []})
+        return self.send(
+            "WebDriver:ExecuteScript", {"script": script, "args": args or []}
+        )
 
     def install_addon(self, path: str, temporary: bool = True) -> str:
-        return self.send("Addon:Install", {"path": path, "temporary": temporary})["value"]
+        return self.send("Addon:Install", {"path": path, "temporary": temporary})[
+            "value"
+        ]
 
     def click(self, css: str) -> None:
-        found = self.send("WebDriver:FindElement", {"using": "css selector", "value": css})
+        found = self.send(
+            "WebDriver:FindElement", {"using": "css selector", "value": css}
+        )
         inner = found.get("value", found) if isinstance(found, dict) else found
         self.send("WebDriver:ElementClick", {"id": inner[WEBDRIVER_ELEMENT_KEY]})
 
@@ -140,8 +150,9 @@ def launch(profile_dir: str, port: int, headless: bool = False) -> subprocess.Po
     binary = os.environ.get("ETHNOS_FIREFOX", "firefox")
     command = [
         binary,
-        "--profile", profile_dir,
-        "--no-remote",          # never attach to the user's running Firefox
+        "--profile",
+        profile_dir,
+        "--no-remote",  # never attach to the user's running Firefox
         "--new-instance",
         "--marionette",
         "--remote-allow-system-access",  # required for chrome context since FF 136
@@ -158,6 +169,8 @@ def launch(profile_dir: str, port: int, headless: bool = False) -> subprocess.Po
     if headless:
         environment["MOZ_HEADLESS"] = "1"
     return subprocess.Popen(
-        command, env=environment,
-        stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT,
+        command,
+        env=environment,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.STDOUT,
     )

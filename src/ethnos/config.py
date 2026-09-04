@@ -9,6 +9,7 @@ from typing import Literal, TypeAlias
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_OLLAMA_KEEP_ALIVE = "30m"
 OllamaThink: TypeAlias = bool | Literal["low", "medium", "high"] | None
 
 
@@ -22,6 +23,12 @@ class Settings:
     ollama_answer_num_predict: int
     ollama_num_ctx: int
     ollama_think: OllamaThink
+    ollama_vision_model: str
+    ollama_vision_verifier_model: str
+    ollama_vision_num_predict: int
+    ollama_math_model: str
+    question_image_cache_dir: Path
+    question_capture_dir: Path
     agent_model: str | None
     agent_model_profile: str
     agent_allow_web: bool
@@ -72,6 +79,26 @@ def load_settings() -> Settings:
         ),
         ollama_num_ctx=int(os.getenv("ETHNOS_OLLAMA_NUM_CTX", "4096")),
         ollama_think=parse_ollama_think(os.getenv("ETHNOS_OLLAMA_THINK")),
+        ollama_vision_model=os.getenv("ETHNOS_OLLAMA_VISION_MODEL", "qwen3.5:4b"),
+        ollama_vision_verifier_model=os.getenv(
+            "ETHNOS_OLLAMA_VISION_VERIFIER_MODEL", "gemma-python"
+        ),
+        ollama_vision_num_predict=int(
+            os.getenv("ETHNOS_OLLAMA_VISION_NUM_PREDICT", "256")
+        ),
+        ollama_math_model=os.getenv("ETHNOS_OLLAMA_MATH_MODEL", "qwen3.5:4b"),
+        question_image_cache_dir=Path(
+            os.getenv(
+                "ETHNOS_QUESTION_IMAGE_CACHE_DIR",
+                PROJECT_ROOT / "data" / "cache" / "question_images",
+            )
+        ),
+        question_capture_dir=Path(
+            os.getenv(
+                "ETHNOS_QUESTION_CAPTURE_DIR",
+                PROJECT_ROOT / "data" / "runs" / "captures",
+            )
+        ),
         agent_model=os.getenv("ETHNOS_AGENT_MODEL"),
         agent_model_profile=os.getenv("ETHNOS_AGENT_MODEL_PROFILE", "cpu-local"),
         agent_allow_web=_parse_bool(os.getenv("ETHNOS_AGENT_ALLOW_WEB"), default=False),

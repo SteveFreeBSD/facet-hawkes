@@ -136,7 +136,9 @@ def normalize_quiz_item(item: Any, index: int) -> dict[str, Any]:
         "id": str(item.get("id") or f"q{index:04d}"),
         "question": question,
         "question_type": question_type,
-        "source_chunks": _normalize_int_list(item.get("source_chunks")),
+        # Chunk order is meaningful: anchored retrieval and evidence presentation
+        # follow the order declared by the quiz author.
+        "source_chunks": _normalize_ordered_int_list(item.get("source_chunks")),
         "source_pages": _normalize_int_list(item.get("source_pages")),
     }
     if question_type in CHOICE_QUESTION_TYPES or options:
@@ -317,3 +319,17 @@ def _normalize_int_list(value: Any) -> list[int]:
         except (TypeError, ValueError):
             continue
     return sorted(set(normalized))
+
+
+def _normalize_ordered_int_list(value: Any) -> list[int]:
+    if value is None or not isinstance(value, list):
+        return []
+    normalized: list[int] = []
+    for item in value:
+        try:
+            parsed = int(item)
+        except (TypeError, ValueError):
+            continue
+        if parsed not in normalized:
+            normalized.append(parsed)
+    return normalized
