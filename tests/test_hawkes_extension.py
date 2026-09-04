@@ -162,7 +162,7 @@ def test_a_structured_answer_is_built_rather_than_refused():
     # not just displayed for the user to enter.
     assert "buildStructured" in background
     assert "planEntry(" in background
-    assert "answerFitsEditor(reviewed, state.editor).insertable" in background
+    assert "answerFitsEditor(reviewed, editor).insertable" in background
 
 
 def test_only_the_read_only_probe_runs_in_the_page_world():
@@ -239,7 +239,7 @@ def test_every_frame_is_inspected_then_exactly_one_receives_the_answer():
     assert "{ tabId: tab.id, allFrames: true }" in source
     # ...but the insertion targets only the frame that claimed the caret,
     # which is also why allFrames and frameIds are never combined.
-    assert "frameIds: [state.frameId]" in source
+    assert "frameIds: [target.frameId]" in source
     # The value inserted is checked against the value the user reviewed.
     assert "outcome.answer !== reviewed" in source
     # The decision itself lives in a DOM-free module so it can be exercised
@@ -712,7 +712,7 @@ def test_insertion_clears_the_answer_but_marks_the_question_handled():
     # What the panel shows afterwards is a separate, display-only copy. The
     # three fields above are what insertion consumes; none of them is restored
     # here, so nothing can be inserted twice or offered to a later question.
-    assert "placedText: state.displayText || state.answer" in finish
+    assert "placedText: target.displayText || target.reviewed" in finish
     insertion = background.split("async function insert()", 1)[1].split(
         "* Settle after a successful insertion.", 1
     )[0]
@@ -742,11 +742,16 @@ def test_structured_insertion_executes_the_machine_entry_plan_the_panel_validate
     background = (EXTENSION_DIR / "background.js").read_text()
     panel = (EXTENSION_DIR / "common" / "panel-view.js").read_text()
 
-    assert "async function buildStructured(answer, cadence)" in background
-    assert "const plan = planEntry(answer, state.editor);" in background
+    assert (
+        "async function buildStructured(answer, cadence, target, editor)" in background
+    )
+    assert "const plan = planEntry(answer, editor);" in background
     assert "state.entryText || state.answer" in panel
-    assert "const machineEntry = state.entryText || reviewed;" in background
-    assert "await buildStructured(machineEntry, cadence)" in background
+    assert "machineEntry: state.entryText || state.answer," in background
+    assert (
+        "await buildStructured(target.machineEntry, cadence, target, editor)"
+        in background
+    )
 
 
 def test_insert_claims_the_write_before_its_first_await():
@@ -767,7 +772,7 @@ def test_insertion_fails_closed_when_final_question_or_editor_read_fails():
 
     assert "if (!editor?.ok)" in background
     assert 'fail("errorEditorUnknown")' in background
-    assert "if (onScreen === null || state.signature === null)" in background
+    assert "if (onScreen === null || target.signature === null)" in background
     assert 'fail("errorQuestionUnverified")' in background
 
 
@@ -1095,7 +1100,7 @@ def test_the_editor_rules_are_re_read_before_inserting():
         "* Settle after a successful insertion.", 1
     )[0]
     # Re-described inside insert, before anything is decided or typed.
-    assert "await describeEditor(state.tabId, state.frameId)" in body
+    assert "await describeEditor(target.tabId, target.frameId)" in body
     assert body.index("describeEditor") < body.index("answerFitsEditor")
 
 
@@ -1180,8 +1185,8 @@ def test_a_tab_dragged_into_another_window_is_not_written_to():
     insertion = background.split("async function insert()", 1)[1].split(
         "* Settle after a successful insertion.", 1
     )[0]
-    assert "await browser.tabs.get(state.tabId)" in insertion
-    assert "tab.windowId !== state.windowId" in insertion
+    assert "await browser.tabs.get(target.tabId)" in insertion
+    assert "tab.windowId !== target.windowId" in insertion
     assert 'fail("errorTabMoved")' in insertion
     # The guard precedes the write, not merely accompanies it.
     assert insertion.index("errorTabMoved") < insertion.index("enterPlainAnswer")
@@ -1494,7 +1499,10 @@ def test_structured_keypad_entry_performs_on_the_same_cadence():
     assert 'filter((step) => step.op === "type")' in actions
     assert "60000 / beat.tempoBpm" in actions
     assert "args: [plan.steps, cadence]" in background
-    assert "await buildStructured(machineEntry, cadence)" in background
+    assert (
+        "await buildStructured(target.machineEntry, cadence, target, editor)"
+        in background
+    )
 
 
 def test_a_completed_insertion_records_how_long_it_took():

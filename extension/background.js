@@ -1025,18 +1025,19 @@ async function acceptReply(reply) {
  * beforehand from this question's permitted templates and character set, so
  * this either performs it or reports which step the editor refused.
  */
-async function buildStructured(answer, cadence) {
+async function buildStructured(answer, cadence, target, editor) {
   // Planning consumes explicit machine notation (`sqrt(30)*y/30`), not the
   // compact display (`y√30/30`). Keeping those roles separate removes an
   // entire class of radical-boundary and implicit-multiplication bugs.
-  const plan = planEntry(answer, state.editor);
+  const plan = planEntry(answer, editor);
   if (plan.ok === false) {
     return plan;
   }
   let results;
   try {
     results = await browser.scripting.executeScript({
-      target: { tabId: state.tabId, frameIds: [state.frameId] },
+      // The pinned frame, never the live one: this call is the write.
+      target: { tabId: target.tabId, frameIds: [target.frameId] },
       world: "MAIN",
       func: enterPlan,
       args: [plan.steps, cadence],
@@ -1047,28 +1048,115 @@ async function buildStructured(answer, cadence) {
   return results?.[0]?.result ?? { ok: false, code: "editor-model-missing" };
 }
 
+/**
+ * Everything an insertion is allowed to know about where it is writing.
+ *
+ * Taken synchronously, before the first `await`, and never re-read from the
+ * live state afterwards. `state` is one mutable object shared by every window,
+ * and `prepare()` replaces its identity wholesale -- so an insertion that
+ * re-read `state.tabId` between awaits could be pointed at a different tab
+ * part-way through. It would then validate the *new* question against the
+ * *new* signature, agree with itself, and write the answer reviewed for one
+ * window into another window's answer box.
+ *
+ * Paced entry made that window seconds wide rather than milliseconds.
+ *
+ * @typedef {object} InsertionTarget
+ * @property {number | null} windowId
+ * @property {number} tabId
+ * @property {number} frameId
+ * @property {string} fieldId
+ * @property {string | null} signature the question the answer was reviewed for
+ * @property {string} reviewed the answer as shown and approved
+ * @property {string} machineEntry the form the panel planned and offered
+ */
+
+/** Snapshot the insertion target. Must be called before any `await`. */
+function pinInsertionTarget() {
+  return Object.freeze({
+    windowId: state.windowId,
+    tabId: state.tabId,
+    frameId: state.frameId,
+    fieldId: state.fieldId,
+    signature: state.signature,
+    reviewed: state.answer,
+    machineEntry: state.entryText || state.answer,
+    // The readable form the card showed for review, kept so the settled
+    // panel reports what was approved rather than whatever is live now.
+    displayText: state.displayText,
+  });
+}
+
+/**
+ * Whether the live state is still the insertion this call claimed.
+ *
+ * Identity rather than a generation counter: anything that could redirect the
+ * write -- `prepare`, `claim`, `reset`, a tab moving, a window closing --
+ * changes the phase, and all but the narrowest also change the tab or the
+ * signature. Comparing the fields themselves therefore needs no extra
+ * bookkeeping to keep honest, and it is conservative in the safe direction: a
+ * re-prepare of this very question aborts rather than writing on.
+ */
+function ownsTarget(target) {
+  return (
+    state.phase === "inserting"
+    && state.windowId === target.windowId
+    && state.tabId === target.tabId
+    && state.frameId === target.frameId
+    && state.fieldId === target.fieldId
+    && state.signature === target.signature
+    && state.answer === target.reviewed
+  );
+}
+
+/**
+ * Give up an insertion whose target is no longer ours, without retargeting.
+ *
+ * Reported against the pinned target, and only while the live state still
+ * belongs to the same window: once another window owns the state, saying
+ * anything into it would put this window's failure on that window's panel.
+ */
+function abandonInsertion(target, why) {
+  log.warn("insertion-target-changed", {
+    why,
+    wasWindow: target.windowId,
+    nowWindow: state.windowId,
+    wasTab: target.tabId,
+    nowTab: state.tabId,
+  });
+  if (state.windowId === target.windowId) {
+    fail("errorInsertionAbandoned");
+  }
+}
+
 /** Put the reviewed answer in the field. */
 async function insert() {
   if (state.phase === "inserting" || state.tabId === null) {
     return;
   }
-  const reviewed = state.answer;
-  const machineEntry = state.entryText || reviewed;
+  // Pinned before anything can yield. Everything below reads this and never
+  // the live state, so no concurrent `prepare` can move where the write lands.
+  const target = pinInsertionTarget();
+  const reviewed = target.reviewed;
   // Claim the insertion synchronously. Two panel messages can enter this
   // function in the same turn; publishing the busy phase after yielding lets
   // both pass the guard and write the same answer twice.
   update({ phase: "inserting" });
   await settingsReady;
+  if (!ownsTarget(target)) {
+    abandonInsertion(target, "settings");
+    return;
+  }
 
   // The tab is looked up by window when the field is found; this confirms the
   // pairing still holds at the moment of writing. An event can be missed, or
   // arrive after a click has already been dispatched -- a check here cannot
   // be, and this is the one operation that changes the page.
   try {
-    const tab = await browser.tabs.get(state.tabId);
-    if (Number.isInteger(state.windowId) && tab.windowId !== state.windowId) {
+    const tab = await browser.tabs.get(target.tabId);
+    if (Number.isInteger(target.windowId) && tab.windowId !== target.windowId) {
       log.warn("tab-left-its-window-before-insert", {
-        was: state.windowId, now: tab.windowId,
+        was: target.windowId, now: tab.windowId,
       });
       fail("errorTabMoved");
       return;
@@ -1078,14 +1166,22 @@ async function insert() {
     fail("errorTabMoved");
     return;
   }
+  if (!ownsTarget(target)) {
+    abandonInsertion(target, "tab-check");
+    return;
+  }
 
   // Re-read the editor's rules now. They are published per question, and the
   // panel's copy was taken when the field was found -- which may have been a
   // different question. Checking an answer against a stale character set is
   // how a perfectly legal `y` came to be reported as rejected.
-  const editor = await describeEditor(state.tabId, state.frameId);
+  const editor = await describeEditor(target.tabId, target.frameId);
   if (!editor?.ok) {
     fail("errorEditorUnknown");
+    return;
+  }
+  if (!ownsTarget(target)) {
+    abandonInsertion(target, "editor");
     return;
   }
   update({ editor });
@@ -1096,15 +1192,24 @@ async function insert() {
   // answer in the box. Only a question that reads cleanly and differs is
   // grounds for refusing. An unreadable question is also refused: inserting
   // against an unknown question is never safe.
-  const onScreen = questionSignature(state.fieldId, await readQuestion(state.tabId, state.frameId));
-  if (onScreen === null || state.signature === null) {
+  // Read from the pinned frame and compared against the pinned signature. Read
+  // from the live state instead, a retargeted insertion compared the new
+  // question against the new signature, agreed with itself, and wrote on.
+  const onScreen = questionSignature(
+    target.fieldId, await readQuestion(target.tabId, target.frameId)
+  );
+  if (onScreen === null || target.signature === null) {
     fail("errorQuestionUnverified");
     return;
   }
-  if (onScreen !== state.signature) {
-    log.warn("question-changed-before-insert", { was: state.signature, now: onScreen });
+  if (onScreen !== target.signature) {
+    log.warn("question-changed-before-insert", { was: target.signature, now: onScreen });
     fail("errorQuestionChanged");
-    prepare();
+    prepare(target.windowId);
+    return;
+  }
+  if (!ownsTarget(target)) {
+    abandonInsertion(target, "question-check");
     return;
   }
 
@@ -1115,18 +1220,23 @@ async function insert() {
   // A performance now runs for seconds, so how long it actually took is the
   // one thing worth recording. The answer itself never enters the log.
   const entryStartedAt = Date.now();
-  const typeable = reviewed && answerFitsEditor(reviewed, state.editor).insertable;
+  const typeable = reviewed && answerFitsEditor(reviewed, editor).insertable;
   if (!typeable) {
+    // The last check before the page is changed.
+    if (!ownsTarget(target)) {
+      abandonInsertion(target, "before-structured-write");
+      return;
+    }
     // This is the same machine form the panel planned and offered for review.
     // Replanning the readable answer can produce different template steps.
-    const built = await buildStructured(machineEntry, cadence);
+    const built = await buildStructured(target.machineEntry, cadence, target, editor);
     if (built.ok) {
       log.info("inserted", {
         via: "structured",
         answerLength: reviewed.length,
         elapsedMs: Date.now() - entryStartedAt,
       });
-      await finishInsertion(`entered: ${built.entered ?? ""}`);
+      await finishInsertion(`entered: ${built.entered ?? ""}`, target);
     } else {
       fail(insertErrorKey(built.code), { detail: built.detail ?? built.code });
     }
@@ -1134,12 +1244,17 @@ async function insert() {
   }
 
   try {
-    const target = { tabId: state.tabId, frameIds: [state.frameId] };
+    const frame = { tabId: target.tabId, frameIds: [target.frameId] };
     // Refresh the isolated-world prelude immediately before the one-shot
     // function. No answer is written to storage, even briefly.
-    await runOperation(target, INSPECT_SCRIPT);
+    await runOperation(frame, INSPECT_SCRIPT);
+    // The last check before the page is changed.
+    if (!ownsTarget(target)) {
+      abandonInsertion(target, "before-plain-write");
+      return;
+    }
     const [entry] = await runInjection({
-      target,
+      target: frame,
       func: enterPlainAnswer,
       args: [reviewed, cadence],
     });
@@ -1162,7 +1277,7 @@ async function insert() {
       answerLength: reviewed.length,
       elapsedMs: Date.now() - entryStartedAt,
     });
-    await finishInsertion("");
+    await finishInsertion("", target);
   } catch (error) {
     fail(errorKeyOf(error));
   }
@@ -1182,17 +1297,30 @@ async function insert() {
  * time. A real prompt/MathML change has a different signature and starts the
  * next solve normally.
  */
-async function finishInsertion(detail) {
+async function finishInsertion(detail, target) {
+  // Paced entry runs for seconds, so ownership can have moved while the
+  // characters were going in. The answer is already in the pinned field and
+  // cannot be unwritten -- but the state that would record it may now describe
+  // a different window, and publishing "inserted" into that would put this
+  // window's result on another window's panel. Say so in the log and leave
+  // the live state alone.
+  if (!ownsTarget(target)) {
+    log.warn("insertion-finished-after-ownership-change", {
+      wasWindow: target.windowId,
+      nowWindow: state.windowId,
+    });
+    return;
+  }
   // Structured entry changes Hawkes' rendered answer mathematics. Depending
   // on its geometry, that can also change what the read-only question probe
   // sees, even though the prompt itself has not advanced. The watcher is
   // paused while phase === "inserting", so rebase the handled fingerprint now
   // before publishing "inserted". Otherwise the next 1.5-second watch tick
   // mistakes our own insertion for a new question and solves it twice.
-  let handledSignature = state.signature;
+  let handledSignature = target.signature;
   try {
-    const afterInsertion = await readQuestion(state.tabId, state.frameId, 2);
-    handledSignature = questionSignature(state.fieldId, afterInsertion) ?? handledSignature;
+    const afterInsertion = await readQuestion(target.tabId, target.frameId, 2);
+    handledSignature = questionSignature(target.fieldId, afterInsertion) ?? handledSignature;
   } catch (error) {
     log.debug("post-insert-question-read-failed", { error: describeError(error) });
   }
@@ -1201,7 +1329,7 @@ async function finishInsertion(detail) {
     errorKey: "",
     detail,
     // Readable form, matching what the card showed a moment ago for review.
-    placedText: state.displayText || state.answer,
+    placedText: target.displayText || target.reviewed,
     answer: "",
     displayText: "",
     entryText: "",

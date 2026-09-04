@@ -209,6 +209,10 @@
     "message": "The question changed, so that answer was not inserted. Solving the question now on screen.",
     "description": "Shown when the question on screen no longer matches the one the answer was solved for."
   },
+  "errorInsertionAbandoned": {
+    "message": "The panel moved to a different question or window while the answer was being entered, so it was not inserted. Solve again where you want the answer.",
+    "description": "Shown when the target an insertion pinned at its start is no longer the one the add-on is attached to."
+  },
   "errorQuestionUnverified": {
     "message": "The current question could not be verified, so nothing was inserted. Solve it again when the question is readable.",
     "description": "Shown when the final question identity cannot be read before insertion."
