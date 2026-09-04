@@ -52,6 +52,11 @@ COMPLEX_Q11 = (
     "<mo>)</mo><mo>(</mo><mn>6</mn><mo>+</mo><mi>i</mi><mo>)</mo>"
     "</mrow></mstyle></math>"
 )
+COMPLEX_Q12 = (
+    "<math><mstyle><msup><mrow><mo>(</mo><mn>6</mn><mo>+</mo><msqrt>"
+    "<mrow><mo>−</mo><mn>2</mn></mrow></msqrt><mo>)</mo></mrow><mn>2</mn>"
+    "</msup></mstyle></math>"
+)
 
 
 def test_a_dot_product_of_rational_powers():
@@ -86,6 +91,10 @@ def test_live_complex_root_has_a_power_then_an_unindexed_square_root():
 
 def test_live_complex_product_keeps_both_factors():
     assert mathml_to_latex(COMPLEX_Q11) == "(5-4i)(6+i)"
+
+
+def test_live_complex_binomial_power_keeps_the_negative_radicand_grouped():
+    assert mathml_to_latex(COMPLEX_Q12) == r"(6+\sqrt{-2})^2"
 
 
 def test_namespaced_markup_is_read():
@@ -133,6 +142,11 @@ def test_what_cannot_be_read_exactly_is_refused(markup):
         (COMPLEX_Q8, "Simplify the following expression.", "-7 - 2i"),
         (COMPLEX_Q9, "Evaluate the following square root expression.", "-10i"),
         (COMPLEX_Q11, "Simplify the following expression.", "34 - 19i"),
+        (
+            COMPLEX_Q12,
+            "Simplify the following square root expression.",
+            "34 + 12i√2",
+        ),
     ],
 )
 def test_the_solver_answers_straight_from_the_markup(markup, problem, expected):
@@ -231,6 +245,28 @@ def test_the_host_answers_live_complex_q11_from_markup():
     assert response.status == "ready"
     assert response.answer.display_text == "34 - 19i"
     assert response.answer.keyboard_entry == "34-19*i"
+    assert response.certainty.source == "markup"
+
+
+def test_the_host_answers_live_complex_q12_from_markup():
+    from ethnos.hawkes_host import handle
+
+    response = handle(
+        {
+            "protocol_version": 1,
+            "operation": "solve_hawkes_problem",
+            "request_id": "complex-q12",
+            "origin": "https://learn.hawkeslearning.com",
+            "problem": {
+                "prompt_text": "Simplify the following square root expression.",
+                "mathml": [COMPLEX_Q12],
+            },
+        }
+    )
+
+    assert response.status == "ready"
+    assert response.answer.display_text == "34 + 12i√2"
+    assert response.answer.keyboard_entry == "34+12*i*sqrt(2)"
     assert response.certainty.source == "markup"
 
 

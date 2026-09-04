@@ -361,3 +361,23 @@ numeric complex multiplication, conjugate multiplication, division, and a
 power of a complex literal. Question 11's rendered structure, exact wording,
 expected result, host response, and plain insertion plan are pinned in the
 MathML, coverage, symbolic-solver, and end-to-end suites.
+
+Question 12 then showed `(6 + √(-2))^2` under “Simplify the following square
+root expression.” SymPy correctly converted the negative root to `i√2`, but
+plain `simplify` preserved the resulting binomial power. Because the displayed
+answer differed from the source text, the no-op guard did not catch that
+simplification had stopped halfway; Ethnos offered `(6 + i√2)^2` instead of
+`34 + 12i√2`. A numeric expression that contains SymPy's imaginary unit and no
+free variables is now expanded before its final simplify. This covers complex
+numbers introduced by negative radicals as well as a literal lowercase `i`,
+without changing the ordinary-variable context guard.
+
+The same live question exposed an independent panel failure. The isolated DOM
+probe had found the only answer field, but opening the Firefox sidebar cleared
+Hawkes' page-owned `focusedElementIndex`; the MAIN-world rule reader treated
+`-1` as if the editor model were missing and disabled insertion after five
+identical retries. When that model contains exactly one control with matching
+control data, the reader now describes that unambiguous control. Two or more
+controls still fail closed. Q12's final keyboard form is
+`34+12*i*sqrt(2)`, and its plan types `34+12i` before loading one Radical
+template containing `2`.

@@ -219,6 +219,15 @@
       "expected": "34 - 19i"
     },
     {
+      "id": "complex-q12",
+      "topic": "complex numbers",
+      "prompt": "Simplify the following square root expression.",
+      "expressions": [
+        "(6 + \\sqrt{-2})^2"
+      ],
+      "expected": "34 + 12i√2"
+    },
+    {
       "id": "factor-then-order",
       "topic": "guards",
       "prompt": "Factor completely, then write the answer in descending order.",

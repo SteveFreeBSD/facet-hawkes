@@ -916,6 +916,31 @@ def test_numeric_complex_arithmetic_is_recognized_without_a_bare_i_power():
         assert extract_final_math(result.raw_response) == expected
 
 
+def test_live_negative_radical_binomial_power_expands_to_standard_complex_form():
+    """Lesson 1.5 Q12: converting the root is not the end of simplification."""
+    result = answer_symbolic_math(
+        problem_text="Simplify the following square root expression.",
+        expressions=[r"(6 + \sqrt{-2})^2"],
+    )
+
+    assert result is not None
+    assert extract_final_math(result.raw_response) == "34 + 12i√2"
+
+
+def test_numeric_negative_radicals_are_expanded_after_becoming_complex():
+    for expression, expected in (
+        (r"(4 + \sqrt{-9})^2", "7 + 24i"),
+        (r"(3 + \sqrt{-5})(3 - \sqrt{-5})", "14"),
+        (r"(\sqrt{-3})^4", "9"),
+    ):
+        result = answer_symbolic_math(
+            problem_text="Simplify the following square root expression.",
+            expressions=[expression],
+        )
+        assert result is not None, expression
+        assert extract_final_math(result.raw_response) == expected
+
+
 def test_parenthesized_negative_i_power_reduces_beside_a_negative_square_root():
     """Lesson 1.5 Q9: both input `i` values must be the same imaginary unit."""
     result = answer_symbolic_math(

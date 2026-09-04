@@ -126,11 +126,11 @@ def solve_symbolic_operation(
             answer = sympy.expand(original)
         elif operation in {"simplify", "rational_exponents"}:
             # SymPy leaves a numeric complex power such as ``(2 + I)**2``
-            # intact under simplify. Once the context guard has established
-            # that `i` is the imaginary unit and no variables remain, ordinary
-            # expansion is exact evaluation and produces the requested
-            # simplest ``a + bi`` form.
-            if imaginary_unit and not original.free_symbols:
+            # intact under simplify. The I may come from contextual lowercase
+            # `i` or from a negative radical. When no variables remain,
+            # ordinary expansion is exact evaluation and produces the
+            # requested simplest ``a + bi`` form.
+            if not original.free_symbols and original.has(sympy.I):
                 answer = sympy.simplify(sympy.expand(original))
             else:
                 answer = sympy.simplify(original)

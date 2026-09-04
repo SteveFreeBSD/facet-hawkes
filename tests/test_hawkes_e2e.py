@@ -69,7 +69,11 @@ COMPLEX_EDITOR = {
     "enabled": True,
     "allowedCharacters": "0123456789-+i",
     "maxLength": 16,
-    "slots": {"base": "0123456789-+i", "exponent": "0123456789"},
+    "slots": {
+        "base": "0123456789-+i",
+        "exponent": "0123456789",
+        "radicand": "0123456789",
+    },
     "templates": {
         "fraction": False,
         "radical": True,
@@ -138,6 +142,29 @@ def test_live_complex_q11_is_a_plain_complete_insertable_plan(plan_entry):
     assert plan_entry(machine, COMPLEX_EDITOR) == {
         "ok": True,
         "steps": [{"op": "type", "text": "34-19i"}],
+    }
+
+
+def test_live_complex_q12_expands_then_builds_one_radical(plan_entry):
+    from ethnos.answer_image import keyboard_entry_for_math
+
+    result = answer_symbolic_math(
+        problem_text="Simplify the following square root expression.",
+        expressions=[r"(6 + \sqrt{-2})^2"],
+    )
+
+    assert result is not None
+    display = extract_final_math(result.raw_response)
+    machine = keyboard_entry_for_math(display)
+    assert display == "34 + 12i√2"
+    assert machine == "34+12*i*sqrt(2)"
+    assert plan_entry(machine, COMPLEX_EDITOR) == {
+        "ok": True,
+        "steps": [
+            {"op": "type", "text": "34+12i"},
+            {"op": "template", "name": "Radical"},
+            {"op": "type", "text": "2"},
+        ],
     }
 
 

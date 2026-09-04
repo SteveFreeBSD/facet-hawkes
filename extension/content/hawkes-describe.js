@@ -27,11 +27,24 @@
     return { ok: false, code: "editor-model-missing" };
   }
 
-  const index = ui.focusedElementIndex;
+  let index = ui.focusedElementIndex;
   if (!Number.isInteger(index) || index < 0 || index >= ui.controlsCollection.length) {
-    // -1 is what the editor reports when no answer control holds the caret,
-    // including while one of its own modal dialogs is open.
-    return { ok: false, code: "no-focused-control" };
+    // Opening the Firefox sidebar moves focus out of the page, and Hawkes then
+    // clears this page-owned cursor to -1 even though the isolated DOM probe
+    // has already found the answer frame. With exactly one live model control
+    // there is no choice to guess at, so describe it. Multiple controls remain
+    // ambiguous and fail closed (as does a dialog, which is checked before
+    // this probe is called).
+    const candidates = [];
+    for (let offset = 0; offset < ui.controlsCollection.length; offset += 1) {
+      if (ui.controlsCollection[offset] && ui.controlsCollectionData?.[offset]) {
+        candidates.push(offset);
+      }
+    }
+    if (candidates.length !== 1) {
+      return { ok: false, code: "no-focused-control" };
+    }
+    [index] = candidates;
   }
 
   const control = ui.controlsCollection[index];

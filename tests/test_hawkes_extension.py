@@ -917,6 +917,53 @@ def test_the_editor_description_retries_while_the_editor_is_rebuilt() -> None:
     assert "described?.ok" in body, "only a successful description ends the retry loop"
 
 
+def test_the_only_editor_control_is_described_after_sidebar_takes_focus() -> None:
+    """The page model clears its cursor when Firefox focus enters the sidebar.
+
+    The isolated DOM probe has already selected the one answer frame. When the
+    page-owned editor likewise contains exactly one control, that control is
+    unambiguous even though ``focusedElementIndex`` has become -1.
+    """
+    quickjs = pytest.importorskip("quickjs")
+    source = (EXTENSION_DIR / "content" / "hawkes-describe.js").read_text()
+    source = source.replace('"use strict";', "", 1)
+
+    def describe(control_count: int) -> dict:
+        context = quickjs.Context()
+        controls = [
+            {
+                "Type": "Base",
+                "enabled": True,
+                "qdyBase_AllowedChar": "0123456789i-+",
+                "qdyBaseMaxChars": 40,
+            }
+            for _ in range(control_count)
+        ]
+        data = [
+            {"isQDy": True, "Name": f"answer-{index}", "enableState": True}
+            for index in range(control_count)
+        ]
+        context.eval(
+            "globalThis.window = {quant_wp_UI: "
+            + json.dumps(
+                {
+                    "focusedElementIndex": -1,
+                    "controlsCollection": controls,
+                    "controlsCollectionData": data,
+                }
+            )
+            + "};"
+        )
+        return json.loads(context.eval(source).json())
+
+    described = describe(1)
+    assert described["ok"] is True
+    assert described["kind"] == "dynamic"
+    assert described["allowedCharacters"] == "0123456789i-+"
+    # More than one control is genuinely ambiguous and still fails closed.
+    assert describe(2) == {"ok": False, "code": "no-focused-control"}
+
+
 def test_the_question_signature_is_built_from_the_question_not_the_editor() -> None:
     """Two questions of the same kind publish identical editor rules.
 
