@@ -36,6 +36,18 @@ def fits():
     return call
 
 
+@pytest.fixture(scope="module")
+def insertion_error_key():
+    source = re.sub(r"^export ", "", RULES_JS.read_text(), flags=re.MULTILINE)
+    context = quickjs.Context()
+    context.eval(source)
+
+    def call(code):
+        return context.eval(f"insertErrorKey({json.dumps(code)})")
+
+    return call
+
+
 # Observed on lesson 1.2, question 8: sqrt(9y^2), answer 3y.
 DYNAMIC_Y = {
     "ok": True,
@@ -117,6 +129,12 @@ def test_a_disabled_or_unreadable_editor_refuses(fits):
 
 def test_an_empty_answer_is_never_insertable(fits):
     assert fits("", DYNAMIC_Y)["code"] == "answer-empty"
+
+
+def test_structured_insertion_preserves_an_existing_error_key(insertion_error_key):
+    """M1: an injection timeout must not be relabelled as a missing bridge."""
+    assert insertion_error_key("errorOperationTimeout") == "errorOperationTimeout"
+    assert insertion_error_key("template-unavailable") == "errorEditorUnknown"
 
 
 def test_the_readable_answer_is_shown_even_when_it_cannot_be_typed():

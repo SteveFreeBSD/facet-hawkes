@@ -1053,6 +1053,11 @@ async function insert() {
     return;
   }
   const reviewed = state.answer;
+  const machineEntry = state.entryText || reviewed;
+  // Claim the insertion synchronously. Two panel messages can enter this
+  // function in the same turn; publishing the busy phase after yielding lets
+  // both pass the guard and write the same answer twice.
+  update({ phase: "inserting" });
   await settingsReady;
 
   // The tab is looked up by window when the field is found; this confirms the
@@ -1073,8 +1078,6 @@ async function insert() {
     fail("errorTabMoved");
     return;
   }
-
-  update({ phase: "inserting" });
 
   // Re-read the editor's rules now. They are published per question, and the
   // panel's copy was taken when the field was found -- which may have been a
@@ -1114,7 +1117,9 @@ async function insert() {
   const entryStartedAt = Date.now();
   const typeable = reviewed && answerFitsEditor(reviewed, state.editor).insertable;
   if (!typeable) {
-    const built = await buildStructured(reviewed, cadence);
+    // This is the same machine form the panel planned and offered for review.
+    // Replanning the readable answer can produce different template steps.
+    const built = await buildStructured(machineEntry, cadence);
     if (built.ok) {
       log.info("inserted", {
         via: "structured",

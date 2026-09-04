@@ -119,6 +119,13 @@ export function accepts(allowed, character, kind) {
  * @returns {string}
  */
 export function insertErrorKey(code) {
+  // Injection failures have already been translated into catalogue keys by
+  // `errorKeyOf`. Preserve them: looking them up as low-level editor reason
+  // codes would turn a precise timeout or permission failure into the generic
+  // `errorNoBridge` fallback.
+  if (typeof code === "string" && code.startsWith("error")) {
+    return code;
+  }
   return {
     "no-focused-answer-field": "errorNoFocusedField",
     // The caret left the field part-way through a paced entry.

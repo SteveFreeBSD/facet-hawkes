@@ -737,14 +737,29 @@ def test_the_placed_answer_is_dropped_by_new_work_like_every_other_result():
     assert popup.count('placedText: ""') == 2
 
 
-def test_structured_planning_uses_the_current_displayed_answer():
+def test_structured_insertion_executes_the_machine_entry_plan_the_panel_validated():
+    """M2: readable display notation and machine notation can plan differently."""
     background = (EXTENSION_DIR / "background.js").read_text()
     panel = (EXTENSION_DIR / "common" / "panel-view.js").read_text()
 
     assert "async function buildStructured(answer, cadence)" in background
     assert "const plan = planEntry(answer, state.editor);" in background
     assert "state.entryText || state.answer" in panel
-    assert "reply.answer.keyboard_entry" in background
+    assert "const machineEntry = state.entryText || reviewed;" in background
+    assert "await buildStructured(machineEntry, cadence)" in background
+
+
+def test_insert_claims_the_write_before_its_first_await():
+    """L1: two insert messages in one turn must not both pass the phase guard."""
+    background = (EXTENSION_DIR / "background.js").read_text()
+    insertion = background.split("async function insert()", 1)[1].split(
+        "* Settle after a successful insertion.", 1
+    )[0]
+
+    guard = insertion.index('state.phase === "inserting"')
+    claimed = insertion.index('update({ phase: "inserting" })')
+    first_await = insertion.index("await ")
+    assert guard < claimed < first_await
 
 
 def test_insertion_fails_closed_when_final_question_or_editor_read_fails():
@@ -1479,7 +1494,7 @@ def test_structured_keypad_entry_performs_on_the_same_cadence():
     assert 'filter((step) => step.op === "type")' in actions
     assert "60000 / beat.tempoBpm" in actions
     assert "args: [plan.steps, cadence]" in background
-    assert "await buildStructured(reviewed, cadence)" in background
+    assert "await buildStructured(machineEntry, cadence)" in background
 
 
 def test_a_completed_insertion_records_how_long_it_took():
