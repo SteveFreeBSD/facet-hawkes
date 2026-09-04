@@ -132,8 +132,11 @@ randomised Lo-fi cadence inside a 5–10 second window, leaving longer rests
 after operators and separators so a demonstration voice-over can name each
 part of the expression. Settings offers Classical, Jazz, Lo-fi, Electronic and
 Custom arrangements, an independent tempo, and a configurable 2–12 second hard
-window. The timing is theatrical, not an attempt to imitate human input: the
-synthetic events remain observable to the page.
+window. Structured keypad plans use that same cadence for their typed steps;
+template presses settle on the shared clock. The timing is theatrical, not an
+attempt to imitate human input: synthetic events and MAIN-world editor calls
+remain observable to the page. See the authoritative
+[`Answer Cadence` design note](../docs/ANSWER_CADENCE.md).
 
 ## Site-footprint contract and hard limit
 

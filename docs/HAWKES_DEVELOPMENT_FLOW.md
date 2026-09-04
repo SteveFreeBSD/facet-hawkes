@@ -37,6 +37,11 @@ The owner having several Firefox windows open is normal and is not a reason to
 stop; name the one you mean. Ambiguity still fails closed, because focusing and
 photographing the wrong window is both useless and an intrusion.
 
+For the insertion presentation contract, use [Answer Cadence](ANSWER_CADENCE.md)
+as the source of truth. Cadence begins only after the answer and target have
+been validated, changes timing only, and keeps synthetic events and
+MAIN-world editor calls observable.
+
 Inspect the reported PNG locally, then delete it because it contains
 coursework. Use `status` when no screenshot is needed and `shot` for another
 visual check:

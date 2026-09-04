@@ -16,6 +16,7 @@ the active documentation; Git history remains the archive.
 | Inspect the primary host | [Caspian Host Profile](hosts/caspian.md) |
 | Configure screenshot OCR and exact math | [Vision and Exact-Math Architecture](VISION_MATH_ARCHITECTURE.md) |
 | Use or develop the Hawkes add-on | [extension/README.md](../extension/README.md) |
+| Understand Answer Cadence / Semantic Cadence | [Answer Cadence](ANSWER_CADENCE.md) |
 | Sign and permanently install the Hawkes add-on | [Firefox release runbook](../extension/RELEASE.md) |
 | Review Hawkes add-on data handling | [Hawkes privacy notice](../extension/PRIVACY.md) |
 | Understand the Hawkes answer editor | [Hawkes editor findings](HAWKES_EDITOR_FINDINGS.md) |

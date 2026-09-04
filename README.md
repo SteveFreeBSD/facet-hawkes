@@ -46,12 +46,15 @@ Answers now arrive as a short, controlled presentation rather than a sudden
 burst. Choose **Classical, Jazz, Lo-fi, Electronic, or Custom**, adjust the
 tempo, and bound the complete performance to **2–12 seconds**. Operators and
 separators can receive longer rests for a spoken walkthrough, and structured
-keypad answers share the same clock. The default Lo-fi arrangement varies
-inside a 5–10 second window.
+keypad answers share the same clock after their editor plan has been validated.
+The default Lo-fi arrangement varies inside a 5–10 second window. Read the
+[Answer Cadence design note](docs/ANSWER_CADENCE.md) for the model, invariants,
+and terminology.
 
-Cadence is presentation timing—not an attempt to mimic trusted human input.
-The add-on rechecks the target on every beat and stops if the field, caret, tab,
-frame, window, or question changes while an answer is being placed.
+Answer Cadence is presentation timing, not human-like trusted input. Synthetic
+events and MAIN-world editor calls remain observable to page code. The add-on
+rechecks ownership on every beat and stops if the field, caret, tab, frame,
+window, or question changes while an answer is being placed.
 
 ### The workflow
 

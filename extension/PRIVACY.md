@@ -50,7 +50,12 @@ Reading and solving add no persistent node, attribute, style, listener, page
 global, or extension resource to Hawkes. Insertion occurs only after the user
 presses **Insert** and necessarily changes Hawkes' answer editor. Synthetic
 input and the structured editor calls can be observed by page code while the
-insertion occurs; the add-on does not claim to be undetectable.
+insertion occurs; Answer Cadence changes timing only and does not claim or seek
+human-like trusted input, anti-detection, fingerprint avoidance, or
+undetectability. Zero footprint means no persistent extension-created page UI
+or state after the operation, not invisible activity during insertion. The
+cadence model and its safety boundary are documented in the
+[`Answer Cadence` design note](../docs/ANSWER_CADENCE.md).
 
 ## User control
 

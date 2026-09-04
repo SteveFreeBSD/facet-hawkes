@@ -227,8 +227,12 @@ variation and symbol-rest panel appears. Set the window to 5–10 seconds, inser
 a plain-text formula, and time from its first to last character. It must finish
 inside that window; operators and separators should carry visibly longer
 rests. Repeat with a contenteditable formula if the question supplies one.
-Structured keypad answers have their own settling path and are not governed by
-these controls.
+Insert a structured keypad formula as well: its validated `type` steps must use
+the same cadence, while template presses and their settling work share that
+performance clock. Do not treat a successful insertion as evidence that the
+events were invisible; page code can observe synthetic input and MAIN-world
+editor calls. The complete cadence contract is in the
+[`Answer Cadence` design note](../docs/ANSWER_CADENCE.md).
 
 The event page holds preferences in memory, so a change applies to the next
 question without restarting Firefox.
