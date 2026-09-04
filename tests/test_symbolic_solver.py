@@ -804,3 +804,66 @@ def test_the_imaginary_unit_is_written_the_way_the_question_writes_it():
     answer = extract_final_math(result.raw_response)
     assert answer == "3i√3"
     assert "I" not in answer
+
+
+def test_a_question_that_names_one_positive_variable_is_believed():
+    """Lesson 1.5 question 7, met live: "Assume x > 0."
+
+    Only the phrase forms -- "assume all variables are positive" and its
+    relatives -- were recognised, so this question was solved with no
+    assumption at all. SymPy could not extract the root and returned
+    `2sqrt(2(-x^9))`: unsimplified, missing its `i`, and refused by the editor.
+    Hawkes marked the session's attempt "not in the simplest form".
+    """
+    from ethnos.symbolic_solver import _assume_positive, _named_positive_variables
+
+    assert _named_positive_variables("Assume x > 0.") == {"x"}
+    assert _named_positive_variables("Assume y >= 0 and z > 0") == {"y", "z"}
+    assert _named_positive_variables("Simplify the expression.") == set()
+    assert _assume_positive("Assume x > 0.", "\\sqrt{-8x^{9}}", "simplify")
+
+
+def test_an_uncovered_variable_leaves_the_assumption_off():
+    """The safe direction. Claiming positivity for a variable the question did
+    not mention is how a confident wrong answer gets made; declining only costs
+    the slow path."""
+    from ethnos.symbolic_solver import _assume_positive, _candidate_variables
+
+    # `sqrt` must not contribute an `s`, `q`, `r` or `t`.
+    assert _candidate_variables("\\sqrt{-8x^{9}}") == {"x"}
+    assert _candidate_variables("sqrt(9*y^2)*z") == {"y", "z"}
+    # The question speaks for x only; y is not covered.
+    assert not _assume_positive("Assume x > 0.", "\\sqrt{x^{3}y^{3}}", "simplify")
+
+
+def test_a_half_integer_power_is_split_rather_than_rearranged():
+    """`2·√2·i·x^(9/2)` was rendered `2ix√(2)^(9/2)` -- a different number.
+
+    The radical machinery reordered the factors around an exponent it could not
+    represent. Splitting the whole power off first both keeps the value and
+    produces the single merged radical the question is marked against.
+    """
+    result = answer_symbolic_math(
+        problem_text="Evaluate the following square root expression. Assume x > 0.",
+        expressions=["\\sqrt{-8x^{9}}"],
+    )
+    assert result is not None
+    assert extract_final_math(result.raw_response) == "2ix^4√(2x)"
+
+
+def test_splitting_half_powers_does_not_disturb_whole_ones():
+    """The split must fire only where SymPy actually produced a half power."""
+    from ethnos.symbolic_solver import _display
+
+    import sympy
+
+    x = sympy.Symbol("x", positive=True)
+    assert _display(sympy.Integer(2) * x**4) == "2x^4"
+    assert _display(sympy.sqrt(2) * x) == "x√2"
+    # A negative half power keeps its value: x**(-3/2) is x**-2 * sqrt(x).
+    assert (
+        sympy.simplify(
+            sympy.Pow(x, sympy.Rational(-3, 2)) - sympy.Pow(x, -2) * sympy.sqrt(x)
+        )
+        == 0
+    )

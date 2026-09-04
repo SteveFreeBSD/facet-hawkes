@@ -228,6 +228,16 @@ def _assume_positive(problem_text: str, candidate: str, operation: str) -> bool:
     """
     if _states_variables_are_positive(problem_text):
         return True
+    # A question may name its variables one at a time instead. Lesson 1.5
+    # question 7 -- the square root of -8x^9 under "Assume x > 0" -- matched no
+    # phrase, so it was solved with no assumption, SymPy could not extract the
+    # root, and the answer came back as `2sqrt(2(-x^9))`: unsimplified, missing
+    # its `i`, and refused by the editor. Only claimed when every variable in
+    # the expression is covered; an uncovered one leaves the assumption off,
+    # which costs a decline rather than a wrong answer.
+    named = _named_positive_variables(problem_text)
+    if named and _candidate_variables(candidate) <= named:
+        return True
     if operation not in {"simplify", "rationalize", "rational_exponents"}:
         return False
     if operation != "simplify":
@@ -261,6 +271,49 @@ def _states_variables_are_positive(problem_text: str) -> bool:
             "positive real numbers",
         )
     )
+
+
+def _named_positive_variables(problem_text: str) -> set[str]:
+    """Variables the question declares positive one at a time.
+
+    Hawkes writes "Assume x > 0" as readily as "assume all variables are
+    positive", and only the phrase forms were recognised.
+    """
+    return {
+        match.group(1)
+        for match in re.finditer(r"\b([a-z])\s*(?:>|≥|>=)\s*0\b", problem_text.lower())
+    }
+
+
+#: Words in an expression that name a function or constant rather than a
+#: variable, so a stray `t` from `sqrt` is not mistaken for one.
+_NOT_VARIABLES = (
+    "sqrt",
+    "cbrt",
+    "frac",
+    "left",
+    "right",
+    "boxed",
+    "cdot",
+    "times",
+    "log",
+    "ln",
+    "sin",
+    "cos",
+    "tan",
+    "abs",
+    "pi",
+    "theta",
+    "infty",
+)
+
+
+def _candidate_variables(candidate: str) -> set[str]:
+    """The single letters in an expression that stand for variables."""
+    text = re.sub(r"\\[a-zA-Z]+", " ", candidate)
+    for word in _NOT_VARIABLES:
+        text = re.sub(rf"\b{word}\b", " ", text, flags=re.IGNORECASE)
+    return set(re.findall(r"[a-z]", text.lower()))
 
 
 def _has_even_index_radical(candidate: str) -> bool:
@@ -570,13 +623,47 @@ def _evaluate(node: ast.AST, *, positive_symbols: bool = False) -> sympy.Expr:
     raise ValueError(f"unsupported symbolic syntax: {type(node).__name__}")
 
 
+def _split_half_integer_powers(expression: sympy.Expr) -> sympy.Expr:
+    """`x**(9/2)` becomes `x**4 · √x`, so a radical answer reads as a radical.
+
+    SymPy writes an extracted odd power as a half-integer exponent. The display
+    path then had to render `x**(9/2)` with the radical machinery, and the
+    factor reordering turned `2·√2·i·x**(9/2)` into `2ix√(2)^(9/2)` -- which is
+    a different number, not a different spelling. Splitting the whole part off
+    first also lets `_merge_square_roots` fold `√2·√x` into `√(2x)`, which is
+    the simplest form these questions are marked against: lesson 1.5 question
+    7, the square root of -8x^9 with x > 0, wants `2ix^4√(2x)`.
+
+    Built with `evaluate=False` because SymPy would otherwise recombine the
+    two factors into the exponent this exists to take apart.
+    """
+    factors = (
+        list(expression.args) if isinstance(expression, sympy.Mul) else [expression]
+    )
+    split: list[sympy.Expr] = []
+    changed = False
+    for factor in factors:
+        base, exponent = factor.as_base_exp()
+        # `p // 2` floors, which is what a negative exponent needs too:
+        # `x**(-3/2)` is `x**-2 · √x`.
+        if exponent.is_Rational and exponent.q == 2 and abs(exponent.p) > 1:
+            split.append(sympy.Pow(base, sympy.Integer(exponent.p // 2)))
+            split.append(sympy.sqrt(base))
+            changed = True
+        else:
+            split.append(factor)
+    return sympy.Mul(*split, evaluate=False) if changed else expression
+
+
 def _display(expression: sympy.Expr) -> str:
     numerator, denominator = expression.as_numer_denom()
     # Merged per part, never across the fraction bar: rebuilding the quotient
     # from merged parts lets SymPy pull a root back into the denominator,
     # undoing the merge.
-    numerator = _merge_square_roots(numerator)
-    denominator = _merge_square_roots(denominator)
+    # Half-integer powers are split before merging, so `√2 · √x` can fold into
+    # `√(2x)` rather than reaching the radical machinery as `x**(9/2)`.
+    numerator = _merge_square_roots(_split_half_integer_powers(numerator))
+    denominator = _merge_square_roots(_split_half_integer_powers(denominator))
     if denominator != 1:
         return f"\\frac{{{_display_basic(numerator)}}}{{{_display_basic(denominator)}}}"
     return _display_basic(numerator)

@@ -1641,3 +1641,18 @@ def test_an_unreadable_editor_says_so_at_the_default_log_level():
         "\n// ---", 1
     )[0]
     assert 'log.warn("editor-unreadable"' in describe
+
+
+def test_an_uninsertable_answer_is_recorded_rather_than_leaving_silence():
+    """A solved answer the editor takes neither as text nor as keypad steps
+    leaves Insert disabled, and nothing sends `ethnos:insert` -- so the log
+    showed a clean solve and then nothing at all. Live, six solves in a row
+    ended that way on `2sqrt(2(-x^9))`, with no failure to look for."""
+    background = (EXTENSION_DIR / "background.js").read_text()
+    accept = background.split("async function acceptReply(", 1)[1].split("\n/**", 1)[0]
+
+    assert 'log.warn("answer-not-insertable"' in accept
+    # Both refusals are consulted: typing it and building it with templates.
+    assert "answerFitsEditor(answer, state.editor)" in accept
+    assert "planEntry(entryText, state.editor)" in accept
+    assert "!fits.insertable && plan.ok === false" in accept

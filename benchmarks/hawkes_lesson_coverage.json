@@ -183,6 +183,15 @@
       "expected": "3i\u221a3"
     },
     {
+      "id": "evaluate-square-root-with-odd-power",
+      "topic": "radicals",
+      "prompt": "Evaluate the following square root expression. Assume x > 0.",
+      "expressions": [
+        "\\sqrt{-8x^{9}}"
+      ],
+      "expected": "2ix^4\u221a(2x)"
+    },
+    {
       "id": "factor-then-order",
       "topic": "guards",
       "prompt": "Factor completely, then write the answer in descending order.",

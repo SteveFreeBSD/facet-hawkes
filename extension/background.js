@@ -1002,6 +1002,21 @@ async function acceptReply(reply) {
     answerLength: answer.length,
     elapsedMs: state.startedAt ? Date.now() - state.startedAt : 0,
   });
+  // An answer the editor will take neither as text nor as keypad steps leaves
+  // Insert disabled, and nothing sends `ethnos:insert` -- so the diagnostic log
+  // recorded a clean solve and then silence, with no failure to look for. Live,
+  // six solves in a row ended that way on `2sqrt(2(-x^9))`. The panel already
+  // shows the editor's own objection; this is so the log shows it too.
+  const fits = answerFitsEditor(answer, state.editor);
+  const plan = planEntry(entryText, state.editor);
+  if (!fits.insertable && plan.ok === false) {
+    log.warn("answer-not-insertable", {
+      source: certainty.source ?? "",
+      editor: fits.code,
+      plan: plan.code,
+      answerLength: answer.length,
+    });
+  }
   update({
     phase: "solved",
     stage: "done",
