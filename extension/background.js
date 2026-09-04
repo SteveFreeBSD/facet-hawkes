@@ -203,7 +203,7 @@ async function runInjection(injection) {
     ]);
   } catch (error) {
     const message = String(error?.message ?? error);
-    if (/host permission|not allowed|Missing/i.test(message)) {
+    if (permissionWithheld(error)) {
       throw new Error("errorTabAccessLost");
     }
     throw message.startsWith("error") ? error : new Error("errorNoBridge");
@@ -381,6 +381,11 @@ async function describeEditor(tabId, frameId, attempts = 5) {
       log.debug("describe-attempt-failed", { attempt, error: describeError(error) });
     }
   }
+  // Whether the editor was read is the single fact that decides Insert, and it
+  // was only ever recorded at debug level -- so a panel saying the editor could
+  // not be read left nothing in the log to confirm or refute it. Triaging that
+  // meant asking the owner to change a setting and reproduce.
+  log.warn("editor-unreadable", { attempts });
   return { ok: false, code: "editor-model-missing" };
 }
 
@@ -637,15 +642,36 @@ async function captureQuestion(tabId, frameId) {
     return screenshot;
   } catch (error) {
     log.warn("capture-failed", { error: describeError(error) });
-    fail("errorNoCapture");
+    // `captureVisibleTab` needs `activeTab` or the Hawkes host permission, and
+    // a sidebar has neither until the user grants one -- Firefox says "Missing
+    // activeTab permission". Reported as a capture failure that reads as a
+    // broken screenshot and offers nothing to do about it; it is the same
+    // withheld permission `runInjection` already names, and naming it here too
+    // puts the Grant Hawkes access button in front of the person who can fix
+    // it. Seen live: three solves in a row died at this line.
+    fail(permissionWithheld(error) ? "errorTabAccessLost" : "errorNoCapture");
     return null;
   }
+}
+
+/** Whether a thrown page error is Firefox withholding host access. */
+function permissionWithheld(error) {
+  return /host permission|not allowed|Missing/i.test(String(error?.message ?? error));
 }
 
 // --- operations the popup can ask for --------------------------------------
 
 /** Find the answer field and read the editor's rules. Cheap, and no model. */
 async function prepare(windowId = state.windowId) {
+  // A prepare re-reads the tab, the frame, the editor and the signature --
+  // everything a solve in flight is working against -- and then blanks the
+  // phase, which is the only thing stopping `autoSolve` starting another one.
+  // Without this, opening the panel during a solve started a second solve
+  // beside the first: three ran at once live, each publishing its own answer
+  // over the last, and each reporting an elapsed time measured from whichever
+  // had most recently overwritten `startedAt`.
+  inFlight?.abort();
+  inFlight = null;
   const previous = {
     phase: state.phase,
     signature: state.signature,
@@ -755,6 +781,13 @@ async function solve(windowId = state.windowId) {
   }
 
   await settingsReady;
+  // The phase guard above is checked before two awaits and is therefore not
+  // enough on its own: `prepare` can blank the phase, and `prepare` itself
+  // starts a solve when `autoSolve` is on. Assigning `inFlight` used to
+  // overwrite a live controller, leaving the earlier solve unreachable and
+  // running -- so it finished, and published its answer, long after the panel
+  // had moved on. Whatever was in flight is cancelled here instead.
+  inFlight?.abort();
   const controller = new AbortController();
   inFlight = controller;
   log.info("solve-started", {
@@ -948,6 +981,15 @@ async function acceptReply(reply) {
     candidates.find((value) => answerFitsEditor(value, state.editor).insertable) ??
     candidates[0] ??
     "";
+  // Neither form of the answer survived `validateAnswer`. Publishing "solved"
+  // anyway put a readable answer on the card with nothing behind it: Insert
+  // stayed disabled, and the panel -- finding no answer to check against the
+  // editor -- reported "the answer editor could not be read", blaming the one
+  // part of the page that was working. Live, on `√-27`, for eight solves.
+  if (answer.length === 0) {
+    fail("errorAnswerInvalid", { detail: displayText.slice(0, 300) });
+    return;
+  }
   const entryText =
     typeof reply.answer.keyboard_entry === "string"
     && validateAnswer(reply.answer.keyboard_entry).ok

@@ -1545,3 +1545,76 @@ def test_a_markup_fallback_records_why_it_fell_back():
     fallback = background.split('log.info("markup-fallback"', 1)[1].split(");", 1)[0]
     assert "why:" in fallback
     assert "reply.message" in fallback
+
+
+def test_a_solve_never_runs_beside_another_solve():
+    """Three ran at once, live, each publishing its answer over the last.
+
+    `solve` guards on `phase === "solving"`, but that phase is only set after
+    two awaits, and `prepare` blanks it unconditionally -- then starts a solve
+    itself when `autoSolve` is on. Assigning `inFlight` overwrote a live
+    controller rather than cancelling it, so the orphaned solve ran to
+    completion unreachable by Cancel. The log showed three `solve-started` with
+    no completion between them, then three `solved`, each reporting an elapsed
+    time measured from whichever had most recently overwritten `startedAt`.
+    """
+    background = (EXTENSION_DIR / "background.js").read_text()
+
+    prepare = background.split("async function prepare(", 1)[1].split(
+        "\nfunction frameErrorKey", 1
+    )[0]
+    blanked = prepare.index("...blankState()")
+    aborted = prepare.index("inFlight?.abort()")
+    assert aborted < blanked, "prepare cancels work in flight before blanking it"
+
+    solve = background.split("async function solve(", 1)[1].split("\n/**", 1)[0]
+    installed = solve.index("inFlight = controller")
+    assert solve.index("inFlight?.abort()") < installed, (
+        "solve cancels whatever was in flight rather than orphaning it"
+    )
+
+
+def test_a_withheld_permission_offers_the_grant_button_not_a_dead_end():
+    """`captureVisibleTab` needs `activeTab` or the Hawkes host permission, and
+    a sidebar has neither until one is granted -- Firefox says "Missing
+    activeTab permission". Reported as a plain capture failure it reads as a
+    broken screenshot and offers nothing to do; `errorTabAccessLost` is the
+    key whose button asks for the permission that would fix it."""
+    background = (EXTENSION_DIR / "background.js").read_text()
+
+    capture = background.split("async function captureQuestion(", 1)[1].split(
+        "\n// ---", 1
+    )[0]
+    assert 'permissionWithheld(error) ? "errorTabAccessLost"' in capture
+
+    # One definition of "Firefox withheld this", used by both the injection
+    # path and the capture path, so they cannot drift apart.
+    assert background.count("function permissionWithheld(") == 1
+    assert "Missing" in background.split("function permissionWithheld(", 1)[1][:300]
+
+
+def test_an_answer_that_fails_validation_is_reported_rather_than_shown_empty():
+    """Publishing "solved" with no usable answer put a readable result on the
+    card with nothing behind it: Insert stayed disabled, and the panel -- with
+    no answer to check against the editor -- blamed the editor, which was the
+    one part of the page working. Eight solves did this live."""
+    background = (EXTENSION_DIR / "background.js").read_text()
+
+    accept = background.split("async function acceptReply(", 1)[1].split("\n/**", 1)[0]
+    refusal = accept.index('fail("errorAnswerInvalid"')
+    published = accept.index('phase: "solved"')
+    assert refusal < published, (
+        "the empty answer is refused before anything is published"
+    )
+    assert "if (answer.length === 0)" in accept
+
+
+def test_an_unreadable_editor_says_so_at_the_default_log_level():
+    """Whether the editor was read is what decides Insert, so a panel claiming
+    it could not be read must leave something in the log to check that against."""
+    background = (EXTENSION_DIR / "background.js").read_text()
+
+    describe = background.split("async function describeEditor(", 1)[1].split(
+        "\n// ---", 1
+    )[0]
+    assert 'log.warn("editor-unreadable"' in describe

@@ -183,3 +183,28 @@ def test_render_answer_image_requires_png_suffix(tmp_path):
             answer_text="Answer",
             sources=[],
         )
+
+
+def test_an_escape_a_model_wrote_as_text_becomes_the_character():
+    """Live, `√-27` came back as `3i×sqrt(3)`.
+
+    Six literal characters where a multiplication sign belongs. Nothing
+    downstream expected it: `keyboard_entry_for_math` split the escape into
+    variables, the add-on's answer pattern refuses a backslash outright, and
+    the whole answer was dropped -- leaving the panel showing the
+    backslash-stripped remains, `3iu00d7sqrt(3)`, with Insert disabled.
+    """
+    assert extract_final_math("FINAL ANSWER: 3i\\u00d7sqrt(3)") == "3i×sqrt(3)"
+    assert keyboard_entry_for_math("3i×sqrt(3)") == "3*i*sqrt(3)"
+
+    # The other shape the same model produced, for a radical.
+    assert extract_final_math("FINAL ANSWER: 3i\\u221a5") == "3i√5"
+
+
+def test_decoding_escapes_leaves_latex_alone():
+    """LaTeX has no `\\uXXXX` control sequence, and the commands that start
+    with `\\u` all fail the four-hex-digit test on their second character."""
+    assert (
+        extract_final_math("FINAL ANSWER: \\underline{x} + \\upsilon")
+        == "\\underline{x} + \\upsilon"
+    )

@@ -25,6 +25,7 @@ import argparse
 import configparser
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -268,6 +269,59 @@ def _profile_candidates() -> list[Path]:
     return profiles
 
 
+def _temporary_install(profile: Path) -> dict[str, object] | None:
+    """A temporarily installed add-on, which `extensions.json` never records.
+
+    Loading the add-on from `about:debugging` -- which is how it is run during
+    development, and how it was running when this reported it absent -- leaves
+    no entry in the installed-add-ons database at all. What it does leave is a
+    UUID in `prefs.js` and, once the event page has run, a `storage.local`
+    ring. Reporting "installed: false" beside a working add-on sent an
+    inspection looking for an installation problem that did not exist.
+    """
+    try:
+        prefs = (profile / "prefs.js").read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return None
+    match = re.search(r'"extensions\.webextensions\.uuids",\s*"(.*)"\);', prefs)
+    if not match:
+        return None
+    try:
+        uuids = json.loads(match.group(1).replace('\\"', '"'))
+    except json.JSONDecodeError:
+        return None
+    uuid_value = uuids.get(EXTENSION_ID)
+    if not uuid_value:
+        return None
+    return {
+        "profile": str(profile),
+        "id": EXTENSION_ID,
+        "installed": True,
+        "temporary": True,
+        "uuid": uuid_value,
+        # The manifest version is not recorded anywhere for a temporary
+        # add-on. The running build logs it on every event-page load, and
+        # knowing which build is actually running is the whole point of asking.
+        "version": _version_from_log(profile),
+        "signedState": None,
+    }
+
+
+def _version_from_log(profile: Path) -> str | None:
+    """The version the running event page last reported, or None."""
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import read_extension_log as reader
+
+        for entry in reversed(reader.read_entries(reader.find_store(profile))):
+            if entry.get("event") == "event-page-loaded":
+                version = entry.get("data", {}).get("version")
+                return str(version) if version else None
+    except Exception:  # noqa: BLE001 - best effort; absence is not a failure
+        return None
+    return None
+
+
 def _extension_status() -> dict[str, object]:
     for profile in _profile_candidates():
         addons_path = profile / "extensions.json"
@@ -291,22 +345,52 @@ def _extension_status() -> dict[str, object]:
                     "signedState": addon.get("signedState"),
                     "path": addon.get("path"),
                 }
+    for profile in _profile_candidates():
+        temporary = _temporary_install(profile)
+        if temporary:
+            return temporary
     return {"id": EXTENSION_ID, "installed": False}
+
+
+def _is_host_argv(argv: list[str], needles: tuple[str, ...]) -> bool:
+    """Whether this argument vector is actually the native host being run.
+
+    Matched per argument rather than against the whole joined command line.
+    Substring-matching the join reported any process that merely *mentioned*
+    the host: the agent's own shell command, containing the needle inside a
+    heredoc, was listed as a running native host. An argument vector says
+    `-m ethnos.hawkes_host`, or names the launcher script, and neither of those
+    is a substring of a sentence about them.
+    """
+    for index, argument in enumerate(argv):
+        for needle in needles:
+            # `python -m ethnos.hawkes_host`: the module *and* the `-m` that
+            # makes it one. Naming the module is not running it -- `grep -r
+            # ethnos.hawkes_host .` passes a bare equality check.
+            if argument == needle and index > 0 and argv[index - 1] == "-m":
+                return True
+            # The launcher script Firefox executes, in the position a program
+            # occupies rather than anywhere in the arguments.
+            if index <= 1 and argument.endswith(f"/{needle}"):
+                return True
+    return False
 
 
 def _matching_processes(needles: tuple[str, ...]) -> list[dict[str, object]]:
     found: list[dict[str, object]] = []
     for entry in Path("/proc").iterdir():
-        if not entry.name.isdigit():
+        if not entry.name.isdigit() or int(entry.name) == os.getpid():
             continue
         try:
-            command = (
-                (entry / "cmdline").read_bytes().replace(b"\0", b" ").decode().strip()
-            )
+            raw = (entry / "cmdline").read_bytes()
         except (OSError, UnicodeDecodeError):
             continue
-        if command and any(needle in command for needle in needles):
-            found.append({"pid": int(entry.name), "command": command})
+        try:
+            argv = [part for part in raw.decode().split("\0") if part]
+        except UnicodeDecodeError:
+            continue
+        if argv and _is_host_argv(argv, needles):
+            found.append({"pid": int(entry.name), "command": " ".join(argv)})
     return sorted(found, key=lambda item: int(item["pid"]))
 
 

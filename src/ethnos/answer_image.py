@@ -152,8 +152,28 @@ def build_key_command_text(answer_text: str) -> str:
     return "\n".join(lines)
 
 
+_ESCAPED_UNICODE = re.compile(r"\\u([0-9a-fA-F]{4})")
+
+
+def _decode_escaped_unicode(text: str) -> str:
+    r"""Turn an escape a model wrote out as text back into the character.
+
+    Live, `√-27` came back as `3i×sqrt(3)`: six literal characters where a
+    multiplication sign belongs. A model asked for one line of mathematics will
+    sometimes emit JSON's escape form, and nothing downstream expects it --
+    `keyboard_entry_for_math` mangled it further into `3*i\u*221*a*5`, and the
+    add-on's answer pattern refuses a backslash outright, so the whole answer
+    was dropped and the panel showed the backslash-stripped remains.
+
+    Safe against LaTeX, which has no `\uXXXX` control sequence: `\underline`
+    and `\upsilon` both fail the four-hex-digit test on their second character.
+    """
+    return _ESCAPED_UNICODE.sub(lambda match: chr(int(match.group(1), 16)), text)
+
+
 def extract_final_math(answer_text: str) -> str | None:
     """Extract the solver's final displayed expression for a compact answer card."""
+    answer_text = _decode_escaped_unicode(answer_text)
     boxed_start = answer_text.rfind(r"\boxed{")
     if boxed_start >= 0:
         content_start = boxed_start + len(r"\boxed{")

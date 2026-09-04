@@ -80,3 +80,57 @@ def test_script_has_no_browser_launch_or_navigation_code():
     assert "Marionette" not in source
     assert "workspace.activeWindow = window" in source
     assert '"spectacle", "--activewindow"' in compacted
+
+
+def test_a_temporarily_installed_addon_is_not_reported_absent(tmp_path):
+    """Loading the add-on from `about:debugging` leaves no `extensions.json`
+    entry at all, and reporting "installed: false" beside a working add-on
+    sent an inspection looking for an installation problem that did not exist.
+    What a temporary install does leave is a UUID in `prefs.js`."""
+    profile = tmp_path / "profile"
+    profile.mkdir()
+    (profile / "prefs.js").write_text(
+        'user_pref("extensions.webextensions.uuids", '
+        '"{\\"ethnos-hawkes@local\\":\\"bc818469-a17b\\"}");\n',
+        encoding="utf-8",
+    )
+
+    found = MODULE._temporary_install(profile)
+
+    assert found is not None
+    assert found["installed"] is True
+    assert found["temporary"] is True
+    assert found["uuid"] == "bc818469-a17b"
+
+
+def test_a_profile_that_never_saw_the_addon_reports_nothing(tmp_path):
+    profile = tmp_path / "profile"
+    profile.mkdir()
+    (profile / "prefs.js").write_text(
+        'user_pref("extensions.webextensions.uuids", "{\\"other@local\\":\\"x\\"}");\n',
+        encoding="utf-8",
+    )
+
+    assert MODULE._temporary_install(profile) is None
+
+
+NEEDLES = ("ethnos.hawkes_host", "ethnos-hawkes-host")
+
+
+def test_the_running_native_host_is_recognized_by_its_arguments():
+    assert MODULE._is_host_argv(
+        ["/home/x/.venv/bin/python", "-m", "ethnos.hawkes_host"], NEEDLES
+    )
+    assert MODULE._is_host_argv(
+        ["/bin/sh", "/home/x/.local/share/ethnos-hawkes/ethnos-hawkes-host"], NEEDLES
+    )
+
+
+def test_a_command_that_merely_mentions_the_host_is_not_one():
+    """Matching the joined command line reported any process that talked about
+    the host. The agent's own shell command, carrying the name inside a
+    heredoc, was listed as a running native host during a live inspection."""
+    assert not MODULE._is_host_argv(
+        ["/bin/sh", "-c", "cat <<PY\nrun ethnos.hawkes_host now\nPY"], NEEDLES
+    )
+    assert not MODULE._is_host_argv(["grep", "-r", "ethnos.hawkes_host", "."], NEEDLES)
