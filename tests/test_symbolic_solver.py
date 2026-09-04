@@ -867,3 +867,40 @@ def test_splitting_half_powers_does_not_disturb_whole_ones():
         )
         == 0
     )
+
+
+def test_powers_of_lowercase_i_reduce_in_complex_simplification():
+    """Lesson 1.5 uses lowercase `i`; SymPy's imaginary unit is uppercase `I`."""
+    for expression, expected in (("i^2", "-1"), ("i^3", "-i"), ("i^4", "1")):
+        result = answer_symbolic_math(
+            problem_text="Simplify the following expression.",
+            expressions=[expression],
+        )
+        assert result is not None, expression
+        assert extract_final_math(result.raw_response) == expected
+
+
+def test_live_complex_sum_reduces_i_squared_before_collecting_terms():
+    """Lesson 1.5 Q8: Hawkes rejected `11i^2 - 2i + 4` as unsimplified."""
+    result = answer_symbolic_math(
+        problem_text="Simplify the following expression.",
+        expressions=["(11i^2 - 9i) + (4 + 7i)"],
+    )
+
+    assert result is not None
+    assert extract_final_math(result.raw_response) == "-7 - 2i"
+
+
+def test_i_remains_an_ordinary_variable_outside_complex_simplification():
+    """The contextual rule must not globally redefine a legitimate variable."""
+    factored = answer_symbolic_math(
+        problem_text="Factor completely.", expressions=["i^2 - 1"]
+    )
+    evaluated = answer_symbolic_math(
+        problem_text="Evaluate the polynomial for i = 3.", expressions=["i^2 + 1"]
+    )
+
+    assert factored is not None
+    assert extract_final_math(factored.raw_response) == "(i - 1)(i + 1)"
+    assert evaluated is not None
+    assert extract_final_math(evaluated.raw_response) == "10"

@@ -45,6 +45,16 @@ def test_no_question_in_the_corpus_is_answered_incorrectly():
     assert wrong == [], [(r.case.id, r.answer, r.case.expected) for r in wrong]
 
 
+def test_live_complex_q8_is_pinned_in_the_coverage_corpus():
+    case = next(case for case in load_cases(CORPUS) if case.id == "complex-q8")
+
+    assert case.prompt == "Simplify the following expression."
+    assert case.expressions == ["(11i^2 - 9i) + (4 + 7i)"]
+    result = evaluate(case)
+    assert result.verdict == "exact"
+    assert result.answer == "-7 - 2i"
+
+
 def test_a_gap_says_which_kind_of_gap_it_is():
     """The two fall through to a model identically and are fixed in completely
     different places, so the sweep separates them."""

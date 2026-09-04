@@ -192,6 +192,15 @@
       "expected": "2ix^4\u221a(2x)"
     },
     {
+      "id": "complex-q8",
+      "topic": "complex numbers",
+      "prompt": "Simplify the following expression.",
+      "expressions": [
+        "(11i^2 - 9i) + (4 + 7i)"
+      ],
+      "expected": "-7 - 2i"
+    },
+    {
       "id": "factor-then-order",
       "topic": "guards",
       "prompt": "Factor completely, then write the answer in descending order.",

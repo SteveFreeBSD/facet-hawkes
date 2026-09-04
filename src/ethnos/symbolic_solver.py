@@ -113,6 +113,7 @@ def solve_symbolic_operation(
             original = _safe_sympy_expression(
                 candidate,
                 positive_symbols=_assume_positive(problem_text, candidate, operation),
+                imaginary_unit=_uses_imaginary_unit(problem_text, candidate, operation),
             )
         except (SyntaxError, TypeError, ValueError, ZeroDivisionError):
             continue
@@ -316,6 +317,29 @@ def _candidate_variables(candidate: str) -> set[str]:
     return set(re.findall(r"[a-z]", text.lower()))
 
 
+def _uses_imaginary_unit(problem_text: str, candidate: str, operation: str) -> bool:
+    """Whether lowercase `i` denotes the imaginary unit in this question.
+
+    Hawkes' complex-number lesson uses the generic prompt "Simplify the
+    following expression", so the instruction alone carries no context. A
+    numeric simplify expression whose only symbolic name is `i` and which
+    explicitly raises `i` to an integer power is the narrow implicit form.
+    Other variables or operations leave `i` as an ordinary real symbol.
+    """
+    variables = _candidate_variables(candidate)
+    if "i" not in variables:
+        return False
+    if re.search(r"\b(?:complex|imaginary|powers?\s+of\s+i)\b", problem_text, re.I):
+        return True
+    if operation != "simplify" or variables != {"i"}:
+        return False
+    powers = re.finditer(
+        r"(?<![A-Za-z])i(?![A-Za-z])\s*(?:\^|\*\*)\s*\{?\s*([+-]?\d+)",
+        candidate,
+    )
+    return any(abs(int(match.group(1))) >= 2 for match in powers)
+
+
 def _has_even_index_radical(candidate: str) -> bool:
     """Whether the expression takes an even root, whose result may need bars.
 
@@ -505,11 +529,18 @@ def _candidate_score(value: str) -> tuple[int, int]:
 
 
 def _safe_sympy_expression(
-    expression: str, *, positive_symbols: bool = False
+    expression: str,
+    *,
+    positive_symbols: bool = False,
+    imaginary_unit: bool = False,
 ) -> sympy.Expr:
     normalized = _python_expression(expression)
     tree = ast.parse(normalized, mode="eval")
-    return _evaluate(tree.body, positive_symbols=positive_symbols)
+    return _evaluate(
+        tree.body,
+        positive_symbols=positive_symbols,
+        imaginary_unit=imaginary_unit,
+    )
 
 
 def _python_expression(expression: str) -> str:
@@ -565,12 +596,19 @@ def _python_expression(expression: str) -> str:
     return normalized
 
 
-def _evaluate(node: ast.AST, *, positive_symbols: bool = False) -> sympy.Expr:
+def _evaluate(
+    node: ast.AST,
+    *,
+    positive_symbols: bool = False,
+    imaginary_unit: bool = False,
+) -> sympy.Expr:
     if isinstance(node, ast.Constant) and isinstance(node.value, int):
         return sympy.Integer(node.value)
     if isinstance(node, ast.Constant) and isinstance(node.value, float):
         return sympy.Rational(Fraction(str(node.value)))
     if isinstance(node, ast.Name) and len(node.id) == 1 and node.id.isalpha():
+        if imaginary_unit and node.id == "i":
+            return sympy.I
         # Real, not unrestricted: an unrestricted symbol may be complex, and
         # SymPy will not extract a root from one -- it handed the fourth root
         # of y^20*z^16/81 back as `(y^20*z^16)^(1/4)/3`, unsimplified. Declared
@@ -582,7 +620,11 @@ def _evaluate(node: ast.AST, *, positive_symbols: bool = False) -> sympy.Expr:
             else sympy.Symbol(node.id, real=True)
         )
     if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
-        value = _evaluate(node.operand, positive_symbols=positive_symbols)
+        value = _evaluate(
+            node.operand,
+            positive_symbols=positive_symbols,
+            imaginary_unit=imaginary_unit,
+        )
         return value if isinstance(node.op, ast.UAdd) else -value
     if (
         isinstance(node, ast.Call)
@@ -591,11 +633,23 @@ def _evaluate(node: ast.AST, *, positive_symbols: bool = False) -> sympy.Expr:
         and len(node.args) == 1
         and not node.keywords
     ):
-        value = _evaluate(node.args[0], positive_symbols=positive_symbols)
+        value = _evaluate(
+            node.args[0],
+            positive_symbols=positive_symbols,
+            imaginary_unit=imaginary_unit,
+        )
         return value ** sympy.Rational(1, 2)
     if isinstance(node, ast.BinOp):
-        left = _evaluate(node.left, positive_symbols=positive_symbols)
-        right = _evaluate(node.right, positive_symbols=positive_symbols)
+        left = _evaluate(
+            node.left,
+            positive_symbols=positive_symbols,
+            imaginary_unit=imaginary_unit,
+        )
+        right = _evaluate(
+            node.right,
+            positive_symbols=positive_symbols,
+            imaginary_unit=imaginary_unit,
+        )
         if isinstance(node.op, ast.Add):
             return left + right
         if isinstance(node.op, ast.Sub):

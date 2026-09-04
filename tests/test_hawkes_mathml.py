@@ -36,6 +36,12 @@ INDEXED_ROOT = (
     "<msup><mi>x</mi><mn>42</mn></msup>"
     "</mrow><mn>7</mn></mroot></math>"
 )
+COMPLEX_Q8 = (
+    "<math><mstyle><mrow><mo>(</mo><mn>11</mn>"
+    "<msup><mi>i</mi><mn>2</mn></msup><mo>−</mo><mn>9</mn><mi>i</mi><mo>)</mo>"
+    "<mo>+</mo><mo>(</mo><mn>4</mn><mo>+</mo><mn>7</mn><mi>i</mi><mo>)</mo>"
+    "</mrow></mstyle></math>"
+)
 
 
 def test_a_dot_product_of_rational_powers():
@@ -57,6 +63,10 @@ def test_a_radical_over_a_fraction():
 
 def test_an_indexed_root():
     assert mathml_to_latex(INDEXED_ROOT) == r"\sqrt[7]{y^{49}z^{28}x^{42}}"
+
+
+def test_live_complex_sum_keeps_i_and_its_power_exactly():
+    assert mathml_to_latex(COMPLEX_Q8) == "(11i^2-9i)+(4+7i)"
 
 
 def test_namespaced_markup_is_read():
@@ -101,6 +111,7 @@ def test_what_cannot_be_read_exactly_is_refused(markup):
         ),
         (NEGATIVE_BASE, "Simplify the following expression.", "64"),
         (INDEXED_ROOT, "Simplify the following radical expression.", "x^6y^7z^4"),
+        (COMPLEX_Q8, "Simplify the following expression.", "-7 - 2i"),
     ],
 )
 def test_the_solver_answers_straight_from_the_markup(markup, problem, expected):
@@ -134,6 +145,28 @@ def test_the_host_reports_an_exact_reading():
     assert response.certainty.source == "markup"
     assert response.certainty.transcription == "exact"
     assert response.certainty.insertable is True
+
+
+def test_the_host_answers_live_complex_q8_from_markup():
+    from ethnos.hawkes_host import handle
+
+    response = handle(
+        {
+            "protocol_version": 1,
+            "operation": "solve_hawkes_problem",
+            "request_id": "complex-q8",
+            "origin": "https://learn.hawkeslearning.com",
+            "problem": {
+                "prompt_text": "Simplify the following expression.",
+                "mathml": [COMPLEX_Q8],
+            },
+        }
+    )
+
+    assert response.status == "ready"
+    assert response.answer.display_text == "-7 - 2i"
+    assert response.answer.keyboard_entry == "-7-2*i"
+    assert response.certainty.source == "markup"
 
 
 def test_markup_that_cannot_be_solved_exactly_does_not_reach_the_model():
