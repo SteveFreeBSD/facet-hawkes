@@ -709,3 +709,48 @@ def test_classification_needs_all_three_names_or_the_verb():
     )
     assert _requested_operation("Factor the following binomial completely.") == "factor"
     assert _requested_operation("Find the product of the binomial factors.") == "expand"
+
+
+def test_evaluate_without_a_value_to_substitute_is_a_simplify():
+    """Lesson 1.5 question 5, met live: `√-27` under "Evaluate the following
+    square root expression."
+
+    The substitution-gated `evaluate` branch declines it correctly -- there is
+    no value to put in -- and nothing further used to match, so the question
+    fell through to `None`. Its MathML had already been read exactly; the
+    decline threw that away and spent a screenshot and the vision model on a
+    question SymPy answers in milliseconds. What came back was
+    `3i×sqrt(3)`, the escape text for a multiplication sign, which no
+    answer box will accept.
+    """
+    assert _requested_operation("Evaluate the following square root expression.") == (
+        "simplify"
+    )
+    # Still gated where a value really is given, so this stays the narrower
+    # operation rather than being swallowed by the simplify branch.
+    assert _requested_operation("Evaluate the polynomial for x = 2") == "evaluate"
+
+    result = answer_symbolic_math(
+        problem_text="Evaluate the following square root expression.",
+        expressions=["\\sqrt{-27}"],
+    )
+    assert result is not None
+    assert extract_final_math(result.raw_response) == "3i√3"
+
+
+def test_the_imaginary_unit_is_written_the_way_the_question_writes_it():
+    """SymPy prints `I`; every question that asks for one writes `i`.
+
+    The number was right and the alphabet was wrong, which is worse than a
+    decline: the editor publishes a character set holding the lowercase letter
+    and not the capital, so `3I√3` is refused at the point of insertion having
+    already been reported as a confident exact answer.
+    """
+    result = answer_symbolic_math(
+        problem_text="Simplify the radical expression.",
+        expressions=["\\sqrt{-27}"],
+    )
+    assert result is not None
+    answer = extract_final_math(result.raw_response)
+    assert answer == "3i√3"
+    assert "I" not in answer

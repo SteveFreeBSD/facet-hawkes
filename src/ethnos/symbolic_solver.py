@@ -387,7 +387,16 @@ def _requested_operation(problem_text: str) -> str | None:
     # than using the imperative "Simplify". They request the same exact
     # operation; missing the adjective sent a deterministic radical down the
     # slow fallback path and then reported it unsupported.
-    if re.search(r"\bsimplif(?:y|ied|ication)\b", lowered):
+    #
+    # "Evaluate" with nothing to substitute is that same request. Lesson 1.5
+    # question 5 says "Evaluate the following square root expression." over
+    # √-27, which SymPy answers exactly and instantly. The substitution-gated
+    # `evaluate` branch above declines it -- rightly, there is no value to put
+    # in -- and before this nothing further matched, so a question whose
+    # MathML had already been read exactly was handed to the vision model
+    # anyway. It came back as `3i×sqrt(3)`: the escape text for the
+    # multiplication sign, which no answer box will ever accept.
+    if re.search(r"\b(?:simplif(?:y|ied|ication)|evaluat\w*)\b", lowered):
         return "simplify"
     return None
 
@@ -622,6 +631,13 @@ def _merge_square_roots(part: sympy.Expr) -> sympy.Expr:
 
 def _display_basic(expression: sympy.Expr) -> str:
     value = sympy.sstr(_fold_absolute_powers(expression), order="lex")
+    # SymPy writes the imaginary unit as `I`. Every question that asks for one
+    # writes it `i`, and the editor publishes a character set containing the
+    # lowercase letter and not the capital -- so `3I√3` is the right number in
+    # the wrong alphabet, and `answerFitsEditor` refuses it before it can be
+    # typed. Done before the radical rewriting below so the rest of this
+    # function only ever sees the notation the answer is written in.
+    value = re.sub(r"\bI\b", "i", value)
     # SymPy prints radicals as function calls. They have to become radical
     # signs before multiplication signs are dropped below, or
     # "sqrt(5)*sqrt(x)" turns into the unreadable "sqrt(5)sqrt(x)".

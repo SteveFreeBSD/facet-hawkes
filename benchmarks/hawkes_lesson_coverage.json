@@ -174,6 +174,15 @@
       "expected": "y^(3/2)"
     },
     {
+      "id": "evaluate-square-root-of-negative",
+      "topic": "radicals",
+      "prompt": "Evaluate the following square root expression.",
+      "expressions": [
+        "\\sqrt{-27}"
+      ],
+      "expected": "3i\u221a3"
+    },
+    {
       "id": "factor-then-order",
       "topic": "guards",
       "prompt": "Factor completely, then write the answer in descending order.",
