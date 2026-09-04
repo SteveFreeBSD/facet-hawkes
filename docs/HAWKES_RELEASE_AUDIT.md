@@ -1,4 +1,49 @@
-# Ethnos Hawkes Assistant 0.38.0 release audit
+# Ethnos Hawkes Assistant release audit ledger
+
+## Current 0.43.0 candidate
+
+**Prepared:** 4 September 2026
+
+**Status:** **release candidate complete; pending Mozilla signing and signed-XPI
+physical acceptance.**
+
+| Record | Value |
+|---|---|
+| Product baseline | `bb1e66aa66de0506be1558ad26841b82b9273091` |
+| Candidate artifact | `dist/ethnos-hawkes-0.43.0-unsigned.xpi` |
+| Candidate SHA-256 | `3c19a69b41af3a82ab4ef1f2723da9b6b637ac37bb1419d8bf2eb966ef597001` |
+| Packaged members | 30 |
+| Reproducibility | two unchanged builds produced the same SHA-256 |
+| Focused cadence/extension tests | 168 passed |
+| Hawkes-focused tests | 349 passed |
+| Full repository suite | 825 passed |
+| Static/documentation gates | Ruff check and format passed; 3 link checks passed |
+| Browser gates | isolated extension harness 17/17; Settings smoke 17/17 |
+| Mozilla validator | `web-ext lint --warnings-as-errors`: 0 errors, 0 warnings, 0 notices |
+| Remaining external gates | Mozilla unlisted signing, then normal-Firefox physical acceptance of the returned signed XPI |
+
+This candidate makes Answer Cadence the Settings-only flagship feature: one
+draft/Apply transaction, a real structured-plan preview, a rhythm strip and
+transport telemetry, 30–300 BPM presets and Custom controls, and one shared
+plain/preview cadence scheduler. Firefox requires structured entry's score to
+remain self-contained in the serialized MAIN-world function, so the build
+compares its tuning with the shared score and rejects drift.
+
+The release also incorporates the exact complex-radical and direct-assumption
+fixes, safer symbolic input handling, synchronous insertion claiming,
+consistent machine-form structured planning, detached-target checks, and the
+pinned window/tab/frame/field/question/answer ownership invariant. The closed
+findings remain covered by the passing suites and both isolated browser runs.
+
+There is no permission, host, native-protocol, or data-collection change.
+Cadence still acts only after validation and editor planning. It does not alter
+answers, select targets, submit, check, advance, navigate, or claim concealment.
+Synthetic input and MAIN-world editor interaction remain observable, and zero
+footprint means no persistent extension-created state or UI in the visited
+website. The browser gates used throwaway profiles and did not touch the
+owner's Firefox or Hawkes session.
+
+## Historical 0.38.0 audit
 
 **Audited:** 3 September 2026
 

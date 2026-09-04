@@ -16,7 +16,7 @@ checks, advances, or silently selects anything.**
 
 ## The Firefox add-on
 
-The current add-on source is **0.42.0**. It combines a narrow Firefox interface
+The current add-on source is **0.43.0**. It combines a narrow Firefox interface
 with a local Python companion, exact symbolic solving, and an Ollama fallback:
 
 - **Exact before AI.** The add-on reads Hawkes' MathML and routes factoring,
@@ -40,14 +40,17 @@ with a local Python companion, exact symbolic solving, and an Ollama fallback:
   Hawkes page. Its synthetic insertion events can still be observed; Ethnos
   does not claim or attempt concealment.
 
-### New in 0.42.0: answer cadence
+### New in 0.43.0: Answer Cadence
 
 Answers now arrive as a short, controlled presentation rather than a sudden
-burst. Choose **Classical, Jazz, Lo-fi, Electronic, or Custom**, adjust the
-tempo, and bound the complete performance to **2–12 seconds**. Operators and
-separators can receive longer rests for a spoken walkthrough, and structured
-keypad answers share the same clock after their editor plan has been validated.
-The default Lo-fi arrangement varies inside a 5–10 second window. Read the
+burst. Inside Settings, choose **Classical, Jazz, Lo-fi, Electronic, or
+Custom**, adjust the 30–300 BPM tempo, and bound the complete performance to
+**2–12 seconds**. Changes remain a draft until **Apply cadence**. A structured
+equation preview uses the real planner and shared cadence scheduler; its rhythm
+strip and transport expose accents, structural rests, semantic actions, timing,
+and resolution without touching Hawkes. Structured keypad answers share the
+same clock after their editor plan has been validated. The default Lo-fi
+arrangement varies inside a 5–10 second window. Read the
 [Answer Cadence design note](docs/ANSWER_CADENCE.md) for the model, invariants,
 and terminology.
 

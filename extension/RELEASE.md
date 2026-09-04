@@ -4,10 +4,42 @@ This runbook produces a Mozilla-signed add-on that installs permanently in a
 normal Firefox profile. A locally built XPI is unsigned and is only a release
 candidate; do not weaken Firefox signature enforcement to install it.
 
-## Frozen 0.42.0 candidate
+## Frozen 0.43.0 candidate
 
 The accepted local candidate is frozen. Do not rebuild or alter packaged
 source before submission unless AMO requires a source change:
+
+```text
+dist/ethnos-hawkes-0.43.0-unsigned.xpi
+SHA-256 3c19a69b41af3a82ab4ef1f2723da9b6b637ac37bb1419d8bf2eb966ef597001
+```
+
+The candidate contains 30 packaged files and was built twice from unchanged
+sources with the same digest. Its product baseline is `bb1e66a`, which finishes
+Answer Cadence and includes the recent exact-math, insertion-consistency, and
+window-ownership hardening in its ancestry.
+
+0.43.0 changes no permission, host, native protocol, or data-collection
+declaration. Answer Cadence remains post-validation presentation timing: its
+draft/Apply workflow and local Settings preview cannot alter an answer, editor
+plan, target, or insertion policy. The preview shares the plain insertion score
+and scheduler; the validator prevents its MAIN-world structured copy from
+drifting. Synthetic input and MAIN-world editor calls remain page-observable,
+and zero footprint still means no persistent extension-created website state.
+
+Completed local gates: 168 focused cadence/extension tests, 349 Hawkes-focused
+tests, 825 repository tests, Ruff check and format, three documentation/link
+checks, the 30-file repository validator, isolated Firefox harness 17/17,
+Settings browser smoke 17/17, `web-ext lint --warnings-as-errors` at 0 errors /
+0 warnings / 0 notices, archive integrity, and an identical rebuild. Mozilla
+signing and physical acceptance of the returned signed XPI in the owner's
+normal Firefox remain external gates. Neither isolated browser run touched the
+owner's profile or Hawkes session.
+
+## Prior 0.42.0 candidate
+
+The prior accepted local candidate is retained for audit and rollback context;
+it is superseded by 0.43.0 and must not be uploaded as the current candidate:
 
 ```text
 dist/ethnos-hawkes-0.42.0-unsigned.xpi
@@ -24,8 +56,8 @@ candidate  dist/ethnos-hawkes-0.39.2-unsigned.xpi
 SHA-256    57e0ac32081a038110b2ac5d439b26035fe074e522131ebe01523cbbb3fe55b7
 ```
 
-0.42.0 changes no permission, host, or data-collection declaration. Completed
-gates on this candidate: repository validator, 653 tests,
+Completed gates on the historical 0.42.0 candidate were: repository validator,
+653 tests,
 `web-ext lint --warnings-as-errors` at 0 errors / 0 warnings / 0 notices, and an
 identical rebuild. The real-browser harness and signed-artifact physical
 acceptance remain release gates; neither is replaced by the local checks.
@@ -62,13 +94,13 @@ $ export PATH="$HOME/.local/opt/node-v22.23.2-linux-x64/bin:$HOME/.local/bin:$PA
 $ npm install -g --prefix ~/.local web-ext
 $ web-ext --version
 $ release_lint_dir=$(mktemp -d)
-$ unzip -q dist/ethnos-hawkes-0.42.0-unsigned.xpi -d "$release_lint_dir"
+$ unzip -q dist/ethnos-hawkes-0.43.0-unsigned.xpi -d "$release_lint_dir"
 $ web-ext lint --source-dir "$release_lint_dir" --warnings-as-errors
 ```
 
 The repository validator enforces project-specific invariants. `web-ext lint`
 and the AMO upload validator remain separate gates. Unpacking the frozen XPI
-ensures the official lint gate examines the exact 28 files intended for
+ensures the official lint gate examines the exact 30 files intended for
 submission, rather than documentation or another rebuild. Fix every error;
 review any warning before proceeding.
 
@@ -79,12 +111,10 @@ Confirm all of the following:
 - the fixed ID is `ethnos-hawkes@local` in both the add-on and native manifest;
 - `websiteContent` accurately describes the native-messaging transfer;
 - [`PRIVACY.md`](PRIVACY.md) matches the configured Ollama endpoint;
-- the live checks in [`TESTING.md`](TESTING.md) pass without submitting work.
-  Checks 8, 9 and 10 are new in 0.39.0 and are the ones this version turns on:
-  a placed answer clearing for the next **step**, the unread-instruction
-  caution, and two windows not fighting. Checks 8 and 10 cover fixes that are
-  verified by unit test but **not yet confirmed against a live browser**, and
-  both fail silently, so neither may be skipped.
+- the isolated harness and Settings smoke in [`TESTING.md`](TESTING.md) pass;
+- the signed-artifact live checks pass without submitting work, including
+  exact solve, plain and structured insertion, next-step reset, duplicate and
+  wrong-window guards, cadence timing, and removal footprint.
 
 ## 2. Build the candidate
 
@@ -125,7 +155,7 @@ contain Mozilla signature metadata under `META-INF/`, and its SHA-256 will
 naturally differ from the unsigned candidate. Retain both artifacts and both
 hashes in the release record.
 
-## Signed 0.39.2 artifact
+## Historical signed 0.39.2 artifact
 
 Mozilla returned the signed archive on 3 September 2026. Both artifacts and
 both hashes are retained together, as this runbook requires:
@@ -145,8 +175,8 @@ which AMO returns with its trailing newline stripped — one byte, and
 semantically the same document. Version, id, minimum version and the
 `websiteContent` declaration all match what was submitted.
 
-Status: **candidate, pending physical acceptance.** The live checks below have not
-yet run against this artifact.
+Historical status: **candidate, pending physical acceptance.** The live checks
+below had not yet run against that artifact when this record was written.
 
 ## 4. Permanent installation
 
@@ -171,7 +201,7 @@ substitute the separate Marionette profile for signed-artifact acceptance.
    duplicate-insertion guard, and removal footprint. Never press Hawkes submit
    as part of the extension smoke test.
 
-Only after the signed XPI passes this physical-browser acceptance is 0.42.0
+Only after the signed XPI passes this physical-browser acceptance is 0.43.0
 **released**. Until then its status remains **release candidate complete**.
 
 Firefox Release and Beta require Mozilla-signed extensions. Mozilla documents

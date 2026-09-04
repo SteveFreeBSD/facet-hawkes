@@ -539,6 +539,8 @@ extension/
 ├── PRIVACY.md               complete data-use and retention disclosure
 ├── RELEASE.md               signing, permanent install, smoke test, rollback
 ├── common/config.js          shared origin and answer validation
+├── common/cadence.js         shared Answer Cadence score and timer transport
+├── common/editor-plan.js     validated structured keypad plan
 ├── common/frames.js          which frame may receive an answer (DOM-free)
 ├── common/i18n.js            data-i18n localisation for extension pages
 ├── common/log.js             the bounded, redacted diagnostic log

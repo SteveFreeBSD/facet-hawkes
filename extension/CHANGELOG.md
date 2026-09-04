@@ -3,6 +3,61 @@
 All notable changes to the Ethnos Hawkes Assistant add-on. Versions follow
 `major.minor.patch` as required by the Firefox manifest.
 
+## 0.43.0
+
+### Added
+
+- **Answer Cadence is now a finished Settings instrument.** Cadence remains a
+  presentation layer after answer validation and editor planning; it never
+  changes correctness, target selection, safety, submission, or navigation.
+  Its controls are edited as a draft and saved together only through the
+  explicit **Apply cadence** action, with clear applied/unapplied state and an
+  atomic storage update.
+- The local Settings preview sends
+  `(2ix^4√(2x)+3)/(5y^2)` through the real structured editor planner, then
+  performs the resulting phrase without obtaining a Hawkes tab or touching a
+  website. Its rhythm strip shows note spacing, accents, and structural rests;
+  the transport reports elapsed and target time, beat/semantic-step position,
+  the current character/operator/structure/rest/resolution action, effective
+  tempo, planned counts, and the measured hard-window result.
+- Classical, Jazz, Lo-fi, Electronic, and Custom remain the musical profiles.
+  Tempo now spans 30–300 BPM, while Custom keeps beat shape, swing, timing
+  variation, structural rests, and the 2–12 second hard performance window.
+  Preview restart, Stop, Settings close, and live reduced-motion changes all
+  cancel or redraw deterministically without duplicate timer runs.
+
+### Changed
+
+- Plain/contenteditable insertion and the Settings preview now share the
+  normalization, weighted score, hard-window resolution, and scheduling
+  transport in `common/cadence.js`. Structured insertion still carries a
+  self-contained copy because Firefox serializes it into Hawkes' MAIN world;
+  the package validator compares every tuning rule and bound so the two score
+  builders cannot drift unnoticed.
+- Exact symbolic handling is stricter and broader where live exercises proved
+  the intended operation: parser prose can no longer become an expression,
+  plain `sqrt(...)` is handled as a root, signed decimal substitutions are
+  consumed completely, cosmetic rewrites are declined, named radical
+  evaluation stays exact, and powers/products of `i` and numeric complex
+  radicals simplify to Hawkes-compatible forms.
+
+### Fixed
+
+- Insertion claims its phase before yielding, uses the same reviewed machine
+  form for its validated structured plan, and pins the originating window,
+  tab, frame, field, question signature, and answer for the entire paced
+  operation. Any ownership change stops the operation rather than retargeting
+  it; a detached plain field is rejected on the next beat.
+- A new prepare or solve cancels work already in flight instead of orphaning a
+  solver that can overwrite newer state. Withheld capture permission now offers
+  the existing Hawkes access recovery, invalid model answer text is reported as
+  invalid rather than blaming the editor, and temporary-add-on/native-host
+  inspection no longer reports false absence or false processes.
+- Radical simplification now reads direct per-variable positivity assumptions
+  and preserves half-integer powers correctly. The covered live form
+  `√(-8x^9)` with `x > 0` resolves to `2ix^4√(2x)` rather than an uninsertable
+  or value-changing display.
+
 ## 0.42.0
 
 ### Added
