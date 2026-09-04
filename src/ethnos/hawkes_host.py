@@ -18,6 +18,7 @@ import base64
 import binascii
 import json
 import re
+import subprocess
 import struct
 import sys
 import tempfile
@@ -35,6 +36,19 @@ from .hawkes_protocol import (
 )
 
 LENGTH_PREFIX = struct.Struct("=I")
+FACET_SSH_COMMAND = (
+    "ssh",
+    "-o",
+    "BatchMode=yes",
+    "-o",
+    "ConnectTimeout=5",
+    "-o",
+    "ClearAllForwardings=yes",
+    "-T",
+    "steve@192.168.0.247",
+    "/home/steve/.local/libexec/ethnos-facet-hawkes",
+)
+FACET_BRIDGE_OPERATION = "solve_hawkes_with_facet"
 
 
 def read_message(stream: BinaryIO) -> dict | None:
@@ -104,7 +118,6 @@ def solve(request: SolveRequest, report=None) -> SolveResponse:
             request.request_id, "No question content was supplied.", "unsupported"
         )
 
-    settings = load_settings()
     # An empty prompt is not a small loss. Every exact operation is selected by
     # reading a verb out of this text, so without it the markup path cannot
     # match anything and the question always reaches a model as a picture with
@@ -112,6 +125,11 @@ def solve(request: SolveRequest, report=None) -> SolveResponse:
     # may still be right, and the panel reviews every one before insertion.
     prompt_seen = bool(problem.prompt_text.strip())
     instruction = problem.prompt_text.strip() or "Solve the question in the image."
+
+    if request.solve_engine == "facet":
+        return _solve_with_facet(request, instruction, prompt_seen, announce)
+
+    settings = load_settings()
 
     # Read the page's own mathematics first. It is exact, instant, and skips
     # the two image transcriptions that are otherwise almost the whole of a
@@ -222,6 +240,154 @@ def solve(request: SolveRequest, report=None) -> SolveResponse:
             # The two readers must agree before an answer may be inserted.
             insertable=not issues,
             issues=issues,
+        ),
+    )
+
+
+def _facet_prompt(instruction: str, expressions: list[str]) -> str:
+    rendered = "\n".join(f"- {expression}" for expression in expressions)
+    return (
+        "Solve this Hawkes precalculus question.\n"
+        f"Instruction: {instruction}\n"
+        f"Expression(s):\n{rendered}\n"
+        "Your entire response must be one line beginning with the exact words "
+        "FINAL ANSWER: followed by only what belongs in the Hawkes answer box. "
+        "Do not repeat the input expression or output an equals sign. Never output "
+        "angle brackets or a trailing period. Do not explain."
+    )
+
+
+def _call_facet(prompt: str) -> dict:
+    payload = json.dumps(
+        {
+            "protocol_version": 1,
+            "operation": FACET_BRIDGE_OPERATION,
+            "prompt": prompt,
+        },
+        separators=(",", ":"),
+    )
+    try:
+        completed = subprocess.run(
+            FACET_SSH_COMMAND,
+            input=payload,
+            text=True,
+            capture_output=True,
+            timeout=190,
+            check=False,
+            shell=False,
+        )
+    except (OSError, subprocess.SubprocessError) as error:
+        raise RuntimeError(f"Facet SSH bridge failed: {error}") from error
+    if completed.returncode != 0:
+        detail = completed.stderr.strip()[:400]
+        raise RuntimeError(
+            f"Facet SSH bridge failed with status {completed.returncode}"
+            f"{': ' + detail if detail else ''}"
+        )
+    if len(completed.stdout.encode("utf-8")) > MAX_MESSAGE_BYTES:
+        raise ValueError("Facet response exceeded the native message size limit")
+    try:
+        result = json.loads(completed.stdout)
+    except json.JSONDecodeError as error:
+        raise ValueError("Facet returned malformed JSON") from error
+    if not isinstance(result, dict):
+        raise ValueError("Facet response was not an object")
+    expected_fields = {
+        "text",
+        "requested_backend",
+        "actual_backend",
+        "runtime",
+        "model",
+        "device",
+        "elapsed_ms",
+        "fallback",
+    }
+    if set(result) != expected_fields:
+        raise ValueError("Facet response did not match the runtime result contract")
+    for field in (
+        "text",
+        "requested_backend",
+        "actual_backend",
+        "runtime",
+        "model",
+        "device",
+    ):
+        if not isinstance(result.get(field), str) or not result[field].strip():
+            raise ValueError(f"Facet response omitted {field}")
+    if result["requested_backend"] != "gpu" or result["actual_backend"] != "gpu":
+        raise ValueError("Facet did not confirm the required GPU backend")
+    if result["fallback"] is not False:
+        raise ValueError("Facet reported an unexpected backend fallback")
+    elapsed = result.get("elapsed_ms")
+    if (
+        not isinstance(elapsed, (int, float))
+        or isinstance(elapsed, bool)
+        or elapsed < 0
+    ):
+        raise ValueError("Facet response omitted elapsed_ms")
+    return result
+
+
+def _solve_with_facet(
+    request: SolveRequest, instruction: str, prompt_seen: bool, announce
+) -> SolveResponse:
+    from .answer_image import extract_final_math, keyboard_entry_for_math
+    from .hawkes_mathml import UnsupportedMathML, mathml_to_latex
+
+    problem = request.problem
+    if problem is None or not problem.mathml:
+        return error_response(
+            request.request_id,
+            "Facet experimental mode currently requires readable Hawkes MathML.",
+            "unsupported",
+        )
+    expressions = []
+    try:
+        expressions = [mathml_to_latex(item) for item in problem.mathml]
+    except UnsupportedMathML:
+        return error_response(
+            request.request_id,
+            "Facet experimental mode currently requires readable Hawkes MathML.",
+            "unsupported",
+        )
+    if not expressions:
+        return error_response(
+            request.request_id,
+            "Facet experimental mode currently requires readable Hawkes MathML.",
+            "unsupported",
+        )
+
+    announce("reading", "exact page markup")
+    announce("solving", "Facet · GPU · casbox")
+    result = _call_facet(_facet_prompt(instruction, expressions))
+    final_math = extract_final_math(result["text"])
+    if not final_math:
+        return error_response(
+            request.request_id,
+            "Facet returned no FINAL ANSWER for this question.",
+            "ambiguous",
+        )
+    prose = re.fullmatch(r"[A-Za-z][A-Za-z ]*", final_math) is not None
+    return SolveResponse(
+        request_id=request.request_id,
+        status="ready",
+        problem_text="\n".join((instruction, *expressions)),
+        answer=AnswerPayload(
+            display_text=final_math,
+            keyboard_entry=(
+                final_math if prose else keyboard_entry_for_math(final_math)
+            ),
+        ),
+        certainty=Certainty(
+            prompt_seen=prompt_seen,
+            source="Facet · GPU · casbox",
+            transcription="exact",
+            insertable=True,
+            issues=[],
+            model=result["model"],
+            runtime=result["runtime"],
+            device=result["device"],
+            elapsed_ms=float(result["elapsed_ms"]),
         ),
     )
 

@@ -40,6 +40,7 @@ class SolveRequest(BaseModel):
     operation: Literal["health", "solve_hawkes_problem"]
     request_id: str = Field(max_length=64)
     origin: str = Field(default="", max_length=200)
+    solve_engine: Literal["ethnos", "facet"] = "ethnos"
     problem: ProblemPayload | None = None
 
 
@@ -64,6 +65,10 @@ class Certainty(BaseModel):
     #: so, because a solve made that way is otherwise indistinguishable from
     #: one made from a well-posed question.
     prompt_seen: bool = True
+    model: str | None = None
+    runtime: str | None = None
+    device: str | None = None
+    elapsed_ms: float | None = None
 
 
 class SolveProgress(BaseModel):

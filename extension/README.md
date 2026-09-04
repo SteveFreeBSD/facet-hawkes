@@ -9,6 +9,9 @@ cannot handle falls back to a screenshot, which goes over Firefox native
 messaging to the local Ethnos host and is deleted when that call ends. The
 browser package has no network API; the native host uses the Ollama endpoint
 configured for Ethnos, which must remain local for an entirely local setup.
+The optional **Facet (experimental)** engine sends only the instruction and
+MathML-derived expression through a fixed SSH bridge to `casbox`; it never sends
+a screenshot and exposes no destination or execution setting to the browser.
 
 ## Scope
 

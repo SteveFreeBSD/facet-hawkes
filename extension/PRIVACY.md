@@ -26,6 +26,9 @@ computer, so the manifest declares the required `websiteContent` category.
 - Image transcription and model fallback use the Ollama endpoint configured in
   Ethnos. With the default loopback endpoint, processing stays on this
   computer. A user-configured remote endpoint receives the question material.
+- If the user explicitly selects **Facet (experimental)**, the instruction and
+  exact MathML-derived expression are sent over SSH to the fixed `casbox`
+  machine on the local network. No screenshot is sent through this path.
 - The browser add-on contains no analytics, advertising, telemetry, or HTTP
   transport and sends nothing to the developer.
 

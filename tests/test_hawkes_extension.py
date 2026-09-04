@@ -88,9 +88,17 @@ def test_the_host_is_asked_only_named_operations():
     # command, path, model name, or URL for the host to act on.
     assert 'askEthnos("health"' in background
     assert '"solve_hawkes_problem"' in background
+    assert "solve_engine: settings.solveEngine" in background
     assert 'operation: "health" | "solve_hawkes_problem"' in background or True
     for smuggled in ("model:", "path:", "command:", "script:"):
         assert smuggled not in background
+
+    settings = (EXTENSION_DIR / "common" / "settings.js").read_text()
+    options = (EXTENSION_DIR / "options" / "options.html").read_text()
+    assert 'solveEngine: { kind: "enum", fallback: "ethnos"' in settings
+    assert 'values: Object.freeze(["ethnos", "facet"])' in settings
+    assert 'data-setting="solveEngine"' in options
+    assert 'value="facet"' in options
 
 
 def test_health_is_checked_before_a_capture_is_spent():

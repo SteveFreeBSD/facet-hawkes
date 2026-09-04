@@ -826,6 +826,7 @@ async function solve(windowId = state.windowId) {
         "solve_hawkes_problem",
         {
           origin: "https://learn.hawkeslearning.com",
+          solve_engine: settings.solveEngine,
           problem: {
             prompt_text: question.promptText || "",
             mathml: question.expressions,
@@ -846,6 +847,7 @@ async function solve(windowId = state.windowId) {
     // ordinary questions leave no screenshot and pay no vision-model cost.
     if (
       reply?.status === "unsupported"
+      && settings.solveEngine === "ethnos"
       && question.expressions.length > 0
       && screenshot.length === 0
       && !controller.signal.aborted
@@ -926,6 +928,9 @@ async function acceptReply(reply) {
   }
   if (certainty.issues?.length) {
     notes.push(...certainty.issues.slice(0, 4));
+  }
+  if (certainty.model && certainty.runtime && certainty.device) {
+    notes.push(`${certainty.model} · ${certainty.runtime} · ${certainty.device}`);
   }
 
 

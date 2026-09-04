@@ -12,6 +12,18 @@
       <section class="card">
         <h1 data-i18n="optionsSolvingHeading">Solving</h1>
 
+        <div class="field">
+          <label class="field__label" for="solveEngine"
+                 data-i18n="optionsSolveEngineLabel">Solve engine</label>
+          <select id="solveEngine" class="input input--select" data-setting="solveEngine">
+            <option value="ethnos" data-i18n="optionsSolveEngineEthnos">Ethnos</option>
+            <option value="facet" data-i18n="optionsSolveEngineFacet">Facet (experimental)</option>
+          </select>
+          <p class="note" data-i18n="optionsSolveEngineHelp">
+            Facet is an experimental MathML-only path through the casbox GPU.
+          </p>
+        </div>
+
         <label class="check">
           <input id="autoSolve" type="checkbox" data-setting="autoSolve">
           <span>

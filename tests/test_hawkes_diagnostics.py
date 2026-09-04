@@ -219,6 +219,7 @@ def test_the_log_never_leaves_the_machine():
 def test_every_default_survives_a_round_trip(context):
     defaults = evaluate(context, "defaultSettings()")
 
+    assert defaults["solveEngine"] == "ethnos"
     assert set(defaults) == set(evaluate(context, "SETTING_KEYS"))
     for key, value in defaults.items():
         assert evaluate(context, f"coerce({json.dumps(key)}, {json.dumps(value)})") == {
@@ -236,6 +237,7 @@ def test_every_default_survives_a_round_trip(context):
         ("panelWidth", 9000, 360),
         ("autoSolve", "yes", True),
         ("logLevel", "chatty", "info"),
+        ("solveEngine", "garbage", "ethnos"),
     ],
 )
 def test_a_value_the_schema_rejects_falls_back_to_the_default(
@@ -249,6 +251,14 @@ def test_a_value_the_schema_rejects_falls_back_to_the_default(
 
 def test_a_setting_the_schema_does_not_know_is_refused(context):
     assert evaluate(context, 'coerce("somethingElse", true)')["ok"] is False
+
+
+@pytest.mark.parametrize("engine", ["ethnos", "facet"])
+def test_solve_engine_accepts_only_the_closed_enum(context, engine):
+    assert evaluate(context, f'coerce("solveEngine", "{engine}")') == {
+        "ok": True,
+        "value": engine,
+    }
 
 
 def test_the_timeout_the_solver_uses_is_the_one_that_was_set():

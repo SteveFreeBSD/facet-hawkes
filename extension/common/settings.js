@@ -69,6 +69,10 @@ export const ENTRY_GENRES = Object.freeze([
 
 /** @type {Record<string, Setting>} */
 export const SETTINGS = {
+  /* Experimental solver selection. The browser chooses only this closed enum;
+     every executable, host, backend, and prompt remains native-host-owned. */
+  solveEngine: { kind: "enum", fallback: "ethnos", values: Object.freeze(["ethnos", "facet"]) },
+
   /* Start solving as soon as an answer field is found, rather than waiting for
      a click. Insertion is never automatic; that is the add-on's whole safety
      contract and is deliberately not a preference. */
