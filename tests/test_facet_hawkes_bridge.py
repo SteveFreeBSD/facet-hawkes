@@ -1,27 +1,32 @@
-"""The deliberately narrow Hawkes-to-Facet SSH proof bridge."""
+"""Hawkes across the Facet boundary: Ethnos keeps the question, Facet the run.
+
+The protocol itself is covered in `test_facet_client.py`. What is checked here
+is the division of labour: that Hawkes prompting and answer handling stay on
+the Ethnos side, that the browser cannot reach past the boundary, and that a
+Facet failure is reported rather than quietly answered locally.
+"""
 
 from __future__ import annotations
 
-import importlib.util
-import json
-import subprocess
-from pathlib import Path
-
 import pytest
 
-from ethnos.hawkes_host import FACET_SSH_COMMAND, _call_facet, _facet_prompt, handle
+from ethnos.facet_client import (
+    FacetExecutionError,
+    FacetProtocolError,
+    FacetResult,
+    FacetTransportError,
+)
+from ethnos.hawkes_host import _facet_prompt, handle
 from ethnos.hawkes_protocol import AnswerPayload, SolveRequest
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-HELPER_PATH = PROJECT_ROOT / "deploy" / "facet" / "ethnos_facet_hawkes.py"
 MATHML = "<math><msup><mi>x</mi><mn>2</mn></msup></math>"
 
 
-def _request(*, engine="facet", mathml=None, instruction="Simplify x squared."):
+def request(*, engine="facet", mathml=None, instruction="Simplify x squared."):
     return {
         "protocol_version": 1,
         "operation": "solve_hawkes_problem",
-        "request_id": "facet-poc",
+        "request_id": "hawkes-1",
         "origin": "https://learn.hawkeslearning.com",
         "solve_engine": engine,
         "problem": {
@@ -31,28 +36,105 @@ def _request(*, engine="facet", mathml=None, instruction="Simplify x squared."):
     }
 
 
-def _facet_result(**changes):
-    result = {
+def facet_result(**changes) -> FacetResult:
+    fields = {
         "text": "FINAL ANSWER: x^2",
         "requested_backend": "gpu",
         "actual_backend": "gpu",
         "runtime": "Ollama 0.33.2",
-        "model": "qwen3:0.6b",
+        "model": "gpt-oss:20b",
         "device": "AMD Radeon 890M Graphics (RADV STRIX1)",
         "elapsed_ms": 812.5,
         "fallback": False,
+        "metrics": {"generated_tokens": 12, "decode_tps": 21.2},
+        "evidence": {"source": "ollama /api/ps", "device_resident_fraction": 1.0},
     }
-    result.update(changes)
-    return result
+    fields.update(changes)
+    return FacetResult(**fields)
 
 
-def test_protocol_accepts_only_engine_not_execution_configuration():
-    assert SolveRequest.model_validate(_request()).solve_engine == "facet"
-    assert (
-        SolveRequest.model_validate(_request(engine="ethnos")).solve_engine == "ethnos"
-    )
-    with pytest.raises(ValueError):
-        SolveRequest.model_validate({**_request(), "solve_engine": "garbage"})
+def answering(monkeypatch, result):
+    """Stand in for the whole Facet call, and record what Ethnos asked for."""
+    seen: dict = {}
+
+    def fake_generate_text(prompt, **kwargs):
+        seen["prompt"] = prompt
+        seen["kwargs"] = kwargs
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+    monkeypatch.setattr("ethnos.facet_client.generate_text", fake_generate_text)
+    return seen
+
+
+def test_a_hawkes_question_succeeds_through_the_new_bridge(monkeypatch) -> None:
+    answering(monkeypatch, facet_result())
+
+    response = handle(request())
+
+    assert response.status == "ready"
+    assert response.answer.display_text == "x^2"
+    assert response.answer.keyboard_entry == "x^2"
+    assert response.certainty.insertable is True
+    assert response.certainty.transcription == "exact"
+
+
+def test_the_panel_reports_where_the_work_actually_ran(monkeypatch) -> None:
+    answering(monkeypatch, facet_result(actual_backend="npu", device="AMD XDNA2 NPU"))
+
+    certainty = handle(request()).certainty
+
+    # Not "GPU", and not "casbox": the provenance is what Facet reported.
+    assert certainty.source == "Facet · NPU"
+    assert certainty.device == "AMD XDNA2 NPU"
+    assert certainty.model == "gpt-oss:20b"
+    assert certainty.runtime == "Ollama 0.33.2"
+    assert certainty.elapsed_ms == 812.5
+
+
+def test_ethnos_asks_for_a_constraint_and_never_for_a_device(monkeypatch) -> None:
+    seen = answering(monkeypatch, facet_result())
+
+    handle(request())
+
+    assert seen["kwargs"]["accelerator_required"] is True
+    assert seen["kwargs"]["allow_fallback"] is False
+    assert set(seen["kwargs"]) == {
+        "request_id",
+        "accelerator_required",
+        "allow_fallback",
+    }
+
+
+def test_a_browser_request_id_is_reduced_before_it_crosses(monkeypatch) -> None:
+    seen = answering(monkeypatch, facet_result())
+    hostile = request()
+    hostile["request_id"] = "id with spaces; and ;$(id)"
+
+    handle(hostile)
+
+    assert seen["kwargs"]["request_id"] == "ethnos-id-with-spaces--and----id"
+
+
+def test_the_hawkes_prompt_is_built_by_ethnos_not_by_facet(monkeypatch) -> None:
+    seen = answering(monkeypatch, facet_result())
+
+    handle(request())
+
+    # Facet receives a bounded intelligence request. Everything that makes it a
+    # Hawkes request -- the instruction, the expression, the answer format --
+    # was decided on this side of the boundary.
+    assert seen["prompt"] == _facet_prompt("Simplify x squared.", ["x^2"])
+    assert "FINAL ANSWER:" in seen["prompt"]
+
+
+def test_the_fixed_prompt_does_not_teach_placeholder_tags() -> None:
+    prompt = _facet_prompt("Simplify.", ["x^2"])
+
+    assert "FINAL ANSWER:" in prompt
+    assert "<answer>" not in prompt
+    assert "Do not repeat the input expression or output an equals sign" in prompt
 
 
 @pytest.mark.parametrize(
@@ -64,197 +146,106 @@ def test_protocol_accepts_only_engine_not_execution_configuration():
         "backend",
         "remote_command",
         "model",
+        "device",
         "path",
+        "constraints",
     ],
 )
-def test_protocol_rejects_browser_execution_fields(field):
+def test_the_browser_cannot_name_execution_configuration(field: str) -> None:
     with pytest.raises(ValueError):
-        SolveRequest.model_validate({**_request(), field: "browser-controlled"})
+        SolveRequest.model_validate({**request(), field: "browser-controlled"})
 
 
-def test_default_request_still_uses_the_existing_ethnos_path(monkeypatch):
-    request = _request(engine="ethnos")
-    request.pop("solve_engine")
+def test_the_browser_chooses_an_engine_and_nothing_else() -> None:
+    assert SolveRequest.model_validate(request()).solve_engine == "facet"
+    assert (
+        SolveRequest.model_validate(request(engine="ethnos")).solve_engine == "ethnos"
+    )
+    with pytest.raises(ValueError):
+        SolveRequest.model_validate({**request(), "solve_engine": "garbage"})
+
+
+def test_the_default_request_still_takes_the_local_ethnos_path(monkeypatch) -> None:
+    plain = request(engine="ethnos")
+    plain.pop("solve_engine")
     monkeypatch.setattr(
         "ethnos.hawkes_host._solve_from_markup",
         lambda *_args: (AnswerPayload(display_text="x^2", keyboard_entry="x^2"), ""),
     )
     monkeypatch.setattr(
-        "ethnos.hawkes_host._call_facet",
-        lambda *_args: pytest.fail("default Ethnos request reached Facet"),
+        "ethnos.facet_client.generate_text",
+        lambda *_a, **_k: pytest.fail("a default request reached Facet"),
     )
 
-    response = handle(request)
+    response = handle(plain)
 
     assert response.status == "ready"
-    assert response.answer.display_text == "x^2"
     assert response.certainty.source == "markup"
 
 
-def test_facet_requires_readable_mathml_and_does_not_fall_back(monkeypatch):
+def test_facet_mode_requires_exact_markup_and_reaches_nothing_without_it(
+    monkeypatch,
+) -> None:
     monkeypatch.setattr(
-        "ethnos.hawkes_host._call_facet",
-        lambda *_args: pytest.fail("Facet was called without MathML"),
+        "ethnos.facet_client.generate_text",
+        lambda *_a, **_k: pytest.fail("Facet was called without MathML"),
     )
-    request = _request(mathml=[])
-    request["problem"]["screenshot_png_base64"] = "not-used"
+    without = request(mathml=[])
+    without["problem"]["screenshot_png_base64"] = "not-used"
 
-    response = handle(request)
+    response = handle(without)
 
     assert response.status == "unsupported"
     assert response.answer is None
     assert "requires readable Hawkes MathML" in response.message
 
 
-def test_prompt_is_stdin_data_and_ssh_argv_is_fixed(monkeypatch):
-    instruction = "Simplify $(touch /tmp/never) ; `id` && echo nope."
-    seen = {}
-
-    def fake_run(argv, **kwargs):
-        seen["argv"] = argv
-        seen["kwargs"] = kwargs
-        return subprocess.CompletedProcess(argv, 0, json.dumps(_facet_result()), "")
-
-    monkeypatch.setattr("ethnos.hawkes_host.subprocess.run", fake_run)
-    result = _call_facet(f"Instruction: {instruction}")
-
-    assert result["actual_backend"] == "gpu"
-    assert tuple(seen["argv"]) == FACET_SSH_COMMAND
-    assert instruction not in " ".join(seen["argv"])
-    assert instruction in json.loads(seen["kwargs"]["input"])["prompt"]
-    assert seen["kwargs"]["shell"] is False
-
-
-def test_fixed_prompt_does_not_teach_the_model_to_emit_placeholder_tags():
-    prompt = _facet_prompt("Simplify.", ["x^2"])
-
-    assert "FINAL ANSWER:" in prompt
-    assert "<answer>" not in prompt
-    assert "Do not repeat the input expression or output an equals sign" in prompt
-
-
-def test_valid_gpu_json_becomes_a_normal_solve_response(monkeypatch):
-    monkeypatch.setattr(
-        "ethnos.hawkes_host._call_facet", lambda _prompt: _facet_result()
-    )
-
-    response = handle(_request())
-
-    assert response.status == "ready"
-    assert response.answer.display_text == "x^2"
-    assert response.answer.keyboard_entry == "x^2"
-    assert response.certainty.source == "Facet · GPU · casbox"
-    assert response.certainty.model == "qwen3:0.6b"
-    assert response.certainty.runtime == "Ollama 0.33.2"
-    assert "Radeon 890M" in response.certainty.device
-    assert response.certainty.elapsed_ms == 812.5
-    assert response.certainty.insertable is True
-
-
 @pytest.mark.parametrize(
-    ("completed", "message"),
+    "failure",
     [
-        (subprocess.CompletedProcess([], 0, "not json", ""), "malformed JSON"),
-        (
-            subprocess.CompletedProcess(
-                [], 0, json.dumps(_facet_result(actual_backend="cpu")), ""
-            ),
-            "required GPU backend",
-        ),
-        (subprocess.CompletedProcess([], 255, "", "connection refused"), "status 255"),
+        FacetTransportError("Facet SSH transport failed: no route to host"),
+        FacetProtocolError("Facet returned malformed JSON"),
+        FacetExecutionError("execution_failed", "Ollama returned no response text"),
+        FacetExecutionError("constraint_unsatisfied", "no Facet accelerator"),
     ],
 )
-def test_malformed_wrong_backend_and_ssh_failure_fail_closed(
-    monkeypatch, completed, message
-):
+def test_a_facet_failure_is_reported_and_never_answered_locally(
+    monkeypatch, failure
+) -> None:
+    answering(monkeypatch, failure)
     monkeypatch.setattr(
-        "ethnos.hawkes_host.subprocess.run", lambda *_args, **_kwargs: completed
+        "ethnos.hawkes_host._solve_from_markup",
+        lambda *_args: pytest.fail("a Facet failure fell back to the local solver"),
     )
 
-    response = handle(_request())
+    response = handle(request())
 
     assert response.status == "error"
     assert response.answer is None
-    assert message in response.message
+    assert response.certainty is None
+    assert "Facet did not answer" in response.message
 
 
-def test_facet_contract_rejects_missing_fallback(monkeypatch):
-    result = _facet_result()
-    result.pop("fallback")
+def test_a_facet_run_with_no_final_answer_is_ambiguous_not_inserted(
+    monkeypatch,
+) -> None:
+    answering(monkeypatch, facet_result(text="I think it is probably x squared."))
+
+    response = handle(request())
+
+    assert response.status == "ambiguous"
+    assert response.answer is None
+
+
+def test_an_unwanted_origin_never_reaches_facet(monkeypatch) -> None:
     monkeypatch.setattr(
-        "ethnos.hawkes_host.subprocess.run",
-        lambda *_args, **_kwargs: subprocess.CompletedProcess(
-            [], 0, json.dumps(result), ""
-        ),
+        "ethnos.facet_client.generate_text",
+        lambda *_a, **_k: pytest.fail("a foreign origin reached Facet"),
     )
+    foreign = request()
+    foreign["origin"] = "https://example.com"
 
-    response = handle(_request())
+    response = handle(foreign)
 
     assert response.status == "error"
-    assert response.answer is None
-    assert "runtime result contract" in response.message
-
-
-def _load_helper():
-    spec = importlib.util.spec_from_file_location("ethnos_facet_hawkes", HELPER_PATH)
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    spec.loader.exec_module(module)
-    return module
-
-
-def test_remote_helper_accepts_only_its_fixed_prompt_operation():
-    helper = _load_helper()
-    good = json.dumps(
-        {
-            "protocol_version": 1,
-            "operation": helper.EXPECTED_OPERATION,
-            "prompt": "fixed prompt",
-        }
-    ).encode()
-    assert helper._parse_request(good) == "fixed prompt"
-
-    for extra in ("backend", "model", "path", "executable", "ssh_host"):
-        payload = json.loads(good)
-        payload[extra] = "not allowed"
-        with pytest.raises(ValueError, match="exactly"):
-            helper._parse_request(json.dumps(payload).encode())
-
-
-def test_remote_helper_invokes_facet_as_argv_without_a_shell(monkeypatch, capsys):
-    helper = _load_helper()
-    seen = {}
-    monkeypatch.setattr(helper, "_read_request", lambda: "literal ; $(untrusted)")
-    monkeypatch.setattr(helper.Path, "is_file", lambda _path: True)
-
-    def fake_run(argv, **kwargs):
-        seen["argv"] = argv
-        seen["kwargs"] = kwargs
-        return subprocess.CompletedProcess(argv, 0, json.dumps(_facet_result()), "")
-
-    monkeypatch.setattr(helper.subprocess, "run", fake_run)
-
-    assert helper.main() == 0
-    assert seen["argv"] == [
-        helper.FACET_EXECUTABLE,
-        "run",
-        "literal ; $(untrusted)",
-        "--backend",
-        "gpu",
-    ]
-    assert seen["kwargs"]["shell"] is False
-    assert json.loads(capsys.readouterr().out)["actual_backend"] == "gpu"
-
-
-def test_remote_helper_fails_closed_when_facet_is_missing(monkeypatch, capsys):
-    helper = _load_helper()
-    monkeypatch.setattr(helper, "_read_request", lambda: "fixed prompt")
-    monkeypatch.setattr(helper.Path, "is_file", lambda _path: False)
-    monkeypatch.setattr(
-        helper.subprocess,
-        "run",
-        lambda *_args, **_kwargs: pytest.fail("missing Facet executable was invoked"),
-    )
-
-    assert helper.main() == 1
-    assert "Facet executable is missing" in capsys.readouterr().err
+    assert "origin is not allowed" in response.message

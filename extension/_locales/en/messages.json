@@ -544,7 +544,7 @@
     "description": "Name of the experimental Facet solve engine."
   },
   "optionsSolveEngineHelp": {
-    "message": "Facet is an experimental MathML-only path through the casbox GPU.",
+    "message": "Facet is an experimental MathML-only path that runs on the Facet host.",
     "description": "Scope and destination of the experimental Facet engine."
   },
   "optionsCropLabel": {

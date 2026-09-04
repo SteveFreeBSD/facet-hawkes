@@ -18,7 +18,6 @@ import base64
 import binascii
 import json
 import re
-import subprocess
 import struct
 import sys
 import tempfile
@@ -36,19 +35,6 @@ from .hawkes_protocol import (
 )
 
 LENGTH_PREFIX = struct.Struct("=I")
-FACET_SSH_COMMAND = (
-    "ssh",
-    "-o",
-    "BatchMode=yes",
-    "-o",
-    "ConnectTimeout=5",
-    "-o",
-    "ClearAllForwardings=yes",
-    "-T",
-    "steve@192.168.0.247",
-    "/home/steve/.local/libexec/ethnos-facet-hawkes",
-)
-FACET_BRIDGE_OPERATION = "solve_hawkes_with_facet"
 
 
 def read_message(stream: BinaryIO) -> dict | None:
@@ -257,81 +243,11 @@ def _facet_prompt(instruction: str, expressions: list[str]) -> str:
     )
 
 
-def _call_facet(prompt: str) -> dict:
-    payload = json.dumps(
-        {
-            "protocol_version": 1,
-            "operation": FACET_BRIDGE_OPERATION,
-            "prompt": prompt,
-        },
-        separators=(",", ":"),
-    )
-    try:
-        completed = subprocess.run(
-            FACET_SSH_COMMAND,
-            input=payload,
-            text=True,
-            capture_output=True,
-            timeout=190,
-            check=False,
-            shell=False,
-        )
-    except (OSError, subprocess.SubprocessError) as error:
-        raise RuntimeError(f"Facet SSH bridge failed: {error}") from error
-    if completed.returncode != 0:
-        detail = completed.stderr.strip()[:400]
-        raise RuntimeError(
-            f"Facet SSH bridge failed with status {completed.returncode}"
-            f"{': ' + detail if detail else ''}"
-        )
-    if len(completed.stdout.encode("utf-8")) > MAX_MESSAGE_BYTES:
-        raise ValueError("Facet response exceeded the native message size limit")
-    try:
-        result = json.loads(completed.stdout)
-    except json.JSONDecodeError as error:
-        raise ValueError("Facet returned malformed JSON") from error
-    if not isinstance(result, dict):
-        raise ValueError("Facet response was not an object")
-    expected_fields = {
-        "text",
-        "requested_backend",
-        "actual_backend",
-        "runtime",
-        "model",
-        "device",
-        "elapsed_ms",
-        "fallback",
-    }
-    if set(result) != expected_fields:
-        raise ValueError("Facet response did not match the runtime result contract")
-    for field in (
-        "text",
-        "requested_backend",
-        "actual_backend",
-        "runtime",
-        "model",
-        "device",
-    ):
-        if not isinstance(result.get(field), str) or not result[field].strip():
-            raise ValueError(f"Facet response omitted {field}")
-    if result["requested_backend"] != "gpu" or result["actual_backend"] != "gpu":
-        raise ValueError("Facet did not confirm the required GPU backend")
-    if result["fallback"] is not False:
-        raise ValueError("Facet reported an unexpected backend fallback")
-    elapsed = result.get("elapsed_ms")
-    if (
-        not isinstance(elapsed, (int, float))
-        or isinstance(elapsed, bool)
-        or elapsed < 0
-    ):
-        raise ValueError("Facet response omitted elapsed_ms")
-    return result
-
-
 def _solve_with_facet(
     request: SolveRequest, instruction: str, prompt_seen: bool, announce
 ) -> SolveResponse:
     from .answer_image import extract_final_math, keyboard_entry_for_math
+    from .facet_client import FacetError, generate_text, safe_request_id
     from .hawkes_mathml import UnsupportedMathML, mathml_to_latex
 
     problem = request.problem
@@ -358,9 +274,23 @@ def _solve_with_facet(
         )
 
     announce("reading", "exact page markup")
-    announce("solving", "Facet · GPU · casbox")
-    result = _call_facet(_facet_prompt(instruction, expressions))
-    final_math = extract_final_math(result["text"])
+    announce("solving", "Facet")
+    # A need, not a device. Ethnos requires accelerated execution and refuses a
+    # fallback; which accelerator satisfies that is Facet's to decide and
+    # Facet's to report, so nothing here assumes a GPU or a particular host.
+    try:
+        result = generate_text(
+            _facet_prompt(instruction, expressions),
+            request_id=safe_request_id(request.request_id),
+            accelerator_required=True,
+            allow_fallback=False,
+        )
+    except FacetError as error:
+        # Facet is the engine the user chose. A failure here is reported as a
+        # failure and never quietly becomes a local Ethnos answer: a
+        # substituted answer would carry a provenance nobody asked for.
+        return error_response(request.request_id, f"Facet did not answer: {error}")
+    final_math = extract_final_math(result.text)
     if not final_math:
         return error_response(
             request.request_id,
@@ -380,14 +310,15 @@ def _solve_with_facet(
         ),
         certainty=Certainty(
             prompt_seen=prompt_seen,
-            source="Facet · GPU · casbox",
+            # Where the work ran is reported, not assumed.
+            source=f"Facet · {result.actual_backend.upper()}",
             transcription="exact",
             insertable=True,
             issues=[],
-            model=result["model"],
-            runtime=result["runtime"],
-            device=result["device"],
-            elapsed_ms=float(result["elapsed_ms"]),
+            model=result.model,
+            runtime=result.runtime,
+            device=result.device,
+            elapsed_ms=result.elapsed_ms,
         ),
     )
 

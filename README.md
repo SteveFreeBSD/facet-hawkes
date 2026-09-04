@@ -374,5 +374,7 @@ documents are:
   measured decisions, and rejected experiments.
 - [Caspian](docs/hosts/caspian.md): live hardware and persistent host settings.
 - [Migration Checklist](docs/MIGRATION.md): reproduce the system elsewhere.
+- [The Ethnos-Facet boundary](docs/FACET_BRIDGE.md): the remote protocol, its
+  security properties, and where the Facet host is configured.
 - [Ollama Troubleshooting](docs/OLLAMA_TROUBLESHOOTING.md): model, Vulkan,
   response, and stability failures.
