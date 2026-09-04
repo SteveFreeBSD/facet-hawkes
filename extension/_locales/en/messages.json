@@ -372,7 +372,7 @@
     "description": "Heading for the musical answer-entry preferences."
   },
   "optionsCadenceHelp": {
-    "message": "Plain-text formulas arrive one character at a time. Pick a musical feel, then set the pace and performance window for demonstrations and voice-over.",
+    "message": "Shape the semantic cadence of a validated answer: its pulse, accents, structural rests, and resolution.",
     "description": "Introduction to the musical answer-entry preferences."
   },
   "optionsCadenceGenreLabel": {
@@ -433,6 +433,10 @@
       }
     }
   },
+  "optionsCadenceTempoHelp": {
+    "message": "Beats per minute sets the pulse; the hard window still bounds the complete phrase.",
+    "description": "Explanation beneath the cadence tempo control."
+  },
   "optionsCadenceWindowLabel": {
     "message": "Performance window",
     "description": "Label for the minimum and maximum answer-entry duration controls."
@@ -450,7 +454,7 @@
     "description": "Unit beside the answer-entry duration controls."
   },
   "optionsCadenceWindowHelp": {
-    "message": "Tempo suggests the natural length; this window keeps every insertion between your limits. Maximum 12 seconds leaves room under the 15-second operation deadline.",
+    "message": "Every multi-note phrase resolves inside this hard window. The 12-second ceiling leaves room under the insertion deadline.",
     "description": "Explanation of how tempo and the hard duration window interact."
   },
   "optionsCadenceSummary": {
@@ -464,20 +468,6 @@
       "tempo": {
         "content": "$2",
         "example": "82"
-      }
-    }
-  },
-  "optionsCadencePreviewLabel": {
-    "message": "$GENRE$ beat preview at $TEMPO$ BPM",
-    "description": "Accessible label for the visual cadence bars.",
-    "placeholders": {
-      "genre": {
-        "content": "$1",
-        "example": "Jazz"
-      },
-      "tempo": {
-        "content": "$2",
-        "example": "112"
       }
     }
   },
@@ -514,7 +504,7 @@
     "description": "Label for the custom random timing variation slider."
   },
   "optionsCadenceSymbolRestLabel": {
-    "message": "Rest after symbols",
+    "message": "Structural rests",
     "description": "Label for the custom extra-rest-after-symbols slider."
   },
   "optionsCadencePercentValue": {
@@ -526,6 +516,162 @@
         "example": "18"
       }
     }
+  },
+  "optionsCadencePreviewEyebrow": {
+    "message": "Phrase preview",
+    "description": "Small category label above the cadence equation preview."
+  },
+  "optionsCadencePreviewHeading": {
+    "message": "Equation entry",
+    "description": "Heading for the live structured cadence preview."
+  },
+  "optionsCadencePreviewPlay": {
+    "message": "Preview",
+    "description": "Button that starts or restarts the cadence preview."
+  },
+  "optionsCadencePreviewStop": {
+    "message": "Stop",
+    "description": "Button that stops the cadence preview."
+  },
+  "optionsCadenceDemoLabel": {
+    "message": "The quantity two i x to the fourth times the square root of two x, plus three, over five y squared",
+    "description": "Accessible reading of the representative preview equation."
+  },
+  "optionsCadenceElapsed": {
+    "message": "Elapsed",
+    "description": "Cadence transport label for elapsed time."
+  },
+  "optionsCadenceTarget": {
+    "message": "Target / window",
+    "description": "Cadence transport label for target duration and hard window."
+  },
+  "optionsCadenceStep": {
+    "message": "Beat / step",
+    "description": "Cadence transport label for the current note and semantic step."
+  },
+  "optionsCadenceAction": {
+    "message": "Semantic action",
+    "description": "Cadence transport label for the current semantic action."
+  },
+  "optionsCadenceEffectiveTempo": {
+    "message": "Effective tempo",
+    "description": "Cadence transport label for the window-adjusted effective tempo."
+  },
+  "optionsCadencePlannedSteps": {
+    "message": "Notes / actions",
+    "description": "Cadence transport label for planned note and semantic action counts."
+  },
+  "optionsCadenceWindowState": {
+    "message": "Hard window",
+    "description": "Cadence transport label for hard-window compliance."
+  },
+  "optionsCadenceScoreLabel": {
+    "message": "Rhythm strip: one mark for each note, spaced by when it is due, taller when the arrangement accents it, with a band for each structural rest.",
+    "description": "Accessible description of the cadence rhythm strip."
+  },
+  "optionsCadenceWindowTempoLed": {
+    "message": "Tempo-led",
+    "description": "Hard-window state when the tempo, not the window, set the phrase length."
+  },
+  "optionsCadenceWindowRaised": {
+    "message": "Raised to the $BOUND$ minimum",
+    "description": "Hard-window state when the window floor lengthened a fast phrase.",
+    "placeholders": {
+      "bound": {
+        "content": "$1",
+        "example": "5.0s"
+      }
+    }
+  },
+  "optionsCadenceWindowHeld": {
+    "message": "Held to the $BOUND$ maximum",
+    "description": "Hard-window state when the window ceiling shortened a slow phrase.",
+    "placeholders": {
+      "bound": {
+        "content": "$1",
+        "example": "10.0s"
+      }
+    }
+  },
+  "optionsCadencePreviewUnavailable": {
+    "message": "Preview unavailable",
+    "description": "Shown when the demo expression can no longer be planned."
+  },
+  "optionsCadenceWindowWithin": {
+    "message": "Within window",
+    "description": "Cadence transport state when the phrase meets its hard window."
+  },
+  "optionsCadenceWindowOutside": {
+    "message": "Outside window",
+    "description": "Cadence transport state if a phrase fails its hard window."
+  },
+  "optionsCadenceActionReady": {
+    "message": "Ready",
+    "description": "Cadence preview state before playback."
+  },
+  "optionsCadenceActionCharacter": {
+    "message": "Character",
+    "description": "Cadence preview action for an ordinary character."
+  },
+  "optionsCadenceActionOperator": {
+    "message": "Operator",
+    "description": "Cadence preview action for a mathematical operator."
+  },
+  "optionsCadenceActionStructureEnter": {
+    "message": "Structure enter",
+    "description": "Cadence preview action for entering a mathematical structure."
+  },
+  "optionsCadenceActionStructureExit": {
+    "message": "Structure exit",
+    "description": "Cadence preview action for leaving a mathematical structure."
+  },
+  "optionsCadenceActionRest": {
+    "message": "Structural rest",
+    "description": "Cadence preview action for a structural rest."
+  },
+  "optionsCadenceActionResolution": {
+    "message": "Resolution",
+    "description": "Cadence preview action for the phrase resolution."
+  },
+  "optionsCadenceAccent": {
+    "message": "Accent",
+    "description": "Cadence preview marker for an accented note."
+  },
+  "optionsCadenceActionResolved": {
+    "message": "Resolution · complete",
+    "description": "Cadence preview state after playback completes."
+  },
+  "optionsCadenceActionStopped": {
+    "message": "Stopped",
+    "description": "Cadence preview state after explicit cancellation."
+  },
+  "optionsCadencePreviewPlaying": {
+    "message": "Cadence preview playing.",
+    "description": "Screen-reader announcement when cadence preview begins."
+  },
+  "optionsCadencePreviewComplete": {
+    "message": "Cadence preview complete.",
+    "description": "Screen-reader announcement when cadence preview resolves."
+  },
+  "optionsCadencePreviewStopped": {
+    "message": "Cadence preview stopped.",
+    "description": "Screen-reader announcement when cadence preview is cancelled."
+  },
+  "optionsCadenceDraftChanged": {
+    "message": "Unapplied cadence changes",
+    "description": "State shown when cadence controls differ from storage."
+  },
+  "optionsCadenceDraftApplied": {
+    "message": "Cadence is applied",
+    "description": "State shown when the cadence draft matches storage."
+  },
+  "optionsCadenceApply": {
+    "message": "Apply cadence",
+    "description": "Button that atomically saves the cadence draft."
+  },
+  "optionsCadenceApplied": {
+    "message": "Answer Cadence applied.",
+    "description": "Confirmation after the cadence draft is saved."
   },
   "optionsCadenceDisclosure": {
     "message": "This is presentation timing, not concealment. Hawkes can still identify the synthetic input events.",

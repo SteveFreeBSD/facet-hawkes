@@ -131,12 +131,17 @@ Plain-text insertion is presented one character at a time. It defaults to a
 randomised Lo-fi cadence inside a 5–10 second window, leaving longer rests
 after operators and separators so a demonstration voice-over can name each
 part of the expression. Settings offers Classical, Jazz, Lo-fi, Electronic and
-Custom arrangements, an independent tempo, and a configurable 2–12 second hard
-window. Structured keypad plans use that same cadence for their typed steps;
-template presses settle on the shared clock. The timing is theatrical, not an
-attempt to imitate human input: synthetic events and MAIN-world editor calls
-remain observable to the page. See the authoritative
-[`Answer Cadence` design note](../docs/ANSWER_CADENCE.md).
+Custom arrangements, an independent 30–300 BPM tempo, and a configurable 2–12
+second hard window. Cadence controls remain a draft until **Apply cadence**,
+which writes them in one transaction. The in-Settings equation preview uses the
+actual structured planner and shared cadence scheduler, draws the phrase as a
+rhythm strip — spacing is the timing, height is the accent, a band is the
+structural rest — and reports which end of the hard window decided the phrase's
+length. It never touches a Hawkes page. Structured keypad plans use that same
+cadence for their typed steps; template presses settle on the shared clock. The
+timing is theatrical, not an attempt to imitate human input: synthetic events
+and MAIN-world editor calls remain observable to the page. See the
+authoritative [`Answer Cadence` design note](../docs/ANSWER_CADENCE.md).
 
 ## Site-footprint contract and hard limit
 
@@ -424,7 +429,7 @@ costs you the preference rather than the add-on.
 | Panel width | 360px | 300–560. Firefox sizes a popup to its content, so this is the whole of the control there is over it. |
 | Show the recognized problem expanded | off | Costs a little panel height. |
 | Cadence genre | Lo-fi | Classical, Jazz, Lo-fi and Electronic supply distinct beat shapes, swing, variation and symbol rests. Custom exposes those controls directly. |
-| Cadence tempo | 82 BPM | 45–180. Choosing a genre loads its suggested tempo; the slider can then override it. |
+| Cadence tempo | 82 BPM | 30–300. Choosing a genre loads its suggested tempo into the draft; the slider can then override it. Cadence changes take effect together through **Apply cadence**. |
 | Performance window | 5–10s | A hard 2–12 second range around the tempo-derived length, kept below the injected operation's 15-second deadline. |
 | Keyboard shortcut | `Alt+Shift+E` | Rebound through Firefox's own `browser.commands`. |
 | Record | Normal activity | What reaches the diagnostic log. |

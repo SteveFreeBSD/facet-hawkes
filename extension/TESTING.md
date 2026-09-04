@@ -27,6 +27,7 @@ different Firefox profile and cannot prove the installed signed artifact.
 $ python3 scripts/build_extension.py --check   # manifest, permissions, footprint rules
 $ pytest                                       # logic, under QuickJS where it is JavaScript
 $ xvfb-run -a python3 scripts/run_extension_harness.py   # a real Firefox, local fixtures
+$ xvfb-run -a python3 scripts/run_settings_smoke.py      # the Settings page, driven
 ```
 
 The harness installs the add-on in a throwaway Firefox profile and clicks the
@@ -34,6 +35,18 @@ real toolbar button, so `activeTab` is granted the way it is in normal use. It
 covers the top frame, a same-origin editor frame, a page carrying an unrelated
 cross-origin frame, a cross-origin editor, and nothing focused. It never
 touches your profile, your running Firefox, or the real Hawkes site.
+
+`run_settings_smoke.py` does the same for `options/options.html`, which the
+panel harness never opens. It presses the real controls and judges what the
+Answer Cadence card does: that a moved control stays a draft and reaches no
+storage, that **Apply cadence** writes the whole draft at once, that the card
+never reports applied and unapplied at the same time, that each preset carries
+its tempo, that the tempo extremes name the window bound that overrode them,
+that a performance sweeps its playhead through a held rest and resolves inside
+its window, that Preview restarts rather than doubling, that Stop leaves no
+timer running, and that reduced motion keeps the equation still and legible. It
+finishes by reading the add-on's own diagnostic log and failing on any error
+recorded there. There is no fixture server: Settings reaches no website.
 
 What none of that can settle is whether the *Hawkes* editor accepts what the
 add-on builds. That is what the checks below are for.
@@ -221,17 +234,42 @@ Solve; if the host takes longer than 30 seconds the panel reports the timeout
 rather than the old four-minute one. Settings → Panel: move **Panel width** and
 reopen the panel; it opens at the width you set.
 
-Settings → Answer cadence: choose each genre and confirm the beat preview and
-suggested tempo change. Choose **Custom** and confirm the beat-shape, swing,
-variation and symbol-rest panel appears. Set the window to 5–10 seconds, insert
-a plain-text formula, and time from its first to last character. It must finish
-inside that window; operators and separators should carry visibly longer
-rests. Repeat with a contenteditable formula if the question supplies one.
-Insert a structured keypad formula as well: its validated `type` steps must use
-the same cadence, while template presses and their settling work share that
-performance clock. Do not treat a successful insertion as evidence that the
-events were invisible; page code can observe synthetic input and MAIN-world
-editor calls. The complete cadence contract is in the
+Settings → Answer cadence: choose each genre and confirm its suggested tempo,
+idle target, and effective-tempo readout change without reporting the draft as
+applied. Choose **Custom**, expand **Custom arrangement**, and confirm the beat
+shape, swing, variation, and structural-rest controls appear. Move several
+controls, close and reopen Settings without applying, and confirm insertion
+still uses the previously applied configuration. Repeat and press **Apply
+cadence**; confirm the card reports success and the values persist together.
+
+Read the rhythm strip before pressing anything: its marks are the scheduled
+notes, spaced by when each is due, taller where the arrangement accents them,
+with a band across each structural rest. Move the tempo and the swing and watch
+the spacing change. Set the tempo to 300 and then to 30; the hard-window
+readout should say the phrase was raised to the minimum and then held to the
+maximum, and the effective tempo should differ from the number you asked for.
+
+Press **Preview**. The fraction should perform its characters, `+` operator,
+exponents, radical, structure transitions, accent, structural rest, and final
+resolution while the playhead sweeps the strip continuously — including
+*through* the rest after the `+`, which must read as a held note and not as a
+stall — and the local transport updates elapsed/target time, note/action
+position, semantic action, effective tempo, planned counts, and hard-window
+state. At resolution the hard-window line becomes a measured verdict. Press
+Preview during playback to restart cleanly, press Stop, and close Settings
+during another run; no prior timer may continue. With reduced motion enabled,
+the equation stays visible and does not jump while textual telemetry
+continues. None of these checks needs a Hawkes tab, and
+`scripts/run_settings_smoke.py` performs all of them unattended.
+
+Set the window to 5–10 seconds, apply it, insert a plain-text formula, and time
+from its first to last character. It must finish inside that window; operators
+and separators should carry visibly longer rests. Repeat with a contenteditable
+formula if the question supplies one. Insert a structured keypad formula as
+well: its validated `type` steps must use the same cadence, while template
+presses and their settling work share that performance clock. Do not treat a
+successful insertion as evidence that the events were invisible; page code can
+observe synthetic input and MAIN-world editor calls. The complete contract is in the
 [`Answer Cadence` design note](../docs/ANSWER_CADENCE.md).
 
 The event page holds preferences in memory, so a change applies to the next

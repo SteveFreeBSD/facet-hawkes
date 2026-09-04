@@ -103,7 +103,7 @@ export const SETTINGS = {
      beat shape and feel; tempo and the hard duration window stay independent
      so any preset can be sped up without losing its character. */
   entryGenre: { kind: "enum", fallback: "lofi", values: ENTRY_GENRES },
-  entryTempoBpm: { kind: "integer", fallback: 82, min: 45, max: 180 },
+  entryTempoBpm: { kind: "integer", fallback: 82, min: 30, max: 300 },
   entryDurationMinSeconds: { kind: "integer", fallback: 5, min: 2, max: 12 },
   entryDurationMaxSeconds: { kind: "integer", fallback: 10, min: 2, max: 12 },
 
@@ -262,6 +262,25 @@ export async function writeSetting(key, value) {
     return false;
   }
   await browser.storage.local.set({ [key]: checked.value });
+  return true;
+}
+
+/**
+ * Store a group of preferences in one storage transaction.
+ *
+ * Callers use this for draft/apply interfaces: either every offered value is
+ * valid and Firefox receives one patch, or storage is not touched at all.
+ */
+export async function writeSettings(values) {
+  const patch = {};
+  for (const [key, value] of Object.entries(values)) {
+    const checked = coerce(key, value);
+    if (!checked.ok) {
+      return false;
+    }
+    patch[key] = checked.value;
+  }
+  await browser.storage.local.set(patch);
   return true;
 }
 

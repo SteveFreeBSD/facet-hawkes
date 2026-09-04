@@ -134,12 +134,23 @@ class Marionette:
         self.disconnect()
 
 
-def launch(profile_dir: str, port: int, headless: bool = False) -> subprocess.Popen:
-    """Start Firefox on a throwaway profile with Marionette listening."""
+def launch(
+    profile_dir: str,
+    port: int,
+    headless: bool = False,
+    extra_prefs: tuple[str, ...] = (),
+) -> subprocess.Popen:
+    """Start Firefox on a throwaway profile with Marionette listening.
+
+    `extra_prefs` are whole `user_pref(...);` lines appended after the standard
+    set. The profile is written here rather than by the caller because this
+    function owns the file; a caller that wrote its own first would find it
+    replaced, which is exactly how a pinned add-on UUID went missing.
+    """
     os.makedirs(profile_dir, exist_ok=True)
     with open(os.path.join(profile_dir, "user.js"), "w", encoding="utf-8") as handle:
         handle.write(f'user_pref("marionette.port", {port});\n')
-        handle.write("\n".join(PROFILE_PREFS) + "\n")
+        handle.write("\n".join((*PROFILE_PREFS, *extra_prefs)) + "\n")
 
     # Distribution builds may ship without Marionette: CachyOS's `firefox-pure`
     # 155 strips the remote agent entirely, so `--marionette` is reported as an

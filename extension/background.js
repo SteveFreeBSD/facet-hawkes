@@ -35,6 +35,7 @@ const PROTOCOL_VERSION = 1;
  *  check rather than a solve, and is not worth a preference. */
 const HEALTH_TIMEOUT_MS = 8000;
 
+const CADENCE_SCRIPT = "/common/cadence.js";
 const EDITOR_SCRIPT = "/content/hawkes-editor.js";
 const INSPECT_SCRIPT = "/content/inspect-field.js";
 const DESCRIBE_SCRIPT = "/content/hawkes-describe.js";
@@ -186,7 +187,7 @@ const PAGE_TIMEOUT_MS = 15000;
 async function runOperation(target, operation, { world, alone = false } = {}) {
   return runInjection({
     target,
-    files: alone ? [operation] : [EDITOR_SCRIPT, operation],
+    files: alone ? [operation] : [CADENCE_SCRIPT, EDITOR_SCRIPT, operation],
     ...(world ? { world } : {}),
   });
 }

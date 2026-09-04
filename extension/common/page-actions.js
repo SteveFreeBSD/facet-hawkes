@@ -67,7 +67,7 @@ export async function enterPlan(steps, cadence = {}) {
     const first = bounded(cadence.durationMinMs, 2000, 12000, NOTE_FALLBACK.durationMinMs);
     const second = bounded(cadence.durationMaxMs, 2000, 12000, NOTE_FALLBACK.durationMaxMs);
     return {
-      tempoBpm: bounded(cadence.tempoBpm, 45, 180, NOTE_FALLBACK.tempoBpm),
+      tempoBpm: bounded(cadence.tempoBpm, 30, 300, NOTE_FALLBACK.tempoBpm),
       durationMinMs: Math.min(first, second),
       durationMaxMs: Math.max(first, second),
       rhythmWeights: weights.length > 1 ? weights : [...NOTE_FALLBACK.rhythmWeights],

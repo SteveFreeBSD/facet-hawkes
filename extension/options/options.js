@@ -5,8 +5,9 @@
  *
  * Controls are bound by `data-setting="<key>"`, and the key is looked up in
  * `common/settings.js` to decide how to read the control and how to validate
- * what comes out of it. The cadence card adds only presentation behaviour: a
- * live beat preview, linked duration endpoints, and preset tempo suggestions.
+ * what comes out of it. Answer Cadence keeps a separate draft until Apply and
+ * performs a structured demo through the same score and transport as plain
+ * insertion. The demo never leaves this extension document.
  *
  * The rest of the page is the two things you cannot put in a schema: the
  * keyboard shortcut, which Firefox owns and which is changed through
@@ -14,6 +15,7 @@
  */
 
 import { localizeDocument, message } from "../common/i18n.js";
+import { planEntry } from "../common/editor-plan.js";
 import {
   ENTRY_GENRE_PRESETS,
   SETTINGS,
@@ -22,6 +24,7 @@ import {
   resetSettings,
   resolveEntryCadence,
   writeSetting,
+  writeSettings,
 } from "../common/settings.js";
 import { clearLog, describeError, formatEntry, initLog, log, readLog, setLogLevel } from "../common/log.js";
 
@@ -38,11 +41,70 @@ const logView = document.querySelector("#log");
 const logSummary = document.querySelector("#log-summary");
 const logStatus = document.querySelector("#log-status");
 const resetStatus = document.querySelector("#reset-status");
+const cadenceCard = document.querySelector("#cadence-card");
 const cadenceCustom = document.querySelector("#cadence-custom");
 const cadenceNote = document.querySelector("#cadence-note");
-const cadencePreview = document.querySelector("#cadence-preview");
 const cadenceSummary = document.querySelector("#cadence-summary");
-const cadenceBars = [...cadencePreview.querySelectorAll(".cadence-preview__beat")];
+const cadenceApply = document.querySelector("#cadence-apply");
+const cadenceApplyStatus = document.querySelector("#cadence-apply-status");
+const cadenceDraftStatus = document.querySelector("#cadence-draft-status");
+const cadencePlay = document.querySelector("#cadence-play");
+const cadenceStop = document.querySelector("#cadence-stop");
+const cadenceEquation = document.querySelector("#cadence-equation");
+const cadenceScoreFill = document.querySelector("#cadence-score-fill");
+const cadenceScoreBeats = document.querySelector("#cadence-score-beats");
+const cadenceScoreHead = document.querySelector("#cadence-score-head");
+const cadencePreviewStatus = document.querySelector("#cadence-preview-status");
+const cadenceElapsed = document.querySelector("#cadence-elapsed");
+const cadenceTarget = document.querySelector("#cadence-target");
+const cadenceStep = document.querySelector("#cadence-step");
+const cadenceAction = document.querySelector("#cadence-action");
+const cadenceEffectiveTempo = document.querySelector("#cadence-effective-tempo");
+const cadencePlannedSteps = document.querySelector("#cadence-planned-steps");
+const cadenceWindowState = document.querySelector("#cadence-window-state");
+
+const CADENCE_KEYS = Object.freeze([
+  "entryGenre",
+  "entryTempoBpm",
+  "entryDurationMinSeconds",
+  "entryDurationMaxSeconds",
+  "entryPattern",
+  "entrySwingPercent",
+  "entryVariationPercent",
+  "entrySymbolRestPercent",
+]);
+
+const DEMO_EXPRESSION = "(2ix^4√(2x)+3)/(5y^2)";
+const DEMO_EDITOR = Object.freeze({
+  allowedCharacters: "0123456789ixy+",
+  templates: Object.freeze({
+    exponent: true, fraction: true, radical: true, parentheses: true,
+  }),
+  slots: Object.freeze({
+    numerator: "0123456789ixy+",
+    denominator: "0123456789ixy",
+  }),
+});
+
+const ACTION_LABEL_KEYS = Object.freeze({
+  character: "optionsCadenceActionCharacter",
+  operator: "optionsCadenceActionOperator",
+  "structure-enter": "optionsCadenceActionStructureEnter",
+  "structure-exit": "optionsCadenceActionStructureExit",
+  rest: "optionsCadenceActionRest",
+  resolution: "optionsCadenceActionResolution",
+});
+
+let appliedCadence = null;
+let demoSteps = null;
+let previewBroken = false;
+let previewRun = null;
+
+/**
+ * Live, rather than sampled once per Play: someone who turns reduced motion on
+ * while Settings is open should not have to reload the page to be believed.
+ */
+const motionQuery = matchMedia("(prefers-reduced-motion: reduce)");
 
 const SETTING_OUTPUT_KEYS = Object.freeze({
   panelWidth: "optionsWidthValue",
@@ -124,6 +186,36 @@ function visibleSettings() {
   return values;
 }
 
+function cadenceSubset(values) {
+  return Object.fromEntries(CADENCE_KEYS.map((key) => [key, values[key]]));
+}
+
+function cadenceDraft() {
+  return cadenceSubset(visibleSettings());
+}
+
+function cadenceIsDirty(draft = cadenceDraft()) {
+  return CADENCE_KEYS.some((key) => draft[key] !== appliedCadence?.[key]);
+}
+
+function showDraftState() {
+  const dirty = cadenceIsDirty();
+  cadenceApply.disabled = !dirty;
+  cadenceDraftStatus.textContent = message(
+    dirty ? "optionsCadenceDraftChanged" : "optionsCadenceDraftApplied"
+  );
+  cadenceDraftStatus.classList.toggle("is-applied", !dirty);
+  // Apply sits below the preview, which is far enough from the controls to be
+  // off-screen while a slider moves. The card heading carries the same fact
+  // back to where the hand already is.
+  cadenceCard.classList.toggle("is-draft", dirty);
+  if (dirty) {
+    // "Answer Cadence applied." must never stand beside "Unapplied changes".
+    // Reading both at once is the fastest way to stop trusting a save button.
+    cadenceApplyStatus.textContent = "";
+  }
+}
+
 /** Draw the selected arrangement without playing sound or touching a page. */
 function showCadence() {
   const values = visibleSettings();
@@ -135,18 +227,16 @@ function showCadence() {
   cadenceSummary.textContent = message(
     "optionsCadenceSummary", [genreName, String(resolved.tempoBpm)]
   );
-  cadencePreview.setAttribute(
-    "aria-label",
-    message("optionsCadencePreviewLabel", [genreName, String(resolved.tempoBpm)])
-  );
-  for (let index = 0; index < cadenceBars.length; index += 1) {
-    const bar = cadenceBars[index];
-    const weight = resolved.rhythmWeights[index];
-    bar.hidden = weight === undefined;
-    if (weight !== undefined) {
-      bar.style.setProperty("--beat-weight", String(weight));
-    }
+  cadenceEquation.dataset.genre = genre;
+  showDraftState();
+  if (previewRun) {
+    // A performance owns the transport until it ends. Retiming it mid-phrase
+    // would show numbers no performance ever had; note instead that the idle
+    // display is now describing an arrangement that has moved on.
+    previewRun.stale = true;
+    return;
   }
+  stagePreview(resolved);
 }
 
 /** Keep the two ends of the hard timing window in chronological order. */
@@ -155,17 +245,16 @@ function alignDurationWindow(changedKey, settledValue) {
   const maximum = document.querySelector("#entryDurationMaxSeconds");
   if (changedKey === "entryDurationMinSeconds" && settledValue > Number(maximum.value)) {
     showValue(maximum, settledValue);
-    return writeSetting("entryDurationMaxSeconds", settledValue);
-  }
-  if (changedKey === "entryDurationMaxSeconds" && settledValue < Number(minimum.value)) {
+  } else if (
+    changedKey === "entryDurationMaxSeconds" && settledValue < Number(minimum.value)
+  ) {
     showValue(minimum, settledValue);
-    return writeSetting("entryDurationMinSeconds", settledValue);
   }
-  return Promise.resolve(true);
 }
 
 async function bindSettings() {
   const stored = await readSettings();
+  appliedCadence = cadenceSubset(stored);
   for (const control of boundControls()) {
     const key = control.dataset.setting;
     const setting = SETTINGS[key];
@@ -184,8 +273,8 @@ async function bindSettings() {
     }
     control.dataset.bound = "true";
 
-    // `input` drives the readout only. A slider fires it for every pixel of a
-    // drag, and none of those are a preference the user has settled on.
+    // Cadence controls are always a draft. Other settings preserve their
+    // established change-to-save behaviour.
     control.addEventListener("input", () => {
       const settled = clamp(key, controlValue(control));
       showReadout(control, settled.value);
@@ -194,29 +283,31 @@ async function bindSettings() {
       }
     });
 
-    // `change` is the commit: the pointer released, the select closed, the
-    // number field left. A value out of range is put back to something valid
-    // rather than silently disagreeing with what is stored.
     control.addEventListener("change", () => {
       const settled = clamp(key, controlValue(control));
       showValue(control, settled.value);
-      const writes = [
-        writeSetting(key, settled.value),
-        alignDurationWindow(key, settled.value),
-      ];
       if (key === "entryGenre" && settled.value !== "custom") {
         const recommendedTempo = ENTRY_GENRE_PRESETS[settled.value].tempoBpm;
         const tempo = document.querySelector("#entryTempoBpm");
         showValue(tempo, recommendedTempo);
-        writes.push(writeSetting("entryTempoBpm", recommendedTempo));
       }
-      Promise.all(writes)
+      if (key === "entryGenre" && settled.value === "custom") {
+        // Choosing Custom and being shown a closed disclosure reads as though
+        // the choice did nothing. Open it once, on the choice itself, so a
+        // panel the user then collapses stays collapsed.
+        cadenceCustom.open = true;
+      }
+      if (key.startsWith("entry")) {
+        // No write here: cadence is a draft, and `showCadence` is what reports
+        // that -- including retiring a stale "applied" confirmation.
+        alignDurationWindow(key, settled.value);
+        showCadence();
+        return;
+      }
+      writeSetting(key, settled.value)
         .then(() => {
           if (key === "logLevel") {
             setLogLevel(settled.value);
-          }
-          if (key.startsWith("entry")) {
-            showCadence();
           }
           say(resetStatus, message("optionsSaved"), "ready");
         })
@@ -227,6 +318,376 @@ async function bindSettings() {
       });
   }
   showCadence();
+}
+
+async function applyCadence() {
+  const patch = cadenceDraft();
+  cadenceApply.disabled = true;
+  try {
+    const accepted = await writeSettings(patch);
+    if (!accepted) {
+      throw new Error("cadence-draft-invalid");
+    }
+    appliedCadence = patch;
+    showDraftState();
+    say(cadenceApplyStatus, message("optionsCadenceApplied"), "ready");
+    log.info("cadence-settings-applied", { genre: patch.entryGenre });
+  } catch (error) {
+    cadenceApply.disabled = !cadenceIsDirty();
+    say(cadenceApplyStatus, message("optionsSaveFailed"), "error");
+    log.error("cadence-settings-write-failed", { error: describeError(error) });
+  }
+}
+
+// --- cadence preview ------------------------------------------------------
+
+/**
+ * The demo expression as a real editor plan.
+ *
+ * Both the expression and the editor description are constants, so the plan is
+ * one too. It used to be rebuilt on every `input` event, which meant dragging
+ * the tempo slider re-parsed the same expression through the whole structured
+ * planner for every pixel of travel.
+ */
+function demoPlan() {
+  if (!demoSteps) {
+    const planned = planEntry(DEMO_EXPRESSION, DEMO_EDITOR);
+    if (!planned.ok) {
+      throw new Error(`cadence-demo-plan-${planned.code}`);
+    }
+    demoSteps = planned.steps;
+  }
+  return demoSteps;
+}
+
+function formatSeconds(milliseconds) {
+  return `${(milliseconds / 1000).toFixed(1)}s`;
+}
+
+/**
+ * Say what the hard window did to the tempo-led length.
+ *
+ * Planned phrases are clamped into the window by construction, so reporting
+ * "within window" before one has played says nothing at all -- and it hid the
+ * one thing worth knowing, which is that 300 BPM produced a 5-second phrase
+ * because the window's floor, not the tempo, decided. The measured verdict
+ * after a performance is a different claim and is still made below.
+ */
+function showWindowState(phrase) {
+  const held = {
+    minimum: () => message(
+      "optionsCadenceWindowRaised", [formatSeconds(phrase.cadence.durationMinMs)]
+    ),
+    maximum: () => message(
+      "optionsCadenceWindowHeld", [formatSeconds(phrase.cadence.durationMaxMs)]
+    ),
+    none: () => message("optionsCadenceWindowTempoLed"),
+  };
+  cadenceWindowState.textContent = held[phrase.clampedBy]();
+  cadenceWindowState.classList.remove("cadence-window-ok", "cadence-window-warn");
+}
+
+/** Report whether the performance that just ran really met its window. */
+function showMeasuredWindow(phrase, elapsedMs) {
+  const actualWithin = elapsedMs >= phrase.cadence.durationMinMs
+    && elapsedMs <= phrase.cadence.durationMaxMs;
+  cadenceWindowState.textContent = message(
+    actualWithin ? "optionsCadenceWindowWithin" : "optionsCadenceWindowOutside"
+  );
+  cadenceWindowState.classList.toggle("cadence-window-ok", actualWithin);
+  cadenceWindowState.classList.toggle("cadence-window-warn", !actualWithin);
+}
+
+/**
+ * Draw the phrase as a rhythm strip.
+ *
+ * One tick per note, placed at the time it is due, so tempo, swing and timing
+ * variation are spacing and an accent is height. A structural rest is the band
+ * between the operator that earned it and the note that follows -- the shape
+ * the design note describes, made visible without having to play it first.
+ */
+function drawScore(phrase) {
+  const marks = [];
+  if (phrase.durationMs > 0) {
+    for (const [index, note] of phrase.notes.entries()) {
+      const at = (note.offsetMs / phrase.durationMs) * 100;
+      if (note.rest) {
+        const until = (phrase.notes[index + 1].offsetMs / phrase.durationMs) * 100;
+        const rest = document.createElement("span");
+        rest.className = "cadence-rest";
+        rest.dataset.rest = String(index);
+        rest.style.left = `${at}%`;
+        rest.style.width = `${Math.max(0, until - at)}%`;
+        marks.push(rest);
+      }
+      const beat = document.createElement("span");
+      beat.className = "cadence-beat";
+      beat.classList.toggle("is-accent", Boolean(note.accent));
+      beat.classList.toggle("is-resolution", index === phrase.notes.length - 1);
+      beat.dataset.beat = String(index);
+      beat.style.left = `${at}%`;
+      marks.push(beat);
+    }
+  }
+  cadenceScoreBeats.replaceChildren(...marks);
+}
+
+/** Put the playhead, the fill and the elapsed readout at one point in time. */
+function showClock(phrase, elapsedMs) {
+  const played = Math.max(0, Math.min(elapsedMs, phrase.durationMs));
+  const progress = phrase.durationMs === 0 ? 100 : (played / phrase.durationMs) * 100;
+  cadenceElapsed.textContent = formatSeconds(played);
+  cadenceScoreFill.style.width = `${progress}%`;
+  cadenceScoreHead.style.left = `${progress}%`;
+}
+
+/** Paint one phrase at rest: nothing played yet, everything legible. */
+function showPhrase(phrase) {
+  cadenceTarget.textContent = `${formatSeconds(phrase.durationMs)} / ${
+    phrase.cadence.durationMinMs / 1000
+  }–${phrase.cadence.durationMaxMs / 1000}s`;
+  cadenceStep.textContent = `0/${phrase.notes.length} · 0/${phrase.timeline.length}`;
+  cadenceAction.textContent = message("optionsCadenceActionReady");
+  cadenceEffectiveTempo.textContent = message(
+    "optionsCadenceTempoValue", [String(phrase.effectiveTempoBpm)]
+  );
+  cadencePlannedSteps.textContent = `${phrase.notes.length} / ${phrase.timeline.length}`;
+  showWindowState(phrase);
+  drawScore(phrase);
+  showClock(phrase, 0);
+  clearStructureMarks();
+  for (const note of cadenceEquation.querySelectorAll("[data-note]")) {
+    note.classList.add("is-entered");
+    note.classList.remove("is-current", "is-accented");
+  }
+  return phrase;
+}
+
+/**
+ * Show the draft's arrangement without playing it.
+ *
+ * A fixed midpoint sample keeps the idle strip steady while a slider moves, so
+ * what changes on screen is the change the control made and not a fresh roll
+ * of the timing variation. Play uses secure randomness, exactly like insertion.
+ */
+function stagePreview(cadence = resolveEntryCadence(cadenceDraft())) {
+  if (previewBroken) {
+    return null;
+  }
+  try {
+    return showPhrase(
+      ethnosCadence.planSemanticPhrase(demoPlan(), cadence, () => 0.5)
+    );
+  } catch (error) {
+    previewUnavailable(error);
+    return null;
+  }
+}
+
+/**
+ * Retire the preview without taking the rest of Settings down with it.
+ *
+ * The demo plan runs the real structured planner, and a planner that stopped
+ * accepting this expression would otherwise throw during initialisation --
+ * costing the log level, the shortcut and the diagnostic view as well.
+ */
+function previewUnavailable(error) {
+  // Latched, and reported once. Every control change restages the preview, so
+  // a planner that has stopped accepting the demo expression would otherwise
+  // re-plan and re-log on every pixel of slider travel.
+  previewBroken = true;
+  cadencePlay.disabled = true;
+  cadenceStop.hidden = true;
+  cadenceAction.textContent = message("optionsCadencePreviewUnavailable");
+  log.error("cadence-preview-unavailable", { error: describeError(error) });
+}
+
+function clearCurrentPreviewMarks() {
+  for (const current of cadenceEquation.querySelectorAll(
+    ".is-current, .is-accented"
+  )) {
+    current.classList.remove("is-current", "is-accented");
+  }
+  for (const current of cadenceScoreBeats.querySelectorAll(".is-current")) {
+    current.classList.remove("is-current");
+  }
+}
+
+function clearStructureMarks() {
+  for (const current of cadenceEquation.querySelectorAll(".is-current-structure")) {
+    current.classList.remove("is-current-structure");
+  }
+}
+
+/**
+ * Sweep the playhead on the browser's own frame clock.
+ *
+ * The transport used to move only when a note fell due, so a structural rest
+ * looked like a stall: the elapsed count ran on while the bar sat still for a
+ * second. A continuous head is what makes a rest read as a rest. Reduced
+ * motion gets the same numbers on a slow interval instead.
+ */
+function runClock(run, phrase) {
+  if (run.reducedMotion) {
+    run.interval = setInterval(
+      () => showClock(phrase, performance.now() - run.startedAt), 250
+    );
+    return;
+  }
+  const tick = () => {
+    if (previewRun !== run) {
+      return;
+    }
+    showClock(phrase, performance.now() - run.startedAt);
+    run.frame = requestAnimationFrame(tick);
+  };
+  run.frame = requestAnimationFrame(tick);
+}
+
+function stopClock(run) {
+  clearInterval(run.interval);
+  cancelAnimationFrame(run.frame);
+}
+
+/**
+ * @param {{announce?: boolean, restage?: boolean}} [options] `restage` puts the
+ *   idle phrase back when the draft moved on while this run was playing.
+ */
+function stopPreview({ announce = false, restage = false } = {}) {
+  if (!previewRun) {
+    return;
+  }
+  const run = previewRun;
+  previewRun = null;
+  run.controller.abort();
+  stopClock(run);
+  clearCurrentPreviewMarks();
+  clearStructureMarks();
+  cadenceStop.hidden = true;
+  if (announce) {
+    cadencePreviewStatus.textContent = message("optionsCadencePreviewStopped");
+    cadenceAction.textContent = message("optionsCadenceActionStopped");
+  }
+  if (restage && run.stale) {
+    stagePreview();
+  }
+}
+
+function showSemanticStep(step, timelineIndex, phrase, elapsedMs) {
+  const noteNumber = Number.isInteger(step.noteIndex) ? step.noteIndex + 1 : 0;
+  if (step.kind === "rest") {
+    // The rest belongs to the note that earned it. Holding that note's mark
+    // through the rest is the point; blinking it off and on again would read
+    // as a dropped beat rather than a held one.
+    cadenceScoreBeats
+      .querySelector(`[data-rest="${step.noteIndex}"]`)
+      ?.classList.add("is-current");
+  } else {
+    clearCurrentPreviewMarks();
+    if (noteNumber > 0) {
+      const note = cadenceEquation.querySelector(`[data-note="${step.noteIndex}"]`);
+      note?.classList.add("is-entered", "is-current");
+      if (step.accent) {
+        note?.classList.add("is-accented");
+      }
+      cadenceScoreBeats
+        .querySelector(`[data-beat="${step.noteIndex}"]`)
+        ?.classList.add("is-struck", "is-current");
+    }
+  }
+  if (step.kind === "structure-enter") {
+    cadenceEquation.querySelector(
+      `[data-structure-index="${step.structureIndex}"]`
+    )?.classList.add("is-current-structure");
+  }
+  if (step.kind === "structure-exit") {
+    cadenceEquation.querySelector(
+      `[data-structure-index="${step.structureIndex}"]`
+    )?.classList.remove("is-current-structure");
+  }
+  if (step.kind === "resolution") {
+    clearStructureMarks();
+    for (const note of cadenceEquation.querySelectorAll("[data-note]")) {
+      note.classList.add("is-entered");
+    }
+    for (const beat of cadenceScoreBeats.querySelectorAll("[data-beat]")) {
+      beat.classList.add("is-struck");
+    }
+    showMeasuredWindow(phrase, elapsedMs);
+  }
+  cadenceStep.textContent = `${noteNumber}/${phrase.notes.length} · ${
+    timelineIndex + 1
+  }/${phrase.timeline.length}`;
+  cadenceAction.textContent = [
+    message(ACTION_LABEL_KEYS[step.kind]),
+    step.label,
+    step.accent ? message("optionsCadenceAccent") : "",
+  ].filter(Boolean).join(" · ");
+}
+
+async function startPreview() {
+  stopPreview();
+  const cadence = resolveEntryCadence(cadenceDraft());
+  let phrase;
+  try {
+    phrase = ethnosCadence.planSemanticPhrase(demoPlan(), cadence);
+  } catch (error) {
+    previewUnavailable(error);
+    return;
+  }
+  const reducedMotion = motionQuery.matches;
+  showPhrase(phrase);
+  if (!reducedMotion) {
+    // Notes arrive with the beat. Reduced motion keeps them all legible from
+    // the start and lets the transport carry the timing instead.
+    for (const note of cadenceEquation.querySelectorAll("[data-note]")) {
+      note.classList.remove("is-entered");
+    }
+  }
+  // Identity, not a sequence number: `previewRun` is replaced before an
+  // outgoing run's `finally` can run, so "am I still the current run?" is
+  // exactly the question `previewRun === run` answers.
+  const run = {
+    controller: new AbortController(),
+    startedAt: performance.now(),
+    reducedMotion,
+    stale: false,
+  };
+  previewRun = run;
+  runClock(run, phrase);
+  cadenceStop.hidden = false;
+  cadencePreviewStatus.textContent = message("optionsCadencePreviewPlaying");
+  try {
+    await ethnosCadence.playSemanticPhrase(
+      phrase,
+      (step, index, playedPhrase, elapsed) => {
+        if (previewRun === run) {
+          showSemanticStep(step, index, playedPhrase, elapsed);
+        }
+      },
+      { signal: run.controller.signal }
+    );
+    if (previewRun === run) {
+      cadencePreviewStatus.textContent = message("optionsCadencePreviewComplete");
+      cadenceAction.textContent = message("optionsCadenceActionResolved");
+    }
+  } catch (error) {
+    if (error?.name !== "AbortError") {
+      throw error;
+    }
+  } finally {
+    if (previewRun === run) {
+      previewRun = null;
+      stopClock(run);
+      showClock(phrase, phrase.durationMs);
+      clearCurrentPreviewMarks();
+      clearStructureMarks();
+      cadenceStop.hidden = true;
+      if (run.stale) {
+        stagePreview();
+      }
+    }
+  }
 }
 
 // --- keyboard shortcut -----------------------------------------------------
@@ -376,6 +837,9 @@ function on(element, type, handler) {
 
 on(document.querySelector("#shortcut-save"), "click", applyShortcut);
 on(document.querySelector("#shortcut-reset"), "click", resetShortcut);
+on(cadenceApply, "click", applyCadence);
+on(cadencePlay, "click", startPreview);
+on(cadenceStop, "click", () => stopPreview({ announce: true, restage: true }));
 on(document.querySelector("#health"), "click", testConnection);
 on(document.querySelector("#log-refresh"), "click", showLog);
 on(document.querySelector("#log-copy"), "click", copyLog);
@@ -386,14 +850,25 @@ on(document.querySelector("#log-clear"), "click", async () => {
 });
 
 on(document.querySelector("#reset-all"), "click", async () => {
+  stopPreview();
   await resetSettings();
   await bindSettings();
   say(resetStatus, message("optionsResetDone"), "ready");
   log.info("settings-reset", {});
 });
 
+self.addEventListener("pagehide", () => stopPreview());
+
+/** Reflect the motion preference in one place the stylesheet can read. */
+function showMotionPreference() {
+  cadenceEquation.dataset.reducedMotion = String(motionQuery.matches);
+}
+
+motionQuery.addEventListener("change", showMotionPreference);
+
 async function initialize() {
   localizeDocument();
+  showMotionPreference();
   const stored = await readSettings();
   initLog("options", { level: stored.logLevel });
   await bindSettings();

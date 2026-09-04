@@ -92,7 +92,7 @@
         </div>
       </section>
 
-      <section class="card cadence-card">
+      <section id="cadence-card" class="card cadence-card">
         <div class="card__heading">
           <div>
             <p class="eyebrow" data-i18n="optionsCadenceEyebrow">Presentation</p>
@@ -102,10 +102,10 @@
         </div>
 
         <p class="note" data-i18n="optionsCadenceHelp">
-          Plain-text formulas arrive one character at a time. Pick a musical feel, then set the pace and performance window for demonstrations and voice-over.
+          Shape the semantic cadence of a validated answer: its pulse, accents, structural rests, and resolution.
         </p>
 
-        <div class="cadence-grid">
+        <div class="cadence-controls">
           <div class="field">
             <label class="field__label" for="entryGenre"
                    data-i18n="optionsCadenceGenreLabel">Genre</label>
@@ -127,85 +127,139 @@
               <output id="entryTempoBpm-value" class="field__unit"
                       for="entryTempoBpm"></output>
             </div>
+            <p class="note" data-i18n="optionsCadenceTempoHelp">
+              Beats per minute sets the pulse; the hard window still bounds the complete phrase.
+            </p>
+          </div>
+
+          <div class="field cadence-window">
+            <span class="field__label" data-i18n="optionsCadenceWindowLabel">Performance window</span>
+            <div class="field__control">
+              <label class="duration-field">
+                <span data-i18n="optionsCadenceMinimumLabel">Minimum</span>
+                <input id="entryDurationMinSeconds" class="input input--number" type="number"
+                       data-setting="entryDurationMinSeconds" inputmode="numeric">
+              </label>
+              <span class="duration-divider" aria-hidden="true">—</span>
+              <label class="duration-field">
+                <span data-i18n="optionsCadenceMaximumLabel">Maximum</span>
+                <input id="entryDurationMaxSeconds" class="input input--number" type="number"
+                       data-setting="entryDurationMaxSeconds" inputmode="numeric">
+              </label>
+              <span class="field__unit" data-i18n="optionsCadenceSecondsUnit">seconds</span>
+            </div>
+            <p class="note" data-i18n="optionsCadenceWindowHelp">
+              Every multi-note phrase resolves inside this hard window.
+            </p>
           </div>
         </div>
 
-        <div class="field">
-          <span class="field__label" data-i18n="optionsCadenceWindowLabel">Performance window</span>
-          <div class="field__control">
-            <label class="duration-field">
-              <span data-i18n="optionsCadenceMinimumLabel">Minimum</span>
-              <input id="entryDurationMinSeconds" class="input input--number" type="number"
-                     data-setting="entryDurationMinSeconds" inputmode="numeric">
-            </label>
-            <span class="duration-divider" aria-hidden="true">—</span>
-            <label class="duration-field">
-              <span data-i18n="optionsCadenceMaximumLabel">Maximum</span>
-              <input id="entryDurationMaxSeconds" class="input input--number" type="number"
-                     data-setting="entryDurationMaxSeconds" inputmode="numeric">
-            </label>
-            <span class="field__unit" data-i18n="optionsCadenceSecondsUnit">seconds</span>
-          </div>
-          <p class="note" data-i18n="optionsCadenceWindowHelp">
-            Tempo suggests the natural length; this window keeps every insertion between your limits. Maximum 12 seconds leaves room under the 15-second operation deadline.
-          </p>
-        </div>
-
-        <div id="cadence-preview" class="cadence-preview" role="img">
-          <span class="cadence-preview__beat"></span>
-          <span class="cadence-preview__beat"></span>
-          <span class="cadence-preview__beat"></span>
-          <span class="cadence-preview__beat"></span>
-        </div>
         <p id="cadence-note" class="note cadence-note"></p>
 
-        <fieldset id="cadence-custom" class="custom-panel" hidden>
-          <legend data-i18n="optionsCadenceCustomHeading">Custom arrangement</legend>
+        <details id="cadence-custom" class="cadence-advanced" hidden>
+          <summary data-i18n="optionsCadenceCustomHeading">Custom arrangement</summary>
+          <fieldset class="custom-panel">
+            <legend class="visually-hidden" data-i18n="optionsCadenceCustomHeading">Custom arrangement</legend>
 
-          <div class="field">
-            <label class="field__label" for="entryPattern"
-                   data-i18n="optionsCadencePatternLabel">Beat shape</label>
-            <select id="entryPattern" class="input input--select" data-setting="entryPattern">
-              <option value="steady" data-i18n="optionsCadencePatternSteady">Steady four</option>
-              <option value="waltz" data-i18n="optionsCadencePatternWaltz">Waltz three</option>
-              <option value="backbeat" data-i18n="optionsCadencePatternBackbeat">Backbeat</option>
-              <option value="syncopated" data-i18n="optionsCadencePatternSyncopated">Syncopated</option>
-            </select>
-          </div>
+            <div class="field">
+              <label class="field__label" for="entryPattern"
+                     data-i18n="optionsCadencePatternLabel">Beat shape</label>
+              <select id="entryPattern" class="input input--select" data-setting="entryPattern">
+                <option value="steady" data-i18n="optionsCadencePatternSteady">Steady four</option>
+                <option value="waltz" data-i18n="optionsCadencePatternWaltz">Waltz three</option>
+                <option value="backbeat" data-i18n="optionsCadencePatternBackbeat">Backbeat</option>
+                <option value="syncopated" data-i18n="optionsCadencePatternSyncopated">Syncopated</option>
+              </select>
+            </div>
 
-          <div class="field custom-slider">
-            <label class="field__label" for="entrySwingPercent"
-                   data-i18n="optionsCadenceSwingLabel">Swing</label>
-            <div class="field__control field__control--range">
-              <input id="entrySwingPercent" class="range" type="range"
-                     data-setting="entrySwingPercent" step="1">
-              <output id="entrySwingPercent-value" class="field__unit"
-                      for="entrySwingPercent"></output>
+            <div class="field custom-slider">
+              <label class="field__label" for="entrySwingPercent"
+                     data-i18n="optionsCadenceSwingLabel">Swing</label>
+              <div class="field__control field__control--range">
+                <input id="entrySwingPercent" class="range" type="range"
+                       data-setting="entrySwingPercent" step="1">
+                <output id="entrySwingPercent-value" class="field__unit"
+                        for="entrySwingPercent"></output>
+              </div>
+            </div>
+
+            <div class="field custom-slider">
+              <label class="field__label" for="entryVariationPercent"
+                     data-i18n="optionsCadenceVariationLabel">Timing variation</label>
+              <div class="field__control field__control--range">
+                <input id="entryVariationPercent" class="range" type="range"
+                       data-setting="entryVariationPercent" step="1">
+                <output id="entryVariationPercent-value" class="field__unit"
+                        for="entryVariationPercent"></output>
+              </div>
+            </div>
+
+            <div class="field custom-slider">
+              <label class="field__label" for="entrySymbolRestPercent"
+                     data-i18n="optionsCadenceSymbolRestLabel">Structural rests</label>
+              <div class="field__control field__control--range">
+                <input id="entrySymbolRestPercent" class="range" type="range"
+                       data-setting="entrySymbolRestPercent" step="1">
+                <output id="entrySymbolRestPercent-value" class="field__unit"
+                        for="entrySymbolRestPercent"></output>
+              </div>
+            </div>
+          </fieldset>
+        </details>
+
+        <section class="cadence-instrument" aria-labelledby="cadence-preview-heading">
+          <div class="cadence-instrument__heading">
+            <div>
+              <p class="eyebrow" data-i18n="optionsCadencePreviewEyebrow">Phrase preview</p>
+              <h2 id="cadence-preview-heading" data-i18n="optionsCadencePreviewHeading">Equation entry</h2>
+            </div>
+            <div class="cadence-transport">
+              <button id="cadence-play" class="button button--secondary" type="button"
+                      data-i18n="optionsCadencePreviewPlay">Preview</button>
+              <button id="cadence-stop" class="link" type="button" hidden
+                      data-i18n="optionsCadencePreviewStop">Stop</button>
             </div>
           </div>
 
-          <div class="field custom-slider">
-            <label class="field__label" for="entryVariationPercent"
-                   data-i18n="optionsCadenceVariationLabel">Timing variation</label>
-            <div class="field__control field__control--range">
-              <input id="entryVariationPercent" class="range" type="range"
-                     data-setting="entryVariationPercent" step="1">
-              <output id="entryVariationPercent-value" class="field__unit"
-                      for="entryVariationPercent"></output>
-            </div>
+          <div id="cadence-equation" class="cadence-equation" role="img"
+               data-i18n-attr="aria-label:optionsCadenceDemoLabel">
+            <span class="fraction" data-structure="Fraction" data-structure-index="0">
+              <span class="fraction__numerator">
+                <span data-note="0">2</span><span data-note="1">i</span><span data-note="2">x</span><sup data-structure="Exponent" data-structure-index="1"><span data-note="3">4</span></sup><span class="radical" data-structure="Radical" data-structure-index="2"><span class="radical__sign">√</span><span class="radical__body"><span data-note="4">2</span><span data-note="5">x</span></span></span><span data-note="6">+</span><span data-note="7">3</span>
+              </span>
+              <span class="fraction__denominator">
+                <span data-note="8">5</span><span data-note="9">y</span><sup data-structure="Exponent" data-structure-index="3"><span data-note="10">2</span></sup>
+              </span>
+            </span>
           </div>
 
-          <div class="field custom-slider">
-            <label class="field__label" for="entrySymbolRestPercent"
-                   data-i18n="optionsCadenceSymbolRestLabel">Rest after symbols</label>
-            <div class="field__control field__control--range">
-              <input id="entrySymbolRestPercent" class="range" type="range"
-                     data-setting="entrySymbolRestPercent" step="1">
-              <output id="entrySymbolRestPercent-value" class="field__unit"
-                      for="entrySymbolRestPercent"></output>
-            </div>
+          <div class="cadence-score" role="img"
+               data-i18n-attr="aria-label:optionsCadenceScoreLabel">
+            <span id="cadence-score-fill" class="cadence-score__fill"></span>
+            <span id="cadence-score-beats" class="cadence-score__beats"></span>
+            <span id="cadence-score-head" class="cadence-score__head"></span>
           </div>
-        </fieldset>
+
+          <dl class="cadence-telemetry" aria-live="off">
+            <div><dt data-i18n="optionsCadenceElapsed">Elapsed</dt><dd id="cadence-elapsed">0.0s</dd></div>
+            <div><dt data-i18n="optionsCadenceTarget">Target / window</dt><dd id="cadence-target">—</dd></div>
+            <div><dt data-i18n="optionsCadenceStep">Beat / step</dt><dd id="cadence-step">—</dd></div>
+            <div><dt data-i18n="optionsCadenceAction">Semantic action</dt><dd id="cadence-action">Ready</dd></div>
+            <div><dt data-i18n="optionsCadenceEffectiveTempo">Effective tempo</dt><dd id="cadence-effective-tempo">—</dd></div>
+            <div><dt data-i18n="optionsCadencePlannedSteps">Notes / actions</dt><dd id="cadence-planned-steps">—</dd></div>
+            <div><dt data-i18n="optionsCadenceWindowState">Hard window</dt><dd id="cadence-window-state">—</dd></div>
+          </dl>
+          <p id="cadence-preview-status" class="visually-hidden" role="status" aria-live="polite"></p>
+        </section>
+
+        <div class="cadence-apply">
+          <div>
+            <p id="cadence-draft-status" class="cadence-draft-status" role="status" aria-live="polite"></p>
+            <p id="cadence-apply-status" class="status" role="status" aria-live="polite"></p>
+          </div>
+          <button id="cadence-apply" class="button" type="button" disabled
+                  data-i18n="optionsCadenceApply">Apply cadence</button>
+        </div>
 
         <p class="note" data-i18n="optionsCadenceDisclosure">
           This is presentation timing, not concealment. Hawkes can still identify the synthetic input events.
@@ -275,6 +329,7 @@
         <span id="reset-status" class="status" role="status" aria-live="polite"></span>
       </footer>
     </main>
+    <script src="../common/cadence.js"></script>
     <script type="module" src="options.js"></script>
   </body>
 </html>

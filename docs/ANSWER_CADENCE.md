@@ -29,7 +29,8 @@ The implementation treats an entry as a small score:
 - **Accents** come from the selected rhythm weights and swing adjustment.
   Even and odd positions receive different emphasis when swing is nonzero.
 - **Structural rests** are longer weights around whitespace, operators,
-  separators, and closing delimiters. They express the expression's structure;
+  separators, and closing delimiters — the longest after whitespace, the
+  shortest after a closing delimiter. They express the expression's structure;
   they are not pauses chosen to resemble a human.
 - **Phrases** are the complete answer performance. The implementation builds
   one schedule for all typed characters, including all `type` steps in a
@@ -41,7 +42,17 @@ The implementation treats an entry as a small score:
 A cadence snapshot contains a tempo, a minimum and maximum duration, a beat
 shape, swing, timing variation, and a structural-rest ratio. Duration is
 blended from tempo and a random point in the selected window, then bounded by
-that window. The runtime clamps incoming values to its permitted ranges.
+that window. The runtime clamps incoming values to its permitted ranges. The
+score reports the blended length it asked for alongside the length it was
+given, and which end of the window — if either — overrode it.
+
+Accent and structural rest are separate properties, and each is decided by one
+rule kept next to the schedule so that no display restates it. A position is
+accented when its beat-shape weight or the swing adjustment leans on it. A note
+is *marked* as carrying a structural rest when it is whitespace or an operator
+and is not the final note — the two longest rests, and the two that are worth
+naming aloud. A closing delimiter still receives its shorter extra weight; it
+simply is not called out as a rest of its own.
 
 ## Settings and musical profiles
 
@@ -59,10 +70,82 @@ behavior:
   controls directly.
 
 Beat shapes in code are `steady`, `waltz`, `backbeat`, and `syncopated`.
-Tempo is 45–180 BPM. The hard performance window has independent endpoints,
+Tempo is 30–300 BPM. The hard performance window has independent endpoints,
 with each endpoint constrained to 2–12 seconds; the resolved values are ordered
 before entry. The default is 82 BPM and 5–10 seconds. These are timing
 controls, not answer controls.
+
+Cadence controls in Settings are a draft. Moving a slider or selecting a genre
+updates the readouts and preview but does not change live insertion settings.
+**Apply cadence** validates the complete draft and writes it in one
+`storage.local` transaction; the card distinguishes unapplied changes from the
+currently applied configuration, in the heading as well as beside the button,
+because the button sits below a tall preview. A confirmation of a previous
+Apply is retired the moment the draft moves again: the card must never report
+that cadence is applied and that changes are unapplied at the same time.
+Selecting **Custom** opens its arrangement panel, since a disclosure revealed
+already collapsed reads as a choice that did nothing. Existing stored values
+need no migration: the schema still coerces missing or invalid values to their
+declared defaults, and values within the former tempo range remain valid.
+
+Tempo and the window are independent, and at the extremes the window wins: a
+300 BPM phrase of ordinary length is raised to the window's floor and a 30 BPM
+one is held to its ceiling. Settings reports which of those happened rather
+than reporting compliance with a bound the clamp guarantees.
+
+## Settings phrase preview
+
+Settings contains a local phrase preview for the supported expression
+`(2ix^4√(2x)+3)/(5y^2)`. It sends that expression through the real
+`planEntry()` structured planner, then layers semantic telemetry over the
+resulting `type`, `template`, `slot`, and `base` steps. The display can therefore
+show ordinary characters, the `+` operator, exponent, radical, and fraction
+structure, rhythmic accents, a structural rest, and the final resolution.
+
+The preview and plain insertion share `common/cadence.js`: cadence
+normalization, randomized rhythmic weights, hard-window duration resolution,
+note offsets, and the cancellable timer transport are the same implementation.
+Structured insertion carries a synchronized copy of the bounded score builder
+because Firefox serializes that function into the page's MAIN world and it may
+not close over extension code. That copy is not left to good intentions:
+`scripts/build_extension.py` compares the two files' tuning — fallbacks,
+permitted ranges, weight multipliers, the tempo/window blend — and fails the
+build when they disagree. Template and slot telemetry shares the next typed
+note's clock; it does not add a second duration to the phrase.
+
+Above the transport, the same phrase is drawn as a **rhythm strip**: one mark
+per scheduled note, placed at the moment that note is due. Spacing is therefore
+the tempo, the swing, and the timing variation; height is the accent; and the
+band between an operator and the note after it is the structural rest. The
+final mark is the resolution. The strip is drawn from the phrase that will
+play, so it is legible while the controls move and does not require sitting
+through a performance to read the arrangement. Its idle drawing uses a fixed
+midpoint sample, so what changes on screen as a control moves is the change
+that control made rather than a fresh roll of the timing variation; Play uses
+secure randomness, exactly like insertion.
+
+The compact transport reports elapsed and target time, the configured hard
+window, current note and semantic step, current action, effective tempo,
+planned note/action counts, and what the hard window did. Before a phrase
+plays, that last field names the bound that decided its length — tempo-led, or
+raised to the minimum, or held to the maximum — because a planned phrase is
+clamped into the window by construction and reporting compliance would say
+nothing. At resolution it is recomputed from actual elapsed time, so
+event-loop delay is visible rather than hidden by the planned duration, and a
+performance that missed its window says so.
+
+The playhead sweeps continuously on the browser's frame clock rather than
+advancing only when a note falls due, so a held structural rest reads as a
+held note instead of a stalled transport. Preview uses a cadence snapshot
+taken when Play is pressed. Applying settings during playback therefore cannot
+retime an in-flight preview; a draft changed mid-performance restages the idle
+display when that performance ends. Pressing Preview again cancels the prior
+run before starting another, Stop cancels it, and closing Settings clears its
+timers. Reduced-motion preference removes note motion, the accent's lift, and
+the progressive character reveal while retaining timing and textual telemetry.
+A demo expression the planner could no longer accept retires the preview alone
+and leaves the rest of Settings working. No preview code obtains a tab, frame,
+field, or Hawkes page handle.
 
 ## Validated entry relationship
 
@@ -83,8 +166,10 @@ rather than extending the selected performance by another cadence.
 Plain native inputs and contenteditable answer fields use the same
 character-at-a-time cadence. Native fields receive the field's normal
 `beforeinput` check, then synthetic `input` events as each character is
-written. Contenteditable fields use the editor's supported text insertion path
-one character at a time and stop if the selection leaves the answer target.
+written, and stop if the field stops accepting input or leaves the document.
+Contenteditable fields use the editor's supported text insertion path one
+character at a time and stop if the selection leaves the answer target or that
+target leaves the document.
 
 Structured answers are built with Hawkes keypad templates. Their plan is
 validated first, then `enterPlan()` schedules every character in every `type`
@@ -103,10 +188,17 @@ checks, advances, chooses an option, or navigates Hawkes.
 Cadence begins only after correctness, target selection, editor planning, and
 insertion safety checks have passed. During a paced operation, Ethnos
 continues to revalidate ownership of the pinned window, tab, frame, field,
-question signature, and reviewed answer. The structured path re-reads its
-live boxes before each character; the contenteditable path rechecks its live
-selection. A changed or unreadable target stops the operation rather than
-retargeting it.
+question signature, and reviewed answer.
+
+A performance spans seconds rather than one tick, so every entry path also
+rechecks its own target on each beat rather than trusting the handle it
+started with: the structured path re-reads its box by id, the contenteditable
+path rechecks the live selection, and the native and contenteditable paths
+both confirm the target is still in the document. That last check matters
+because a detached input still accepts writes and still reports itself as
+editable — a question swapped in place mid-performance would otherwise have
+been reported as a successful insertion that wrote nothing. A changed or
+unreadable target stops the operation rather than retargeting it.
 
 Synthetic input and Hawkes editor calls remain observable to page code. Native
 and contenteditable synthetic events are not trusted events, and structured
@@ -138,6 +230,22 @@ alone:
 - Presets resolve to their declared beat shapes and values; Custom uses its
   independent controls; reversed window endpoints are ordered; final offsets
   remain within the selected window.
+- Settings keeps cadence changes as a draft until one atomic Apply, while the
+  preview responds to the draft and never writes it implicitly.
+- The local structured preview uses the real editor plan and shared cadence
+  score/transport, reports its semantic steps, cancels cleanly, and has no page
+  insertion capability.
+- The rhythm strip is built from the phrase that will play, and accent and
+  structural rest are decided once beside the schedule rather than re-derived
+  by a display.
+- The hard-window readout names the bound that decided a planned phrase, and
+  reports a measured pass or fail only after one has been performed.
+- The Settings card never reports an applied cadence and unapplied changes at
+  the same time, and a failed demo plan costs the preview rather than the page.
+- Paced entry stops when its target leaves the document, in the native and
+  contenteditable paths as well as the structured one.
+- The MAIN-world copy of the score cannot drift from the shared one; the build
+  compares their tuning and fails when they disagree.
 - Structured plans include template steps and still schedule every typed
   character; template settling does not create a second performance.
 - Target and question ownership are revalidated during paced insertion, and a
@@ -146,8 +254,12 @@ alone:
   documented and are not treated as evidence of invisibility.
 
 Use the focused cadence tests in `tests/test_hawkes_diagnostics.py` and
-`tests/test_hawkes_extension.py`, plus the extension build and live/editor
-checks described in [the extension testing guide](../extension/TESTING.md).
+`tests/test_hawkes_extension.py`, and `scripts/run_settings_smoke.py`, which
+presses the real controls in a throwaway Firefox and judges the draft, the
+Apply transaction, preset switching, the tempo extremes, the performance, the
+restart, Stop, and the reduced-motion pass. Add the extension build and
+live/editor checks described in
+[the extension testing guide](../extension/TESTING.md).
 
 ## Agent terminology
 

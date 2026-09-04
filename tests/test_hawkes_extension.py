@@ -1448,9 +1448,10 @@ def test_the_answer_is_entered_one_character_at_a_time():
     answers of 0.19 and an unexplained failure at the write boundary seen live.
     """
     editor = (EXTENSION_DIR / "content" / "hawkes-editor.js").read_text()
+    cadence = (EXTENSION_DIR / "common" / "cadence.js").read_text()
 
-    assert "durationMinMs: 5000" in editor
-    assert "durationMaxMs: 10000" in editor
+    assert "durationMinMs: 5000" in cadence
+    assert "durationMaxMs: 10000" in cadence
     assert "function writeCharacter(target, character)" in editor
     entry = editor.split("async function insertIntoNativeField", 1)[1].split(
         "\n  }\n", 1
@@ -1477,14 +1478,16 @@ def test_entry_pacing_is_random_rhythmic_and_time_bounded():
     duration rather than allowing per-character jitter to accumulate forever.
     """
     editor = (EXTENSION_DIR / "content" / "hawkes-editor.js").read_text()
+    cadence = (EXTENSION_DIR / "common" / "cadence.js").read_text()
 
-    assert "crypto.getRandomValues(sample)" in editor
+    assert "crypto.getRandomValues(sample)" in cadence
     assert "function normalizedCadence(offered = {})" in editor
-    assert "function rhythmicWeight(character, index, cadence)" in editor
+    assert "function rhythmicWeight(character, index, cadence" in cadence
     assert "function entryBeatOffsets(characters, cadence)" in editor
-    assert "60000 / cadence.tempoBpm" in editor
-    assert "duration * elapsedWeight / totalWeight" in editor
-    assert "offsets[offsets.length - 1] = duration" in editor
+    assert "60000 / cadence.tempoBpm" in cadence
+    assert "durationMs * elapsedWeight / totalWeight" in cadence
+    assert "offsets[offsets.length - 1] = durationMs" in cadence
+    assert "ethnosCadence.playCharacters(characters, write, cadence)" in editor
 
 
 def test_cadence_settings_reach_the_isolated_insertion_path():
@@ -1511,8 +1514,202 @@ def test_cadence_settings_reach_the_isolated_insertion_path():
     assert 'cadenceCustom.hidden = genre !== "custom"' in option_script
     assert "ENTRY_GENRE_PRESETS[settled.value].tempoBpm" in option_script
     assert "function alignDurationWindow" in option_script
+    assert "function cadenceIsDirty" in option_script
+    assert "await writeSettings(patch)" in option_script
+    assert 'id="cadence-apply"' in options
     assert "resolveEntryCadence(settings)" in background
     assert "args: [reviewed, cadence]" in background
+
+
+def test_cadence_preview_is_local_structured_and_restartable():
+    options = (EXTENSION_DIR / "options" / "options.html").read_text()
+    option_script = (EXTENSION_DIR / "options" / "options.js").read_text()
+    cadence = (EXTENSION_DIR / "common" / "cadence.js").read_text()
+
+    assert 'src="../common/cadence.js"' in options
+    assert 'id="cadence-equation"' in options
+    assert 'data-structure="Fraction"' in options
+    assert 'data-structure="Radical"' in options
+    assert 'data-structure="Exponent"' in options
+    assert "planEntry(DEMO_EXPRESSION, DEMO_EDITOR)" in option_script
+    assert "ethnosCadence.planSemanticPhrase" in option_script
+    assert "ethnosCadence.playSemanticPhrase" in option_script
+    assert "stopPreview();" in option_script
+    assert "run.controller.abort()" in option_script
+    assert 'self.addEventListener("pagehide"' in option_script
+    assert "function playCharacters(" in cadence
+    assert "function playSemanticPhrase(" in cadence
+
+
+def test_cadence_preview_exposes_transport_telemetry_and_reduced_motion():
+    options = (EXTENSION_DIR / "options" / "options.html").read_text()
+    option_script = (EXTENSION_DIR / "options" / "options.js").read_text()
+    styles = (EXTENSION_DIR / "options" / "options.css").read_text()
+
+    for element_id in (
+        "cadence-elapsed",
+        "cadence-target",
+        "cadence-step",
+        "cadence-action",
+        "cadence-effective-tempo",
+        "cadence-planned-steps",
+        "cadence-window-state",
+    ):
+        assert f'id="{element_id}"' in options
+    assert 'matchMedia("(prefers-reduced-motion: reduce)")' in option_script
+    assert "elapsedMs >= phrase.cadence.durationMinMs" in option_script
+    assert "elapsedMs <= phrase.cadence.durationMaxMs" in option_script
+    assert "@media (prefers-reduced-motion: no-preference)" in styles
+    assert 'role="status" aria-live="polite"' in options
+
+
+def test_the_rhythm_strip_is_drawn_from_the_phrase_that_will_play():
+    """The strip has to be the schedule, not a picture of one.
+
+    Spacing is when each note falls due, height is the accent, and the band is
+    the structural rest. All three come from the phrase the transport will
+    play, so a strip that looks wrong is a schedule that is wrong -- which is
+    the only reason it is worth showing.
+    """
+    options = (EXTENSION_DIR / "options" / "options.html").read_text()
+    option_script = (EXTENSION_DIR / "options" / "options.js").read_text()
+    styles = (EXTENSION_DIR / "options" / "options.css").read_text()
+    cadence = (EXTENSION_DIR / "common" / "cadence.js").read_text()
+
+    for element_id in (
+        "cadence-score-beats",
+        "cadence-score-head",
+        "cadence-score-fill",
+    ):
+        assert f'id="{element_id}"' in options
+    assert "function drawScore(phrase)" in option_script
+    assert "for (const [index, note] of phrase.notes.entries())" in option_script
+    assert "note.offsetMs / phrase.durationMs" in option_script
+    assert 'beat.classList.toggle("is-accent", Boolean(note.accent))' in option_script
+    assert "cadenceScoreBeats.replaceChildren(...marks)" in option_script
+    # The three facts the strip draws are computed once, beside the schedule.
+    assert "notes[index].offsetMs = score.offsets[index]" in cadence
+    assert "notes[index].accent = accented(index, score.cadence)" in cadence
+    assert "restsAfter(notes[index].character)" in cadence
+    for rule in (".cadence-beat", ".cadence-beat.is-accent", ".cadence-rest"):
+        assert rule in styles
+
+
+def test_the_playhead_sweeps_rather_than_jumping_between_notes():
+    """A held rest must not read as a stalled transport.
+
+    The bar used to move only when a note fell due, so the second-long rest
+    after an operator looked like the preview had hung: the elapsed count ran
+    on while nothing else changed.
+    """
+    option_script = (EXTENSION_DIR / "options" / "options.js").read_text()
+
+    assert "function runClock(run, phrase)" in option_script
+    assert "run.frame = requestAnimationFrame(tick)" in option_script
+    assert "cancelAnimationFrame(run.frame)" in option_script
+    # Reduced motion gets the same numbers without a swept head.
+    assert "if (run.reducedMotion)" in option_script
+    assert "function showClock(phrase, elapsedMs)" in option_script
+    assert "cadenceScoreHead.style.left" in option_script
+
+
+def test_the_hard_window_readout_says_which_bound_decided():
+    """ "Within window" before a phrase plays is true by construction.
+
+    Reporting compliance a clamp guarantees hid the fact worth having: that a
+    300 BPM phrase came out five seconds long because the window's floor, not
+    the tempo, decided. The measured verdict after a performance is a separate
+    claim and stays a genuine pass or fail.
+    """
+    option_script = (EXTENSION_DIR / "options" / "options.js").read_text()
+    styles = (EXTENSION_DIR / "options" / "options.css").read_text()
+    cadence = (EXTENSION_DIR / "common" / "cadence.js").read_text()
+
+    assert "function showWindowState(phrase)" in option_script
+    assert "function showMeasuredWindow(phrase, elapsedMs)" in option_script
+    assert "optionsCadenceWindowTempoLed" in option_script
+    assert "optionsCadenceWindowRaised" in option_script
+    assert "optionsCadenceWindowHeld" in option_script
+    assert "clampedBy" in cadence
+    assert "blendedDurationMs" in cadence
+    # A performance that missed its own window is the one alarming line here.
+    assert "cadence-window-warn" in option_script
+    assert ".cadence-window-warn" in styles
+
+
+def test_the_settings_card_cannot_claim_applied_and_unapplied_at_once():
+    """Two contradictory states beside each other is how a save button loses
+    its credibility. Applying is the add-on's one atomic write."""
+    option_script = (EXTENSION_DIR / "options" / "options.js").read_text()
+    options = (EXTENSION_DIR / "options" / "options.html").read_text()
+    styles = (EXTENSION_DIR / "options" / "options.css").read_text()
+
+    state = option_script.split("function showDraftState()", 1)[1].split("\n}\n", 1)[0]
+    assert 'cadenceApplyStatus.textContent = ""' in state
+    assert 'cadenceCard.classList.toggle("is-draft", dirty)' in state
+    # Apply sits below a tall preview, so the heading carries the same fact.
+    assert 'id="cadence-card"' in options
+    assert ".cadence-card.is-draft .cadence-summary::before" in styles
+
+
+def test_choosing_custom_reveals_its_arrangement():
+    """A disclosure revealed already collapsed reads as a choice that did
+    nothing, so Custom opens its own panel once, on the choice itself."""
+    option_script = (EXTENSION_DIR / "options" / "options.js").read_text()
+
+    assert 'if (key === "entryGenre" && settled.value === "custom")' in option_script
+    assert "cadenceCustom.open = true" in option_script
+
+
+def test_the_demo_plan_is_built_once_and_cannot_break_settings():
+    """The preview runs the real structured planner on every repaint.
+
+    Rebuilt per `input` event, dragging the tempo slider re-parsed the whole
+    expression for every pixel of travel; thrown during initialisation, it took
+    the log level, the shortcut and the diagnostic view down with it.
+    """
+    option_script = (EXTENSION_DIR / "options" / "options.js").read_text()
+
+    plan = option_script.split("function demoPlan()", 1)[1].split("\n}\n", 1)[0]
+    assert "if (!demoSteps)" in plan
+    assert "demoSteps = planned.steps" in plan
+    assert "function previewUnavailable(error)" in option_script
+    assert "cadencePlay.disabled = true" in option_script
+    assert "optionsCadencePreviewUnavailable" in option_script
+    # Latched, so a broken plan is reported once rather than on every repaint.
+    assert "if (previewBroken)" in option_script
+    assert "previewBroken = true" in option_script
+
+
+def test_a_paced_write_stops_if_its_field_leaves_the_document():
+    """Cadence turned one tick of writing into seconds of it.
+
+    Hawkes swaps a question in place, so the field an insertion began in can be
+    replaced part-way through. A detached input still accepts writes and still
+    reports itself editable, so without this the rest of the answer went
+    nowhere and the insertion reported success.
+    """
+    editor = (EXTENSION_DIR / "content" / "hawkes-editor.js").read_text()
+
+    native = editor.split("async function insertIntoNativeField", 1)[1].split(
+        "\n  }\n", 1
+    )[0]
+    editable = editor.split("async function insertIntoEditable", 1)[1].split(
+        "\n  }\n", 1
+    )[0]
+    assert "!target.isConnected" in native
+    assert "!target.isConnected" in editable
+
+
+def test_the_main_world_cadence_copy_is_checked_against_the_shared_one():
+    """`enterPlan` is serialised into the page's own world and can import
+    nothing, so it carries its own score. A copy nobody compares is how a
+    retuned tempo range reaches plain entry and misses structured entry."""
+    build = BUILD_SCRIPT.read_text()
+
+    assert "def _check_cadence_copies(" in build
+    assert "CADENCE_TUNING" in build
+    assert "_check_cadence_copies(problems)" in build
 
 
 def test_contenteditable_entry_uses_the_same_character_cadence():
@@ -1594,11 +1791,11 @@ def test_a_one_character_answer_is_struck_on_the_downbeat():
     One-character answers are common in this course, and the result read as a
     hang: nothing on screen for five to ten seconds, then the character.
     """
-    editor = (EXTENSION_DIR / "content" / "hawkes-editor.js").read_text()
+    cadence = (EXTENSION_DIR / "common" / "cadence.js").read_text()
 
-    branch = editor.split("if (characters.length === 1) {", 1)[1].split("}", 1)[0]
-    assert "return [0];" in branch
-    assert "return [duration];" not in branch
+    branch = cadence.split("if (characters.length === 1) {", 1)[1].split("}", 1)[0]
+    assert "offsets: [0]" in branch
+    assert "offsets: [durationMs]" not in branch
 
 
 def test_a_markup_fallback_records_why_it_fell_back():

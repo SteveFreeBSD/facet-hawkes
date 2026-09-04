@@ -111,10 +111,14 @@ body {
 
 .cadence-card {
   overflow: hidden;
+  gap: 16px;
 }
 
 .cadence-summary {
+  display: inline-flex;
+  align-items: center;
   flex: none;
+  gap: 6px;
   padding: 3px 8px;
   border-radius: 999px;
   background: var(--surface-sunken);
@@ -123,15 +127,38 @@ body {
   font-weight: 600;
 }
 
-.cadence-grid {
+/* Apply is below the preview, and the preview is tall. This puts the same
+   unapplied-changes fact beside the controls that just changed. */
+.cadence-card.is-draft .cadence-summary::before {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--warning);
+  content: "";
+}
+
+.cadence-card.is-draft .cadence-summary {
+  color: var(--text);
+}
+
+.cadence-controls {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
   gap: 14px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface-sunken);
 }
 
-.cadence-grid .input--select {
+.cadence-controls .input--select {
   width: 100%;
   min-width: 0;
+}
+
+.cadence-window {
+  grid-column: 1 / -1;
+  padding-top: 2px;
 }
 
 .duration-field {
@@ -146,29 +173,25 @@ body {
   color: var(--text-faint);
 }
 
-.cadence-preview {
-  display: flex;
-  align-items: end;
-  gap: 8px;
-  height: 52px;
-  padding: 8px 10px;
+.cadence-note {
+  min-height: 2.8em;
+}
+
+.cadence-advanced {
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-card);
   background: var(--surface-sunken);
 }
 
-.cadence-preview__beat {
-  flex: 1;
-  min-width: 18px;
-  height: calc(var(--beat-weight, 1) * 22px);
-  max-height: 44px;
-  border-radius: 3px 3px 1px 1px;
-  background: var(--accent);
-  opacity: 0.8;
+.cadence-advanced[hidden] {
+  display: none;
 }
 
-.cadence-note {
-  min-height: 2.8em;
+.cadence-advanced summary {
+  padding: 11px 14px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .custom-panel {
@@ -176,28 +199,268 @@ body {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
   margin: 0;
-  padding: 14px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-card);
-  background: var(--surface-sunken);
-}
-
-.custom-panel[hidden] {
-  display: none;
-}
-
-.custom-panel legend {
-  padding: 0 5px;
-  font-size: 12px;
-  font-weight: 700;
+  padding: 2px 14px 14px;
+  border: 0;
 }
 
 .custom-slider {
   grid-column: span 1;
 }
 
+.cadence-instrument {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-card);
+  background: var(--surface-sunken);
+}
+
+.cadence-instrument__heading,
+.cadence-apply {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.cadence-instrument h2 {
+  margin: 1px 0 0;
+  font-size: 13px;
+}
+
+.cadence-transport {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.cadence-equation {
+  display: flex;
+  min-height: 92px;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: 8px;
+  border-radius: var(--radius);
+  background: var(--surface-raised);
+  font-family: var(--font-math);
+  font-size: 28px;
+  line-height: 1.1;
+}
+
+.cadence-equation [data-note] {
+  display: inline-block;
+  border-radius: 2px;
+  color: var(--text-faint);
+}
+
+.cadence-equation [data-note].is-entered {
+  color: var(--text);
+}
+
+.cadence-equation [data-note].is-current {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.cadence-equation [data-note].is-accented {
+  transform: translateY(-2px) scale(1.08);
+}
+
+.cadence-equation [data-structure].is-current-structure {
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--accent) 55%, transparent));
+}
+
+.fraction {
+  display: inline-grid;
+  grid-template-rows: auto auto;
+  align-items: center;
+  text-align: center;
+}
+
+.fraction__numerator {
+  padding: 0 8px 5px;
+  border-bottom: 2px solid currentColor;
+}
+
+.fraction__denominator {
+  padding-top: 4px;
+}
+
+.radical {
+  display: inline-flex;
+  align-items: flex-start;
+  margin: 0 2px;
+}
+
+.radical__sign {
+  font-size: 1.15em;
+}
+
+.radical__body {
+  padding: 2px 2px 0;
+  border-top: 1.5px solid currentColor;
+}
+
+.cadence-equation sup {
+  margin-right: 1px;
+  font-size: 0.62em;
+}
+
+/*
+ * The rhythm strip.
+ *
+ * One tick per scheduled note, placed at the moment it is due, so the spacing
+ * *is* the tempo, the swing and the timing variation; height is the accent;
+ * and the shaded band between an operator and the note after it is the
+ * structural rest. It reads as a score at rest and as a transport while the
+ * playhead sweeps it, which is what makes the timing legible without having
+ * to sit through a performance first.
+ */
+.cadence-score {
+  position: relative;
+  height: 26px;
+  overflow: hidden;
+  border-radius: var(--radius);
+  background: var(--surface-raised);
+}
+
+.cadence-score__fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 100%;
+  background: color-mix(in srgb, var(--accent) 9%, transparent);
+}
+
+.cadence-score__beats {
+  position: absolute;
+  inset: 0;
+}
+
+.cadence-beat {
+  position: absolute;
+  bottom: 5px;
+  width: 2px;
+  height: 8px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--border-strong);
+}
+
+.cadence-beat.is-accent {
+  bottom: 5px;
+  height: 15px;
+}
+
+.cadence-beat.is-resolution {
+  /* The final note is the resolution; it earns the full height and the width
+     of a barline, and it must stay inside the strip rather than half off it. */
+  height: 20px;
+  width: 3px;
+  margin-left: -3px;
+}
+
+.cadence-beat.is-struck {
+  background: color-mix(in srgb, var(--accent) 55%, var(--border-strong));
+}
+
+.cadence-beat.is-current {
+  background: var(--accent);
+}
+
+.cadence-rest {
+  position: absolute;
+  bottom: 5px;
+  height: 3px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-faint) 45%, transparent);
+}
+
+.cadence-rest.is-current {
+  background: color-mix(in srgb, var(--accent) 60%, transparent);
+}
+
+.cadence-score__head {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 0;
+  width: 1px;
+  background: var(--accent);
+  opacity: 0.55;
+}
+
+.cadence-telemetry {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px 14px;
+  margin: 0;
+}
+
+.cadence-telemetry div {
+  min-width: 0;
+}
+
+.cadence-telemetry dt {
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.cadence-telemetry dd {
+  overflow: hidden;
+  margin: 2px 0 0;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cadence-window-ok {
+  color: var(--success) !important;
+}
+
+/* A performance that missed its own window is the one telemetry line that
+   should be alarming. Losing the green was not enough to say so. */
+.cadence-window-warn {
+  color: var(--danger) !important;
+}
+
+.cadence-draft-status {
+  margin: 0;
+  color: var(--warning);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.cadence-draft-status.is-applied {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.cadence-apply-status:not(:empty) {
+  margin-top: 2px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 @media (max-width: 520px) {
-  .cadence-grid,
+  .cadence-controls,
   .custom-panel {
     grid-template-columns: 1fr;
   }
@@ -205,6 +468,28 @@ body {
   .custom-slider {
     grid-column: auto;
   }
+
+  .cadence-telemetry {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .cadence-equation [data-note],
+  .cadence-beat,
+  .cadence-rest {
+    transition: color 100ms ease, background-color 100ms ease, transform 100ms ease;
+  }
+}
+
+/*
+ * The accent is a small lift, which is motion. Reduced motion keeps the
+ * accent -- it is information, not decoration -- and states it as weight of
+ * colour instead, so nothing on the strip or in the equation moves.
+ */
+.cadence-equation[data-reduced-motion="true"] [data-note].is-accented {
+  transform: none;
+  background: color-mix(in srgb, var(--accent) 26%, transparent);
 }
 
 .check {

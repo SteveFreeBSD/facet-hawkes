@@ -250,133 +250,18 @@ var ethnosHawkes = (function () {
    * longer rest so a voice-over has room to name them. Normalising the final
    * weights keeps the complete entry inside its chosen duration.
    *
-   * This is presentation timing, not an attempt to imitate or conceal human
-   * input. The synthetic InputEvents remain observable as such by the page.
+   * The score and transport come from `common/cadence.js`, injected immediately
+   * before this prelude. This is presentation timing, not an attempt to imitate
+   * or conceal human input. Synthetic InputEvents remain observable to the page.
    */
-  const FALLBACK_CADENCE = Object.freeze({
-    tempoBpm: 82,
-    durationMinMs: 5000,
-    durationMaxMs: 10000,
-    rhythmWeights: Object.freeze([1, 0.68, 1.18, 0.78]),
-    swingRatio: 0.12,
-    variationRatio: 0.18,
-    symbolRestRatio: 0.42,
-  });
-
-  function pause(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-  }
-
-  function randomUnit() {
-    const sample = new Uint32Array(1);
-    crypto.getRandomValues(sample);
-    return sample[0] / 0x100000000;
-  }
-
-  function boundedNumber(value, minimum, maximum, fallback) {
-    return typeof value === "number" && Number.isFinite(value)
-      ? Math.min(maximum, Math.max(minimum, value))
-      : fallback;
-  }
-
   /** Treat the event page's snapshot as data, even though it is trusted. */
   function normalizedCadence(offered = {}) {
-    const weights = Array.isArray(offered.rhythmWeights)
-      ? offered.rhythmWeights
-          .slice(0, 8)
-          .map((weight) => boundedNumber(weight, 0.25, 2.5, 1))
-      : [];
-    const firstDuration = boundedNumber(
-      offered.durationMinMs, 2000, 12000, FALLBACK_CADENCE.durationMinMs
-    );
-    const secondDuration = boundedNumber(
-      offered.durationMaxMs, 2000, 12000, FALLBACK_CADENCE.durationMaxMs
-    );
-    return {
-      tempoBpm: boundedNumber(offered.tempoBpm, 45, 180, FALLBACK_CADENCE.tempoBpm),
-      durationMinMs: Math.min(firstDuration, secondDuration),
-      durationMaxMs: Math.max(firstDuration, secondDuration),
-      rhythmWeights: weights.length > 1 ? weights : [...FALLBACK_CADENCE.rhythmWeights],
-      swingRatio: boundedNumber(
-        offered.swingRatio, 0, 0.6, FALLBACK_CADENCE.swingRatio
-      ),
-      variationRatio: boundedNumber(
-        offered.variationRatio, 0, 0.35, FALLBACK_CADENCE.variationRatio
-      ),
-      symbolRestRatio: boundedNumber(
-        offered.symbolRestRatio, 0, 1, FALLBACK_CADENCE.symbolRestRatio
-      ),
-    };
-  }
-
-  function randomBetween(minimum, maximum) {
-    return minimum + Math.floor(randomUnit() * (maximum - minimum + 1));
-  }
-
-  function rhythmicWeight(character, index, cadence) {
-    let weight = cadence.rhythmWeights[index % cadence.rhythmWeights.length];
-    if (index % 2 === 0) {
-      weight *= 1 + cadence.swingRatio;
-    } else {
-      weight *= 1 - cadence.swingRatio * 0.5;
-    }
-    if (/\s/u.test(character)) {
-      weight *= 1 + cadence.symbolRestRatio * 1.35;
-    } else if (/[-=+*/^,;:]/u.test(character)) {
-      weight *= 1 + cadence.symbolRestRatio;
-    } else if (/[)\]}]/u.test(character)) {
-      weight *= 1 + cadence.symbolRestRatio * 0.5;
-    }
-    const variation = 1 + ((randomUnit() * 2) - 1) * cadence.variationRatio;
-    return weight * variation;
-  }
-
-  /**
-   * Blend the metronome's natural length with a random point in the selected
-   * window. Tempo remains audible in the result, while short or long formulas
-   * do not collapse onto one boundary quite so often. The window wins last.
-   */
-  function entryDuration(weights, cadence) {
-    const randomWindowDuration = randomBetween(
-      cadence.durationMinMs, cadence.durationMaxMs
-    );
-    const beatMs = 60000 / cadence.tempoBpm;
-    const musicalDuration = Math.max(
-      1, weights.reduce((total, weight) => total + weight, 0)
-    ) * beatMs;
-    const blended = Math.round((musicalDuration * 0.72) + (randomWindowDuration * 0.28));
-    return Math.min(
-      cadence.durationMaxMs,
-      Math.max(cadence.durationMinMs, blended)
-    );
+    return ethnosCadence.normalize(offered);
   }
 
   /** Return the elapsed-time cue for every character in one performance. */
   function entryBeatOffsets(characters, cadence) {
-    if (characters.length === 0) {
-      return [];
-    }
-    const weights = characters
-      .slice(0, -1)
-      .map((character, index) => rhythmicWeight(character, index, cadence));
-    const duration = entryDuration(weights, cadence);
-    if (characters.length === 1) {
-      // One note, struck on the downbeat. Holding an empty field for the whole
-      // window and filling it on the last beat is silence, not cadence -- and
-      // one-character answers are common enough that it read as a hang.
-      return [0];
-    }
-
-    const totalWeight = weights.reduce((total, weight) => total + weight, 0);
-    const offsets = [0];
-    let elapsedWeight = 0;
-    for (const weight of weights) {
-      elapsedWeight += weight;
-      offsets.push(Math.round(duration * elapsedWeight / totalWeight));
-    }
-    // Avoid any accumulated floating-point or rounding drift at the last beat.
-    offsets[offsets.length - 1] = duration;
-    return offsets;
+    return ethnosCadence.planCharacters(characters, cadence).offsets;
   }
 
   /**
@@ -384,19 +269,8 @@ var ethnosHawkes = (function () {
    * stop the performance without writing any remaining characters.
    */
   async function playEntryCadence(characters, write, cadence) {
-    const offsets = entryBeatOffsets(characters, cadence);
-    const startedAt = performance.now();
-    for (let index = 0; index < characters.length; index += 1) {
-      const wait = offsets[index] - (performance.now() - startedAt);
-      if (wait > 0) {
-        await pause(wait);
-      }
-      const failure = write(characters[index]);
-      if (failure) {
-        return failure;
-      }
-    }
-    return null;
+    const played = await ethnosCadence.playCharacters(characters, write, cadence);
+    return played.failure;
   }
 
   /**
@@ -438,6 +312,15 @@ var ethnosHawkes = (function () {
 
     target.focus();
     const failure = await playEntryCadence([...value], (character) => {
+      if (!target.isConnected) {
+        // Hawkes swaps a question in place, and a performance now spans
+        // seconds: the field this began in can be replaced part-way through.
+        // A detached input still accepts writes and still reports itself as
+        // editable, so without this the rest of the answer went nowhere and
+        // the insertion reported success. The structured path re-reads its box
+        // by id for the same reason.
+        return { ok: false, code: "editor-lost-focus" };
+      }
       if (target.disabled || target.readOnly) {
         // The field closed under us part-way through. Stop rather than write
         // into something that has stopped accepting input.
@@ -477,7 +360,12 @@ var ethnosHawkes = (function () {
       // caret is still ours on every beat, or the rest of the answer lands
       // in whatever the page focused in the meantime.
       const live = window.getSelection();
-      if (!live || live.rangeCount === 0 || !target.contains(live.anchorNode)) {
+      if (
+        !target.isConnected
+        || !live
+        || live.rangeCount === 0
+        || !target.contains(live.anchorNode)
+      ) {
         return { ok: false, code: "editor-lost-focus" };
       }
       if (!document.execCommand("insertText", false, character)) {

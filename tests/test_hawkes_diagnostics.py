@@ -339,7 +339,7 @@ def test_editor_cadence_offsets_stay_bounded_and_respond_to_tempo():
           return sample;
         } };
     """
-        + _modules("log.js", "settings.js")
+        + _modules("log.js", "settings.js", "cadence.js")
     )
     cadence_context.eval(editor.replace(public_return, test_return))
 
@@ -378,7 +378,250 @@ def test_editor_cadence_offsets_stay_bounded_and_respond_to_tempo():
             "})()",
         )
 
-    assert duration_at(180) < duration_at(45)
+    assert duration_at(300) < duration_at(30)
+
+
+def test_cadence_tempo_has_an_expressive_but_bounded_range(context):
+    assert evaluate(context, 'coerce("entryTempoBpm", 30)') == {
+        "ok": True,
+        "value": 30,
+    }
+    assert evaluate(context, 'coerce("entryTempoBpm", 300)') == {
+        "ok": True,
+        "value": 300,
+    }
+    assert evaluate(context, 'coerce("entryTempoBpm", 301)') == {
+        "ok": False,
+        "value": 82,
+    }
+
+
+def test_semantic_preview_uses_the_real_bounded_note_score_without_mutating_plan():
+    cadence_context = quickjs.Context()
+    cadence_context.eval(
+        PRELUDE
+        + """
+        var crypto = { getRandomValues: function (sample) {
+          sample[0] = 2147483648;
+          return sample;
+        } };
+        """
+        + _modules("cadence.js")
+    )
+    steps = [
+        {"op": "template", "name": "Fraction"},
+        {"op": "type", "text": "2x+3"},
+        {"op": "slot", "name": "denominator"},
+        {"op": "type", "text": "5y"},
+        {"op": "template", "name": "Exponent"},
+        {"op": "type", "text": "2"},
+    ]
+    offered = {
+        "tempoBpm": 300,
+        "durationMinMs": 2000,
+        "durationMaxMs": 4000,
+        "rhythmWeights": [1, 0.68, 1.18, 0.78],
+        "swingRatio": 0.12,
+        "variationRatio": 0.18,
+        "symbolRestRatio": 0.42,
+    }
+    result = evaluate(
+        cadence_context,
+        "(function () {"
+        f"const steps = {json.dumps(steps)};"
+        "const before = JSON.stringify(steps);"
+        f"const phrase = ethnosCadence.planSemanticPhrase(steps, {json.dumps(offered)});"
+        "return { phrase, unchanged: before === JSON.stringify(steps) };"
+        "})()",
+    )
+
+    phrase = result["phrase"]
+    assert result["unchanged"] is True
+    assert [(note["character"], note["planIndex"]) for note in phrase["notes"]] == [
+        ("2", 1),
+        ("x", 1),
+        ("+", 1),
+        ("3", 1),
+        ("5", 3),
+        ("y", 3),
+        ("2", 5),
+    ]
+    # Every note also carries what a rhythm display needs: when it lands, and
+    # whether it is accented or followed by a structural rest. Deriving those
+    # anywhere else is how a display and its schedule start disagreeing.
+    assert [note["offsetMs"] for note in phrase["notes"]] == phrase["offsets"]
+    # `+` is the only operator, and it is not the final note, so it is the only
+    # note that earns a structural rest.
+    assert [note["rest"] for note in phrase["notes"]] == [
+        False,
+        False,
+        True,
+        False,
+        False,
+        False,
+        False,
+    ]
+    assert phrase["offsets"] == sorted(phrase["offsets"])
+    assert 2000 <= phrase["durationMs"] <= 4000
+    assert phrase["withinWindow"] is True
+    kinds = {step["kind"] for step in phrase["timeline"]}
+    assert {
+        "character",
+        "operator",
+        "structure-enter",
+        "rest",
+        "resolution",
+    } <= kinds
+    # The timeline and the notes must agree about which positions are accented;
+    # they are two views of one arrangement, not two opinions about it.
+    assert {
+        step["noteIndex"]: step["accent"]
+        for step in phrase["timeline"]
+        if step["kind"] in {"character", "operator"}
+    } == {index: note["accent"] for index, note in enumerate(phrase["notes"])}
+
+
+def test_the_hard_window_reports_which_end_overrode_the_tempo():
+    """ "Within window" before a phrase plays is true by construction.
+
+    Every planned phrase is clamped into the window, so a plan-time compliance
+    readout can only ever say yes -- which hid the one fact worth reporting:
+    at 300 BPM the phrase came out five seconds long because the window's floor
+    decided, not the tempo. The measured verdict after a performance is a
+    different claim and stays a genuine pass or fail.
+    """
+    cadence_context = quickjs.Context()
+    cadence_context.eval(
+        PRELUDE
+        + """
+        var crypto = { getRandomValues: function (sample) {
+          sample[0] = 2147483648;
+          return sample;
+        } };
+        """
+        + _modules("cadence.js")
+    )
+
+    def plan(tempo):
+        return evaluate(
+            cadence_context,
+            "ethnosCadence.planCharacters("
+            '[..."2x+3y-7z"], '
+            f"{{tempoBpm: {tempo}, durationMinMs: 5000, durationMaxMs: 10000}}"
+            ")",
+        )
+
+    fast, natural, slow = plan(300), plan(82), plan(30)
+
+    assert fast["clampedBy"] == "minimum"
+    assert fast["blendedDurationMs"] < 5000
+    assert fast["durationMs"] == 5000
+    assert natural["clampedBy"] == "none"
+    assert natural["durationMs"] == natural["blendedDurationMs"]
+    assert slow["clampedBy"] == "maximum"
+    assert slow["blendedDurationMs"] > 10000
+    assert slow["durationMs"] == 10000
+    # Clamped or not, the hard window is still honoured -- that is the point.
+    for phrase in (fast, natural, slow):
+        assert phrase["withinWindow"] is True
+        assert 5000 <= phrase["durationMs"] <= 10000
+
+
+def test_cadence_settings_can_be_persisted_as_one_atomic_patch():
+    cadence_context = quickjs.Context()
+    cadence_context.eval(PRELUDE + _modules("log.js", "settings.js"))
+    cadence_context.eval(
+        "var writeFinished = false;"
+        "writeSettings({entryGenre: 'jazz', entryTempoBpm: 140})"
+        ".then(function (ok) { writeFinished = ok; });"
+    )
+    for _ in range(20):
+        if not cadence_context.execute_pending_job():
+            break
+
+    assert evaluate(cadence_context, "writeFinished") is True
+    assert evaluate(cadence_context, "stored") == {
+        "entryGenre": "jazz",
+        "entryTempoBpm": 140,
+    }
+
+    cadence_context.eval(
+        "writeSettings({entryGenre: 'classical', entryTempoBpm: 999})"
+        ".then(function (ok) { writeFinished = ok; });"
+    )
+    for _ in range(20):
+        if not cadence_context.execute_pending_job():
+            break
+    assert evaluate(cadence_context, "writeFinished") is False
+    assert evaluate(cadence_context, "stored") == {
+        "entryGenre": "jazz",
+        "entryTempoBpm": 140,
+    }
+
+
+def test_semantic_preview_transport_cancels_a_pending_phrase_cleanly():
+    cadence_context = quickjs.Context()
+    cadence_context.eval(
+        """
+        var now = 0;
+        var timers = [];
+        var performance = { now: function () { return now; } };
+        function setTimeout(fn, ms) {
+          timers.push({ fn: fn, ms: ms });
+          return timers.length;
+        }
+        function clearTimeout(id) { timers[id - 1] = null; }
+        var crypto = { getRandomValues: function (sample) {
+          sample[0] = 2147483648;
+          return sample;
+        } };
+        var signal = {
+          aborted: false,
+          listener: null,
+          addEventListener: function (_, listener) { this.listener = listener; },
+          removeEventListener: function (_, listener) {
+            if (this.listener === listener) { this.listener = null; }
+          },
+        };
+        function abortPreview() {
+          signal.aborted = true;
+          if (signal.listener) { signal.listener(); }
+        }
+        """
+        + _modules("cadence.js")
+    )
+    cadence_context.eval(
+        """
+        var visited = [];
+        var transportResult = "pending";
+        var phrase = ethnosCadence.planSemanticPhrase(
+          [{ op: "type", text: "x+2" }],
+          { durationMinMs: 2000, durationMaxMs: 2000 },
+          function () { return 0.5; }
+        );
+        ethnosCadence.playSemanticPhrase(
+          phrase,
+          function (step) { visited.push(step.kind); },
+          { signal: signal }
+        ).then(
+          function () { transportResult = "complete"; },
+          function (error) { transportResult = error.name; }
+        );
+        """
+    )
+    for _ in range(20):
+        cadence_context.execute_pending_job()
+        if evaluate(cadence_context, "timers.filter(Boolean).length") > 0:
+            break
+
+    assert evaluate(cadence_context, "visited.length") > 0
+    cadence_context.eval("abortPreview()")
+    for _ in range(20):
+        if not cadence_context.execute_pending_job():
+            break
+
+    assert evaluate(cadence_context, "transportResult") == "AbortError"
+    assert evaluate(cadence_context, "timers.filter(Boolean).length") == 0
 
 
 def test_every_declared_setting_has_a_control_and_every_control_a_setting(context):
