@@ -413,6 +413,126 @@ function answerShapeOf(editor) {
   return { kind: "field" };
 }
 
+/**
+ * The compact badge: which engine's answer this is, in two or three words.
+ *
+ * The host's own `source` is kept for anything it already names precisely --
+ * "Facet · GPU" says where the work ran -- but "markup" and "symbolic" are
+ * internal words for one thing a reader cares about: an exact solver answered,
+ * and no model was involved. An older host that reports no engine keeps its
+ * own wording rather than being relabelled on a guess.
+ */
+function answeredByBadge(certainty) {
+  const source = certainty?.source ?? "";
+  switch (certainty?.answered_by) {
+    case "exact":
+      return "Ethnos Exact";
+    case "model":
+      return "Ethnos model";
+    case "facet":
+      return source || "Facet";
+    default:
+      return source;
+  }
+}
+
+/**
+ * The expandable provenance block: who did what, in the order it happened.
+ *
+ * Each layer is named separately on purpose. A solver is not a model, the
+ * thing that read the picture is not the thing that answered, and what Ethnos
+ * *asked* of a backend is not necessarily what the backend *did* — collapsing
+ * any of those would make an answer look better sourced than it is.
+ *
+ * Plain labelled lines rather than message keys: this is diagnostic text in a
+ * `<pre>`, and every note beside it has always been written the same way.
+ */
+function provenanceNotes(certainty) {
+  const lines = [];
+  const engine = certainty?.answered_by;
+  if (engine) {
+    lines.push(`Answered by: ${answeredByBadge(certainty)}`);
+  } else {
+    lines.push(`Source: ${certainty?.source ?? "unknown"}`);
+  }
+  if (certainty?.method) {
+    lines.push(`${engine === "exact" ? "Method" : "Reasoner"}: ${certainty.method}`);
+  }
+  if (certainty?.router === "solved") {
+    lines.push("Router: Ethnos Exact answered");
+  } else if (certainty?.router === "declined") {
+    const why = certainty.router_detail ? ` (${certainty.router_detail})` : "";
+    lines.push(`Router: Ethnos Exact declined${why}`);
+  }
+  if (engine !== "facet") {
+    // Worth stating rather than leaving to inference: choosing the Facet
+    // engine does not mean Facet ran, and this is the line that says so.
+    lines.push(`Facet: ${certainty?.facet_invoked ? "invoked" : "not invoked"}`);
+  }
+  if (certainty?.runtime) {
+    lines.push(`Runtime: ${certainty.runtime}`);
+  }
+  if (certainty?.requested_backend || certainty?.actual_backend) {
+    const asked = certainty.requested_backend || "unspecified";
+    const ran = certainty.actual_backend || "unknown";
+    lines.push(
+      asked === ran
+        ? `Backend: ${ran}`
+        : `Backend: ${asked} requested, ${ran} actual`
+    );
+  }
+  if (certainty?.device) {
+    lines.push(`Device: ${certainty.device}`);
+  }
+  if (typeof certainty?.fallback === "boolean") {
+    lines.push(`Fallback: ${certainty.fallback ? "yes" : "none"}`);
+  }
+  if (certainty?.reading) {
+    const read = certainty.reading === "mathml" ? "page MathML" : "screenshot";
+    const transcription =
+      certainty.reading === "screenshot" && certainty.transcription
+        ? ` (${certainty.transcription})`
+        : "";
+    lines.push(`Question read: ${read}${transcription}`);
+  }
+  if (typeof certainty?.elapsed_ms === "number") {
+    const ms = certainty.elapsed_ms;
+    lines.push(`Elapsed: ${ms < 1000 ? `${Math.round(ms)} ms` : `${(ms / 1000).toFixed(1)} s`}`);
+  }
+  return lines;
+}
+
+/**
+ * Remember the reasoner Facet last actually used.
+ *
+ * The settings page has to describe the configured pipeline without asking
+ * the network anything: waking an SSH connection and a model host to render a
+ * preferences screen would be a real cost for a cosmetic line. So the last
+ * observed run is kept, and the page presents it as the last observed run
+ * rather than as a current fact.
+ */
+async function rememberFacetRun(certainty) {
+  try {
+    await browser.storage.local.set({
+      facetLastSeen: {
+        // Prefixed names on purpose. A test keeps the bare execution-config
+        // keys out of this file entirely, because the browser must never name
+        // one to the host. This is the opposite direction -- what the host
+        // reported back, kept only so a label can be rendered later.
+        facetModel: certainty.model ?? "",
+        facetRuntime: certainty.runtime ?? "",
+        facetDevice: certainty.device ?? "",
+        facetBackend: certainty.actual_backend ?? "",
+        at: Date.now(),
+      },
+    });
+  } catch (error) {
+    // Cosmetic. A settings page that cannot name the model is not a failure
+    // worth losing a finished answer over.
+    log.debug("facet-provenance-not-stored", { message: String(error?.message ?? "") });
+  }
+}
+
 // --- Ethnos ----------------------------------------------------------------
 
 /**
@@ -980,15 +1100,18 @@ async function acceptReply(reply) {
     return;
   }
   const certainty = reply.certainty ?? {};
-  const notes = [`source: ${certainty.source ?? "unknown"}`];
+  const notes = provenanceNotes(certainty);
   if (certainty.prompt_seen === false) {
-    notes.push("instruction not read from the page");
+    notes.push("Instruction not read from the page");
   }
   if (certainty.issues?.length) {
     notes.push(...certainty.issues.slice(0, 4));
   }
-  if (certainty.model && certainty.runtime && certainty.device) {
-    notes.push(`${certainty.model} · ${certainty.runtime} · ${certainty.device}`);
+  // Remembered so the settings page can name the configured reasoner without
+  // making a network request to ask. It is the last thing actually observed,
+  // and is shown as such rather than as a current fact.
+  if (certainty.facet_invoked && certainty.model && certainty.runtime) {
+    rememberFacetRun(certainty);
   }
 
 
@@ -1023,6 +1146,8 @@ async function acceptReply(reply) {
 
   log.info("solved", {
     source: certainty.source ?? "",
+    answeredBy: certainty.answered_by ?? "",
+    facetInvoked: Boolean(certainty.facet_invoked),
     insertable: Boolean(certainty.insertable),
     answerLength: answer.length,
     elapsedMs: state.startedAt ? Date.now() - state.startedAt : 0,
@@ -1049,11 +1174,11 @@ async function acceptReply(reply) {
     displayText,
     entryText,
     problemText: reply.problem_text ?? "",
-    source: certainty.source ?? "",
+    source: answeredByBadge(certainty),
     // Absent means an older host that cannot report it; only an explicit false
     // is treated as "the question reached the model unlabelled".
     promptSeen: certainty.prompt_seen !== false,
-    detail: notes.join("; "),
+    detail: notes.join("\n"),
     errorKey: certainty.insertable ? "" : "errorTranscriptionDisputed",
   });
 }

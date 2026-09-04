@@ -16,12 +16,21 @@
           <label class="field__label" for="solveEngine"
                  data-i18n="optionsSolveEngineLabel">Solve engine</label>
           <select id="solveEngine" class="input input--select" data-setting="solveEngine">
-            <option value="ethnos" data-i18n="optionsSolveEngineEthnos">Ethnos</option>
-            <option value="facet" data-i18n="optionsSolveEngineFacet">Facet (experimental)</option>
+            <option value="ethnos" data-i18n="optionsSolveEngineEthnos">Ethnos only</option>
+            <option value="facet" data-i18n="optionsSolveEngineFacet">Ethnos, then Facet</option>
           </select>
           <p class="note" data-i18n="optionsSolveEngineHelp">
-            Facet is an experimental MathML-only path that runs on the Facet host.
+            Exact math runs locally first either way. This chooses what happens to a
+            question the exact solvers decline.
           </p>
+          <dl id="pipeline" class="pipeline">
+            <dt data-i18n="optionsPipelineExactLabel">Exact engine</dt>
+            <dd id="pipeline-exact">SymPy, on this machine</dd>
+            <dt data-i18n="optionsPipelineReasonerLabel">Reasoning engine</dt>
+            <dd id="pipeline-reasoner">—</dd>
+            <dt data-i18n="optionsPipelineObservedLabel">Last observed run</dt>
+            <dd id="pipeline-observed">—</dd>
+          </dl>
         </div>
 
         <label class="check">

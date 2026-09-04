@@ -517,6 +517,27 @@ body {
   font-size: 12px;
 }
 
+/*
+ * The pipeline readout. A definition list rather than prose: each line is a
+ * stage and the thing that performs it, and they line up so a reader can see
+ * at a glance that the exact engine is not the reasoning one.
+ */
+.pipeline {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 12px;
+  margin: 8px 0 0;
+  font-size: 12px;
+}
+
+.pipeline dt {
+  color: var(--text-muted);
+}
+
+.pipeline dd {
+  margin: 0;
+}
+
 .scope {
   margin: 0;
   padding-left: 18px;

@@ -286,6 +286,11 @@ async function bindSettings() {
     control.addEventListener("change", () => {
       const settled = clamp(key, controlValue(control));
       showValue(control, settled.value);
+      if (key === "solveEngine") {
+        // The readout describes what this setting now means, so it has to
+        // change with it rather than only on load.
+        showPipeline(settled.value);
+      }
       if (key === "entryGenre" && settled.value !== "custom") {
         const recommendedTempo = ENTRY_GENRE_PRESETS[settled.value].tempoBpm;
         const tempo = document.querySelector("#entryTempoBpm");
@@ -866,12 +871,53 @@ function showMotionPreference() {
 
 motionQuery.addEventListener("change", showMotionPreference);
 
+/**
+ * Describe the pipeline the current engine setting actually produces.
+ *
+ * Every line here comes from what is already known: the stored setting, and
+ * the last Facet run the event page happened to see. Nothing is fetched. A
+ * settings page that woke an SSH connection and a model host to render a
+ * label would be paying a real cost for a cosmetic one, and a page that
+ * guessed instead would be worse than one that says it does not know.
+ */
+async function showPipeline(engine) {
+  const exact = document.querySelector("#pipeline-exact");
+  const reasoner = document.querySelector("#pipeline-reasoner");
+  const observed = document.querySelector("#pipeline-observed");
+  if (!exact || !reasoner || !observed) {
+    return;
+  }
+  // The exact stage does not depend on the setting: it runs first either way.
+  exact.textContent = message("optionsPipelineExactValue");
+  reasoner.textContent = message(
+    engine === "facet"
+      ? "optionsPipelineReasonerFacet"
+      : "optionsPipelineReasonerEthnos"
+  );
+  if (engine !== "facet") {
+    observed.textContent = message("optionsPipelineObservedUnused");
+    return;
+  }
+  let seen = null;
+  try {
+    ({ facetLastSeen: seen } = await browser.storage.local.get("facetLastSeen"));
+  } catch {
+    seen = null;
+  }
+  observed.textContent = seen?.facetModel
+    ? [seen.facetModel, seen.facetRuntime, seen.facetDevice]
+        .filter(Boolean)
+        .join(" · ")
+    : message("optionsPipelineObservedNone");
+}
+
 async function initialize() {
   localizeDocument();
   showMotionPreference();
   const stored = await readSettings();
   initLog("options", { level: stored.logLevel });
   await bindSettings();
+  await showPipeline(stored.solveEngine);
   await showShortcut();
   await showLog();
 }

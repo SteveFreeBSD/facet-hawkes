@@ -94,6 +94,32 @@ class Certainty(BaseModel):
     #: so, because a solve made that way is otherwise indistinguishable from
     #: one made from a well-posed question.
     prompt_seen: bool = True
+    #: Which engine's answer this is. `exact` is SymPy and the polynomial
+    #: solver -- deterministic, checkable, and not a model. `facet` is the
+    #: remote reasoner. `model` is the local vision-and-model fallback. Kept
+    #: separate from `method` so a reader is never left inferring whether a
+    #: named thing was a solver or a language model.
+    answered_by: Literal["exact", "facet", "model"] | None = None
+    #: What the deterministic stage did before anything else was asked. This
+    #: is the router's own account: `solved` means nothing further ran at all.
+    router: Literal["solved", "declined", "not-run"] | None = None
+    #: Why the exact stage declined, in the words the host already uses.
+    router_detail: str = ""
+    #: How the question itself reached Ethnos: read from the page's markup, or
+    #: transcribed from a picture of it.
+    reading: Literal["mathml", "screenshot"] | None = None
+    #: The named method behind the answer -- a solver's name when `answered_by`
+    #: is `exact`, a model's name otherwise. Never a model name for a solver.
+    method: str = ""
+    #: Whether Facet was asked at all. False on an exact solve even when Facet
+    #: was the selected engine, because it genuinely was not called.
+    facet_invoked: bool = False
+    #: What Ethnos required of Facet, and what Facet reported doing. Both are
+    #: carried because a difference between them is the thing worth seeing.
+    requested_backend: str | None = None
+    actual_backend: str | None = None
+    #: Facet's own fallback claim. None when Facet did not run.
+    fallback: bool | None = None
     model: str | None = None
     runtime: str | None = None
     device: str | None = None

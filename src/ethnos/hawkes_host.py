@@ -21,6 +21,7 @@ import re
 import struct
 import sys
 import tempfile
+import time
 from pathlib import Path
 from typing import BinaryIO
 
@@ -122,7 +123,9 @@ def solve(request: SolveRequest, report=None) -> SolveResponse:
     # solve. A screenshot is the fallback, not the default.
     if problem.mathml:
         announce("reading", "page markup")
+        started = time.perf_counter()
         answer, decline = _solve_from_markup(instruction, problem.mathml)
+        exact_ms = (time.perf_counter() - started) * 1000
         if answer is not None:
             return SolveResponse(
                 request_id=request.request_id,
@@ -138,6 +141,12 @@ def solve(request: SolveRequest, report=None) -> SolveResponse:
                     transcription="exact",
                     insertable=True,
                     issues=[],
+                    answered_by="exact",
+                    router="solved",
+                    reading="mathml",
+                    method=EXACT_METHOD,
+                    facet_invoked=False,
+                    elapsed_ms=exact_ms,
                 ),
             )
         if not problem.screenshot_png_base64:
@@ -172,6 +181,7 @@ def solve(request: SolveRequest, report=None) -> SolveResponse:
 
         # Exact first: sympy answers many of these with no model call at all,
         # and its result is checkable rather than merely plausible.
+        solve_started = time.perf_counter()
         source = "symbolic"
         result = answer_symbolic_math(
             problem_text=transcription.problem_text,
@@ -226,6 +236,22 @@ def solve(request: SolveRequest, report=None) -> SolveResponse:
             # The two readers must agree before an answer may be inserted.
             insertable=not issues,
             issues=issues,
+            # A screenshot solve names its own layers: the picture was read by
+            # a vision model, and the answer came either from a solver or from
+            # a second model. Saying "model" for both would hide the one
+            # distinction that decides how much to trust it.
+            answered_by="model" if source == "model" else "exact",
+            router="solved" if source != "model" else "declined",
+            reading="screenshot",
+            method=(
+                settings.ollama_math_model
+                if source == "model"
+                else EXACT_METHOD
+                if source == "symbolic"
+                else POLYNOMIAL_METHOD
+            ),
+            facet_invoked=False,
+            elapsed_ms=(time.perf_counter() - solve_started) * 1000,
         ),
     )
 
@@ -235,6 +261,11 @@ def solve(request: SolveRequest, report=None) -> SolveResponse:
 COMMA_SEPARATED = re.compile(
     r"separate\s+multiple\s+answers\s+with\s+a\s+comma", re.IGNORECASE
 )
+
+#: Names for the deterministic solvers, so a reader is never left wondering
+#: whether the thing that answered was a model. Neither of these is one.
+EXACT_METHOD = "SymPy exact symbolic"
+POLYNOMIAL_METHOD = "exact polynomial expansion"
 
 #: The variable a formula question isolates, which Hawkes then prints beside
 #: the answer box as `r =`. Read here rather than borrowed from the solver:
@@ -394,7 +425,9 @@ def _solve_with_facet(
     # these to Facet would trade a checkable millisecond for an unverifiable
     # second, and would do it on exactly the questions least in need of a
     # model. The engine the browser chose decides where the *rest* goes.
+    started = time.perf_counter()
     exact, decline = _solve_from_markup(instruction, problem.mathml)
+    exact_ms = (time.perf_counter() - started) * 1000
     if exact is not None:
         return SolveResponse(
             request_id=request.request_id,
@@ -407,6 +440,13 @@ def _solve_with_facet(
                 transcription="exact",
                 insertable=True,
                 issues=[],
+                answered_by="exact",
+                router="solved",
+                reading="mathml",
+                method=EXACT_METHOD,
+                # Selecting Facet does not mean Facet ran. It did not.
+                facet_invoked=False,
+                elapsed_ms=exact_ms,
             ),
         )
 
@@ -486,6 +526,17 @@ def _solve_with_facet(
             transcription="exact",
             insertable=True,
             issues=[],
+            answered_by="facet",
+            # The exact solvers ran and declined; that is why Facet was asked,
+            # and the decline is carried so the panel can say which gap it was.
+            router="declined",
+            router_detail=decline,
+            reading="mathml",
+            method=result.model,
+            facet_invoked=True,
+            requested_backend=result.requested_backend,
+            actual_backend=result.actual_backend,
+            fallback=result.fallback,
             model=result.model,
             runtime=result.runtime,
             device=result.device,
