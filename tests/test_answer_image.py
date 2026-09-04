@@ -48,6 +48,11 @@ def test_fraction_answer_renders_with_fraction_symbol_and_grouped_denominator():
     assert keyboard_entry_for_math(r"\frac{1}{5yz^{7}}") == "1/(5*y*z^7)"
 
 
+def test_fraction_keyboard_entry_groups_an_additive_numerator():
+    """A fraction bar covers the whole numerator, not only its last term."""
+    assert keyboard_entry_for_math(r"\frac{26 - 29i}{37}") == "(26-29*i)/37"
+
+
 def test_screenshot_fraction_answer_is_only_a_stacked_fraction():
     assert visual_math_answer(r"\frac{1}{5yz^7}") == "1\n────\n5yz⁷"
 

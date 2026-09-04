@@ -210,6 +210,15 @@
       "expected": "-10i"
     },
     {
+      "id": "complex-q11",
+      "topic": "complex numbers",
+      "prompt": "Simplify the following expression.",
+      "expressions": [
+        "(5 - 4i)(6 + i)"
+      ],
+      "expected": "34 - 19i"
+    },
+    {
       "id": "factor-then-order",
       "topic": "guards",
       "prompt": "Factor completely, then write the answer in descending order.",

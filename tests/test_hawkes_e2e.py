@@ -122,6 +122,25 @@ def test_live_complex_q9_survives_markup_answer_to_insertable_plan(plan_entry):
     }
 
 
+def test_live_complex_q11_is_a_plain_complete_insertable_plan(plan_entry):
+    from ethnos.answer_image import keyboard_entry_for_math
+
+    result = answer_symbolic_math(
+        problem_text="Simplify the following expression.",
+        expressions=["(5 - 4i)(6 + i)"],
+    )
+
+    assert result is not None
+    display = extract_final_math(result.raw_response)
+    machine = keyboard_entry_for_math(display)
+    assert display == "34 - 19i"
+    assert machine == "34-19*i"
+    assert plan_entry(machine, COMPLEX_EDITOR) == {
+        "ok": True,
+        "steps": [{"op": "type", "text": "34-19i"}],
+    }
+
+
 def test_unverified_model_answers_do_not_enter_this_gate():
     # A model result is not enough for this correctness gate. Exact markup or
     # an independently verified transcription must supply the solver input.

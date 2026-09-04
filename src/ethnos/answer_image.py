@@ -195,7 +195,11 @@ def extract_final_math(answer_text: str) -> str | None:
 
 def keyboard_entry_for_math(math_text: str) -> str:
     """Convert common displayed math into explicit ASCII homework syntax."""
-    entry = linearize_math(math_text)
+    # The display linearizer writes ``\frac{a+b}{c}`` as ``a+b/(c)`` for
+    # readability. That is not equivalent keyboard syntax: division would
+    # bind only to the last term. Preserve an additive numerator's boundary
+    # before linearization removes the braces.
+    entry = linearize_math(_keyboard_fraction_syntax(math_text))
     # A conventional coefficient before a radical is implicit multiplication:
     # `y√30` means `y*sqrt(30)`. Insert the boundary while the radical sign is
     # still present, or the later word splitter sees `ysqrt` as five variables.
@@ -253,6 +257,70 @@ def keyboard_entry_for_math(math_text: str) -> str:
     for function_name in ("sqrt", "cbrt", "sin", "cos", "tan", "log", "ln", "abs"):
         entry = entry.replace(f"{function_name}*(", f"{function_name}(")
     return entry
+
+
+def _keyboard_fraction_syntax(text: str) -> str:
+    r"""Turn LaTeX fractions into value-preserving linear division syntax."""
+    text = re.sub(r"(?<!\\)\bfrac\{", r"\\frac{", text)
+    output: list[str] = []
+    cursor = 0
+    while True:
+        start = text.find(r"\frac", cursor)
+        if start < 0:
+            output.append(text[cursor:])
+            break
+        output.append(text[cursor:start])
+        numerator = _braced_value(text, start + len(r"\frac"))
+        if numerator is None:
+            output.append(r"\frac")
+            cursor = start + len(r"\frac")
+            continue
+        numerator_text, after_numerator = numerator
+        denominator = _braced_value(text, after_numerator)
+        if denominator is None:
+            output.append(text[start:after_numerator])
+            cursor = after_numerator
+            continue
+        denominator_text, cursor = denominator
+        numerator_text = _keyboard_fraction_syntax(numerator_text)
+        denominator_text = _keyboard_fraction_syntax(denominator_text)
+        if _fraction_numerator_needs_grouping(numerator_text):
+            numerator_text = f"({numerator_text})"
+        denominator_syntax = (
+            denominator_text
+            if re.fullmatch(r"[+-]?(?:\d+(?:\.\d*)?|\.\d+)", denominator_text)
+            else f"({denominator_text})"
+        )
+        output.append(f"{numerator_text}/{denominator_syntax}")
+    return "".join(output)
+
+
+def _braced_value(text: str, start: int) -> tuple[str, int] | None:
+    """Return one balanced braced value and the offset immediately after it."""
+    if start >= len(text) or text[start] != "{":
+        return None
+    depth = 1
+    for index in range(start + 1, len(text)):
+        if text[index] == "{":
+            depth += 1
+        elif text[index] == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start + 1 : index], index + 1
+    return None
+
+
+def _fraction_numerator_needs_grouping(text: str) -> bool:
+    """Whether division precedence would change this numerator's value."""
+    depth = 0
+    for index, character in enumerate(text):
+        if character == "(":
+            depth += 1
+        elif character == ")":
+            depth = max(0, depth - 1)
+        elif depth == 0 and (character == "/" or character in "+-" and index > 0):
+            return True
+    return False
 
 
 def answer_card_answer_text(

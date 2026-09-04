@@ -109,11 +109,12 @@ def solve_symbolic_operation(
 ) -> SymbolicResult | None:
     """Safely parse candidate polynomials and apply an exact operation."""
     for candidate in _expression_candidates(problem_text, expressions):
+        imaginary_unit = _uses_imaginary_unit(problem_text, candidate, operation)
         try:
             original = _safe_sympy_expression(
                 candidate,
                 positive_symbols=_assume_positive(problem_text, candidate, operation),
-                imaginary_unit=_uses_imaginary_unit(problem_text, candidate, operation),
+                imaginary_unit=imaginary_unit,
             )
         except (SyntaxError, TypeError, ValueError, ZeroDivisionError):
             continue
@@ -124,7 +125,15 @@ def solve_symbolic_operation(
         elif operation == "expand":
             answer = sympy.expand(original)
         elif operation in {"simplify", "rational_exponents"}:
-            answer = sympy.simplify(original)
+            # SymPy leaves a numeric complex power such as ``(2 + I)**2``
+            # intact under simplify. Once the context guard has established
+            # that `i` is the imaginary unit and no variables remain, ordinary
+            # expansion is exact evaluation and produces the requested
+            # simplest ``a + bi`` form.
+            if imaginary_unit and not original.free_symbols:
+                answer = sympy.simplify(sympy.expand(original))
+            else:
+                answer = sympy.simplify(original)
         elif operation in EXTRACTION:
             if len(original.free_symbols) != 1:
                 continue
@@ -323,8 +332,9 @@ def _uses_imaginary_unit(problem_text: str, candidate: str, operation: str) -> b
     Hawkes' complex-number lesson uses the generic prompt "Simplify the
     following expression", so the instruction alone carries no context. A
     numeric simplify expression whose only symbolic name is `i` and which
-    explicitly raises `i` to an integer power is the narrow implicit form.
-    Other variables or operations leave `i` as an ordinary real symbol.
+    either raises `i` to an integer power or combines conventional numeric
+    complex-number literals is the narrow implicit form. Other variables or
+    operations leave `i` as an ordinary real symbol.
     """
     variables = _candidate_variables(candidate)
     if "i" not in variables:
@@ -338,7 +348,34 @@ def _uses_imaginary_unit(problem_text: str, candidate: str, operation: str) -> b
         r"\s*(?:\^|\*\*)\s*\{?\s*([+-]?\d+)",
         candidate,
     )
-    return any(abs(int(match.group(1))) >= 2 for match in powers)
+    if any(abs(int(match.group(1))) >= 2 for match in powers):
+        return True
+    return _has_numeric_complex_structure(candidate)
+
+
+def _has_numeric_complex_structure(candidate: str) -> bool:
+    """Recognize arithmetic written in the conventional ``a + bi`` form.
+
+    Lesson 1.5's prompt does not say "complex"; the only context carried to
+    the host is the expression itself. Two parenthesized numeric complex
+    operands, or an integer power of one, are specific enough to distinguish
+    the lesson's notation from a bare ordinary variable named ``i``. This is
+    deliberately not a search for any occurrence of ``i``.
+    """
+    normalized = candidate.replace("−", "-").replace("–", "-")
+    normalized = normalized.replace(r"\left", "").replace(r"\right", "")
+    normalized = normalized.replace(r"\cdot", "*").replace("·", "*")
+    normalized = re.sub(r"\s+", "", normalized)
+
+    number = r"(?:\d+(?:\.\d*)?|\.\d+)"
+    coefficient = rf"(?:{number}\*?)?"
+    literal = (
+        rf"\((?:[+-]?{number}[+-]{coefficient}i|"
+        rf"[+-]?{coefficient}i[+-]{number})\)"
+    )
+    arithmetic = rf"{literal}(?:[+\-*/]?{literal})+"
+    integer_power = rf"{literal}(?:\^|\*\*)\{{?[+-]?\d+\}}?"
+    return re.fullmatch(rf"(?:{arithmetic}|{integer_power})", normalized) is not None
 
 
 def _has_even_index_radical(candidate: str) -> bool:

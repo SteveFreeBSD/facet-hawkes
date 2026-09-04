@@ -335,3 +335,29 @@ The pattern worth keeping: **every defect of consequence was found by someone
 using the add-on, not by the suite.** The suite is good at holding fixed
 behaviour still. It had nothing to say about a second window, a detached tab,
 or an answer that was its own answer.
+
+## Session Record, 4 September 2026 — Lesson 1.5 Complex Numbers
+
+Question 11 showed `(5 − 4i)(6 + i)` under the generic prompt “Simplify the
+following expression.” Ethnos returned `-(i + 6)(4i - 5)`. Four live solves
+were exact markup reads, but each attempted structured insertion ended in
+`errorEditorUnknown`; cleanup then removed the partial entry.
+
+The insertion symptom began in the solver. The lowercase-`i` context guard
+recognized direct powers such as `i^2` and `(-i)^6`, but not the conventional
+numeric complex operands `(a + bi)(c + di)`. SymPy consequently received a
+real variable named `i` and preserved a factored polynomial. Numeric complex
+operands and their integer powers now activate the imaginary unit only for a
+generic simplify whose sole symbolic name is `i`. Other variables and other
+operations retain the ordinary-variable interpretation. The live result is
+now `34 - 19i`, with keyboard form `34-19*i`; its validated entry plan is one
+plain typing step, so the failing parenthesis-template path is not invoked.
+
+An adjacent complex-division regression exposed a separate value-changing
+boundary: `\frac{26 - 29i}{37}` became `26-29*i/(37)` in keyboard syntax,
+dividing only the imaginary term. Fraction conversion now retains parentheses
+around an additive numerator. This is covered independently as well as through
+numeric complex multiplication, conjugate multiplication, division, and a
+power of a complex literal. Question 11's rendered structure, exact wording,
+expected result, host response, and plain insertion plan are pinned in the
+MathML, coverage, symbolic-solver, and end-to-end suites.

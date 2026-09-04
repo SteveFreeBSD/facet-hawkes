@@ -891,6 +891,31 @@ def test_live_complex_sum_reduces_i_squared_before_collecting_terms():
     assert extract_final_math(result.raw_response) == "-7 - 2i"
 
 
+def test_live_complex_product_reduces_i_squared_and_collects_terms():
+    """Lesson 1.5 Q11: Hawkes cannot accept an unexpanded product as simplest."""
+    result = answer_symbolic_math(
+        problem_text="Simplify the following expression.",
+        expressions=["(5 - 4i)(6 + i)"],
+    )
+
+    assert result is not None
+    assert extract_final_math(result.raw_response) == "34 - 19i"
+
+
+def test_numeric_complex_arithmetic_is_recognized_without_a_bare_i_power():
+    for expression, expected in (
+        ("(3 + 2i)(3 - 2i)", "13"),
+        ("(i + 2)(i - 2)", "-5"),
+        ("(5 - 4i)/(6 + i)", r"\frac{26 - 29i}{37}"),
+        ("(2 + i)^2", "3 + 4i"),
+    ):
+        result = answer_symbolic_math(
+            problem_text="Simplify the following expression.", expressions=[expression]
+        )
+        assert result is not None, expression
+        assert extract_final_math(result.raw_response) == expected
+
+
 def test_parenthesized_negative_i_power_reduces_beside_a_negative_square_root():
     """Lesson 1.5 Q9: both input `i` values must be the same imaginary unit."""
     result = answer_symbolic_math(
@@ -929,3 +954,14 @@ def test_i_remains_an_ordinary_variable_outside_complex_simplification():
     assert extract_final_math(factored.raw_response) == "(i - 1)(i + 1)"
     assert evaluated is not None
     assert extract_final_math(evaluated.raw_response) == "10"
+
+    # A generic simplify is not enough by itself. With no explicit power and
+    # no numeric complex-number operands, this remains ordinary-variable
+    # algebra and the no-op is declined.
+    assert (
+        answer_symbolic_math(
+            problem_text="Simplify the following expression.",
+            expressions=["i(i + x)"],
+        )
+        is None
+    )
