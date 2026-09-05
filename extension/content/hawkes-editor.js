@@ -33,7 +33,7 @@
 var ethnosHawkes = (function () {
   const ALLOWED_ORIGIN = "https://learn.hawkeslearning.com";
   const MAX_ANSWER_LENGTH = 40;
-  const ANSWER_PATTERN = /^[0-9A-Za-z+\-*/^().,√ ]+$/;
+  const ANSWER_PATTERN = /^[0-9A-Za-z+\-*/^().,√π ]+$/;
 
   const FIELD_SELECTOR = [
     "input:not([type])",
@@ -139,6 +139,53 @@ var ethnosHawkes = (function () {
   }
 
   /**
+   * The one supported multi-field shape: two Hawkes editors with a visible
+   * literal "or" between them on the same answer row.
+   *
+   * Geometry and the separator are both required. Merely seeing two inputs
+   * is not enough: they could be unrelated fields in a word problem.
+   *
+   * @returns {Element[]}
+   */
+  function pairedSolutionFields() {
+    const fields = [...document.querySelectorAll(HAWKES_FIELD_SELECTOR)]
+      .filter(
+        (element) =>
+          element.id
+          && element.getBoundingClientRect().width > 0
+          && element.getBoundingClientRect().height > 0
+          && !element.disabled
+          && !element.readOnly
+      )
+      .sort((left, right) => {
+        const a = left.getBoundingClientRect();
+        const b = right.getBoundingClientRect();
+        return a.left - b.left || a.top - b.top;
+      });
+    if (fields.length !== 2 || fields[0].id === fields[1].id) {
+      return [];
+    }
+    const [left, right] = fields.map((field) => field.getBoundingClientRect());
+    if (left.right > right.left) {
+      return [];
+    }
+    const separators = [...document.querySelectorAll("span, label, td, div")]
+      .filter((element) => (element.textContent || "").trim().toLowerCase() === "or")
+      .map((element) => element.getBoundingClientRect())
+      .filter((rect) => rect.width > 0 && rect.height > 0);
+    const between = separators.some((rect) => {
+      const rowCenter = (left.top + left.bottom + right.top + right.bottom) / 4;
+      return (
+        rect.left >= left.right - 2
+        && rect.right <= right.left + 2
+        && rowCenter >= rect.top - 4
+        && rowCenter <= rect.bottom + 4
+      );
+    });
+    return between ? fields : [];
+  }
+
+  /**
    * The answer options, if this question is answered by choosing one.
    *
    * Focus is deliberately not required. On a typed question the caret says
@@ -147,28 +194,42 @@ var ethnosHawkes = (function () {
    * told what to choose. The presence of Hawkes' own option group is the
    * signal instead.
    *
-   * @returns {HTMLInputElement | null}
+   * @returns {HTMLInputElement[]}
    */
+  function optionGroup() {
+    const options = [...document.querySelectorAll('input[type="radio"].opt')].filter(
+      (radio) =>
+        !radio.disabled
+        && radio.getBoundingClientRect().width > 0
+        && radio.getBoundingClientRect().height > 0
+    );
+    const names = new Set(options.map((radio) => radio.name || radio.id));
+    return options.length > 0 && names.size === 1 ? options : [];
+  }
+
+  /** The one visible field explicitly owned by the selected option. */
+  function revealedOptionField() {
+    const controlled = optionGroup()
+      .filter((radio) => radio.checked)
+      .flatMap((radio) => String(radio.getAttribute("aria-controls") || "").split(/\s+/))
+      .filter((id) => id.length > 0)
+      .map((id) => document.getElementById(id))
+      .filter(
+        (field) =>
+          field?.matches?.(HAWKES_FIELD_SELECTOR)
+          && field.getBoundingClientRect().width > 0
+          && field.getBoundingClientRect().height > 0
+          && !field.disabled
+          && !field.readOnly
+      );
+    return controlled.length === 1 ? controlled[0] : null;
+  }
+
+  /** One member of the page's single unambiguous Hawkes option group. */
   function focusedOption() {
+    const options = optionGroup();
     const focused = document.activeElement;
-    if (
-      focused instanceof HTMLInputElement
-      && focused.type === "radio"
-      && !focused.disabled
-    ) {
-      return focused;
-    }
-    // Nothing is focused, or focus sits on the page body: fall back to the
-    // question's own option group, which Hawkes marks with the "opt" class.
-    if (focused && focused !== document.body && focused !== document.documentElement) {
-      return null;
-    }
-    for (const radio of document.querySelectorAll('input[type="radio"].opt')) {
-      if (!radio.disabled && radio.getBoundingClientRect().width > 0) {
-        return radio;
-      }
-    }
-    return null;
+    return options.includes(focused) ? focused : options[0] ?? null;
   }
 
   /** @returns {boolean} whether the target is a plain form control. */
@@ -209,6 +270,22 @@ var ethnosHawkes = (function () {
         ready: false,
         code: "focus-in-subframe",
         frameOrigin: focusedSubframeOrigin(),
+      };
+    }
+    // A selected option may reveal the only text field that completes it.
+    // Hawkes links that field from the radio with aria-controls, so following
+    // that relation is exact and does not weaken the one-target rule.
+    const revealed = revealedOptionField();
+    if (revealed) {
+      return { ready: true, code: "focused-answer-field", fieldId: revealed.id || "" };
+    }
+    const pair = pairedSolutionFields();
+    if (pair.length === 2) {
+      return {
+        ready: true,
+        code: "paired-answer-fields",
+        fieldId: pair.map((field) => field.id).join("\u001f"),
+        fieldIds: pair.map((field) => field.id),
       };
     }
     // Some questions are answered by choosing an option. That is still an
@@ -302,11 +379,11 @@ var ethnosHawkes = (function () {
     );
   }
 
-  async function insertIntoNativeField(target, value, cadence) {
+  async function insertIntoNativeField(target, value, cadence, preflighted = false) {
     if (target.disabled || target.readOnly) {
       return { ok: false, code: "field-not-editable" };
     }
-    if (!beforeInputAccepted(target, value)) {
+    if (!preflighted && !beforeInputAccepted(target, value)) {
       return { ok: false, code: "input-cancelled" };
     }
 
@@ -388,8 +465,12 @@ var ethnosHawkes = (function () {
     if (!originAllowed()) {
       return { ok: false, code: "wrong-site" };
     }
-    if (focusedOption()) {
+    const revealed = revealedOptionField();
+    if (!revealed && focusedOption()) {
       return { ok: false, code: "editor-option-answer" };
+    }
+    if (pairedSolutionFields().length > 0) {
+      return { ok: false, code: "editor-multiple-answer" };
     }
     if (hawkesDialogOpen()) {
       return { ok: false, code: "editor-dialog-open" };
@@ -397,7 +478,7 @@ var ethnosHawkes = (function () {
     if (!answerIsSupported(value)) {
       return { ok: false, code: "answer-invalid" };
     }
-    const target = focusedAnswerField();
+    const target = revealed ?? focusedAnswerField();
     if (!target) {
       return { ok: false, code: "no-focused-answer-field" };
     }
@@ -412,10 +493,67 @@ var ethnosHawkes = (function () {
     return { ok: false, code: "unsupported-field" };
   }
 
+  /** Insert two already-separated roots into the exact pinned pair. */
+  async function insertAnswerParts(parts, expectedFieldIds, cadenceOptions = {}) {
+    if (!originAllowed()) {
+      return { ok: false, code: "wrong-site" };
+    }
+    if (
+      !Array.isArray(parts)
+      || parts.length !== 2
+      || !parts.every(answerIsSupported)
+      || !Array.isArray(expectedFieldIds)
+      || expectedFieldIds.length !== 2
+    ) {
+      return { ok: false, code: "answer-invalid" };
+    }
+    const fields = pairedSolutionFields();
+    if (
+      fields.length !== 2
+      || fields.some((field, index) => field.id !== expectedFieldIds[index])
+    ) {
+      return { ok: false, code: "answer-fields-changed" };
+    }
+    if (fields.some((field) => !isNativeField(field) || field.value !== "")) {
+      return { ok: false, code: "answer-fields-not-empty" };
+    }
+    // Validate both editors before the first mutation. Hawkes uses this event
+    // to reject characters that its published model does not accept.
+    if (!fields.every((field, index) => beforeInputAccepted(field, parts[index]))) {
+      return { ok: false, code: "input-cancelled" };
+    }
+
+    const cadence = normalizedCadence(cadenceOptions);
+    for (let index = 0; index < fields.length; index += 1) {
+      const current = pairedSolutionFields();
+      if (
+        current.length !== 2
+        || current.some((field, offset) => field.id !== expectedFieldIds[offset])
+      ) {
+        return { ok: false, code: "answer-fields-changed", written: index };
+      }
+      const outcome = await insertIntoNativeField(
+        current[index], parts[index], cadence, true
+      );
+      if (!outcome.ok) {
+        return { ...outcome, written: index };
+      }
+    }
+    const settled = pairedSolutionFields();
+    if (
+      settled.length !== 2
+      || settled.some((field, index) => field.value !== parts[index])
+    ) {
+      return { ok: false, code: "answer-pair-incomplete", written: 2 };
+    }
+    return { ok: true, code: "native-input-pair", entered: [...parts] };
+  }
+
   return {
     answerIsSupported,
     inspectField,
     insertAnswer,
+    insertAnswerParts,
     originAllowed,
   };
 })();

@@ -158,8 +158,8 @@
     "description": "Error on a protocol version mismatch."
   },
   "errorNoCapture": {
-    "message": "The question could not be captured from this tab.",
-    "description": "Error when the screenshot fails."
+    "message": "This question needs screenshot fallback, which a Firefox sidebar cannot authorize. Open Ethnos from its toolbar button and retry there.",
+    "description": "Error when screenshot fallback lacks an activeTab grant."
   },
   "errorQuestionRegion": {
     "message": "The question region could not be isolated safely, so no screenshot was sent. For an unusual layout, you can explicitly turn off question-region limiting in Settings and retry.",

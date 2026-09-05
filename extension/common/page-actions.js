@@ -20,11 +20,24 @@
  */
 
 /**
- * @param {Array<{op: string, text?: string, name?: string}>} steps
+ * @param {Array<{op: string, text?: string, name?: string}>|Array<Array<{
+ *   op: string, text?: string, name?: string
+ * }>>} steps one plan, or two independently preflighted plans
+ * @param {object} cadence
+ * @param {string[]} targetFieldIds exact two-field target, empty for one editor
  * @returns {Promise<{ok: boolean, code: string, entered?: string, detail?: string}>}
  */
-export async function enterPlan(steps, cadence = {}) {
+export async function enterPlan(steps, cadence = {}, targetFieldIds = []) {
   const SETTLE_MS = 4000;
+  const paired = Array.isArray(targetFieldIds) && targetFieldIds.length === 2;
+  const plans = paired ? steps : [steps];
+  if (
+    !Array.isArray(plans)
+    || plans.length !== (paired ? 2 : 1)
+    || !plans.every((plan) => Array.isArray(plan))
+  ) {
+    return { ok: false, code: "answer-invalid" };
+  }
 
   /**
    * Presentation cadence for structured entry.
@@ -91,7 +104,7 @@ export async function enterPlan(steps, cadence = {}) {
   };
 
   // Every character the plan will type, scheduled up front as one performance.
-  const score = [...steps]
+  const score = plans.flat()
     .filter((step) => step.op === "type")
     .map((step) => step.text ?? "")
     .join("");
@@ -183,7 +196,7 @@ export async function enterPlan(steps, cadence = {}) {
   const typeInto = async (id, text) => {
     const box = document.getElementById(id);
     if (!box) {
-      return false;
+      return { ok: false, code: "answer-field-disappeared" };
     }
     box.focus();
     const setter = Object.getOwnPropertyDescriptor(
@@ -196,7 +209,7 @@ export async function enterPlan(steps, cadence = {}) {
       // tick, and a box that went away mid-performance must not be written to.
       const live = document.getElementById(id);
       if (!live) {
-        return false;
+        return { ok: false, code: "answer-field-disappeared" };
       }
       setter.call(live, live.value + character);
       live.dispatchEvent(
@@ -207,10 +220,17 @@ export async function enterPlan(steps, cadence = {}) {
         })
       );
       if (!live.value.endsWith(character)) {
-        return false; // the editor rejected it
+        // Name the one character Hawkes rejected, not the whole typing run.
+        // This distinguishes a character refusal from a template failure and
+        // makes the panel's diagnostic specific without retaining the answer.
+        return {
+          ok: false,
+          code: "answer-has-rejected-characters",
+          detail: character,
+        };
       }
     }
-    return true;
+    return { ok: true };
   };
 
   const ui = window.quant_wp_UI;
@@ -222,7 +242,11 @@ export async function enterPlan(steps, cadence = {}) {
   }
 
 
+  let activeControl = null;
   const currentControl = () => {
+    if (activeControl) {
+      return activeControl;
+    }
     const index = ui.focusedElementIndex;
     return ui.controlsCollection[index >= 0 ? index : 0];
   };
@@ -239,7 +263,7 @@ export async function enterPlan(steps, cadence = {}) {
    * is loaded where the plan meant it to go. Only nodes that can actually load
    * one are considered; a `Fraction` and its `Numerator` report the same box.
    */
-  const findBase = (inputId) => {
+  const findBase = (inputId, control = currentControl()) => {
     let found = null;
     const walk = (node, depth) => {
       if (!node || found || depth > 8) {
@@ -265,9 +289,33 @@ export async function enterPlan(steps, cadence = {}) {
         }
       }
     };
-    walk(currentControl(), 0);
+    walk(control, 0);
     return found;
   };
+
+  // A structured two-part answer must name two distinct page-owned editors.
+  // Resolve both before the first write; DOM order alone is not enough because
+  // loading a fraction replaces the first editor's base input.
+  const pinnedControls = [];
+  if (paired) {
+    for (const fieldId of targetFieldIds) {
+      const matches = [];
+      for (let index = 0; index < ui.controlsCollection.length; index += 1) {
+        const control = ui.controlsCollection[index];
+        if (control && findBase(fieldId, control)) {
+          matches.push(control);
+        }
+      }
+      const field = document.getElementById(fieldId);
+      if (matches.length !== 1 || !field || field.value !== "") {
+        return { ok: false, code: "answer-fields-changed" };
+      }
+      pinnedControls.push(matches[0]);
+    }
+    if (pinnedControls[0] === pinnedControls[1]) {
+      return { ok: false, code: "answer-fields-changed" };
+    }
+  }
 
   /** Move the editor's own cursor to the base owning a box, if it will. */
   const aimEditorAt = (inputId) => {
@@ -426,7 +474,12 @@ export async function enterPlan(steps, cadence = {}) {
 
   /** Report a failure, leaving no partial answer behind. */
   const abandon = async (code, detail) => {
-    const cleared = await clearAnswer();
+    const controls = paired ? pinnedControls : [currentControl()];
+    for (const control of controls) {
+      activeControl = control;
+      await clearAnswer();
+    }
+    const cleared = answerIsEmpty();
     const report = detail === undefined ? { ok: false, code } : { ok: false, code, detail };
     if (!cleared) {
       // Say so rather than let a half-built answer look like a clean refusal.
@@ -440,72 +493,96 @@ export async function enterPlan(steps, cadence = {}) {
   // disabled and the call came from the keypad. That combination is what
   // produced half-built answers -- the characters landed, the structure did
   // not, and nothing said so.
-  if (currentControl()?.enabled === false) {
+  if (
+    (paired ? pinnedControls : [currentControl()])
+      .some((control) => control?.enabled === false)
+  ) {
     return { ok: false, code: "editor-disabled" };
   }
 
-  let cursor = ids()[0];
-  if (cursor === undefined) {
-    return { ok: false, code: "no-focused-answer-field" };
-  }
-  // One frame per template loaded, so a slot move returns to the structure it
-  // belongs to rather than to whatever was opened most recently inside it.
-  const frames = [];
-
-  for (const step of steps) {
-    if (step.op === "type") {
-      if (!(await typeInto(cursor, step.text))) {
-        return await abandon("answer-has-rejected-characters", step.text);
-      }
-      continue;
+  const enteredParts = [];
+  for (let planIndex = 0; planIndex < plans.length; planIndex += 1) {
+    activeControl = paired ? pinnedControls[planIndex] : null;
+    let cursor = paired ? targetFieldIds[planIndex] : ids()[0];
+    const target = cursor ? document.getElementById(cursor) : null;
+    if (!target || (paired && target.value !== "")) {
+      return await abandon("answer-fields-changed");
     }
+    // One frame per template loaded, so a slot move returns to the structure it
+    // belongs to rather than to whatever was opened most recently inside it.
+    const frames = [];
 
-    if (step.op === "template") {
-      const before = ids();
-      document.getElementById(cursor)?.focus();
-      if (!(await press(step.name, cursor))) {
-        return await abandon("template-unavailable", step.name);
+    for (const step of plans[planIndex]) {
+      if (step.op === "type") {
+        const typed = await typeInto(cursor, step.text);
+        if (!typed.ok) {
+          return await abandon(typed.code, typed.detail);
+        }
+        continue;
       }
-      const after = await settle(before);
-      if (dialogUp()) {
-        return await abandon("editor-dialog-open", step.name);
-      }
-      const fresh = after.filter((id) => !before.includes(id));
-      const focused = document.activeElement?.id;
-      cursor = fresh.includes(focused) ? focused : fresh[0];
-      if (cursor === undefined) {
-        return await abandon("template-refused-by-question", step.name);
-      }
-      frames.push({
-        template: step.name,
-        slots: fresh.filter((id) => id !== cursor),
-      });
-      continue;
-    }
 
-    if (step.op === "slot" || step.op === "base") {
-      // A named slot belongs to its own template: discard anything opened
-      // inside it since, so "denominator" is the fraction's, not a radical's.
-      let index = frames.length - 1;
-      if (step.op === "slot" && step.name === "denominator") {
-        while (index >= 0 && frames[index].template !== "Fraction") {
+      if (step.op === "template") {
+        const before = ids();
+        document.getElementById(cursor)?.focus();
+        if (!(await press(step.name, cursor))) {
+          return await abandon("template-unavailable", step.name);
+        }
+        const after = await settle(before);
+        if (dialogUp()) {
+          return await abandon("editor-dialog-open", step.name);
+        }
+        const fresh = after.filter((id) => !before.includes(id));
+        const focused = document.activeElement?.id;
+        cursor = fresh.includes(focused) ? focused : fresh[0];
+        if (cursor === undefined) {
+          return await abandon("template-refused-by-question", step.name);
+        }
+        frames.push({
+          template: step.name,
+          slots: fresh.filter((id) => id !== cursor),
+        });
+        continue;
+      }
+
+      if (step.op === "slot" || step.op === "base") {
+        // A named slot belongs to its own template: discard anything opened
+        // inside it since, so "denominator" is the fraction's, not a radical's.
+        let index = frames.length - 1;
+        if (step.op === "slot" && step.name === "denominator") {
+          while (index >= 0 && frames[index].template !== "Fraction") {
+            index -= 1;
+          }
+        }
+        while (index >= 0 && frames[index].slots.length === 0) {
           index -= 1;
         }
+        if (index < 0) {
+          return await abandon("plan-lost-its-place", step.op);
+        }
+        frames.length = index + 1;
+        cursor = frames[index].slots.shift();
+        continue;
       }
-      while (index >= 0 && frames[index].slots.length === 0) {
-        index -= 1;
-      }
-      if (index < 0) {
-        return await abandon("plan-lost-its-place", step.op);
-      }
-      frames.length = index + 1;
-      cursor = frames[index].slots.shift();
-      continue;
-    }
 
-    return await abandon("unknown-step", step.op);
+      return await abandon("unknown-step", step.op);
+    }
+    enteredParts.push(
+      plans[planIndex]
+        .filter((step) => step.op === "type")
+        .map((step) => step.text ?? "")
+        .join("")
+    );
   }
 
+  if (paired) {
+    return {
+      ok: true,
+      code: "entered-pair",
+      entered: enteredParts,
+      enteredFields: [...targetFieldIds],
+    };
+  }
+  activeControl = null;
   const entered = boxes()
     .map((box) => box.value)
     .join("");

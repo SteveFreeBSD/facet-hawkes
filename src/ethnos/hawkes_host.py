@@ -595,9 +595,9 @@ def _solve_from_markup(
     if realness is not None:
         return realness, ""
 
-    rational = _rational_equation_answer(instruction, expressions)
-    if rational is not None:
-        return rational, ""
+    equation = _equation_answer(instruction, expressions)
+    if equation is not None:
+        return equation, ""
 
     result = answer_symbolic_math(problem_text=instruction, expressions=expressions)
     if result is None:
@@ -616,6 +616,61 @@ def _solve_from_markup(
         display_text=final_math,
         keyboard_entry=final_math if prose else keyboard_entry_for_math(final_math),
     ), ""
+
+
+def _equation_answer(instruction: str, expressions: list[str]) -> AnswerPayload | None:
+    """Map a unified exact equation result to Hawkes' structured answer model."""
+    from .answer_image import keyboard_entry_for_math
+    from .symbolic_solver import (
+        AbsoluteValueEquationResult,
+        LinearEquationResult,
+        _requested_operation,
+        _requested_variable,
+        solve_equation,
+    )
+
+    if _requested_operation(instruction) != "solve" or len(expressions) != 1:
+        return None
+    target = _requested_variable(instruction)
+    result = solve_equation(expressions[0], variable=target)
+    if result is None:
+        return None
+    if isinstance(result, AbsoluteValueEquationResult):
+        keyboard_entry = result.classification
+        if len(result.solutions) == 1:
+            keyboard_entry = result.solutions[0]
+        return AnswerPayload(
+            display_text=result.display_text,
+            keyboard_entry=keyboard_entry,
+        )
+    if isinstance(result, LinearEquationResult):
+        if result.solution is None:
+            return AnswerPayload(
+                display_text=result.classification,
+                keyboard_entry=result.classification,
+            )
+        if target is not None:
+            return AnswerPayload(
+                display_text=f"{result.variable} = {result.solution}",
+                keyboard_entry=keyboard_entry_for_math(result.solution),
+            )
+        return AnswerPayload(
+            display_text=(
+                f"{result.classification} ({result.variable} = {result.solution})"
+            ),
+            keyboard_entry=result.solution,
+        )
+    entries = [keyboard_entry_for_math(solution) for solution in result.solutions]
+    if not entries:
+        return AnswerPayload(
+            display_text=result.classification,
+            keyboard_entry=result.classification,
+        )
+    return AnswerPayload(
+        display_text=result.display_text,
+        keyboard_entry=entries[0] if len(entries) == 1 else "",
+        parts=entries if len(entries) == 2 else [],
+    )
 
 
 def _polynomial_classification(
@@ -637,52 +692,6 @@ def _polynomial_classification(
             )
         return AnswerPayload(display_text="Polynomial", keyboard_entry="Polynomial")
     return None
-
-
-def _rational_equation_answer(
-    instruction: str, expressions: list[str]
-) -> AnswerPayload | None:
-    """Solve an equation whose unknown sits in a denominator.
-
-    The polynomial path cannot take this shape at all: `sympy.Poly` refuses a
-    generator raised to a negative power, and `1/x` is exactly that. So every
-    solve route declined and the question fell through to a model -- which, on
-    `1/x + 1/(x+2) = 3/4`, twice produced nothing at all and once produced a
-    confident "No solution" for an equation with two roots.
-
-    Only the shape is claimed here, never the instruction alone: the equation
-    must genuinely divide by the unknown, so this cannot take a question the
-    linear, quadratic or absolute-value solvers own.
-    """
-    from .answer_image import keyboard_entry_for_math
-    from .symbolic_solver import solve_rational_equation
-
-    if not re.search(r"\bsolve\b", instruction, re.IGNORECASE):
-        return None
-    if len(expressions) != 1:
-        return None
-    result = solve_rational_equation(
-        expressions[0], variable=answer_prefix(instruction) or None
-    )
-    if result is None:
-        return None
-    if not result.solutions:
-        # "No Solution" and "Infinite Solutions" are answers Hawkes offers as
-        # words, and they are typed as written rather than converted.
-        return AnswerPayload(
-            display_text=result.classification,
-            keyboard_entry=result.classification,
-        )
-    entries = [keyboard_entry_for_math(value) for value in result.solutions]
-    if len(entries) == 1:
-        return AnswerPayload(
-            display_text=result.display_text, keyboard_entry=entries[0]
-        )
-    # Two roots stay two values all the way to the two-field writer. No single
-    # string can be typed into two boxes, which is why the entry is left empty.
-    return AnswerPayload(
-        display_text=result.display_text, keyboard_entry="", parts=entries
-    )
 
 
 def _realness_answer(instruction: str, expressions: list[str]) -> AnswerPayload | None:

@@ -19,7 +19,7 @@
  */
 
 import { answerFitsEditor } from "/common/editor-rules.js";
-import { planEntry } from "/common/editor-plan.js";
+import { planAnswerParts, planEntry } from "/common/editor-plan.js";
 
 /** The stages a solve goes through, in order. */
 export const STAGES = ["capturing", "reading", "checking", "solving"];
@@ -140,6 +140,29 @@ function refusal(verdict) {
  * keypad templates. Only when neither works is this the user's job.
  */
 function reviewOffer(state) {
+  if (Array.isArray(state.answerParts) && state.answerParts.length === 2) {
+    const editors = state.editor?.kind === "pair" ? state.editor.editors : [];
+    const pairInsertable = Array.isArray(editors)
+      && editors.length === 2
+      && state.answerParts.every(
+        (part, index) =>
+          answerFitsEditor(part, editors[index]).insertable
+          || planEntry(part, editors[index]).ok
+      );
+    const commaInsertable = state.editor?.kind !== "pair"
+      && /separate multiple answers with a comma/i.test(state.problemText ?? "")
+      && planAnswerParts(state.answerParts, state.editor).ok;
+    const insertable = pairInsertable || commaInsertable;
+    return insertable
+      ? {
+          insertable: true,
+          status: { key: "statusSolved", args: [], kind: "ready" },
+        }
+      : {
+          insertable: false,
+          status: { key: "errorEditorUnknown", args: [], kind: "error" },
+        };
+  }
   const typeable = state.answer
     ? answerFitsEditor(state.answer, state.editor)
     : { insertable: false, code: "answer-empty" };

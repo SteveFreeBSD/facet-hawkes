@@ -40,6 +40,16 @@ def plan():
             )
         )
 
+    def parts(values, editor):
+        return json.loads(
+            context.eval(
+                "JSON.stringify(planAnswerParts("
+                f"{json.dumps(values)}, {json.dumps(editor)}))"
+            )
+        )
+
+    call.parts = parts
+
     return call
 
 
@@ -52,6 +62,23 @@ EXPONENTS = {
 FRACTIONS = {
     "allowedCharacters": "0123456789yxz-",
     "templates": {"fraction": True, "radical": True, "exponent": True},
+}
+FORMULA_Q3 = {
+    # Q3's live model published this base set and these templates. Slot sets
+    # were not part of the interrupted capture, so the planner correctly uses
+    # the model's documented base fallback rather than inventing them here.
+    "allowedCharacters": "01234567892rCπ",
+    "templates": {"fraction": True, "radical": False, "exponent": True},
+}
+QUADRATIC_COMMA = {
+    "allowedCharacters": "0123456789-+,",
+    "slots": {
+        "base": "0123456789-+,",
+        "numerator": "0123456789-+",
+        "denominator": "0123456789",
+        "radicand": "0123456789",
+    },
+    "templates": {"fraction": True, "radical": True, "exponent": False},
 }
 
 
@@ -93,6 +120,42 @@ def test_the_fraction_plan_matches_what_worked_live(plan):
             {"op": "type", "text": "7"},
             {"op": "base"},
             {"op": "type", "text": "y"},
+        ],
+    }
+
+
+def test_prefixed_formula_plans_only_the_rhs_in_the_live_q3_editor(plan):
+    assert plan("C/(2π)", FORMULA_Q3) == {
+        "ok": True,
+        "steps": [
+            {"op": "template", "name": "Fraction"},
+            {"op": "type", "text": "C"},
+            {"op": "slot", "name": "denominator"},
+            {"op": "type", "text": "2π"},
+        ],
+    }
+
+
+def test_two_roots_are_joined_only_at_the_single_comma_editor_boundary(plan):
+    assert plan.parts(["(-3+sqrt(17))/2", "(-sqrt(17)-3)/2"], QUADRATIC_COMMA) == {
+        "ok": True,
+        "steps": [
+            {"op": "template", "name": "Fraction"},
+            {"op": "type", "text": "-3+"},
+            {"op": "template", "name": "Radical"},
+            {"op": "type", "text": "17"},
+            {"op": "slot", "name": "denominator"},
+            {"op": "type", "text": "2"},
+            {"op": "base"},
+            {"op": "type", "text": ","},
+            {"op": "template", "name": "Fraction"},
+            {"op": "type", "text": "-"},
+            {"op": "template", "name": "Radical"},
+            {"op": "type", "text": "17"},
+            {"op": "base"},
+            {"op": "type", "text": "-3"},
+            {"op": "slot", "name": "denominator"},
+            {"op": "type", "text": "2"},
         ],
     }
 

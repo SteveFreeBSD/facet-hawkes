@@ -1,9 +1,12 @@
+import pytest
+
 from ethnos.answer_image import extract_final_math, keyboard_entry_for_math
 from ethnos.symbolic_solver import (
     _assume_positive,
     _python_expression,
     _requested_operation,
     answer_symbolic_math,
+    solve_linear_equation,
     solve_symbolic_operation,
 )
 
@@ -64,6 +67,68 @@ def test_multiplies_polynomials_exactly():
 
     assert result is not None
     assert result.raw_response.endswith("FINAL ANSWER: 3x^2 + 10xy - 8y^2")
+
+
+def test_linear_equations_are_reduced_and_classified_exactly():
+    cases = {
+        "4x + 8 = 4(x + 4) - 8": ("Infinite Solutions", None),
+        "5x + 2 = 5x - 3": ("No Solution", None),
+        "3x + 6 = 0": ("One Solution", "-2"),
+        "0.6y + 0.6 = 0.7y": ("One Solution", "6"),
+        "1.2y + 8 = 3.2y": ("One Solution", "4"),
+    }
+
+    for expression, expected in cases.items():
+        result = solve_linear_equation(expression)
+
+        assert result is not None, expression
+        assert (result.classification, result.solution) == expected
+
+
+def test_solve_prompt_uses_the_exact_linear_equation_operation():
+    result = answer_symbolic_math(
+        problem_text="Solve the following linear equation.",
+        expressions=["4x + 8 = 4(x + 4) - 8"],
+    )
+
+    assert result is not None
+    assert extract_final_math(result.raw_response) == "Infinite Solutions"
+    assert result.debug_info.response_summary["operation"] == "solve"
+
+
+def test_rational_equations_use_the_unified_solve_operation():
+    result = solve_symbolic_operation(
+        operation="solve",
+        problem_text=(
+            "Solve the following rational equation. "
+            "Separate multiple answers with a comma."
+        ),
+        expressions=[r"\frac{1}{x}+\frac{1}{x+2}=\frac{3}{4}"],
+    )
+
+    assert result is not None
+    assert result.answer == r"x = \frac{-4}{3} or x = 2"
+
+
+def test_solve_declines_an_equation_outside_the_linear_and_quadratic_contracts():
+    assert (
+        answer_symbolic_math(
+            problem_text="Solve the following equation.", expressions=["x^3 = 4"]
+        )
+        is None
+    )
+
+
+def test_formula_is_rearranged_for_the_explicitly_requested_variable():
+    result = answer_symbolic_math(
+        problem_text=(
+            "Solve the following formula for the indicated variable. Solve for r."
+        ),
+        expressions=["C = 2πr"],
+    )
+
+    assert result is not None
+    assert extract_final_math(result.raw_response) == r"r = \frac{C}{2π}"
 
 
 def test_expands_latex_braced_exponent_exactly():
@@ -990,3 +1055,68 @@ def test_i_remains_an_ordinary_variable_outside_complex_simplification():
         )
         is None
     )
+
+
+@pytest.mark.parametrize(
+    ("expression", "classification", "solutions"),
+    [
+        ("|-14y + 5| + 8 = 7", "No Solution", ()),
+        ("|2y - 6| = 0", "One Solution", ("3",)),
+        ("|2y - 6| = 4", "Two Solutions", ("1", "5")),
+    ],
+)
+def test_affine_absolute_value_equations_are_classified_exactly(
+    expression, classification, solutions
+):
+    from ethnos.symbolic_solver import solve_absolute_value_equation
+
+    result = solve_absolute_value_equation(expression)
+
+    assert result is not None
+    assert result.classification == classification
+    assert result.solutions == solutions
+
+
+@pytest.mark.parametrize(
+    "expression",
+    ["|y|+|y-1|=2", "|y^2-1|=3", "|y|+y=2", "||=1", "|y=1"],
+)
+def test_absolute_value_solver_declines_shapes_outside_its_exact_contract(expression):
+    from ethnos.symbolic_solver import solve_absolute_value_equation
+
+    assert solve_absolute_value_equation(expression) is None
+
+
+def test_live_quadratic_equation_has_two_independently_verified_real_roots():
+    from ethnos.symbolic_solver import solve_quadratic_equation
+
+    result = solve_quadratic_equation("y^2 - 4y - 5 = 0")
+
+    assert result is not None
+    assert result.variable == "y"
+    assert result.solutions == ("-1", "5")
+    assert result.display_text == "y = -1 or y = 5"
+
+
+def test_live_square_root_method_equation_has_two_exact_complex_roots():
+    from ethnos.symbolic_solver import solve_quadratic_equation
+
+    result = solve_quadratic_equation("(7z + 4)^2 + 36 = 0")
+
+    assert result is not None
+    assert result.variable == "z"
+    assert result.solutions == (
+        r"\frac{-4 - 6i}{7}",
+        r"\frac{-4 + 6i}{7}",
+    )
+    assert result.display_text == (r"z = \frac{-4 - 6i}{7} or z = \frac{-4 + 6i}{7}")
+
+
+@pytest.mark.parametrize(
+    "expression",
+    ["y+1=0", "y^3-1=0", "x^2+y=0"],
+)
+def test_quadratic_solver_declines_other_equation_contracts(expression):
+    from ethnos.symbolic_solver import solve_quadratic_equation
+
+    assert solve_quadratic_equation(expression) is None

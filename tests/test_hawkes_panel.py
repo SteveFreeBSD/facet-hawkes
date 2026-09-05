@@ -74,6 +74,77 @@ OPTION = {
     "templates": {"fraction": False, "radical": False, "exponent": False},
 }
 
+TWO_INTEGER_EDITORS = {
+    "ok": True,
+    "kind": "pair",
+    "editors": [
+        {
+            "ok": True,
+            "kind": "dynamic",
+            "enabled": True,
+            "allowedCharacters": "0123456789-",
+            "maxLength": 16,
+            "templates": {"fraction": False, "radical": False, "exponent": False},
+        },
+        {
+            "ok": True,
+            "kind": "dynamic",
+            "enabled": True,
+            "allowedCharacters": "0123456789-",
+            "maxLength": 16,
+            "templates": {"fraction": False, "radical": False, "exponent": False},
+        },
+    ],
+}
+
+TWO_FRACTION_EDITORS = {
+    "ok": True,
+    "kind": "pair",
+    "editors": [
+        {
+            "ok": True,
+            "kind": "dynamic",
+            "enabled": True,
+            "allowedCharacters": "+-0123456789i",
+            "maxLength": 16,
+            "slots": {
+                "base": "+-0123456789i",
+                "numerator": "+-0123456789i",
+                "denominator": "0123456789",
+            },
+            "templates": {"fraction": True, "radical": False, "exponent": False},
+        },
+        {
+            "ok": True,
+            "kind": "dynamic",
+            "enabled": True,
+            "allowedCharacters": "+-0123456789i",
+            "maxLength": 16,
+            "slots": {
+                "base": "+-0123456789i",
+                "numerator": "+-0123456789i",
+                "denominator": "0123456789",
+            },
+            "templates": {"fraction": True, "radical": False, "exponent": False},
+        },
+    ],
+}
+
+SINGLE_COMMA_EDITOR = {
+    "ok": True,
+    "kind": "dynamic",
+    "enabled": True,
+    "allowedCharacters": "0123456789-+,",
+    "maxLength": 24,
+    "slots": {
+        "base": "0123456789-+,",
+        "numerator": "0123456789-+",
+        "denominator": "0123456789",
+        "radicand": "0123456789",
+    },
+    "templates": {"fraction": True, "radical": True, "exponent": False},
+}
+
 
 def state(**overrides):
     """A state shaped exactly as `background.js` builds it."""
@@ -86,6 +157,7 @@ def state(**overrides):
         "answer": "",
         "displayText": "",
         "entryText": "",
+        "answerParts": [],
         "placedText": "",
         "promptSeen": True,
         "stage": "",
@@ -147,6 +219,72 @@ def test_insert_becomes_the_primary_action_once_there_is_an_answer(view):
     assert described["status"]["kind"] == "ready"
 
 
+def test_two_root_answer_keeps_friendly_display_and_enables_one_explicit_insert(view):
+    described = view(
+        state(
+            phase="solved",
+            answer="y = -1 or y = 5",
+            displayText="y = -1 or y = 5",
+            answerParts=["-1", "5"],
+            editor=TWO_INTEGER_EDITORS,
+        )
+    )
+
+    assert described["answer"]["text"] == "y = -1 or y = 5"
+    assert described["insert"] == {"enabled": True, "primary": True}
+    assert described["status"]["key"] == "statusSolved"
+
+
+def test_two_fraction_roots_enable_one_explicit_structured_insert(view):
+    display = "z = (-4 - 6i)/7 or z = (-4 + 6i)/7"
+    described = view(
+        state(
+            phase="solved",
+            answer=display,
+            displayText=display,
+            answerParts=["(-4-6*i)/7", "(-4+6*i)/7"],
+            editor=TWO_FRACTION_EDITORS,
+        )
+    )
+
+    assert described["answer"]["text"] == display
+    assert described["insert"] == {"enabled": True, "primary": True}
+    assert described["status"]["key"] == "statusSolved"
+
+
+def test_two_roots_enable_one_comma_editor_only_when_the_prompt_requests_it(view):
+    display = "y = (-3 + √17)/2 or y = (-√17 - 3)/2"
+    described = view(
+        state(
+            phase="solved",
+            problemText=(
+                "Solve the following quadratic equation using the quadratic formula. "
+                "Separate multiple answers with a comma if necessary."
+            ),
+            answer=display,
+            displayText=display,
+            answerParts=["(-3+sqrt(17))/2", "(-sqrt(17)-3)/2"],
+            editor=SINGLE_COMMA_EDITOR,
+        )
+    )
+
+    assert described["answer"]["text"] == display
+    assert described["insert"] == {"enabled": True, "primary": True}
+    assert described["status"]["key"] == "statusSolved"
+
+    without_contract = view(
+        state(
+            phase="solved",
+            problemText="Solve the equation.",
+            answer=display,
+            displayText=display,
+            answerParts=["(-3+sqrt(17))/2", "(-sqrt(17)-3)/2"],
+            editor=SINGLE_COMMA_EDITOR,
+        )
+    )
+    assert without_contract["insert"]["enabled"] is False
+
+
 def test_an_option_question_reads_as_your_turn_rather_than_a_failure(view):
     described = view(
         state(phase="solved", answer="3y", displayText="3y", editor=OPTION)
@@ -158,6 +296,64 @@ def test_an_option_question_reads_as_your_turn_rather_than_a_failure(view):
     assert described["status"]["kind"] == "note"
     # And it can still be copied, which is the whole point of showing it.
     assert described["copy"] == {"enabled": True, "text": "3y"}
+
+
+def test_linear_solution_classification_is_shown_without_selecting_the_option(view):
+    described = view(
+        state(
+            phase="solved",
+            answer="Infinite Solutions",
+            displayText="Infinite Solutions",
+            editor=OPTION,
+        )
+    )
+
+    assert described["answer"]["text"] == "Infinite Solutions"
+    assert described["insert"]["enabled"] is False
+    assert described["status"] == {
+        "key": "errorOptionAnswer",
+        "args": [],
+        "kind": "note",
+    }
+
+
+def test_selected_one_solution_can_insert_its_value_in_the_revealed_box(view):
+    described = view(
+        state(
+            phase="solved",
+            answer="6",
+            entryText="6",
+            displayText="One Solution (y = 6)",
+            editor=DYNAMIC_Y,
+        )
+    )
+
+    assert described["answer"]["text"] == "One Solution (y = 6)"
+    assert described["insert"] == {"enabled": True, "primary": True}
+    assert described["status"]["kind"] == "ready"
+
+
+def test_prefixed_formula_shows_the_equality_but_inserts_only_the_rhs(view):
+    editor = {
+        "ok": True,
+        "kind": "dynamic",
+        "enabled": True,
+        "allowedCharacters": "01234567892rCπ",
+        "maxLength": 16,
+        "templates": {"fraction": True, "radical": False, "exponent": True},
+    }
+    described = view(
+        state(
+            phase="solved",
+            answer="C/(2π)",
+            entryText="C/(2π)",
+            displayText="r = C/(2π)",
+            editor=editor,
+        )
+    )
+
+    assert described["answer"]["text"] == "r = C/(2π)"
+    assert described["insert"] == {"enabled": True, "primary": True}
 
 
 def test_non_real_answer_in_numeric_box_reads_as_manual_choice(view):

@@ -271,6 +271,69 @@
         "y^2 + 13y + 40"
       ],
       "expected": "(y + 5)(y + 8)"
+    },
+    {
+      "id": "linear-equation-infinite",
+      "topic": "linear equations",
+      "prompt": "Solve the following linear equation.",
+      "expressions": [
+        "4x + 8 = 4(x + 4) - 8"
+      ],
+      "expected": "Infinite Solutions"
+    },
+    {
+      "id": "linear-equation-one-solution",
+      "topic": "linear equations",
+      "prompt": "Solve the following linear equation.",
+      "expressions": [
+        "1.2y + 8 = 3.2y"
+      ],
+      "expected": "y = 4"
+    },
+    {
+      "id": "formula-rearrangement-prefixed-field",
+      "topic": "linear equations",
+      "prompt": "Solve the following formula for the indicated variable. Solve for r.",
+      "expressions": [
+        "C = 2πr"
+      ],
+      "expected": "r = \\frac{C}{2π}"
+    },
+    {
+      "id": "absolute-value-equation-no-solution",
+      "topic": "linear equations",
+      "prompt": "Solve the following absolute value equation.",
+      "expressions": [
+        "|-14y + 5| + 8 = 7"
+      ],
+      "expected": "No Solution"
+    },
+    {
+      "id": "quadratic-equation-two-roots",
+      "topic": "polynomial equations",
+      "prompt": "Solve the following quadratic equation by factoring.",
+      "expressions": [
+        "y^2 - 4y - 5 = 0"
+      ],
+      "expected": "y = -1 or y = 5"
+    },
+    {
+      "id": "quadratic-equation-complex-two-roots",
+      "topic": "polynomial equations",
+      "prompt": "Solve the following quadratic equation by the square root method. If needed, write your answer as a fraction reduced to lowest terms.",
+      "expressions": [
+        "(7z + 4)^2 + 36 = 0"
+      ],
+      "expected": "z = \\frac{-4 - 6i}{7} or z = \\frac{-4 + 6i}{7}"
+    },
+    {
+      "id": "quadratic-formula-comma-editor",
+      "topic": "polynomial equations",
+      "prompt": "Solve the following quadratic equation using the quadratic formula. Separate multiple answers with a comma if necessary.",
+      "expressions": [
+        "y^2 + 3y - 2 = 0"
+      ],
+      "expected": "y = \\frac{-3 + √17}{2} or y = \\frac{-√17 - 3}{2}"
     }
   ]
 }

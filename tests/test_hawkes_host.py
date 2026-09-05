@@ -102,6 +102,98 @@ def test_markup_refuses_a_partial_conversion():
     assert decline == "markup could not be converted"
 
 
+@pytest.mark.parametrize(
+    ("expression", "display", "keyboard"),
+    [
+        ("4x + 8 = 4(x + 4) - 8", "Infinite Solutions", "Infinite Solutions"),
+        ("2x + 1 = 2x + 7", "No Solution", "No Solution"),
+        ("3x + 6 = 0", "One Solution (x = -2)", "-2"),
+        ("0.6y + 0.6 = 0.7y", "One Solution (y = 6)", "6"),
+        ("1.2y + 8 = 3.2y", "One Solution (y = 4)", "4"),
+    ],
+)
+def test_linear_results_map_to_the_hawkes_choice_model(expression, display, keyboard):
+    from ethnos.hawkes_host import _equation_answer
+
+    answer = _equation_answer("Solve the following linear equation.", [expression])
+
+    assert answer is not None
+    assert answer.display_text == display
+    assert answer.keyboard_entry == keyboard
+
+
+def test_linear_choice_mapping_does_not_guess_at_multiple_expressions():
+    from ethnos.hawkes_host import _equation_answer
+
+    assert (
+        _equation_answer("Solve the following linear equation.", ["x = 1", "y = 2"])
+        is None
+    )
+
+
+@pytest.mark.parametrize(
+    ("expression", "display", "keyboard"),
+    [
+        ("|-14y+5|+8=7", "No Solution", "No Solution"),
+        ("|2y-6|=0", "One Solution (y = 3)", "3"),
+        ("|2y-6|=4", "Two Solutions (y = 1 or y = 5)", "Two Solutions"),
+    ],
+)
+def test_absolute_value_results_map_to_the_hawkes_choice_model(
+    expression, display, keyboard
+):
+    from ethnos.hawkes_host import _equation_answer
+
+    answer = _equation_answer(
+        "Solve the following absolute value equation.", [expression]
+    )
+
+    assert answer is not None
+    assert answer.display_text == display
+    assert answer.keyboard_entry == keyboard
+
+
+def test_two_quadratic_roots_are_kept_as_distinct_answer_parts():
+    from ethnos.hawkes_host import _equation_answer
+
+    answer = _equation_answer(
+        "Solve the following quadratic equation by factoring.",
+        ["y^2 - 4y - 5 = 0"],
+    )
+
+    assert answer is not None
+    assert answer.display_text == "y = -1 or y = 5"
+    assert answer.keyboard_entry == ""
+    assert answer.parts == ["-1", "5"]
+
+
+def test_two_complex_roots_keep_fraction_plans_as_distinct_answer_parts():
+    from ethnos.hawkes_host import _equation_answer
+
+    answer = _equation_answer(
+        "Solve the following quadratic equation by the square root method.",
+        ["(7z + 4)^2 + 36 = 0"],
+    )
+
+    assert answer is not None
+    assert answer.display_text == (r"z = \frac{-4 - 6i}{7} or z = \frac{-4 + 6i}{7}")
+    assert answer.keyboard_entry == ""
+    assert answer.parts == ["(-4-6*i)/7", "(-4+6*i)/7"]
+
+
+def test_formula_mapping_displays_the_equality_but_enters_only_the_rhs():
+    from ethnos.hawkes_host import _equation_answer
+
+    answer = _equation_answer(
+        "Solve the following formula for the indicated variable. Solve for r.",
+        ["C = 2πr"],
+    )
+
+    assert answer is not None
+    assert answer.display_text == r"r = \frac{C}{2π}"
+    assert answer.keyboard_entry == "C/(2π)"
+
+
 def test_a_solve_from_any_other_origin_is_refused_at_the_native_boundary():
     response = handle(
         {

@@ -71,10 +71,13 @@ export function selectAnswerFrame(results) {
     (entry) => entry.result.ready === true && Number.isInteger(entry.frameId)
   );
   if (claimed.length === 1) {
-    return {
+    const selected = {
       frameId: claimed[0].frameId,
       fieldId: claimed[0].result.fieldId ?? "",
     };
+    return Array.isArray(claimed[0].result.fieldIds)
+      ? { ...selected, fieldIds: [...claimed[0].result.fieldIds] }
+      : selected;
   }
   if (claimed.length > 1) {
     return { code: "ambiguous-frame" };

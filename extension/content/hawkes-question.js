@@ -19,7 +19,8 @@
 
 (() => {
   const ANSWER_CONTROLS =
-    'input.qbaseCSS, input[id^="txtAns"], input.boxStyle, input[id$="_optchk"]';
+    'input.qbaseCSS, input[id^="txtAns"], input.boxStyle, input[id$="_optchk"], '
+    + 'input[type="radio"].opt';
 
   const visible = (element) => {
     const rect = element.getBoundingClientRect();
@@ -104,13 +105,26 @@
     (text) => text.length > 8 && INSTRUCTION.test(text)
   ) ?? "";
 
+  // Formula questions put the target variable after the displayed equation,
+  // on a separate line: "C = 2πr; solve for r."  The generic instruction
+  // above only says "the indicated variable", which is not enough for an
+  // exact solver to know which symbol to isolate.
+  const target = lines
+    .map((text) => text.match(/\bsolve\s+for\s+([A-Za-z])\b/i))
+    .find((match) => match !== null);
+  const qualifier = target ? `Solve for ${target[1]}.` : "";
+
   // One line when the step already carries the instruction, which is the usual
   // Hawkes markup; both when the step marker sits in its own element.
-  const promptText = (
+  let promptText = (
     step && instruction && step.includes(instruction)
       ? step
       : [step, instruction].filter((text) => text.length > 0).join(" ")
-  ).slice(0, 400);
+  );
+  if (qualifier && !new RegExp(`\\bsolve\\s+for\\s+${target[1]}\\b`, "i").test(promptText)) {
+    promptText = `${promptText} ${qualifier}`.trim();
+  }
+  promptText = promptText.slice(0, 400);
 
   return { promptText, expressions };
 })();

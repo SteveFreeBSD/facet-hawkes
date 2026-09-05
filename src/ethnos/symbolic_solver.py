@@ -31,6 +31,49 @@ class SymbolicResult:
     answer: str
 
 
+@dataclass(frozen=True)
+class LinearEquationResult:
+    """Exact classification of one linear equation in one variable."""
+
+    classification: str
+    variable: str
+    solution: str | None = None
+
+    @property
+    def display_text(self) -> str:
+        if self.solution is None:
+            return self.classification
+        return f"{self.variable} = {self.solution}"
+
+
+@dataclass(frozen=True)
+class AbsoluteValueEquationResult:
+    """Exact roots of one affine absolute-value equation."""
+
+    classification: str
+    variable: str
+    solutions: tuple[str, ...] = ()
+
+    @property
+    def display_text(self) -> str:
+        if not self.solutions:
+            return self.classification
+        joined = " or ".join(f"{self.variable} = {value}" for value in self.solutions)
+        return f"{self.classification} ({joined})"
+
+
+@dataclass(frozen=True)
+class PolynomialEquationResult:
+    """Exact roots of one univariate polynomial equation."""
+
+    variable: str
+    solutions: tuple[str, ...]
+
+    @property
+    def display_text(self) -> str:
+        return " or ".join(f"{self.variable} = {value}" for value in self.solutions)
+
+
 def answer_symbolic_math(
     *, problem_text: str, expressions: list[str]
 ) -> AnswerCallResult | None:
@@ -79,6 +122,10 @@ def answer_symbolic_math(
             "SymPy cleared the radical from the denominator and confirmed the "
             "result equals the original."
         ),
+        "solve": (
+            "SymPy solved the one-variable equation exactly and checked every "
+            "reported solution against the original."
+        ),
     }[operation]
     answer_text = (
         f"Work: {result.original} = {result.answer}\n"
@@ -108,7 +155,20 @@ def solve_symbolic_operation(
     *, operation: str, problem_text: str, expressions: list[str]
 ) -> SymbolicResult | None:
     """Safely parse candidate polynomials and apply an exact operation."""
-    for candidate in _expression_candidates(problem_text, expressions):
+    candidates = _expression_candidates(problem_text, expressions)
+    if operation == "solve" and len(candidates) != 1:
+        return None
+    for candidate in candidates:
+        if operation == "solve":
+            target = _requested_variable(problem_text)
+            equation = solve_equation(candidate, variable=target)
+            if equation is None:
+                continue
+            return SymbolicResult(
+                operation=operation,
+                original=_input_display(candidate),
+                answer=equation.display_text,
+            )
         imaginary_unit = _uses_imaginary_unit(problem_text, candidate, operation)
         try:
             original = _safe_sympy_expression(
@@ -223,6 +283,189 @@ def solve_symbolic_operation(
             answer=answer_text,
         )
     return None
+
+
+def solve_linear_equation(
+    expression: str, *, variable: str | None = None
+) -> LinearEquationResult | None:
+    """Solve and classify an equality linear in its selected variable.
+
+    Hawkes presents the result as one of three options.  Keeping the algebra
+    here, separate from that UI vocabulary, makes the classification a result
+    of reducing both sides rather than a phrase matched from the question.
+    """
+    candidate = expression.strip().strip("$`").rstrip(".,;")
+    if candidate.count("=") != 1:
+        return None
+    left_text, right_text = candidate.split("=", 1)
+    try:
+        left = _safe_sympy_expression(left_text)
+        right = _safe_sympy_expression(right_text)
+    except (SyntaxError, TypeError, ValueError, ZeroDivisionError):
+        return None
+
+    symbols = left.free_symbols | right.free_symbols
+    if variable is None:
+        if len(symbols) != 1:
+            return None
+        (symbol,) = symbols
+    else:
+        symbol = next((item for item in symbols if item.name == variable), None)
+        if symbol is None:
+            return None
+    difference = sympy.expand(left - right)
+    try:
+        polynomial = sympy.Poly(difference, symbol)
+    except sympy.PolynomialError:
+        return None
+
+    if difference == 0:
+        return LinearEquationResult("Infinite Solutions", symbol.name)
+    if polynomial.degree() == 0:
+        return LinearEquationResult("No Solution", symbol.name)
+    if polynomial.degree() != 1:
+        return None
+
+    coefficient = polynomial.coeff_monomial(symbol)
+    constant = polynomial.coeff_monomial(1)
+    if coefficient == 0:
+        return None
+    solution = sympy.simplify(-constant / coefficient)
+    if sympy.simplify(difference.subs(symbol, solution)) != 0:
+        return None
+    return LinearEquationResult("One Solution", symbol.name, _display(solution))
+
+
+def solve_absolute_value_equation(
+    expression: str, *, variable: str | None = None
+) -> AbsoluteValueEquationResult | None:
+    """Solve ``a*|mx+b|+c=d`` exactly over the reals.
+
+    The structural checks are deliberate: Hawkes' answer model for this shape
+    offers zero, one, or two solutions. Claim only the affine form for which
+    those are the exhaustive possibilities.
+    """
+    candidate = expression.strip().strip("$`").rstrip(".,;")
+    if candidate.count("=") != 1 or candidate.count("|") != 2:
+        return None
+    left_text, right_text = candidate.split("=", 1)
+    try:
+        left = _safe_sympy_expression(left_text)
+        right = _safe_sympy_expression(right_text)
+    except (SyntaxError, TypeError, ValueError, ZeroDivisionError):
+        return None
+
+    absolute_atoms = (left - right).atoms(sympy.Abs)
+    if len(absolute_atoms) != 1:
+        return None
+    (absolute,) = absolute_atoms
+    symbols = left.free_symbols | right.free_symbols
+    if variable is None:
+        if len(symbols) != 1:
+            return None
+        (symbol,) = symbols
+    else:
+        symbol = next((item for item in symbols if item.name == variable), None)
+        if symbol is None:
+            return None
+
+    try:
+        inner = sympy.Poly(absolute.args[0], symbol)
+    except sympy.PolynomialError:
+        return None
+    if inner.degree() != 1:
+        return None
+
+    absolute_value = sympy.Dummy("absolute_value", real=True)
+    outside = sympy.expand((left - right).xreplace({absolute: absolute_value}))
+    if outside.free_symbols != {absolute_value}:
+        return None
+    try:
+        outer = sympy.Poly(outside, absolute_value)
+    except sympy.PolynomialError:
+        return None
+    if outer.degree() != 1:
+        return None
+
+    coefficient = outer.coeff_monomial(absolute_value)
+    target_value = sympy.simplify(-outer.coeff_monomial(1) / coefficient)
+    if target_value.is_negative:
+        return AbsoluteValueEquationResult("No Solution", symbol.name)
+    if not (target_value.is_zero or target_value.is_positive):
+        return None
+
+    roots: set[sympy.Expr] = set()
+    signed_targets = (
+        (sympy.Integer(0),) if target_value.is_zero else (target_value, -target_value)
+    )
+    for signed_target in signed_targets:
+        equation = sympy.Poly(absolute.args[0] - signed_target, symbol)
+        root = sympy.simplify(
+            -equation.coeff_monomial(1) / equation.coeff_monomial(symbol)
+        )
+        if sympy.simplify((left - right).subs(symbol, root)) == 0:
+            roots.add(root)
+    ordered = tuple(
+        _display(root) for root in sorted(roots, key=sympy.default_sort_key)
+    )
+    classifications = {0: "No Solution", 1: "One Solution", 2: "Two Solutions"}
+    if len(ordered) not in classifications:
+        return None
+    return AbsoluteValueEquationResult(
+        classifications[len(ordered)], symbol.name, ordered
+    )
+
+
+def solve_quadratic_equation(
+    expression: str, *, variable: str | None = None
+) -> PolynomialEquationResult | None:
+    """Return the exact roots of one genuinely quadratic equation."""
+    candidate = expression.strip().strip("$`").rstrip(".,;")
+    if candidate.count("=") != 1:
+        return None
+    left_text, right_text = candidate.split("=", 1)
+    try:
+        left = _safe_sympy_expression(left_text)
+        right = _safe_sympy_expression(right_text)
+    except (SyntaxError, TypeError, ValueError, ZeroDivisionError):
+        return None
+
+    symbols = left.free_symbols | right.free_symbols
+    if variable is None:
+        if len(symbols) != 1:
+            return None
+        (symbol,) = symbols
+    else:
+        symbol = next((item for item in symbols if item.name == variable), None)
+        if symbol is None or symbols != {symbol}:
+            return None
+    try:
+        polynomial = sympy.Poly(sympy.expand(left - right), symbol)
+    except sympy.PolynomialError:
+        return None
+    if polynomial.degree() != 2:
+        return None
+
+    coefficient_a = polynomial.coeff_monomial(symbol**2)
+    coefficient_b = polynomial.coeff_monomial(symbol)
+    coefficient_c = polynomial.coeff_monomial(1)
+    discriminant = sympy.simplify(coefficient_b**2 - 4 * coefficient_a * coefficient_c)
+    roots = [
+        sympy.simplify(
+            (-coefficient_b - sympy.sqrt(discriminant)) / (2 * coefficient_a)
+        ),
+        sympy.simplify(
+            (-coefficient_b + sympy.sqrt(discriminant)) / (2 * coefficient_a)
+        ),
+    ]
+    if any(sympy.simplify((left - right).subs(symbol, root)) != 0 for root in roots):
+        return None
+    ordered = tuple(
+        _display(root) for root in sorted(set(roots), key=sympy.default_sort_key)
+    )
+    if len(ordered) not in {1, 2}:
+        return None
+    return PolynomialEquationResult(symbol.name, ordered)
 
 
 @dataclass(frozen=True)
@@ -376,6 +619,28 @@ def solve_rational_equation(
         shown_exclusions,
         {0: "No Solution", 1: "One Solution", 2: "Two Solutions"}[len(kept)],
     )
+
+
+def solve_equation(
+    expression: str, *, variable: str | None = None
+) -> (
+    LinearEquationResult
+    | AbsoluteValueEquationResult
+    | PolynomialEquationResult
+    | RationalEquationResult
+    | None
+):
+    """Route one equation through the exact solvers that can own its shape."""
+    for solver in (
+        solve_absolute_value_equation,
+        solve_rational_equation,
+        solve_quadratic_equation,
+        solve_linear_equation,
+    ):
+        result = solver(expression, variable=variable)
+        if result is not None:
+            return result
+    return None
 
 
 def _assume_positive(problem_text: str, candidate: str, operation: str) -> bool:
@@ -566,6 +831,10 @@ def _equivalent(original: sympy.Expr, answer: sympy.Expr) -> bool:
 
 def _requested_operation(problem_text: str) -> str | None:
     lowered = problem_text.lower()
+    if re.search(r"\bsolve\b", lowered) and re.search(
+        r"\b(?:equation|formula)\b", lowered
+    ):
+        return "solve"
     # Questions *about* the polynomial rather than rewritings of it. Live,
     # both arrived as an empty instruction and were answered by the model from
     # a screenshot; SymPy reads them straight off the terms.
@@ -670,6 +939,14 @@ def _requested_operation(problem_text: str) -> str | None:
     return None
 
 
+def _requested_variable(problem_text: str) -> str | None:
+    """The single symbol an exact formula question asks to isolate."""
+    match = re.search(
+        r"\bsolve\s+for\s+([A-Za-z])\b", problem_text, flags=re.IGNORECASE
+    )
+    return match.group(1) if match else None
+
+
 def _offers_not_factorable(problem_text: str) -> bool:
     """Whether the question itself names "not factorable" as an answer.
 
@@ -708,7 +985,7 @@ def _expression_candidates(problem_text: str, expressions: list[str]) -> list[st
         candidate = value.strip().strip("$`").rstrip(".,;")
         if not re.search(r"[A-Za-z\d]", candidate):
             continue
-        if not re.search(r"[+\-*/^()⁰¹²³⁴⁵⁶⁷⁸⁹]|\\sqrt|[√∛∜]", candidate):
+        if not re.search(r"[=+\-*/^()⁰¹²³⁴⁵⁶⁷⁸⁹]|\\sqrt|[√∛∜]", candidate):
             continue
         if candidate not in candidates:
             candidates.append(candidate)
@@ -769,18 +1046,42 @@ def _python_expression(expression: str) -> str:
         normalized,
     )
     normalized = re.sub(r"\s+", "", normalized)
-    # Protect the only accepted plain-text function while implicit
-    # multiplication is inserted. Without this, `sqrt(9)` becomes
-    # `s*q*r*t*(9)` and is confidently evaluated as a product of variables.
+    # MathML serialises absolute-value fences as ordinary bars. Accept one
+    # balanced, non-empty pair; nested or chained bars stay unsupported.
+    if "|" in normalized:
+        if normalized.count("|") != 2:
+            raise ValueError("unbalanced or unsupported absolute-value bars")
+        start = normalized.index("|")
+        end = normalized.index("|", start + 1)
+        if end == start + 1:
+            raise ValueError("empty absolute value")
+        normalized = (
+            f"{normalized[:start]}abs({normalized[start + 1 : end]})"
+            f"{normalized[end + 1 :]}"
+        )
+    # Protect accepted multi-letter names while implicit multiplication is
+    # inserted. Without this, `sqrt(9)` becomes `s*q*r*t*(9)` and `pi`
+    # becomes `p*i`, both confidently evaluated as products of variables.
     sqrt_marker = "\N{SECTION SIGN}"
-    if sqrt_marker in normalized:
+    pi_marker = "\N{PILCROW SIGN}"
+    abs_marker = "\N{CURRENCY SIGN}"
+    if sqrt_marker in normalized or pi_marker in normalized or abs_marker in normalized:
         raise ValueError("expression contains unsupported characters")
     normalized = re.sub(r"sqrt(?=\()", sqrt_marker, normalized)
+    normalized = re.sub(r"abs(?=\()", abs_marker, normalized)
+    normalized = normalized.replace("π", pi_marker)
+    normalized = re.sub(r"\bpi\b", pi_marker, normalized)
     normalized = re.sub(rf"(?<=[A-Za-z0-9)])(?={sqrt_marker})", "*", normalized)
     normalized = re.sub(rf"(?<=\))(?={sqrt_marker})", "*", normalized)
+    normalized = re.sub(rf"(?<=[A-Za-z0-9)])(?={abs_marker})", "*", normalized)
+    normalized = re.sub(rf"(?<=\))(?={abs_marker})", "*", normalized)
+    normalized = re.sub(rf"(?<=[A-Za-z0-9)])(?={pi_marker})", "*", normalized)
+    normalized = re.sub(rf"(?<={pi_marker})(?=[A-Za-z0-9(])", "*", normalized)
     normalized = re.sub(r"(?<=\d)(?=[A-Za-z(])", "*", normalized)
     normalized = re.sub(r"(?<=[A-Za-z)])(?=[A-Za-z\d(])", "*", normalized)
     normalized = normalized.replace(sqrt_marker, "sqrt")
+    normalized = normalized.replace(abs_marker, "abs")
+    normalized = normalized.replace(pi_marker, "pi")
     normalized = normalized.replace("^", "**")
     if not re.fullmatch(r"[A-Za-z0-9_+\-*/().]+", normalized):
         raise ValueError("expression contains unsupported characters")
@@ -797,6 +1098,8 @@ def _evaluate(
         return sympy.Integer(node.value)
     if isinstance(node, ast.Constant) and isinstance(node.value, float):
         return sympy.Rational(Fraction(str(node.value)))
+    if isinstance(node, ast.Name) and node.id == "pi":
+        return sympy.pi
     if isinstance(node, ast.Name) and len(node.id) == 1 and node.id.isalpha():
         if imaginary_unit and node.id == "i":
             return sympy.I
@@ -820,7 +1123,7 @@ def _evaluate(
     if (
         isinstance(node, ast.Call)
         and isinstance(node.func, ast.Name)
-        and node.func.id == "sqrt"
+        and node.func.id in {"sqrt", "abs"}
         and len(node.args) == 1
         and not node.keywords
     ):
@@ -829,7 +1132,11 @@ def _evaluate(
             positive_symbols=positive_symbols,
             imaginary_unit=imaginary_unit,
         )
-        return value ** sympy.Rational(1, 2)
+        return (
+            value ** sympy.Rational(1, 2)
+            if node.func.id == "sqrt"
+            else sympy.Abs(value)
+        )
     if isinstance(node, ast.BinOp):
         left = _evaluate(
             node.left,
@@ -988,6 +1295,7 @@ def _merge_square_roots(part: sympy.Expr) -> sympy.Expr:
 
 def _display_basic(expression: sympy.Expr) -> str:
     value = sympy.sstr(_fold_absolute_powers(expression), order="lex")
+    value = re.sub(r"\bpi\b", "π", value)
     # SymPy writes the imaginary unit as `I`. Every question that asks for one
     # writes it `i`, and the editor publishes a character set containing the
     # lowercase letter and not the capital -- so `3I√3` is the right number in

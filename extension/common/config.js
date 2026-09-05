@@ -20,7 +20,7 @@ export const MAX_ANSWER_LENGTH = 40;
  * angle brackets, quotes, backslashes, braces, or semicolons, so a stored
  * value cannot be mistaken for markup or code anywhere downstream.
  */
-const ANSWER_PATTERN = /^[0-9A-Za-z+\-*/^().,√ ]+$/;
+const ANSWER_PATTERN = /^[0-9A-Za-z+\-*/^().,√π ]+$/;
 
 /**
  * Validate a candidate answer.

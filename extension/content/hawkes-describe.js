@@ -27,32 +27,6 @@
     return { ok: false, code: "editor-model-missing" };
   }
 
-  let index = ui.focusedElementIndex;
-  if (!Number.isInteger(index) || index < 0 || index >= ui.controlsCollection.length) {
-    // Opening the Firefox sidebar moves focus out of the page, and Hawkes then
-    // clears this page-owned cursor to -1 even though the isolated DOM probe
-    // has already found the answer frame. With exactly one live model control
-    // there is no choice to guess at, so describe it. Multiple controls remain
-    // ambiguous and fail closed (as does a dialog, which is checked before
-    // this probe is called).
-    const candidates = [];
-    for (let offset = 0; offset < ui.controlsCollection.length; offset += 1) {
-      if (ui.controlsCollection[offset] && ui.controlsCollectionData?.[offset]) {
-        candidates.push(offset);
-      }
-    }
-    if (candidates.length !== 1) {
-      return { ok: false, code: "no-focused-control" };
-    }
-    [index] = candidates;
-  }
-
-  const control = ui.controlsCollection[index];
-  const data = ui.controlsCollectionData ? ui.controlsCollectionData[index] : null;
-  if (!control || !data) {
-    return { ok: false, code: "no-focused-control" };
-  }
-
   /** Call one of the editor's zero-argument accessors, tolerating absence. */
   const read = (accessor) => {
     try {
@@ -62,75 +36,100 @@
     }
   };
 
-  // A dynamic box builds structure from keypad templates. A plain answer box
-  // takes characters only, and states its rule as a regular expression. A
-  // question can also be answered by choosing an option -- "Not a Real
-  // Number" and the like -- which is a selection, not text.
-  const dynamic = data.isQDy === true || control.Type !== undefined;
-  const option = !dynamic && data.boxValue === undefined;
-  if (option) {
+  /** Describe one page-owned editor control without changing it. */
+  const describe = (index) => {
+    const control = ui.controlsCollection[index];
+    const data = ui.controlsCollectionData ? ui.controlsCollectionData[index] : null;
+    if (!control || !data) {
+      return null;
+    }
+
+    // A dynamic box builds structure from keypad templates. A plain answer box
+    // takes characters only, and states its rule as a regular expression. A
+    // question can also be answered by choosing an option -- "Not a Real
+    // Number" and the like -- which is a selection, not text.
+    const dynamic = data.isQDy === true || control.Type !== undefined;
+    const option = !dynamic && data.boxValue === undefined;
+    if (option) {
+      return {
+        ok: true,
+        code: "described",
+        kind: "option",
+        name: String(read(data.Name) ?? ""),
+        enabled: control.enabled !== false && read(data.enableState) !== false,
+        text: "",
+        allowedCharacters: "",
+        maxLength: null,
+        templates: { fraction: false, radical: false, exponent: false },
+      };
+    }
+
     return {
       ok: true,
       code: "described",
-      kind: "option",
+      kind: dynamic ? "dynamic" : "textbox",
       name: String(read(data.Name) ?? ""),
       enabled: control.enabled !== false && read(data.enableState) !== false,
-      text: "",
-      allowedCharacters: "",
-      maxLength: null,
-      templates: { fraction: false, radical: false, exponent: false },
+      text: dynamic
+        ? control.CurrentTextboxText ?? ""
+        : String(read(control.boxValue) ?? ""),
+      // For a dynamic box this is a literal set of characters; for a plain box it
+      // is a character-class pattern such as "[0-9.-]".
+      allowedCharacters: dynamic
+        ? String(control.qdyBase_AllowedChar ?? "")
+        : String(read(data.validString) ?? ""),
+      maxLength: dynamic
+        ? control.qdyBaseMaxChars ?? null
+        : Number(read(data.maxLength)) || null,
+      slots: dynamic
+        ? {
+            base: String(control.qdyBase_AllowedChar ?? ""),
+            numerator: String(control.qdyFrac_AllowedNumeChar ?? ""),
+            denominator: String(control.qdyFrac_AllowedDenoChar ?? ""),
+            exponent: String(control.qdyExpo_AllowedChar ?? ""),
+            exponentBase: String(control.qdyExpo_AllowedBaseChar ?? ""),
+            radicand: String(control.qdyRoot_AllowedRadicandChar ?? ""),
+            index: String(control.qdyRoot_AllowedIndexChar ?? ""),
+          }
+        : null,
+      templates: {
+        fraction: control.qdyFractionAllowed === true,
+        radical: control.qdyRadicalAllowed === true,
+        exponent: control.qdyExponentAllowed === true,
+        parentheses: [control.qdyBase_AllowedTemplates].some((allowed) =>
+          String(allowed ?? "").includes("PBrace")
+        ),
+        absoluteValue: [
+          control.qdyBase_AllowedTemplates,
+          control.qdyFrac_AllowedNumeTemplates,
+          control.qdyFrac_AllowedDenoTemplates,
+        ].some((allowed) => String(allowed ?? "").includes("Mod")),
+      },
     };
+  };
+
+  const candidates = [];
+  for (let offset = 0; offset < ui.controlsCollection.length; offset += 1) {
+    if (ui.controlsCollection[offset] && ui.controlsCollectionData?.[offset]) {
+      candidates.push(offset);
+    }
+  }
+  if (candidates.length === 2) {
+    const editors = candidates.map(describe);
+    return editors.every(Boolean)
+      ? { ok: true, code: "described-pair", kind: "pair", editors }
+      : { ok: false, code: "no-focused-control" };
   }
 
-  return {
-    ok: true,
-    code: "described",
-    kind: dynamic ? "dynamic" : "textbox",
-    name: String(read(data.Name) ?? ""),
-    enabled: control.enabled !== false && read(data.enableState) !== false,
-    text: dynamic ? control.CurrentTextboxText ?? "" : String(read(control.boxValue) ?? ""),
-    // For a dynamic box this is a literal set of characters; for a plain box it
-    // is a character-class pattern such as "[0-9.-]".
-    allowedCharacters: dynamic
-      ? String(control.qdyBase_AllowedChar ?? "")
-      : String(read(data.validString) ?? ""),
-    maxLength: dynamic
-      ? control.qdyBaseMaxChars ?? null
-      : Number(read(data.maxLength)) || null,
-    // Each slot publishes its own character set, and they differ: on lesson
-    // 1.2 question 14 the base took `0123456789y` while both halves of a
-    // fraction took digits only. Checking every slot against the base's set
-    // is how `1/(7y^2z^3)` came to be typed into a digits-only denominator --
-    // the 7 landed, the y was refused, and half an answer was left behind.
-    slots: dynamic
-      ? {
-          base: String(control.qdyBase_AllowedChar ?? ""),
-          numerator: String(control.qdyFrac_AllowedNumeChar ?? ""),
-          denominator: String(control.qdyFrac_AllowedDenoChar ?? ""),
-          exponent: String(control.qdyExpo_AllowedChar ?? ""),
-          exponentBase: String(control.qdyExpo_AllowedBaseChar ?? ""),
-          radicand: String(control.qdyRoot_AllowedRadicandChar ?? ""),
-          index: String(control.qdyRoot_AllowedIndexChar ?? ""),
-        }
-      : null,
-    templates: {
-      fraction: control.qdyFractionAllowed === true,
-      radical: control.qdyRadicalAllowed === true,
-      exponent: control.qdyExponentAllowed === true,
-      parentheses: [control.qdyBase_AllowedTemplates].some((allowed) =>
-        String(allowed ?? "").includes("PBrace")
-      ),
-      // Absolute value has no `qdy...Allowed` flag of its own. The question
-      // instead names the templates each slot will take, and lesson 1.2
-      // question 7 -- the fourth root of y^20*z^16/81, whose answer is
-      // |y|^5z^4/3 -- lists `Mod` for the base and for both halves of a
-      // fraction. That list is the question saying which structures its
-      // answer is built from.
-      absoluteValue: [
-        control.qdyBase_AllowedTemplates,
-        control.qdyFrac_AllowedNumeTemplates,
-        control.qdyFrac_AllowedDenoTemplates,
-      ].some((allowed) => String(allowed ?? "").includes("Mod")),
-    },
-  };
+  let index = ui.focusedElementIndex;
+  if (!Number.isInteger(index) || index < 0 || index >= ui.controlsCollection.length) {
+    // Opening the sidebar clears Hawkes' cursor. Exactly one live model remains
+    // unambiguous; a two-control model is returned above and must additionally
+    // match the isolated DOM pair before insertion is offered.
+    if (candidates.length !== 1) {
+      return { ok: false, code: "no-focused-control" };
+    }
+    [index] = candidates;
+  }
+  return describe(index) ?? { ok: false, code: "no-focused-control" };
 })();

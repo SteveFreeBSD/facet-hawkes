@@ -57,6 +57,36 @@ COMPLEX_Q12 = (
     "<mrow><mo>−</mo><mn>2</mn></mrow></msqrt><mo>)</mo></mrow><mn>2</mn>"
     "</msup></mstyle></math>"
 )
+LINEAR_EQUATION_Q1 = (
+    "<math><mrow><mrow><mn>4</mn><mo>⁢</mo><mi>x</mi><mo>+</mo><mn>8</mn>"
+    "</mrow><mo>=</mo><mrow><mrow><mn>4</mn><mo>⁢</mo><mrow><mo>(</mo>"
+    "<mrow><mi>x</mi><mo>+</mo><mn>4</mn></mrow><mo>)</mo></mrow></mrow>"
+    "<mo>−</mo><mn>8</mn></mrow></mrow></math>"
+)
+FORMULA_Q3 = (
+    "<math><mrow><mi>C</mi><mo>=</mo><mrow><mn>2</mn><mo>⁢</mo>"
+    "<mi>π</mi><mo>⁢</mo><mi>r</mi></mrow></mrow></math>"
+)
+ABSOLUTE_VALUE_Q9 = (
+    "<math><mrow><mrow><mo>|</mo><mrow><mo>−</mo><mn>14</mn><mo>⁢</mo>"
+    "<mi>y</mi><mo>+</mo><mn>5</mn></mrow><mo>|</mo></mrow><mo>+</mo>"
+    "<mn>8</mn><mo>=</mo><mn>7</mn></mrow></math>"
+)
+QUADRATIC_LESSON_18_Q1 = (
+    "<math><mrow><msup><mi>y</mi><mn>2</mn></msup><mo>−</mo><mn>4</mn>"
+    "<mo>⁢</mo><mi>y</mi><mo>−</mo><mn>5</mn><mo>=</mo><mn>0</mn>"
+    "</mrow></math>"
+)
+QUADRATIC_LESSON_18_Q2 = (
+    "<math><mrow><msup><mrow><mo>(</mo><mn>7</mn><mo>⁢</mo><mi>z</mi>"
+    "<mo>+</mo><mn>4</mn><mo>)</mo></mrow><mn>2</mn></msup><mo>+</mo>"
+    "<mn>36</mn><mo>=</mo><mn>0</mn></mrow></math>"
+)
+QUADRATIC_LESSON_18_Q4 = (
+    "<math><mrow><msup><mi>y</mi><mn>2</mn></msup><mo>+</mo><mn>3</mn>"
+    "<mo>⁢</mo><mi>y</mi><mo>−</mo><mn>2</mn><mo>=</mo><mn>0</mn>"
+    "</mrow></math>"
+)
 
 
 def test_a_dot_product_of_rational_powers():
@@ -95,6 +125,30 @@ def test_live_complex_product_keeps_both_factors():
 
 def test_live_complex_binomial_power_keeps_the_negative_radicand_grouped():
     assert mathml_to_latex(COMPLEX_Q12) == r"(6+\sqrt{-2})^2"
+
+
+def test_live_linear_equation_keeps_both_sides_and_grouping():
+    assert mathml_to_latex(LINEAR_EQUATION_Q1) == "4*x+8=4*(x+4)-8"
+
+
+def test_live_formula_keeps_pi_and_the_target_factor():
+    assert mathml_to_latex(FORMULA_Q3) == "C=2*π*r"
+
+
+def test_live_absolute_value_equation_keeps_both_fences():
+    assert mathml_to_latex(ABSOLUTE_VALUE_Q9) == "|-14*y+5|+8=7"
+
+
+def test_live_lesson_18_quadratic_keeps_its_degree_and_both_sides():
+    assert mathml_to_latex(QUADRATIC_LESSON_18_Q1) == "y^2-4*y-5=0"
+
+
+def test_live_square_root_method_quadratic_keeps_its_grouped_square():
+    assert mathml_to_latex(QUADRATIC_LESSON_18_Q2) == "(7*z+4)^2+36=0"
+
+
+def test_live_quadratic_formula_equation_keeps_every_term():
+    assert mathml_to_latex(QUADRATIC_LESSON_18_Q4) == "y^2+3*y-2=0"
 
 
 def test_namespaced_markup_is_read():
@@ -180,6 +234,164 @@ def test_the_host_reports_an_exact_reading():
     assert response.certainty.source == "markup"
     assert response.certainty.transcription == "exact"
     assert response.certainty.insertable is True
+
+
+def test_the_host_answers_live_linear_q1_from_mathml_without_a_screenshot():
+    from ethnos.hawkes_host import handle
+
+    response = handle(
+        {
+            "protocol_version": 1,
+            "operation": "solve_hawkes_problem",
+            "request_id": "linear-q1",
+            "origin": "https://learn.hawkeslearning.com",
+            "problem": {
+                "prompt_text": "Solve the following linear equation.",
+                "mathml": [LINEAR_EQUATION_Q1],
+            },
+        }
+    )
+
+    assert response.status == "ready"
+    assert response.answer.display_text == "Infinite Solutions"
+    assert response.answer.keyboard_entry == "Infinite Solutions"
+    assert response.certainty.source == "markup"
+    assert response.certainty.transcription == "exact"
+
+
+def test_the_host_rearranges_live_formula_q3_and_returns_only_its_rhs_for_entry():
+    from ethnos.hawkes_host import handle
+
+    response = handle(
+        {
+            "protocol_version": 1,
+            "operation": "solve_hawkes_problem",
+            "request_id": "formula-q3",
+            "origin": "https://learn.hawkeslearning.com",
+            "problem": {
+                "prompt_text": (
+                    "Solve the following formula for the indicated variable. "
+                    "Solve for r."
+                ),
+                "mathml": [FORMULA_Q3],
+            },
+        }
+    )
+
+    assert response.status == "ready"
+    assert response.answer.display_text == r"r = \frac{C}{2π}"
+    assert response.answer.keyboard_entry == "C/(2π)"
+    assert response.certainty.source == "markup"
+    assert response.certainty.transcription == "exact"
+
+
+def test_the_host_answers_live_absolute_value_q9_without_a_screenshot():
+    from ethnos.hawkes_host import handle
+
+    response = handle(
+        {
+            "protocol_version": 1,
+            "operation": "solve_hawkes_problem",
+            "request_id": "absolute-q9",
+            "origin": "https://learn.hawkeslearning.com",
+            "problem": {
+                "prompt_text": "Solve the following absolute value equation.",
+                "mathml": [ABSOLUTE_VALUE_Q9],
+            },
+        }
+    )
+
+    assert response.status == "ready"
+    assert response.answer.display_text == "No Solution"
+    assert response.answer.keyboard_entry == "No Solution"
+    assert response.certainty.source == "markup"
+    assert response.certainty.transcription == "exact"
+
+
+def test_the_host_answers_live_lesson_18_q1_without_a_screenshot():
+    from ethnos.hawkes_host import handle
+
+    response = handle(
+        {
+            "protocol_version": 1,
+            "operation": "solve_hawkes_problem",
+            "request_id": "lesson-18-q1",
+            "origin": "https://learn.hawkeslearning.com",
+            "problem": {
+                "prompt_text": (
+                    "Solve the following quadratic equation by factoring. "
+                    "If needed, write your answer as a fraction reduced to lowest terms."
+                ),
+                "mathml": [QUADRATIC_LESSON_18_Q1],
+            },
+        }
+    )
+
+    assert response.status == "ready"
+    assert response.answer.display_text == "y = -1 or y = 5"
+    assert response.answer.keyboard_entry == ""
+    assert response.answer.parts == ["-1", "5"]
+    assert response.certainty.source == "markup"
+    assert response.certainty.transcription == "exact"
+
+
+def test_the_host_answers_live_lesson_18_q2_without_a_screenshot():
+    from ethnos.hawkes_host import handle
+
+    response = handle(
+        {
+            "protocol_version": 1,
+            "operation": "solve_hawkes_problem",
+            "request_id": "lesson-18-q2",
+            "origin": "https://learn.hawkeslearning.com",
+            "problem": {
+                "prompt_text": (
+                    "Solve the following quadratic equation by the square root method. "
+                    "If needed, write your answer as a fraction reduced to lowest terms."
+                ),
+                "mathml": [QUADRATIC_LESSON_18_Q2],
+            },
+        }
+    )
+
+    assert response.status == "ready"
+    assert response.answer.display_text == (
+        r"z = \frac{-4 - 6i}{7} or z = \frac{-4 + 6i}{7}"
+    )
+    assert response.answer.keyboard_entry == ""
+    assert response.answer.parts == ["(-4-6*i)/7", "(-4+6*i)/7"]
+    assert response.certainty.source == "markup"
+    assert response.certainty.transcription == "exact"
+
+
+def test_the_host_keeps_live_q4_roots_separate_for_the_comma_editor():
+    from ethnos.hawkes_host import handle
+
+    response = handle(
+        {
+            "protocol_version": 1,
+            "operation": "solve_hawkes_problem",
+            "request_id": "lesson-18-q4",
+            "origin": "https://learn.hawkeslearning.com",
+            "problem": {
+                "prompt_text": (
+                    "Solve the following quadratic equation using the quadratic "
+                    "formula. Separate multiple answers with a comma if necessary."
+                ),
+                "mathml": [QUADRATIC_LESSON_18_Q4],
+            },
+        }
+    )
+
+    assert response.status == "ready"
+    assert response.answer.display_text == (
+        r"y = \frac{-3 + √17}{2} or y = \frac{-√17 - 3}{2}"
+    )
+    assert response.answer.parts == [
+        "(-3+sqrt(17))/2",
+        "(-sqrt(17)-3)/2",
+    ]
+    assert response.certainty.source == "markup"
 
 
 def test_the_host_answers_live_complex_q8_from_markup():

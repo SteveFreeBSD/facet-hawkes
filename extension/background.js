@@ -17,7 +17,7 @@
 
 import { ALLOWED_HOST_PATTERN, validateAnswer } from "/common/config.js";
 import { answerFitsEditor, insertErrorKey } from "/common/editor-rules.js";
-import { planEntry } from "/common/editor-plan.js";
+import { planAnswerParts, planEntry } from "/common/editor-plan.js";
 import { describeResults, selectAnswerFrame } from "/common/frames.js";
 import { enterPlan } from "/common/page-actions.js";
 import { describeError, initLog, log, setLogLevel } from "/common/log.js";
@@ -91,11 +91,13 @@ function blankState() {
     tabId: null,
     frameId: null,
     fieldId: "",
+    fieldIds: [],
     editor: null,
     problemText: "",
     answer: "",
     displayText: "",
     entryText: "",
+    answerParts: [],
     // What insertion put in the field, kept for the panel to show and for
     // nothing else. Never re-inserted, never offered to a later question.
     placedText: "",
@@ -236,6 +238,17 @@ async function enterPlainAnswer(answer, cadence) {
   // reports a failure it did not have.
   const outcome = await ethnosHawkes.insertAnswer(answer, cadence);
   return { ok: outcome.ok, code: outcome.code, answer };
+}
+
+/** One-shot insertion for the exact two-root/two-editor answer shape. */
+async function enterPlainAnswerParts(parts, fieldIds, cadence) {
+  if (typeof ethnosHawkes === "undefined") {
+    return { ok: false, code: "prelude-missing" };
+  }
+  if (!ethnosHawkes.originAllowed()) {
+    return { ok: false, code: "wrong-site" };
+  }
+  return ethnosHawkes.insertAnswerParts(parts, fieldIds, cadence);
 }
 
 /**
@@ -390,6 +403,48 @@ async function describeEditor(tabId, frameId, attempts = 5) {
   return { ok: false, code: "editor-model-missing" };
 }
 
+/** Preflight both roots against both of this question's published editors. */
+function pairedEntryPlans(parts, editor) {
+  if (!(
+    Array.isArray(parts)
+    && parts.length === 2
+    && editor?.kind === "pair"
+    && Array.isArray(editor.editors)
+    && editor.editors.length === 2
+    && parts.every((part) => validateAnswer(part).ok)
+  )) {
+    return null;
+  }
+  const direct = parts.map(
+    (part, index) => answerFitsEditor(part, editor.editors[index]).insertable
+  );
+  const plans = parts.map((part, index) =>
+    direct[index]
+      ? { ok: true, steps: [{ op: "type", text: part }] }
+      : planEntry(part, editor.editors[index])
+  );
+  return plans.every((plan) => plan.ok)
+    ? { plans, plain: direct.every(Boolean) }
+    : null;
+}
+
+function pairedAnswerFits(parts, editor) {
+  return pairedEntryPlans(parts, editor) !== null;
+}
+
+function commaAnswerPlan(parts, editor, problemText) {
+  if (
+    editor?.kind === "pair"
+    || !/separate multiple answers with a comma/i.test(problemText ?? "")
+    || !Array.isArray(parts)
+    || !parts.every((part) => validateAnswer(part).ok)
+  ) {
+    return null;
+  }
+  const plan = planAnswerParts(parts, editor);
+  return plan.ok ? plan : null;
+}
+
 /**
  * The one word the host needs about how this page takes an answer.
  *
@@ -531,6 +586,15 @@ async function rememberFacetRun(certainty) {
     // worth losing a finished answer over.
     log.debug("facet-provenance-not-stored", { message: String(error?.message ?? "") });
   }
+}
+
+function sameStringArray(left, right) {
+  return (
+    Array.isArray(left)
+    && Array.isArray(right)
+    && left.length === right.length
+    && left.every((value, index) => value === right[index])
+  );
 }
 
 // --- Ethnos ----------------------------------------------------------------
@@ -786,14 +850,13 @@ async function captureQuestion(tabId, frameId) {
     return screenshot;
   } catch (error) {
     log.warn("capture-failed", { error: describeError(error) });
-    // `captureVisibleTab` needs `activeTab` or the Hawkes host permission, and
-    // a sidebar has neither until the user grants one -- Firefox says "Missing
-    // activeTab permission". Reported as a capture failure that reads as a
-    // broken screenshot and offers nothing to do about it; it is the same
-    // withheld permission `runInjection` already names, and naming it here too
-    // puts the Grant Hawkes access button in front of the person who can fix
-    // it. Seen live: three solves in a row died at this line.
-    fail(permissionWithheld(error) ? "errorTabAccessLost" : "errorNoCapture");
+    // Reaching this line means the question DOM was already read through the
+    // scoped Hawkes host grant. Firefox deliberately requires `activeTab` or
+    // `<all_urls>` for a screenshot; the one-site grant is not enough. Calling
+    // this a missing Hawkes grant made the sidebar request an already-present
+    // permission forever. Keep the narrow permission model and tell the owner
+    // to retry from the toolbar, whose click supplies `activeTab`.
+    fail("errorNoCapture");
     return null;
   }
 }
@@ -822,6 +885,7 @@ async function prepare(windowId = state.windowId) {
     answer: state.answer,
     displayText: state.displayText,
     entryText: state.entryText,
+    answerParts: Array.isArray(state.answerParts) ? state.answerParts : [],
     placedText: state.placedText,
     promptSeen: state.promptSeen,
     problemText: state.problemText,
@@ -841,17 +905,36 @@ async function prepare(windowId = state.windowId) {
       return;
     }
     const editor = await describeEditor(tab.id, choice.frameId);
+    const fieldIds = Array.isArray(choice.fieldIds) ? choice.fieldIds : [];
+    if (
+      fieldIds.length > 0
+      && (fieldIds.length !== 2
+        || editor?.kind !== "pair"
+        || editor.editors?.length !== 2)
+    ) {
+      fail("errorEditorUnknown");
+      return;
+    }
     log.debug("editor-described", {
       kind: editor?.kind,
       ok: editor?.ok,
       templates: editor?.templates,
     });
+    if (fieldIds.length === 2) {
+      log.info("paired-editor-described", {
+        fieldIds,
+        editorNames: editor.editors.map((item) => item.name),
+        allowedCharacters: editor.editors.map((item) => item.allowedCharacters),
+        templates: editor.editors.map((item) => item.templates),
+      });
+    }
     const question = await readQuestion(tab.id, choice.frameId);
     const signature = questionSignature(choice.fieldId, question);
     // A question we could not read is never treated as the previous one.
     const sameQuestion = signature !== null && signature === previous.signature;
     const alreadyInserted = sameQuestion && previous.phase === "inserted";
-    const hasAnswer = sameQuestion && previous.answer !== "";
+    const hasAnswer = sameQuestion
+      && (previous.answer !== "" || previous.answerParts?.length === 2);
     // What was answered, and what answered it, describe a question that is
     // still on screen in both cases -- so they outlive the insertion that
     // consumed the answer itself. Without this the sidebar watcher blanked the
@@ -864,6 +947,7 @@ async function prepare(windowId = state.windowId) {
       tabId: tab.id,
       frameId: choice.frameId,
       fieldId: choice.fieldId ?? "",
+      fieldIds,
       editor,
       signature,
       // Carried over only while the question is unchanged, so a previous
@@ -871,6 +955,7 @@ async function prepare(windowId = state.windowId) {
       answer: hasAnswer ? previous.answer : "",
       displayText: hasAnswer ? previous.displayText : "",
       entryText: hasAnswer ? previous.entryText : "",
+      answerParts: hasAnswer ? previous.answerParts : [],
       promptSeen: hasAnswer ? previous.promptSeen : true,
       placedText: alreadyInserted ? previous.placedText : "",
       problemText: context ? previous.problemText : "",
@@ -947,6 +1032,7 @@ async function solve(windowId = state.windowId) {
     answer: "",
     displayText: "",
     entryText: "",
+    answerParts: [],
     placedText: "",
     promptSeen: true,
     problemText: "",
@@ -1121,14 +1207,23 @@ async function acceptReply(reply) {
     return;
   }
 
-  // What may be typed is a narrower question than what may be shown.
+  const answerParts = Array.isArray(reply.answer.parts)
+    ? reply.answer.parts.filter((value) => typeof value === "string")
+    : [];
+  const hasPair = answerParts.length === 2 && answerParts.every(
+    (value) => validateAnswer(value).ok
+  );
+  // What may be typed is a narrower question than what may be shown. A pair
+  // keeps the readable equality only as its reviewed identity; its two entry
+  // values remain separate all the way to the two-field writer.
   const candidates = [reply.answer.display_text, reply.answer.keyboard_entry].filter(
     (value) => typeof value === "string" && validateAnswer(value).ok
   );
-  const answer =
-    candidates.find((value) => answerFitsEditor(value, state.editor).insertable) ??
-    candidates[0] ??
-    "";
+  const answer = hasPair
+    ? displayText
+    : candidates.find((value) => answerFitsEditor(value, state.editor).insertable) ??
+      candidates[0] ??
+      "";
   // Neither form of the answer survived `validateAnswer`. Publishing "solved"
   // anyway put a readable answer on the card with nothing behind it: Insert
   // stayed disabled, and the panel -- finding no answer to check against the
@@ -1138,7 +1233,9 @@ async function acceptReply(reply) {
     fail("errorAnswerInvalid", { detail: displayText.slice(0, 300) });
     return;
   }
-  const entryText =
+  const entryText = hasPair
+    ? ""
+    :
     typeof reply.answer.keyboard_entry === "string"
     && validateAnswer(reply.answer.keyboard_entry).ok
       ? reply.answer.keyboard_entry
@@ -1157,8 +1254,25 @@ async function acceptReply(reply) {
   // recorded a clean solve and then silence, with no failure to look for. Live,
   // six solves in a row ended that way on `2sqrt(2(-x^9))`. The panel already
   // shows the editor's own objection; this is so the log shows it too.
-  const fits = answerFitsEditor(answer, state.editor);
-  const plan = planEntry(entryText, state.editor);
+  const partsFit = hasPair
+    && (pairedAnswerFits(answerParts, state.editor)
+      || commaAnswerPlan(answerParts, state.editor, reply.problem_text) !== null);
+  if (hasPair && state.editor?.kind !== "pair") {
+    log.info("multi-answer-editor-described", {
+      allowedCharacters: state.editor?.allowedCharacters ?? "",
+      slots: state.editor?.slots ?? {},
+      templates: state.editor?.templates ?? {},
+      commaPrompt: /separate multiple answers with a comma/i.test(
+        reply.problem_text ?? ""
+      ),
+    });
+  }
+  const fits = hasPair
+    ? { insertable: partsFit, code: "answer-parts" }
+    : answerFitsEditor(answer, state.editor);
+  const plan = hasPair
+    ? { ok: false, code: "answer-pair" }
+    : planEntry(entryText, state.editor);
   if (!fits.insertable && plan.ok === false) {
     log.warn("answer-not-insertable", {
       source: certainty.source ?? "",
@@ -1173,6 +1287,7 @@ async function acceptReply(reply) {
     answer,
     displayText,
     entryText,
+    answerParts: hasPair ? answerParts : [],
     problemText: reply.problem_text ?? "",
     source: answeredByBadge(certainty),
     // Absent means an older host that cannot report it; only an explicit false
@@ -1231,9 +1346,12 @@ async function buildStructured(answer, cadence, target, editor) {
  * @property {number} tabId
  * @property {number} frameId
  * @property {string} fieldId
+ * @property {string[]} fieldIds
  * @property {string | null} signature the question the answer was reviewed for
  * @property {string} reviewed the answer as shown and approved
  * @property {string} machineEntry the form the panel planned and offered
+ * @property {string[]} answerParts two independently planned roots, when present
+ * @property {string} problemText exact instruction used to choose an answer separator
  */
 
 /** Snapshot the insertion target. Must be called before any `await`. */
@@ -1243,9 +1361,12 @@ function pinInsertionTarget() {
     tabId: state.tabId,
     frameId: state.frameId,
     fieldId: state.fieldId,
+    fieldIds: Object.freeze([...(state.fieldIds ?? [])]),
     signature: state.signature,
     reviewed: state.answer,
     machineEntry: state.entryText || state.answer,
+    answerParts: Object.freeze([...(state.answerParts ?? [])]),
+    problemText: state.problemText,
     // The readable form the card showed for review, kept so the settled
     // panel reports what was approved rather than whatever is live now.
     displayText: state.displayText,
@@ -1269,6 +1390,7 @@ function ownsTarget(target) {
     && state.tabId === target.tabId
     && state.frameId === target.frameId
     && state.fieldId === target.fieldId
+    && sameStringArray(state.fieldIds ?? [], target.fieldIds)
     && state.signature === target.signature
     && state.answer === target.reviewed
   );
@@ -1385,6 +1507,113 @@ async function insert() {
   // A performance now runs for seconds, so how long it actually took is the
   // one thing worth recording. The answer itself never enters the log.
   const entryStartedAt = Date.now();
+  if (target.answerParts.length === 2) {
+    const commaPlan = commaAnswerPlan(
+      target.answerParts, editor, target.problemText
+    );
+    if (commaPlan !== null) {
+      if (!ownsTarget(target)) {
+        abandonInsertion(target, "before-comma-parts-write");
+        return;
+      }
+      let built;
+      try {
+        const results = await browser.scripting.executeScript({
+          target: { tabId: target.tabId, frameIds: [target.frameId] },
+          world: "MAIN",
+          func: enterPlan,
+          args: [commaPlan.steps, cadence],
+        });
+        built = results?.[0]?.result;
+      } catch (error) {
+        fail(errorKeyOf(error));
+        return;
+      }
+      if (!built?.ok || built.code !== "entered") {
+        const detail = built?.detail ?? "";
+        fail(insertErrorKey(built?.code ?? "answer-pair-incomplete"), {
+          detail,
+          args: detail ? [detail] : [],
+        });
+        return;
+      }
+      log.info("inserted", {
+        via: "structured-comma-parts",
+        fields: 1,
+        parts: target.answerParts.length,
+        answerLength: reviewed.length,
+        elapsedMs: Date.now() - entryStartedAt,
+      });
+      await finishInsertion("entered both comma-separated answers", target);
+      return;
+    }
+    const pairEntry = pairedEntryPlans(target.answerParts, editor);
+    if (pairEntry === null) {
+      fail("errorEditorUnknown");
+      return;
+    }
+    const reports = await runOperation(
+      { tabId: target.tabId, frameIds: [target.frameId] }, INSPECT_SCRIPT
+    );
+    const live = selectAnswerFrame(reports);
+    if (
+      live.frameId !== target.frameId
+      || live.fieldId !== target.fieldId
+      || !sameStringArray(live.fieldIds, target.fieldIds)
+      || !ownsTarget(target)
+    ) {
+      fail("errorQuestionChanged");
+      return;
+    }
+    const plain = pairEntry.plain;
+    let outcome;
+    if (plain) {
+      const [entry] = await runInjection({
+        target: { tabId: target.tabId, frameIds: [target.frameId] },
+        func: enterPlainAnswerParts,
+        args: [target.answerParts, target.fieldIds, cadence],
+      });
+      outcome = entry?.result;
+      if (
+        !outcome?.ok
+        || outcome.code !== "native-input-pair"
+        || !sameStringArray(outcome.entered, target.answerParts)
+      ) {
+        fail(insertErrorKey(outcome?.code ?? "answer-pair-incomplete"));
+        return;
+      }
+    } else {
+      try {
+        const results = await browser.scripting.executeScript({
+          target: { tabId: target.tabId, frameIds: [target.frameId] },
+          world: "MAIN",
+          func: enterPlan,
+          args: [pairEntry.plans.map((plan) => plan.steps), cadence, target.fieldIds],
+        });
+        outcome = results?.[0]?.result;
+      } catch (error) {
+        fail(errorKeyOf(error));
+        return;
+      }
+      if (
+        !outcome?.ok
+        || outcome.code !== "entered-pair"
+        || !sameStringArray(outcome.enteredFields, target.fieldIds)
+      ) {
+        fail(insertErrorKey(outcome?.code ?? "answer-pair-incomplete"));
+        return;
+      }
+    }
+    log.info("inserted", {
+      via: plain ? "plain-pair" : "structured-pair",
+      fields: target.fieldIds.length,
+      parts: target.answerParts.length,
+      answerLength: reviewed.length,
+      elapsedMs: Date.now() - entryStartedAt,
+    });
+    await finishInsertion("entered both answer fields", target);
+    return;
+  }
   const typeable = reviewed && answerFitsEditor(reviewed, editor).insertable;
   if (!typeable) {
     // The last check before the page is changed.
@@ -1498,6 +1727,7 @@ async function finishInsertion(detail, target) {
     answer: "",
     displayText: "",
     entryText: "",
+    answerParts: [],
     // `problemText` and `source` are left as they are: both describe the
     // question still on screen, which the insertion did not change.
     signature: handledSignature,
@@ -1638,11 +1868,29 @@ function watchQuestion() {
       return;
     }
     try {
+      // The question text can stay identical while selecting "One Solution"
+      // replaces the option-only target with its aria-controlled text box.
+      // Re-run the same all-frame ownership decision used by prepare so that
+      // handoff is noticed without weakening insertion's target checks.
+      const reports = await runOperation(
+        { tabId: state.tabId, allFrames: true }, INSPECT_SCRIPT
+      );
+      const target = selectAnswerFrame(reports);
+      // Successful structured entry replaces the editor's base input with its
+      // template slots. That is our own mutation, not a question transition.
+      // The prompt/MathML comparison below still notices the real Next event.
+      const targetChanged = state.phase !== "inserted"
+        && Number.isInteger(target.frameId)
+        && (target.frameId !== state.frameId || (target.fieldId ?? "") !== state.fieldId);
       const question = await readQuestion(state.tabId, state.frameId, 1);
       const now = questionSignature(state.fieldId, question);
       watchFailures = 0;
-      if (now !== null && now !== state.signature) {
-        log.debug("question-changed-while-open", { was: state.signature, now });
+      if (targetChanged || (now !== null && now !== state.signature)) {
+        log.debug("question-changed-while-open", {
+          was: state.signature,
+          now,
+          targetChanged,
+        });
         begin(() => prepare(state.windowId));
       }
     } catch (error) {

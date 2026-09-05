@@ -85,6 +85,22 @@ def test_live_complex_q12_is_pinned_in_the_coverage_corpus():
     assert result.answer == "34 + 12i√2"
 
 
+def test_live_quadratics_are_exact_in_the_coverage_corpus():
+    cases = {
+        case.id: case for case in load_cases(CORPUS) if case.id.startswith("quadratic-")
+    }
+
+    assert set(cases) == {
+        "quadratic-equation-two-roots",
+        "quadratic-equation-complex-two-roots",
+        "quadratic-formula-comma-editor",
+    }
+    for case in cases.values():
+        result = evaluate(case)
+        assert result.verdict == "exact"
+        assert result.answer == case.expected
+
+
 def test_a_gap_says_which_kind_of_gap_it_is():
     """The two fall through to a model identically and are fixed in completely
     different places, so the sweep separates them."""

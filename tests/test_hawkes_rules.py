@@ -241,5 +241,11 @@ def test_an_option_question_is_found_without_focusing_a_radio():
 
     # The option group itself is the signal, not the caret.
     assert 'input[type="radio"].opt' in editor
-    assert "focused !== document.body" in editor
+    question = (
+        PROJECT_ROOT / "extension" / "content" / "hawkes-question.js"
+    ).read_text()
+    assert 'input[type="radio"].opt' in question
+    assert "function optionGroup()" in editor
+    assert "names.size === 1" in editor
+    assert "focused !== document.body" not in editor
     assert '"option-answer"' in editor

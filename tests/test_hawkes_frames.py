@@ -42,13 +42,17 @@ def select_answer_frame():
     return call
 
 
-def report(frame_id, *, ready=False, code=None, origin=None, field_id=""):
+def report(
+    frame_id, *, ready=False, code=None, origin=None, field_id="", field_ids=None
+):
     """Build one InjectionResult entry as Firefox would return it."""
     result = {"ready": ready, "fieldId": field_id}
     if code is not None:
         result["code"] = code
     if origin is not None:
         result["frameOrigin"] = origin
+    if field_ids is not None:
+        result["fieldIds"] = field_ids
     return {"frameId": frame_id, "result": result}
 
 
@@ -171,6 +175,24 @@ def test_the_selection_names_the_field_it_found(select_answer_frame):
     results = [report(0, ready=True, code="focused-answer-field", field_id="Tb1_num")]
 
     assert select_answer_frame(results) == {"frameId": 0, "fieldId": "Tb1_num"}
+
+
+def test_the_selection_preserves_both_pinned_field_ids(select_answer_frame):
+    results = [
+        report(
+            0,
+            ready=True,
+            code="paired-answer-fields",
+            field_id="QBase1_input\u001fQBase2_input",
+            field_ids=["QBase1_input", "QBase2_input"],
+        )
+    ]
+
+    assert select_answer_frame(results) == {
+        "frameId": 0,
+        "fieldId": "QBase1_input\u001fQBase2_input",
+        "fieldIds": ["QBase1_input", "QBase2_input"],
+    }
 
 
 def test_a_claim_without_a_frame_id_is_not_trusted(select_answer_frame):

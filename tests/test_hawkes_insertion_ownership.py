@@ -126,6 +126,7 @@ globalThis.browser = {
         frameId: Array.isArray(frames) ? frames[0] : null,
         file: (injection.files || []).join(","),
         func: injection.func ? injection.func.name : "",
+        args: injection.args || [],
       };
       __H.calls.push(record);
       return new Promise((resolve) => __H.pending.push({ record, resolve }));
@@ -189,6 +190,64 @@ EDITOR_OK = {
 QUESTION_A = {"promptText": "Question A.", "expressions": ["a^2"]}
 QUESTION_B = {"promptText": "Question B.", "expressions": ["b^2"]}
 ENTERED_OK = {"ok": True, "code": "native-input", "answer": "3y"}
+PAIR_INSPECT = {
+    "ready": True,
+    "code": "paired-answer-fields",
+    "fieldId": "QBase1_input\u001fQBase2_input",
+    "fieldIds": ["QBase1_input", "QBase2_input"],
+}
+PAIR_EDITOR = {
+    "ok": True,
+    "code": "described-pair",
+    "kind": "pair",
+    "editors": [
+        {**EDITOR_OK, "allowedCharacters": "0123456789-"},
+        {**EDITOR_OK, "allowedCharacters": "0123456789-"},
+    ],
+}
+PAIR_ENTERED = {
+    "ok": True,
+    "code": "native-input-pair",
+    "entered": ["-1", "5"],
+}
+STRUCTURED_PAIR_EDITOR = {
+    "ok": True,
+    "code": "described-pair",
+    "kind": "pair",
+    "editors": [
+        {
+            **EDITOR_OK,
+            "allowedCharacters": "+-0123456789i",
+            "slots": {
+                "base": "+-0123456789i",
+                "numerator": "+-0123456789i",
+                "denominator": "0123456789",
+            },
+            "templates": {**EDITOR_OK["templates"], "fraction": True},
+        },
+        {
+            **EDITOR_OK,
+            "allowedCharacters": "+-0123456789i",
+            "slots": {
+                "base": "+-0123456789i",
+                "numerator": "+-0123456789i",
+                "denominator": "0123456789",
+            },
+            "templates": {**EDITOR_OK["templates"], "fraction": True},
+        },
+    ],
+}
+COMMA_EDITOR = {
+    **EDITOR_OK,
+    "allowedCharacters": "0123456789-+,",
+    "slots": {
+        "base": "0123456789-+,",
+        "numerator": "0123456789-+",
+        "denominator": "0123456789",
+        "radicand": "0123456789",
+    },
+    "templates": {**EDITOR_OK["templates"], "fraction": True, "radical": True},
+}
 
 
 class Page:
@@ -248,6 +307,7 @@ class Page:
             call
             for call in self.json("__H.calls")
             if call["func"] in {"enterPlainAnswer", "enterPlan"}
+            or call["func"] == "enterPlainAnswerParts"
         ]
 
     def said(self, event):
@@ -295,6 +355,234 @@ def test_an_undisturbed_insertion_writes_to_its_own_target(page):
     assert all(w["tabId"] == 11 and w["frameId"] == 0 for w in page.writes)
     assert page.json("state.phase") == "inserted"
     assert page.json("state.placedText") == "3y"
+
+
+def test_two_roots_reach_only_the_two_fields_pinned_with_the_question(page):
+    page.run(
+        f"""
+        state = {{
+          ...blankState(), phase: "solved", windowId: 1, tabId: 11, frameId: 0,
+          fieldId: "QBase1_input\\u001fQBase2_input",
+          fieldIds: ["QBase1_input", "QBase2_input"],
+          editor: {json.dumps(PAIR_EDITOR)},
+          answer: "y = -1 or y = 5", displayText: "y = -1 or y = 5",
+          answerParts: ["-1", "5"],
+          signature: questionSignature(
+            "QBase1_input\\u001fQBase2_input", {json.dumps(QUESTION_A)}
+          ),
+        }};
+        insert();
+        """
+    )
+    page.pump()
+    page.answer(PAIR_EDITOR)
+    page.answer(QUESTION_A)
+    page.answer(PAIR_INSPECT)
+    page.answer(PAIR_ENTERED)
+    page.answer(QUESTION_A)
+
+    writes = [call for call in page.writes if call["func"] == "enterPlainAnswerParts"]
+    assert len(writes) == 1
+    assert writes[0]["tabId"] == 11
+    assert writes[0]["frameId"] == 0
+    assert writes[0]["args"][0] == ["-1", "5"]
+    assert writes[0]["args"][1] == ["QBase1_input", "QBase2_input"]
+    assert page.json("state.phase") == "inserted"
+    assert page.json("state.placedText") == "y = -1 or y = 5"
+
+
+def test_facet_parts_use_the_same_pinned_two_field_transaction(page):
+    page.run(
+        f"""
+        state = {{
+          ...blankState(), phase: "solving", windowId: 1, tabId: 11, frameId: 0,
+          fieldId: "QBase1_input\u001fQBase2_input",
+          fieldIds: ["QBase1_input", "QBase2_input"],
+          editor: {json.dumps(PAIR_EDITOR)},
+          signature: questionSignature(
+            "QBase1_input\u001fQBase2_input", {json.dumps(QUESTION_A)}
+          ),
+        }};
+        acceptReply({{
+          status: "ready",
+          problem_text: "Find both intercepts.",
+          answer: {{
+            display_text: "y = -1 or y = 5", keyboard_entry: "", parts: ["-1", "5"]
+          }},
+          certainty: {{
+            source: "Facet · GPU", answered_by: "facet", facet_invoked: true,
+            insertable: true, model: "gpt-oss:20b", runtime: "Ollama 0.33.2"
+          }},
+        }});
+        """
+    )
+    page.pump()
+
+    assert page.json("state.source") == "Facet · GPU"
+    assert page.json("state.answerParts") == ["-1", "5"]
+
+    page.run("insert();")
+    page.pump()
+    page.answer(PAIR_EDITOR)
+    page.answer(QUESTION_A)
+    page.answer(PAIR_INSPECT)
+    page.answer(PAIR_ENTERED)
+    page.answer(QUESTION_A)
+
+    writes = [call for call in page.writes if call["func"] == "enterPlainAnswerParts"]
+    assert len(writes) == 1
+    assert writes[0]["args"][:2] == [
+        ["-1", "5"],
+        ["QBase1_input", "QBase2_input"],
+    ]
+    assert page.json("state.phase") == "inserted"
+
+
+def test_two_fraction_roots_run_two_preflighted_plans_on_the_pinned_editors(page):
+    display = "z = (-4 - 6i)/7 or z = (-4 + 6i)/7"
+    parts = ["(-4-6*i)/7", "(-4+6*i)/7"]
+    page.run(
+        f"""
+        state = {{
+          ...blankState(), phase: "solved", windowId: 1, tabId: 11, frameId: 0,
+          fieldId: "QBase1_input\u001fQBase2_input",
+          fieldIds: ["QBase1_input", "QBase2_input"],
+          editor: {json.dumps(STRUCTURED_PAIR_EDITOR)},
+          answer: {json.dumps(display)}, displayText: {json.dumps(display)},
+          answerParts: {json.dumps(parts)},
+          signature: questionSignature(
+            "QBase1_input\u001fQBase2_input", {json.dumps(QUESTION_A)}
+          ),
+        }};
+        insert();
+        """
+    )
+    page.pump()
+    page.answer(STRUCTURED_PAIR_EDITOR)
+    page.answer(QUESTION_A)
+    page.answer(PAIR_INSPECT)
+    page.answer(
+        {
+            "ok": True,
+            "code": "entered-pair",
+            "entered": ["-4-6i7", "-4+6i7"],
+            "enteredFields": ["QBase1_input", "QBase2_input"],
+        }
+    )
+    page.answer(QUESTION_A)
+
+    writes = [call for call in page.writes if call["func"] == "enterPlan"]
+    assert len(writes) == 1
+    assert writes[0]["args"][2] == ["QBase1_input", "QBase2_input"]
+    assert writes[0]["args"][0] == [
+        [
+            {"op": "template", "name": "Fraction"},
+            {"op": "type", "text": "-4-6i"},
+            {"op": "slot", "name": "denominator"},
+            {"op": "type", "text": "7"},
+        ],
+        [
+            {"op": "template", "name": "Fraction"},
+            {"op": "type", "text": "-4+6i"},
+            {"op": "slot", "name": "denominator"},
+            {"op": "type", "text": "7"},
+        ],
+    ]
+    assert page.json("state.phase") == "inserted"
+    assert page.json("state.placedText") == display
+
+
+def test_two_roots_use_one_pinned_editor_when_the_question_requests_a_comma(page):
+    display = "y = (-3 + √17)/2 or y = (-√17 - 3)/2"
+    parts = ["(-3+sqrt(17))/2", "(-sqrt(17)-3)/2"]
+    prompt = (
+        "Solve the following quadratic equation using the quadratic formula. "
+        "Separate multiple answers with a comma if necessary."
+    )
+    page.run(
+        f"""
+        state = {{
+          ...blankState(), phase: "solved", windowId: 1, tabId: 11, frameId: 0,
+          fieldId: "txtAns1", editor: {json.dumps(COMMA_EDITOR)},
+          problemText: {json.dumps(prompt)},
+          answer: {json.dumps(display)}, displayText: {json.dumps(display)},
+          answerParts: {json.dumps(parts)},
+          signature: questionSignature("txtAns1", {json.dumps(QUESTION_A)}),
+        }};
+        insert();
+        """
+    )
+    page.pump()
+    page.answer(COMMA_EDITOR)
+    page.answer(QUESTION_A)
+    page.answer({"ok": True, "code": "entered", "entered": "-3+172,-17-32"})
+    page.answer(QUESTION_A)
+
+    writes = [call for call in page.writes if call["func"] == "enterPlan"]
+    assert len(writes) == 1
+    assert writes[0]["tabId"] == 11
+    assert writes[0]["frameId"] == 0
+    assert writes[0]["args"][0] == [
+        {"op": "template", "name": "Fraction"},
+        {"op": "type", "text": "-3+"},
+        {"op": "template", "name": "Radical"},
+        {"op": "type", "text": "17"},
+        {"op": "slot", "name": "denominator"},
+        {"op": "type", "text": "2"},
+        {"op": "base"},
+        {"op": "type", "text": ","},
+        {"op": "template", "name": "Fraction"},
+        {"op": "type", "text": "-"},
+        {"op": "template", "name": "Radical"},
+        {"op": "type", "text": "17"},
+        {"op": "base"},
+        {"op": "type", "text": "-3"},
+        {"op": "slot", "name": "denominator"},
+        {"op": "type", "text": "2"},
+    ]
+    assert page.json("state.phase") == "inserted"
+    assert page.json("state.placedText") == display
+
+
+def test_comma_editor_surfaces_the_exact_character_hawkes_rejects(page):
+    """The executor's refusal detail must reach the panel unchanged.
+
+    The live failure used to render ``does not accept: .`` because this branch
+    discarded the executor detail and supplied no localization argument.
+    """
+    display = "y = (-3 + √17)/2 or y = (-√17 - 3)/2"
+    prompt = (
+        "Solve using the quadratic formula. "
+        "Separate multiple answers with a comma if necessary."
+    )
+    page.run(
+        f"""
+        state = {{
+          ...blankState(), phase: "solved", windowId: 1, tabId: 11, frameId: 0,
+          fieldId: "txtAns1", editor: {json.dumps(COMMA_EDITOR)},
+          problemText: {json.dumps(prompt)},
+          answer: {json.dumps(display)}, displayText: {json.dumps(display)},
+          answerParts: ["(-3+sqrt(17))/2", "(-sqrt(17)-3)/2"],
+          signature: questionSignature("txtAns1", {json.dumps(QUESTION_A)}),
+        }};
+        insert();
+        """
+    )
+    page.pump()
+    page.answer(COMMA_EDITOR)
+    page.answer(QUESTION_A)
+    page.answer(
+        {
+            "ok": False,
+            "code": "answer-has-rejected-characters",
+            "detail": ",",
+        }
+    )
+
+    assert page.json("state.phase") == "failed"
+    assert page.json("state.errorKey") == "errorAnswerRejected"
+    assert page.json("state.errorArgs") == [","]
+    assert page.json("state.detail") == ","
 
 
 def test_a_second_window_taking_over_mid_insertion_writes_nothing_to_it(page):

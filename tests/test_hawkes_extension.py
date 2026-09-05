@@ -960,8 +960,13 @@ def test_the_only_editor_control_is_described_after_sidebar_takes_focus() -> Non
     assert described["ok"] is True
     assert described["kind"] == "dynamic"
     assert described["allowedCharacters"] == "0123456789i-+"
-    # More than one control is genuinely ambiguous and still fails closed.
-    assert describe(2) == {"ok": False, "code": "no-focused-control"}
+    # Both controls are described; the background only accepts this collection
+    # after the isolated DOM probe independently identifies the exact pair.
+    paired = describe(2)
+    assert paired["ok"] is True
+    assert paired["kind"] == "pair"
+    assert len(paired["editors"]) == 2
+    assert describe(3) == {"ok": False, "code": "no-focused-control"}
 
 
 def test_the_question_signature_is_built_from_the_question_not_the_editor() -> None:
@@ -1734,10 +1739,15 @@ def test_structured_keypad_entry_performs_on_the_same_cadence():
     actions = (EXTENSION_DIR / "common" / "page-actions.js").read_text()
     background = (EXTENSION_DIR / "background.js").read_text()
 
-    assert "export async function enterPlan(steps, cadence = {})" in actions
+    assert (
+        "export async function enterPlan(steps, cadence = {}, targetFieldIds = [])"
+        in actions
+    )
     assert "const typeInto = async (id, text)" in actions
     assert "await waitForNote()" in actions
-    assert "if (!(await typeInto(cursor, step.text)))" in actions
+    assert "const typed = await typeInto(cursor, step.text)" in actions
+    assert "return await abandon(typed.code, typed.detail)" in actions
+    assert "detail: character" in actions
     # One performance over every typed character of the whole plan, not one
     # window per step.
     assert 'filter((step) => step.op === "type")' in actions
@@ -1758,10 +1768,11 @@ def test_a_completed_insertion_records_how_long_it_took():
     """
     background = (EXTENSION_DIR / "background.js").read_text()
 
-    assert background.count('log.info("inserted"') == 2
+    assert background.count('log.info("inserted"') == 4
     # `path:` is reserved -- a neighbouring test forbids it anywhere in this
     # file, so that a path can never be smuggled to the native host.
     assert 'via: "structured"' in background and 'via: "plain"' in background
+    assert 'via: "structured-comma-parts"' in background
     assert "elapsedMs: Date.now() - entryStartedAt" in background
     inserted = background.split('log.info("inserted"', 1)[1].split("});", 1)[0]
     assert "reviewed.length" in inserted
@@ -1841,23 +1852,30 @@ def test_a_solve_never_runs_beside_another_solve():
     )
 
 
-def test_a_withheld_permission_offers_the_grant_button_not_a_dead_end():
-    """`captureVisibleTab` needs `activeTab` or the Hawkes host permission, and
-    a sidebar has neither until one is granted -- Firefox says "Missing
-    activeTab permission". Reported as a plain capture failure it reads as a
-    broken screenshot and offers nothing to do; `errorTabAccessLost` is the
-    key whose button asks for the permission that would fix it."""
+def test_screenshot_permission_is_not_misreported_as_a_missing_site_grant():
+    """The scoped site grant can read DOM but cannot authorize screenshots.
+
+    Firefox requires `activeTab` or `<all_urls>` for `captureVisibleTab`. The
+    latter is intentionally forbidden, so sidebar fallback directs the owner
+    to the toolbar rather than requesting the already-present Hawkes grant.
+    """
     background = (EXTENSION_DIR / "background.js").read_text()
 
     capture = background.split("async function captureQuestion(", 1)[1].split(
         "\n// ---", 1
     )[0]
-    assert 'permissionWithheld(error) ? "errorTabAccessLost"' in capture
+    assert 'fail("errorNoCapture")' in capture
+    assert 'fail("errorTabAccessLost")' not in capture
 
     # One definition of "Firefox withheld this", used by both the injection
     # path and the capture path, so they cannot drift apart.
     assert background.count("function permissionWithheld(") == 1
     assert "Missing" in background.split("function permissionWithheld(", 1)[1][:300]
+
+    messages = json.loads(
+        (EXTENSION_DIR / "_locales" / "en" / "messages.json").read_text()
+    )
+    assert "toolbar button" in messages["errorNoCapture"]["message"]
 
 
 def test_an_answer_that_fails_validation_is_reported_rather_than_shown_empty():

@@ -93,6 +93,36 @@ export function planEntry(answer, editor) {
 }
 
 /**
+ * Plan two already-separated answers for Hawkes' single comma-answer editor.
+ *
+ * The roots stay separate until this layer. A structured first root leaves
+ * the cursor inside its last template, so move to that template's continuation
+ * before typing the comma and building the second root.
+ */
+export function planAnswerParts(parts, editor, separator = ",") {
+  if (!Array.isArray(parts) || parts.length !== 2 || separator !== ",") {
+    return { ok: false, code: "answer-invalid" };
+  }
+  const planned = parts.map((part) => planEntry(part, editor));
+  const divided = planEntry(separator, editor);
+  const failure = [...planned, divided].find((plan) => plan.ok === false);
+  if (failure) {
+    return failure;
+  }
+  const first = planned[0].steps;
+  const leavesTemplate = first.some((step) => step.op === "template");
+  return {
+    ok: true,
+    steps: [
+      ...first,
+      ...(leavesTemplate ? [{ op: "base" }] : []),
+      ...divided.steps,
+      ...planned[1].steps,
+    ],
+  };
+}
+
+/**
  * Split `A/B` at its only top-level slash, unwrapping a parenthesised side.
  *
  * Returns null when there is no top-level slash, and refuses more than one:
