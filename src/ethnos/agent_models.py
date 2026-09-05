@@ -57,7 +57,7 @@ class ModelProfile(BaseModel):
 MODEL_PROFILES: dict[str, ModelProfile] = {
     "cpu-local": ModelProfile(
         name="cpu-local",
-        recommended_model="gemma-python",
+        recommended_model="qwen3.5:9b",
         fallback_model=None,
         num_ctx=8192,
         num_predict=768,
@@ -67,7 +67,7 @@ MODEL_PROFILES: dict[str, ModelProfile] = {
     ),
     "review-local": ModelProfile(
         name="review-local",
-        recommended_model="gemma-python",
+        recommended_model="qwen3.5:9b",
         fallback_model=None,
         num_ctx=8192,
         num_predict=1024,

@@ -53,7 +53,7 @@ Expected counts are recorded in [CURRENT_BASELINE.md](CURRENT_BASELINE.md).
 
 ## 3. Configure application overrides only if needed
 
-Built-in defaults already select `gemma-python`, context `4096`, and
+Built-in defaults already select `qwen3.5:9b`, context `4096`, and
 `think=false`. `.env.example` is a template, not an automatically loaded file.
 
 ```bash
@@ -66,7 +66,7 @@ service that launches Ethnos.
 
 ## 4. Configure Ollama
 
-The only required model name is `gemma-python`. Qwen is optional and should not
+The only required model name is `qwen3.5:9b`. Qwen is optional and should not
 be copied to a new Ethnos host unless a separate workflow needs it.
 
 For a Caspian-class AMD iGPU host, create:
@@ -96,7 +96,7 @@ blindly copying `OLLAMA_IGPU_ENABLE`.
 First check whether it already exists:
 
 ```bash
-ollama show gemma-python
+ollama show qwen3.5:9b
 ```
 
 If not, save the following as a Modelfile and create the alias:
@@ -121,18 +121,18 @@ PARAMETER top_p 0.95
 ```
 
 ```bash
-ollama create gemma-python -f /path/to/Modelfile
+ollama create qwen3.5:9b -f /path/to/Modelfile
 ```
 
 For exact reproduction across an upstream tag change, export the source host's
-generated Modelfile with `ollama show gemma-python --modelfile` and preserve the
+generated Modelfile with `ollama show qwen3.5:9b --modelfile` and preserve the
 referenced Ollama store. Copying `/var/lib/ollama` requires preserving the
 Ollama service account's ownership.
 
 ## 6. Verify model acceleration
 
 ```bash
-ollama run gemma-python "Reply exactly: Gemma ready"
+ollama run qwen3.5:9b "Reply exactly: model ready"
 ollama ps
 ```
 

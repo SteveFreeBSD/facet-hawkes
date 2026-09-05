@@ -1,10 +1,10 @@
 # Pre-calculus setup
 
-Ethnos keeps the established `gemma-python` default for the existing courses
-and provides `precalc-local` as the transitional math-specific Ollama model. On
-`caspian`,
+Ethnos keeps its `qwen3.5:9b` default for the existing courses and provides
+`precalc-local` as the transitional math-specific Ollama model. On `caspian`,
 the alias uses Qwen2.5-Math-7B-Instruct Q4_K_M at about 4.7 GB and runs fully
-on the Vega GPU with a 4096-token context.
+on the Vega GPU with a 4096-token context; the figures below were measured
+there, on that host's models.
 
 Create the alias from the checked-in model definition:
 
@@ -28,7 +28,7 @@ the elementary logarithmic equation `log_3(x - 1) = 2`. Treat the model as a
 tutor whose work should be checked, not as an authoritative answer key.
 
 The staged screenshot architecture uses `qwen3.5:4b` as its primary reader,
-`gemma-python` as an independent verifier, and exact SymPy operations before any
+an independent verifier, and exact SymPy operations before any
 solver-model fallback. See
 [Vision and Exact-Math Architecture](VISION_MATH_ARCHITECTURE.md) for the
 settings, evidence, certainty contract, acceptance gate, and rollback.
@@ -45,8 +45,8 @@ uv run ethnos chunk DOCUMENT_ID
 uv run ethnos label-sections DOCUMENT_ID --preset precalc --dry-run
 uv run ethnos label-sections DOCUMENT_ID --preset precalc
 uv run ethnos documents
-uv run ethnos structure DOCUMENT_ID --model gemma-python --limit 1 --debug-ollama
-uv run ethnos structure DOCUMENT_ID --model gemma-python --all-roles
+uv run ethnos structure DOCUMENT_ID --model qwen3.5:9b --limit 1 --debug-ollama
+uv run ethnos structure DOCUMENT_ID --model qwen3.5:9b --all-roles
 ```
 
 The `precalc` preset is specific to the 1,094-page Stitz-Zeager corrected
@@ -60,7 +60,7 @@ after processing; the target is zero unlabeled pages/chunks, zero latest
 failures, zero never-attempted chunks, and no core chunk missing both key terms
 and questions.
 
-Use `gemma-python` for structured extraction so the stored records are produced
+Use `qwen3.5:9b` for structured extraction so the stored records are produced
 by the same validated model as ethics and history. Use `precalc-local` for
 math-specific question answering and quiz work.
 
@@ -148,6 +148,6 @@ journalctl --user -u ethnos-precalc-finalize-v2 -f
 
 It is normal for the fan to rise while Ollama is actively processing.
 Completion requires `609` valid chunks, zero failed or never-attempted chunks,
-and zero unlabeled pages/chunks. The script uses the same `gemma-python`
+and zero unlabeled pages/chunks. The script uses the same `qwen3.5:9b`
 extractor as the established ethics/history structure data; the new vision
 models are for image questions, not a silent rebuild of existing records.

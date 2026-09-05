@@ -86,7 +86,7 @@ uv run ethnos ground-quiz 2 \
 uv run ethnos quiz-bench 2 \
   --quiz benchmarks/history_ch27_canvas.json \
   --output data/runs/history_ch27/benchmark.json \
-  --model gemma-python \
+  --model qwen3.5:9b \
   --num-ctx 4096 \
   --num-predict 1536 \
   --answer-retries 1 \
@@ -101,7 +101,7 @@ uv run ethnos verify-answer-key data/runs/history_ch27/benchmark.json \
 uv run ethnos agent-review 2 \
   --quiz benchmarks/history_ch27_canvas.json \
   --output data/runs/history_ch27/agent_review \
-  --model gemma-python \
+  --model qwen3.5:9b \
   --profile review-local \
   --vision-pages off \
   --max-steps 0 \

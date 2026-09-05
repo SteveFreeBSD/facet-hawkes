@@ -142,15 +142,21 @@ models.
 
 ## Current supported baseline
 
-The primary host is the HP t740 named `caspian`:
+The host is `casbox` (Ryzen AI HX 370, Radeon 890M), with Ollama on loopback:
 
-- CachyOS with an AMD Ryzen Embedded V1756B, 64 GiB RAM, and Vega 8 graphics.
-- Ollama `0.32.1` using Vulkan/RADV.
-- Required model: `gemma-python`.
+- Text and agent work: `qwen3.5:9b`.
+- Image questions: `qwen3.5:4b` read first, `qwen3.5:9b` as the independent
+  second reader. Two *different* models on purpose, so one cannot merely repeat
+  its own symbol mistake.
 - Ethnos context: `4096` tokens, thinking disabled, thread count unset.
-- Ollama reports Gemma at `100% GPU`; all 36 model layers are offloaded.
-- Fixed MC acceptance benchmark: 20/20 correct in 118.1 seconds, including a
-  cold model load.
+- Exact mathematics and solver routing are Facet's, not a model's; see
+  [docs/FACET_BRIDGE.md](docs/FACET_BRIDGE.md).
+
+The earlier baseline ran on the HP t740 named `caspian`, against a model alias
+that exists only on that machine and predates this setup. Its fixed MC
+acceptance figure was measured there and is not restated here, because it says
+nothing about the models above: the acceptance benchmark needs re-running before
+any number is quoted as current.
 
 These are operating defaults, not generic recommendations for every machine.
 See [Current Baseline](docs/CURRENT_BASELINE.md) and the
@@ -163,8 +169,7 @@ Requirements:
 - Python 3.11 or newer
 - `uv`
 - SQLite with FTS5
-- Ollama with the `gemma-python` model alias; screenshot questions additionally
-  use `qwen3.5:4b`
+- Ollama with `qwen3.5:9b`; screenshot questions additionally use `qwen3.5:4b`
 
 Install the Python environment:
 
@@ -177,7 +182,7 @@ Verify the checkout and local model:
 ```bash
 uv run pytest -q
 uv run ruff check .
-ollama show gemma-python
+ollama show qwen3.5:9b
 ```
 
 The application has working defaults in code. `.env.example` is only a
@@ -211,8 +216,8 @@ Then run one read-only model smoke test:
 uv run ethnos ask 1 "What is virtue ethics?" --limit 2 --debug-ollama
 ```
 
-Expected on `caspian`: `gemma-python`, context `4096`, no hidden thinking, and
-`ollama ps` showing `100% GPU`.
+Expected: `qwen3.5:9b`, context `4096`, no hidden thinking, and `ollama ps`
+reporting the model resident on the GPU.
 
 ## Add a PDF
 
@@ -351,7 +356,7 @@ The MC-specific commands remain useful for controlled performance comparisons.
 uv run ethnos agent-review 2 \
   --quiz benchmarks/history_ch20_canvas.json \
   --output data/runs/history_ch20_agent_review \
-  --model gemma-python \
+  --model qwen3.5:9b \
   --profile cto \
   --vision-pages off \
   --debug-agent

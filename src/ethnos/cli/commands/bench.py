@@ -108,7 +108,7 @@ def register(subcommands):
     bench_parser.add_argument("--model", help="Ollama model name for --ask runs.")
     bench_parser.add_argument(
         "--models",
-        help="Comma-separated Ollama model names for comparison, e.g. gemma-python,other-model.",
+        help="Comma-separated Ollama model names for comparison, e.g. qwen3.5:9b,qwen3.5:4b.",
     )
     bench_parser.add_argument(
         "--num-predict", type=int, help="Ollama output token budget for --ask answers."

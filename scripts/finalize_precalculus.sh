@@ -4,7 +4,7 @@ set -euo pipefail
 readonly PROJECT_DIR="/home/steve/apps/ethnos"
 readonly UV_BIN="/usr/bin/uv"
 readonly DOCUMENT_ID="3"
-readonly EXTRACTION_MODEL="gemma-python"
+readonly EXTRACTION_MODEL="qwen3.5:9b"
 
 cd "$PROJECT_DIR"
 

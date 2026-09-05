@@ -34,13 +34,13 @@ The pipeline is:
 | Role | Selected candidate | Reason |
 |---|---|---|
 | Primary structured reader and fallback solver | `qwen3.5:4b` | Passed Ethos's strict JSON screenshot flow; about 3.4 GB |
-| Independent structured verifier | `gemma-python` | Passed the independent schema-based verification pass |
+| Independent structured verifier | the caspian-era alias | Passed the independent schema-based verification pass on that host |
 | Formula-recognition candidate | `glm-ocr:q8_0` | Installed specialist; needs a dedicated plain-output adapter before routing |
 | Exact symbolic engine | SymPy 1.14+ | Exact simplify/factor/expand operations and equivalence checks without model tokens |
 | Transitional solver | `precalc-local` | Existing Qwen2.5-Math 7B rollback and second-opinion option |
 | Ambiguous-case candidate | `qwen3.5:9b` | Optional later escalation; do not install or route by default yet |
 
-Do not use `gemma-python` as the default screenshot reader. Local inspection
+Do not use the caspian-era text alias as the default screenshot reader. Local inspection
 shows that alias has a Python-helper system prompt unrelated to image
 transcription. It remains the validated extraction and ethics/history baseline
 during the staged migration.
@@ -70,7 +70,7 @@ The candidate defaults are in `src/ethnos/config.py` and `.env.example`:
 
 ```text
 ETHNOS_OLLAMA_VISION_MODEL=qwen3.5:4b
-ETHNOS_OLLAMA_VISION_VERIFIER_MODEL=gemma-python
+ETHNOS_OLLAMA_VISION_VERIFIER_MODEL=qwen3.5:9b
 ETHNOS_OLLAMA_VISION_NUM_PREDICT=256
 ETHNOS_OLLAMA_MATH_MODEL=qwen3.5:4b
 ETHNOS_QUESTION_IMAGE_CACHE_DIR=data/cache/question_images
@@ -130,7 +130,7 @@ Explicit candidate path:
 uv run ethnos ask 3 "Solve the pictured problem" \
   --question-image path/to/problem.png \
   --vision-model qwen3.5:4b \
-  --vision-verifier-model gemma-python \
+  --vision-verifier-model qwen3.5:9b \
   --vision-num-predict 256 \
   --model qwen3.5:4b \
   --answer-image data/runs/precalc-answer.png \
@@ -142,8 +142,8 @@ Rollback both passes to the previous reader without changing code:
 ```bash
 uv run ethnos ask 3 "Solve the pictured problem" \
   --question-image path/to/problem.png \
-  --vision-model gemma-python \
-  --vision-verifier-model gemma-python \
+  --vision-model qwen3.5:9b \
+  --vision-verifier-model qwen3.5:9b \
   --model precalc-local
 ```
 

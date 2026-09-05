@@ -63,7 +63,7 @@ def load_settings() -> Settings:
     return Settings(
         db_path=db_path,
         ollama_host=os.getenv("ETHNOS_OLLAMA_HOST", "http://localhost:11434"),
-        ollama_model=os.getenv("ETHNOS_OLLAMA_MODEL", "gemma-python"),
+        ollama_model=os.getenv("ETHNOS_OLLAMA_MODEL", "qwen3.5:9b"),
         ollama_timeout=float(os.getenv("ETHNOS_OLLAMA_TIMEOUT", "300")),
         ollama_structure_num_predict=int(
             os.getenv(
@@ -80,8 +80,11 @@ def load_settings() -> Settings:
         ollama_num_ctx=int(os.getenv("ETHNOS_OLLAMA_NUM_CTX", "4096")),
         ollama_think=parse_ollama_think(os.getenv("ETHNOS_OLLAMA_THINK")),
         ollama_vision_model=os.getenv("ETHNOS_OLLAMA_VISION_MODEL", "qwen3.5:4b"),
+        # A *different* reader from the primary above, on purpose: two readings
+        # of one picture are only worth having when one model cannot merely
+        # repeat its own symbol mistake.
         ollama_vision_verifier_model=os.getenv(
-            "ETHNOS_OLLAMA_VISION_VERIFIER_MODEL", "gemma-python"
+            "ETHNOS_OLLAMA_VISION_VERIFIER_MODEL", "qwen3.5:9b"
         ),
         ollama_vision_num_predict=int(
             os.getenv("ETHNOS_OLLAMA_VISION_NUM_PREDICT", "256")

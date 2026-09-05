@@ -1,5 +1,12 @@
 # Performance Tuning
 
+> **Superseded.** This records the baseline measured on the HP t740 named
+> `caspian`, against a model alias that exists only on that machine. Every
+> figure below was measured there and none of it describes the current host
+> `casbox` or its models — see the README's *Current supported baseline*.
+> Nothing here is reattributed to a different model, because a measurement
+> belongs to the thing that produced it.
+
 This document records the current measured decisions and the protocol for
 changing them. Machine facts belong in [hosts/caspian.md](hosts/caspian.md),
 and the accepted result belongs in [CURRENT_BASELINE.md](CURRENT_BASELINE.md).

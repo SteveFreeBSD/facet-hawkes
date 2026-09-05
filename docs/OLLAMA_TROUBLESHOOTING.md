@@ -1,6 +1,6 @@
 # Ollama Troubleshooting
 
-The supported local baseline is `gemma-python` at
+The supported local baseline is `qwen3.5:9b` at
 `http://localhost:11434`, context `4096`, thinking disabled, and Vulkan
 acceleration on `caspian`.
 
@@ -20,7 +20,7 @@ uv run ethnos ask 1 "What is virtue ethics?" --limit 2 --debug-ollama
 Expected on `caspian`:
 
 - Ollama `0.32.1`, active/running.
-- `gemma-python:latest` exists.
+- `qwen3.5:9b:latest` exists.
 - Service environment includes `OLLAMA_FLASH_ATTENTION=1`,
   `OLLAMA_IGPU_ENABLE=1`, `OLLAMA_MLOCK=1`, and
   `OLLAMA_KEEP_ALIVE=24h`.
@@ -31,11 +31,11 @@ Expected on `caspian`:
 
 ## Model missing
 
-Symptoms: `request_failed`, “model not found,” or no `gemma-python` in
+Symptoms: `request_failed`, “model not found,” or no `qwen3.5:9b` in
 `ollama list`.
 
 ```bash
-ollama show gemma-python
+ollama show qwen3.5:9b
 ```
 
 Recreate the alias using [MIGRATION.md](MIGRATION.md#5-recreate-the-gemma-alias).
@@ -128,7 +128,7 @@ journalctl -k --since '-15 minutes' --no-pager | \
   rg -i 'amdgpu|ring|timeout|reset|fault'
 ```
 
-Stop the failing model and return to `gemma-python` at context `4096`. Do not
+Stop the failing model and return to `qwen3.5:9b` at context `4096`. Do not
 increase `amdgpu.lockup_timeout` merely to hide a repeatable model workload
 failure. The Qwen 30B sustained 8K experiment produced this condition; the
 accepted Gemma profile did not.
@@ -136,7 +136,7 @@ accepted Gemma profile did not.
 ```bash
 ollama stop qwen3-coder-caspian
 ollama stop qwen3-coder-caspian-dev
-ollama run gemma-python "Reply exactly: Gemma ready"
+ollama run qwen3.5:9b "Reply exactly: model ready"
 ```
 
 ## Memory pressure

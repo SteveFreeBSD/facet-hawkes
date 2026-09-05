@@ -1,5 +1,12 @@
 # Current Baseline
 
+> **Superseded.** This records the baseline measured on the HP t740 named
+> `caspian`, against a model alias that exists only on that machine. Every
+> figure below was measured there and none of it describes the current host
+> `casbox` or its models — see the README's *Current supported baseline*.
+> Nothing here is reattributed to a different model, because a measurement
+> belongs to the thing that produced it.
+
 Last verified on `caspian`: 2026-07-19.
 
 The screenshot OCR/exact-math stack is a staged candidate as of 2026-09-02;

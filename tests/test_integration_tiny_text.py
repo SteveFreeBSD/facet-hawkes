@@ -1272,7 +1272,7 @@ def test_chat_cli_exits_on_quit_without_ollama(tmp_path, capsys, monkeypatch):
 
     assert exit_code == 0
     assert f"ethnos chat for document {document_id}" in output
-    assert "model: gemma-python" in output
+    assert "model: qwen3.5:9b" in output
 
 
 def test_chat_cli_exits_cleanly_on_keyboard_interrupt_during_answer(
@@ -1630,8 +1630,8 @@ def test_limit_benchmark_items_and_progress_line():
 
     assert limit_benchmark_items(items, None) == items
     assert limit_benchmark_items(items, 2) == [{"id": "one"}, {"id": "two"}]
-    assert progress_line("gemma-python", 2, 14, "virtue-ethics") == (
-        "[gemma-python] question 2/14: virtue-ethics"
+    assert progress_line("qwen3.5:9b", 2, 14, "virtue-ethics") == (
+        "[qwen3.5:9b] question 2/14: virtue-ethics"
     )
 
 
@@ -1783,8 +1783,8 @@ def test_qa_bench_with_ask_writes_json_report(tmp_path, capsys, monkeypatch):
 
 
 def test_parse_models_arg_accepts_comma_separated_models():
-    assert parse_models_arg("gemma-python, gemma4:e2b,gemma-python") == [
-        "gemma-python",
+    assert parse_models_arg("qwen3.5:9b, gemma4:e2b,qwen3.5:9b") == [
+        "qwen3.5:9b",
         "gemma4:e2b",
     ]
 

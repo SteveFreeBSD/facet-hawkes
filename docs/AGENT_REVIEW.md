@@ -37,7 +37,7 @@ human inspection.
 uv run ethnos agent-review 2 \
   --quiz benchmarks/history_ch20_canvas.json \
   --output data/runs/history_ch20_agent_review \
-  --model gemma-python \
+  --model qwen3.5:9b \
   --profile cpu-local
 ```
 
@@ -80,14 +80,14 @@ Each run is also persisted to SQLite in `agent_runs` and `agent_findings`.
 ## Model Profiles
 
 - `cpu-local`: compatibility name for the smallest local review budget with
-  `gemma-python`.
-- `review-local`: slightly larger local review budget with `gemma-python`.
+  `qwen3.5:9b`.
+- `review-local`: slightly larger local review budget with `qwen3.5:9b`.
 - `gemma3-local`: optional 12B-class Gemma 3 profile for explicit model
   comparisons; it is not a baseline fallback.
 - `gemma3-fast`: optional smaller Gemma 3 comparison profile.
 - `hybrid-max`: max-capability profile for explicit web/cloud-assisted review.
 
-Existing `gemma-python` workflows remain the local baseline for structure
+Existing `qwen3.5:9b` workflows remain the local baseline for structure
 extraction, Q&A, quiz benchmarking, and Agent Review. The profile name
 `cpu-local` predates Vulkan enablement; on `caspian`, Ollama offloads Gemma to
 the Vega GPU. New model profiles must beat the same quality and stability gates
@@ -160,7 +160,7 @@ For the fastest local review with deterministic fallback, prefer:
 uv run ethnos agent-review 2 \
   --quiz benchmarks/history_ch27_canvas.json \
   --output data/runs/history_ch27/agent_review \
-  --model gemma-python \
+  --model qwen3.5:9b \
   --profile review-local \
   --vision-pages off \
   --max-steps 0 \

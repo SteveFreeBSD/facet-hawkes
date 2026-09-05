@@ -235,10 +235,10 @@ def test_structured_chat_request_sets_context_without_thinking():
     schema = {"type": "object", "properties": {"chunk_summary": {"type": "string"}}}
 
     kwargs = _chat_request_kwargs(
-        "gemma-python", "prompt text", schema, num_predict=4096, num_ctx=8192
+        "qwen3.5:9b", "prompt text", schema, num_predict=4096, num_ctx=8192
     )
 
-    assert kwargs["model"] == "gemma-python"
+    assert kwargs["model"] == "qwen3.5:9b"
     assert kwargs["messages"][0]["role"] == "system"
     assert kwargs["messages"][1] == {"role": "user", "content": "prompt text"}
     assert kwargs["format"] == schema
@@ -392,10 +392,10 @@ def test_extraction_schema_is_cached():
 
 def test_answer_chat_request_uses_plain_text_and_context_without_thinking():
     kwargs = _answer_chat_request_kwargs(
-        "gemma-python", "answer prompt", num_predict=1024, num_ctx=8192
+        "qwen3.5:9b", "answer prompt", num_predict=1024, num_ctx=8192
     )
 
-    assert kwargs["model"] == "gemma-python"
+    assert kwargs["model"] == "qwen3.5:9b"
     assert kwargs["messages"][0]["role"] == "system"
     assert kwargs["messages"][1] == {"role": "user", "content": "answer prompt"}
     assert "format" not in kwargs
@@ -408,10 +408,10 @@ def test_mc_chat_request_uses_json_schema_and_defaults_think_false():
     schema = {"type": "object", "properties": {"selected_option": {"enum": ["A", "B"]}}}
 
     kwargs = _mc_chat_request_kwargs(
-        "gemma-python", "mc prompt", schema, num_predict=32, num_ctx=8192
+        "qwen3.5:9b", "mc prompt", schema, num_predict=32, num_ctx=8192
     )
 
-    assert kwargs["model"] == "gemma-python"
+    assert kwargs["model"] == "qwen3.5:9b"
     assert kwargs["messages"][0]["role"] == "system"
     assert "multiple-choice" in kwargs["messages"][0]["content"]
     assert kwargs["messages"][1] == {"role": "user", "content": "mc prompt"}
@@ -425,7 +425,7 @@ def test_mc_chat_request_can_omit_think():
     schema = {"type": "object", "properties": {"selected_option": {"enum": ["A", "B"]}}}
 
     kwargs = _mc_chat_request_kwargs(
-        "gemma-python",
+        "qwen3.5:9b",
         "mc prompt",
         schema,
         num_predict=32,
@@ -535,7 +535,7 @@ def test_answer_mc_question_uses_client_and_validates_response():
 
     result = answer_mc_question(
         prompt="prompt",
-        model_name="gemma-python",
+        model_name="qwen3.5:9b",
         host="http://localhost:11434",
         timeout=30,
         num_predict=32,
@@ -565,7 +565,7 @@ def test_answer_mc_question_forwards_think_setting():
 
     result = answer_mc_question(
         prompt="prompt",
-        model_name="gemma-python",
+        model_name="qwen3.5:9b",
         host="http://localhost:11434",
         timeout=30,
         num_predict=32,
@@ -586,7 +586,7 @@ def test_answer_mc_question_reports_request_failure():
 
     result = answer_mc_question(
         prompt="prompt",
-        model_name="gemma-python",
+        model_name="qwen3.5:9b",
         host="http://localhost:11434",
         timeout=30,
         num_predict=32,
@@ -622,7 +622,7 @@ def test_ollama_think_supports_auto_and_effort_values(monkeypatch):
 def test_chat_request_kwargs_passes_think_true():
     schema = {"type": "object"}
     kwargs = _chat_request_kwargs(
-        "gemma-python", "prompt", schema, num_predict=2048, num_ctx=8192, think=True
+        "qwen3.5:9b", "prompt", schema, num_predict=2048, num_ctx=8192, think=True
     )
     assert kwargs["think"] is True
 
@@ -630,7 +630,7 @@ def test_chat_request_kwargs_passes_think_true():
 def test_chat_request_kwargs_can_omit_think():
     schema = {"type": "object"}
     kwargs = _chat_request_kwargs(
-        "gemma-python", "prompt", schema, num_predict=2048, num_ctx=8192, think=None
+        "qwen3.5:9b", "prompt", schema, num_predict=2048, num_ctx=8192, think=None
     )
     assert "think" not in kwargs
 
@@ -672,12 +672,12 @@ def test_default_ollama_budgets_and_context(monkeypatch):
 
     settings = load_settings()
 
-    assert settings.ollama_model == "gemma-python"
+    assert settings.ollama_model == "qwen3.5:9b"
     assert settings.ollama_structure_num_predict == 2048
     assert settings.ollama_answer_num_predict == 1536
     assert settings.ollama_num_ctx == 4096
     assert settings.ollama_vision_model == "qwen3.5:4b"
-    assert settings.ollama_vision_verifier_model == "gemma-python"
+    assert settings.ollama_vision_verifier_model == "qwen3.5:9b"
     assert settings.ollama_vision_num_predict == 256
     assert settings.ollama_math_model == "qwen3.5:4b"
     assert settings.question_image_cache_dir.name == "question_images"
@@ -742,7 +742,7 @@ def test_chat_extracts_content_from_pydantic_response_shape():
         client=client,
         prompt="prompt text",
         schema={"type": "object"},
-        model_name="gemma-python",
+        model_name="qwen3.5:9b",
         num_predict=2048,
         num_ctx=8192,
     )

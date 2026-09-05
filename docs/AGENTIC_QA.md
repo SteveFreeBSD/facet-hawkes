@@ -31,7 +31,7 @@ V1 is local-PDF-only. The allowed tools are:
 Web, vision, page rendering, and quiz-specific tools are intentionally excluded
 from Q&A v1. Native Ollama tool calling is also deferred; the implementation
 uses the same structured JSON action-loop style as Agent Review because it is
-more predictable with the current local `gemma-python` baseline.
+more predictable with the current local `qwen3.5:9b` baseline.
 
 ## Fallback Behavior
 

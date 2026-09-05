@@ -35,10 +35,10 @@ from ethnos.models import ChunkRecord, DocumentRecord, PageRecord
 from ethnos.quiz import load_quiz
 
 
-def test_model_profile_resolution_uses_gemma3_defaults():
+def test_model_profile_resolution_uses_its_profile_defaults():
     cpu_profile = resolve_model_profile(None)
     assert cpu_profile.name == "cpu-local"
-    assert cpu_profile.recommended_model == "gemma-python"
+    assert cpu_profile.recommended_model == "qwen3.5:9b"
 
     profile = resolve_model_profile("gemma3-local")
 
@@ -203,7 +203,7 @@ def test_ground_quiz_item_skips_retrieval_for_declared_external_source(tmp_path)
         output_dir=tmp_path,
         allow_web=False,
         vision_pages="off",
-        model_name="gemma-python",
+        model_name="qwen3.5:9b",
         num_predict=256,
         num_ctx=8192,
     )
@@ -249,7 +249,7 @@ def test_ground_quiz_item_uses_declared_anchors_as_complete_context(tmp_path):
         output_dir=tmp_path,
         allow_web=False,
         vision_pages="off",
-        model_name="gemma-python",
+        model_name="qwen3.5:9b",
         num_predict=256,
         num_ctx=8192,
     )
@@ -277,7 +277,7 @@ def test_ground_quiz_item_uses_key_and_option_aware_queries(tmp_path):
         output_dir=tmp_path,
         allow_web=False,
         vision_pages="off",
-        model_name="gemma-python",
+        model_name="qwen3.5:9b",
         num_predict=256,
         num_ctx=8192,
     )
@@ -311,7 +311,7 @@ def test_ground_quiz_item_supports_canonicalized_answer_text(tmp_path):
         output_dir=tmp_path,
         allow_web=False,
         vision_pages="off",
-        model_name="gemma-python",
+        model_name="qwen3.5:9b",
         num_predict=256,
         num_ctx=8192,
     )
@@ -341,7 +341,7 @@ def test_ground_quiz_item_ranks_conceptual_key_support_first(tmp_path):
         output_dir=tmp_path,
         allow_web=False,
         vision_pages="off",
-        model_name="gemma-python",
+        model_name="qwen3.5:9b",
         num_predict=256,
         num_ctx=8192,
     )
@@ -497,7 +497,7 @@ def test_agent_loop_repairs_item_scoped_tool_arguments(tmp_path):
         quiz=quiz,
         quiz_path=quiz_path,
         output_dir=tmp_path / "agent_review",
-        model_name="gemma-python",
+        model_name="qwen3.5:9b",
         model_profile=MODEL_PROFILES["cpu-local"],
         allow_web=False,
         vision_pages="off",
@@ -560,7 +560,7 @@ def test_agent_loop_retries_runtime_invalid_action(tmp_path):
         quiz=quiz,
         quiz_path=tmp_path / "quiz.json",
         output_dir=output_dir,
-        model_name="gemma-python",
+        model_name="qwen3.5:9b",
         model_profile=MODEL_PROFILES["cpu-local"],
         allow_web=False,
         vision_pages="off",
@@ -624,7 +624,7 @@ def test_agent_anchored_review_excludes_later_unrelated_search_evidence(tmp_path
         quiz=quiz,
         quiz_path=tmp_path / "quiz.json",
         output_dir=tmp_path / "agent_review",
-        model_name="gemma-python",
+        model_name="qwen3.5:9b",
         model_profile=MODEL_PROFILES["cpu-local"],
         allow_web=False,
         vision_pages="off",
@@ -674,7 +674,7 @@ def test_agent_evidence_excerpt_keeps_late_support_and_trace_is_fresh(tmp_path):
                 quiz=quiz,
                 quiz_path=tmp_path / "quiz.json",
                 output_dir=output_dir,
-                model_name="gemma-python",
+                model_name="qwen3.5:9b",
                 model_profile=MODEL_PROFILES["cpu-local"],
                 allow_web=False,
                 vision_pages="off",
@@ -710,7 +710,7 @@ def test_agent_source_missing_fallback_discards_later_search_evidence(tmp_path):
         quiz=quiz,
         quiz_path=tmp_path / "quiz.json",
         output_dir=tmp_path / "agent_review",
-        model_name="gemma-python",
+        model_name="qwen3.5:9b",
         model_profile=MODEL_PROFILES["cpu-local"],
         allow_web=False,
         vision_pages="off",
@@ -740,7 +740,7 @@ def test_agent_source_missing_preflight_skips_model_call(tmp_path):
         quiz=quiz,
         quiz_path=tmp_path / "quiz.json",
         output_dir=tmp_path / "agent_review",
-        model_name="gemma-python",
+        model_name="qwen3.5:9b",
         model_profile=MODEL_PROFILES["cpu-local"],
         allow_web=False,
         vision_pages="off",
@@ -767,7 +767,7 @@ def test_agent_fallback_can_support_key_from_evidence(tmp_path):
         quiz=quiz,
         quiz_path=tmp_path / "quiz.json",
         output_dir=tmp_path / "agent_review",
-        model_name="gemma-python",
+        model_name="qwen3.5:9b",
         model_profile=MODEL_PROFILES["cpu-local"],
         allow_web=False,
         vision_pages="off",
@@ -810,7 +810,7 @@ def test_agent_fallback_does_not_treat_same_chunk_mention_as_ambiguity(tmp_path)
         quiz=quiz,
         quiz_path=tmp_path / "quiz.json",
         output_dir=tmp_path / "agent_review",
-        model_name="gemma-python",
+        model_name="qwen3.5:9b",
         model_profile=MODEL_PROFILES["cpu-local"],
         allow_web=False,
         vision_pages="off",
@@ -837,7 +837,7 @@ def test_agent_source_missing_does_not_report_incidental_partial_evidence(tmp_pa
         quiz=quiz,
         quiz_path=tmp_path / "quiz.json",
         output_dir=tmp_path / "agent_review",
-        model_name="gemma-python",
+        model_name="qwen3.5:9b",
         model_profile=MODEL_PROFILES["cpu-local"],
         allow_web=False,
         vision_pages="off",
@@ -892,7 +892,7 @@ def test_agent_declared_external_source_overrides_conflicting_model_review(tmp_p
         quiz=quiz,
         quiz_path=tmp_path / "quiz.json",
         output_dir=tmp_path / "agent_review",
-        model_name="gemma-python",
+        model_name="qwen3.5:9b",
         model_profile=MODEL_PROFILES["cpu-local"],
         allow_web=False,
         vision_pages="off",
@@ -966,7 +966,7 @@ def test_agent_ungrounded_source_overrides_conflicting_model_review(tmp_path):
         quiz=quiz,
         quiz_path=tmp_path / "quiz.json",
         output_dir=tmp_path / "agent_review",
-        model_name="gemma-python",
+        model_name="qwen3.5:9b",
         model_profile=MODEL_PROFILES["cpu-local"],
         allow_web=False,
         vision_pages="off",
@@ -1029,7 +1029,7 @@ def test_agent_model_evidence_requires_strength_and_confidence_for_pass(
         quiz=quiz,
         quiz_path=tmp_path / "quiz.json",
         output_dir=tmp_path / "agent_review",
-        model_name="gemma-python",
+        model_name="qwen3.5:9b",
         model_profile=MODEL_PROFILES["cpu-local"],
         allow_web=False,
         vision_pages="off",
@@ -1080,7 +1080,7 @@ def test_agent_invalid_anchor_cannot_pass_from_incidental_key_support(tmp_path):
         quiz=quiz,
         quiz_path=tmp_path / "quiz.json",
         output_dir=tmp_path / "agent_review",
-        model_name="gemma-python",
+        model_name="qwen3.5:9b",
         model_profile=MODEL_PROFILES["cpu-local"],
         allow_web=False,
         vision_pages="off",
@@ -1113,7 +1113,7 @@ def test_agent_review_item_timeout_uses_deterministic_fallback(tmp_path):
         quiz=quiz,
         quiz_path=tmp_path / "quiz.json",
         output_dir=tmp_path / "agent_review",
-        model_name="gemma-python",
+        model_name="qwen3.5:9b",
         model_profile=MODEL_PROFILES["cpu-local"],
         allow_web=False,
         vision_pages="off",
