@@ -19,6 +19,7 @@ import { ALLOWED_HOST_PATTERN, validateAnswer } from "/common/config.js";
 import { answerFitsEditor, insertErrorKey } from "/common/editor-rules.js";
 import { planAnswerParts, planEntry } from "/common/editor-plan.js";
 import { describeResults, selectAnswerFrame } from "/common/frames.js";
+import { graphOperation } from "/common/graph-actions.js";
 import { enterPlan } from "/common/page-actions.js";
 import { describeError, initLog, log, setLogLevel } from "/common/log.js";
 import {
@@ -98,6 +99,8 @@ function blankState() {
     displayText: "",
     entryText: "",
     answerParts: [],
+    graphPlan: null,
+    graphCoefficients: [],
     // What insertion put in the field, kept for the panel to show and for
     // nothing else. Never re-inserted, never offered to a later question.
     placedText: "",
@@ -318,7 +321,7 @@ async function readQuestion(tabId, frameId, attempts = 6) {
       const question = read?.result;
       if (question && Array.isArray(question.expressions)) {
         last = question;
-        if (question.expressions.length > 0) {
+        if (question.expressions.length > 0 || question.graphPoints?.length >= 3) {
           return question;
         }
       }
@@ -362,10 +365,11 @@ function digest(value) {
  * question we cannot identify is always re-solved rather than assumed stale.
  */
 function questionSignature(fieldId, question) {
-  if (!question || question.expressions.length === 0) {
+  if (!question || (question.expressions.length === 0 && !(question.graphPoints?.length >= 3))) {
     return null;
   }
-  const content = `${question.promptText}\u0000${question.expressions.join("\u0000")}`;
+  const content = `${question.promptText}\u0000${question.expressions.join("\u0000")}`
+    + (question.graphPoints ? JSON.stringify(question.graphPoints) : "");
   return `${fieldId ?? ""}|${digest(content)}|${content.length}`;
 }
 
@@ -377,7 +381,11 @@ function questionSignature(fieldId, question) {
  * reported "the answer editor could not be read" for an editor that was
  * simply a moment from existing.
  */
-async function describeEditor(tabId, frameId, attempts = 5) {
+async function describeEditor(tabId, frameId, attempts = 5, isGraph = false) {
+  if (isGraph) {
+    const graph = await runInjection({ target: { tabId, frameIds: [frameId] }, world: "MAIN", func: graphOperation });
+    return graph?.[0]?.result ?? { ok: false, code: "graph-missing" };
+  }
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     if (attempt > 0) {
       await new Promise((resolve) => setTimeout(resolve, 250));
@@ -461,6 +469,7 @@ function commaAnswerPlan(parts, editor, problemText) {
  * field is absent.
  */
 function answerShapeOf(editor) {
+  if (editor?.kind === "graph") return { kind: "graph", graph: editor.context };
   if (
     editor?.kind === "multi"
     && Array.isArray(editor.editors)
@@ -550,7 +559,8 @@ function provenanceNotes(certainty) {
     lines.push(`Fallback: ${certainty.fallback ? "yes" : "none"}`);
   }
   if (certainty?.reading) {
-    const read = certainty.reading === "mathml" ? "page MathML" : "screenshot";
+    const read = certainty.reading === "mathml" ? "page MathML"
+      : certainty.reading === "svg" ? "SVG point coordinates" : "screenshot";
     const transcription =
       certainty.reading === "screenshot" && certainty.transcription
         ? ` (${certainty.transcription})`
@@ -920,7 +930,11 @@ async function prepare(windowId = state.windowId) {
       });
       return;
     }
-    const editor = await describeEditor(tab.id, choice.frameId);
+    const editor = await describeEditor(tab.id, choice.frameId, 5, choice.graph === true);
+    if (choice.graph && (!editor?.ok || editor.kind !== "graph")) {
+      fail("errorEditorUnknown", { detail: editor?.code ?? "graph-missing" });
+      return;
+    }
     const fieldIds = Array.isArray(choice.fieldIds) ? choice.fieldIds : [];
     if (
       fieldIds.length > 0
@@ -965,7 +979,7 @@ async function prepare(windowId = state.windowId) {
       frameId: choice.frameId,
       fieldId: choice.fieldId ?? "",
       fieldIds,
-      editor,
+      editor: hasAnswer && previous.graphPlan ? previous.editor : editor,
       signature,
       // Carried over only while the question is unchanged, so a previous
       // answer can never be offered for a new one.
@@ -973,6 +987,8 @@ async function prepare(windowId = state.windowId) {
       displayText: hasAnswer ? previous.displayText : "",
       entryText: hasAnswer ? previous.entryText : "",
       answerParts: hasAnswer ? previous.answerParts : [],
+      graphPlan: hasAnswer ? previous.graphPlan : null,
+      graphCoefficients: hasAnswer ? previous.graphCoefficients : [],
       promptSeen: hasAnswer ? previous.promptSeen : true,
       placedText: alreadyInserted ? previous.placedText : "",
       problemText: context ? previous.problemText : "",
@@ -1050,6 +1066,8 @@ async function solve(windowId = state.windowId) {
     displayText: "",
     entryText: "",
     answerParts: [],
+    graphPlan: null,
+    graphCoefficients: [],
     placedText: "",
     promptSeen: true,
     problemText: "",
@@ -1090,7 +1108,7 @@ async function solve(windowId = state.windowId) {
     }
 
     let screenshot = "";
-    if (question.expressions.length === 0) {
+    if (question.expressions.length === 0 && !(question.graphPoints?.length >= 3)) {
       screenshot = await captureQuestion(state.tabId, state.frameId);
       if (screenshot === null) {
         return;
@@ -1110,6 +1128,7 @@ async function solve(windowId = state.windowId) {
           problem: {
             prompt_text: question.promptText || "",
             mathml: question.expressions,
+            ...(question.graphPoints ? { graph_points: question.graphPoints } : {}),
             screenshot_png_base64: image,
             answer_shape: answerShapeOf(state.editor),
           },
@@ -1218,6 +1237,19 @@ async function acceptReply(reply) {
   }
 
 
+  if (reply.answer.graph_plan) {
+    if (state.editor?.kind !== "graph" || certainty.answered_by !== "facet" || !certainty.facet_invoked || !certainty.insertable
+      || reply.answer.graph_coefficients?.length !== 3) {
+      fail("errorAnswerInvalid");
+      return;
+    }
+    update({ phase: "solved", stage: "done", answer: reply.answer.display_text,
+      displayText: reply.answer.display_text, entryText: "", answerParts: [],
+      graphPlan: reply.answer.graph_plan, graphCoefficients: reply.answer.graph_coefficients,
+      problemText: reply.problem_text, source: [answeredByBadge(certainty), certainty.model, certainty.device].filter(Boolean).join(" · "), detail: notes.join("\n"), errorKey: "" });
+    log.info("graph-plan-validated", { facetInvoked: true, facetModel: certainty.model, backend: certainty.actual_backend, device: certainty.device, elapsedMs: certainty.elapsed_ms });
+    return;
+  }
   const displayText = readableAnswer(reply.answer);
   if (displayText.length === 0) {
     fail("errorAnswerInvalid", { detail: JSON.stringify(reply.answer).slice(0, 300) });
@@ -1380,6 +1412,10 @@ function pinInsertionTarget() {
     fieldId: state.fieldId,
     fieldIds: Object.freeze([...(state.fieldIds ?? [])]),
     signature: state.signature,
+    detail: state.detail,
+    graphPlan: state.graphPlan,
+    graphCoefficients: state.graphCoefficients,
+    graphSnapshot: state.editor?.snapshot,
     reviewed: state.answer,
     machineEntry: state.entryText || state.answer,
     answerParts: Object.freeze([...(state.answerParts ?? [])]),
@@ -1410,6 +1446,7 @@ function ownsTarget(target) {
     && sameStringArray(state.fieldIds ?? [], target.fieldIds)
     && sameStringArray(state.answerParts ?? [], target.answerParts)
     && state.signature === target.signature
+    && state.graphPlan === target.graphPlan
     && state.answer === target.reviewed
   );
 }
@@ -1480,7 +1517,9 @@ async function insert() {
   // panel's copy was taken when the field was found -- which may have been a
   // different question. Checking an answer against a stale character set is
   // how a perfectly legal `y` came to be reported as rejected.
-  const editor = await describeEditor(target.tabId, target.frameId);
+  const editor = target.graphPlan
+    ? await describeEditor(target.tabId, target.frameId, 5, true)
+    : await describeEditor(target.tabId, target.frameId);
   if (!editor?.ok) {
     fail("errorEditorUnknown");
     return;
@@ -1515,6 +1554,20 @@ async function insert() {
   }
   if (!ownsTarget(target)) {
     abandonInsertion(target, "question-check");
+    return;
+  }
+
+  if (target.graphPlan) {
+    if (editor.kind !== "graph" || JSON.stringify(editor.snapshot) !== JSON.stringify(target.graphSnapshot)) {
+      fail("errorQuestionChanged", { detail: "graph-target-stale" });
+      return;
+    }
+    const [entry] = await runInjection({ target: { tabId: target.tabId, frameIds: [target.frameId] },
+      world: "MAIN", func: graphOperation, args: [{ plan: target.graphPlan, coefficients: target.graphCoefficients, snapshot: target.graphSnapshot }] });
+    if (!ownsTarget(target)) { abandonInsertion(target, "graph-actuation"); return; }
+    if (!entry?.result?.ok) { fail("errorSolveRefused", { detail: entry?.result?.code ?? "graph-verification-failed" }); return; }
+    log.info("graph-verified", { events: entry.result.events });
+    await finishInsertion(target.detail + "\nGraph controls and coefficients verified", target);
     return;
   }
 
@@ -1747,6 +1800,8 @@ async function finishInsertion(detail, target) {
     displayText: "",
     entryText: "",
     answerParts: [],
+    graphPlan: null,
+    graphCoefficients: [],
     // `problemText` and `source` are left as they are: both describe the
     // question still on screen, which the insertion did not change.
     signature: handledSignature,

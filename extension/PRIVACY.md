@@ -1,6 +1,6 @@
 # Privacy notice — Ethnos Hawkes Assistant
 
-Last updated: 3 September 2026
+Last updated: 5 September 2026
 
 ## What is processed
 
@@ -21,15 +21,20 @@ computer, so the manifest declares the required `websiteContent` category.
 
 ## Where it goes
 
-- Exact MathML problems are processed in the local companion without a model
-  request.
+- Supported text-answer MathML problems are processed in the local companion
+  without a model request.
 - Image transcription and model fallback use the Ollama endpoint configured in
   Ethnos. With the default loopback endpoint, processing stays on this
   computer. A user-configured remote endpoint receives the question material.
-- If the user explicitly selects **Facet (experimental)**, the instruction and
+- For supported parabola graphs, SVG quadratic regression, or if the user selects **Facet (experimental)**,
+  the instruction and
   exact MathML-derived expression are sent over SSH to the one Facet host
   configured in Ethnos, on the local network. No screenshot is sent through
-  this path, and the browser chooses no destination, model, or device.
+  this path. Graph requests also carry normalized bounds and snap spacing; DOM
+  and control identifiers remain in Firefox. SVG regression requests send the
+  instruction and exact point coordinates instead of a MathML expression.
+  The browser chooses no destination,
+  model, or device.
 - The browser add-on contains no analytics, advertising, telemetry, or HTTP
   transport and sends nothing to the developer.
 

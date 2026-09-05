@@ -313,6 +313,13 @@ var ethnosHawkes = (function () {
         frameOrigin: focusedSubframeOrigin(),
       };
     }
+    const graphs = [...document.querySelectorAll('#QGraph[role="application"]')].filter(
+      node => node.getBoundingClientRect().width > 0 && node.querySelectorAll('svg g.parabola g.point a[draggable="true"][role="button"]').length === 3
+    );
+    if (graphs.length === 1) {
+      const ids = [...graphs[0].querySelectorAll('svg g.parabola g.point a[draggable="true"][role="button"]')].map(node => node.id);
+      if (ids.every(Boolean)) return { ready: true, code: "graph-answer", fieldId: ids.join("\u001f") };
+    }
     // A selected option may reveal the only text field that completes it.
     // Hawkes links that field from the radio with aria-controls, so following
     // that relation is exact and does not weaken the one-target rule.

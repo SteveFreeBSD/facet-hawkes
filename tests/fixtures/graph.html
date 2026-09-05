@@ -1,0 +1,28 @@
+<!doctype html><meta charset="utf-8">
+<div id="questionDescription">Consider the function.</div><div id="questionString"><math><mi>f</mi><mo>(</mo><mi>x</mi><mo>)</mo><mo>=</mo><msup><mrow><mo>(</mo><mi>x</mi><mo>-</mo><mn>3</mn><mo>)</mo></mrow><mn>2</mn></msup><mo>-</mo><mn>1</mn></math></div><div id="partInformation">Step 4 of 4: Graph the parabola.</div>
+<span id="QGraph" role="application" style="display:block;width:410px;height:410px"><svg width="410" height="410"><defs><clipPath><rect width="350" height="350"/></clipPath></defs><g class="parabola"><path/>
+<g class="point"><title id="t0">Vertex</title><desc id="d0"></desc><a id="a0" role="button" draggable="true" aria-labelledby="t0" aria-describedby="d0" aria-grabbed="false" href="#!"><circle r="5"/></a></g>
+<g class="point"><title id="t1">Control Point 1</title><desc id="d1"></desc><a id="a1" role="button" draggable="true" aria-labelledby="t1" aria-describedby="d1" aria-grabbed="false" href="#!"><circle r="5"/></a></g>
+<g class="point"><title id="t2">Control Point 2</title><desc id="d2"></desc><a id="a2" role="button" draggable="true" aria-labelledby="t2" aria-describedby="d2" aria-grabbed="false" href="#!"><circle r="5"/></a></g>
+</g></svg></span>
+<button id="submit">Submit</button><button id="check">Check</button><button id="next">Next</button><button id="skip">Skip</button>
+<script>
+const points = [[0,0],[1,1],[-1,1]].map(([x,y],i)=>({ID:`p${i}`,x,y,title:['Vertex','Control Point 1','Control Point 2'][i],snapX:.5,snapY:.5,plotted:true,visible:true}));
+const curve = {title:'Parabola',children:points};
+function coefficients(){ const [v,p]=points; const a=(p.y-v.y)/(p.x-v.x)**2; return [a,-2*a*v.x,a*v.x*v.x+v.y]; }
+function paint(){const [a,b,c]=coefficients();document.querySelector('g.parabola > path').setAttribute('d',[-2,-1,0,1,2].map((dx,i)=>{const x=points[0].x+dx;return `${i?'L':'M'}${175+x*17.5},${175-(a*x*x+b*x+c)*17.5}`}).join(''));points.forEach((p,i)=>{const c=document.querySelector(`#a${i} circle`); c.setAttribute('cx',175+p.x*17.5);c.setAttribute('cy',175-p.y*17.5);document.getElementById(`d${i}`).textContent=`(${p.x},${p.y})`;});}
+window.graphEvents=[];window.forbiddenEvents=[];
+for(const id of ['submit','check','next','skip']) for(const type of ['keydown','click']) document.getElementById(id).addEventListener(type,()=>forbiddenEvents.push(id));
+points.forEach((p,i)=>document.getElementById(`a${i}`).addEventListener('keydown',event=>{
+ graphEvents.push({i,code:event.code}); event.preventDefault();event.stopPropagation();
+ if(event.code==='Space'){event.target.setAttribute('aria-grabbed','false');return;}
+ const [dx,dy]=({ArrowRight:[.5,0],ArrowLeft:[-.5,0],ArrowUp:[0,.5],ArrowDown:[0,-.5]})[event.code]||[0,0];
+ if(i===0) points.forEach(q=>{q.x+=dx;q.y+=dy}); else {p.x+=dx;p.y+=dy;const other=points[i===1?2:1];other.x=2*points[0].x-p.x;other.y=p.y;}
+ event.target.setAttribute('aria-grabbed','true');paint();
+ if(window.replaceDuringMove) document.getElementById('a1').replaceWith(document.getElementById('a1').cloneNode(true));
+}));
+window.quant_wp_UI={controlsCollection:[{isGraph:true,getEnableState:()=>true,allGraphObjects:()=>[curve],
+ graphXML:()=>'<graph><grid><type>cartesian</type><cartesian><xmin>-10</xmin><xmax>10</xmax><ymin>-10</ymin><ymax>10</ymax></cartesian></grid><parabola><orientation>vertical</orientation><definedby>points</definedby></parabola></graph>',
+ userAnswer:()=>{const [a,b,c]=coefficients();return `<graph><parabola><aval>${a}</aval><bval>${b}</bval><cval>${c}</cval><orientation>1</orientation></parabola></graph>`;}
+}]};paint();
+</script>

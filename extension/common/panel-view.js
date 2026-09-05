@@ -140,6 +140,9 @@ function refusal(verdict) {
  * keypad templates. Only when neither works is this the user's job.
  */
 function reviewOffer(state) {
+  if (state.graphPlan && state.editor?.kind === "graph" && !state.errorKey) {
+    return { insertable: true, status: { key: "statusSolved", args: [], kind: "ready" } };
+  }
   if (
     Array.isArray(state.answerParts)
     && state.answerParts.length >= 2

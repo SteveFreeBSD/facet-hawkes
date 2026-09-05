@@ -475,6 +475,10 @@ def run(selected: str | None, headless: bool = True) -> int:
     for scenario in scenarios:
         for name, body in scenario.pages.items():
             Path(web, name).write_text(body, encoding="utf-8")
+    shutil.copyfile(PROJECT_ROOT / "tests/fixtures/graph.html", Path(web, "graph.html"))
+    shutil.copyfile(
+        PROJECT_ROOT / "tests/fixtures/scatter.html", Path(web, "scatter.html")
+    )
     # The foreign origin serves the same directory on a different host name.
     build_test_extension(extension, site, report_origin)
 
@@ -509,6 +513,9 @@ def run(selected: str | None, headless: bool = True) -> int:
             failures += judge(scenario, report)
 
         failures += judge_distinct(scenarios, signatures)
+        if not selected:
+            failures += judge_graph(marionette, site)
+            failures += judge_scatter(marionette, site)
     finally:
         marionette.quit()
         process.terminate()
@@ -521,9 +528,95 @@ def run(selected: str | None, headless: bool = True) -> int:
         shutil.rmtree(profile, ignore_errors=True)
         shutil.rmtree(root, ignore_errors=True)
 
-    checks = len(scenarios) + len({s.distinct for s in scenarios if s.distinct})
+    checks = (
+        len(scenarios)
+        + len({s.distinct for s in scenarios if s.distinct})
+        + (0 if selected else 2)
+    )
     print(f"\n{checks - failures}/{checks} checks passed")
     return 1 if failures else 0
+
+
+def judge_scatter(marionette, site):
+    marionette.set_context("content")
+    marionette.navigate(f"{site}/scatter.html")
+    source = (PROJECT_ROOT / "extension/content/hawkes-question.js").read_text()
+    result = marionette.execute("return " + source[source.index("(() => {") :])["value"]
+    expected = [{"x": "-5", "y": "5"}, {"x": "-2", "y": "-4"}, {"x": "-1", "y": "5"}]
+    if (
+        result.get("graphPoints") != expected
+        or "quadratic regression" not in result["promptText"]
+        or "Zoom" in result["promptText"]
+    ):
+        say(f"FAIL scatter extraction: {result}")
+        return 1
+    marionette.execute(
+        "document.querySelector('g.point desc').textContent = 'A dot drawn 4 units left of and 5 units above the origin.';"
+    )
+    stale = marionette.execute("return " + source[source.index("(() => {") :])["value"]
+    if stale.get("graphPoints"):
+        say("FAIL scatter: mismatched SVG/description accepted")
+        return 1
+    say(
+        "ok   scatter: exact SVG coordinates and instruction; mismatched description refused"
+    )
+    return 0
+
+
+def judge_graph(marionette, site):
+    """Isolated SVG keyboard/model fixture: real DOM events, no Facet stub claims."""
+    source = (
+        (PROJECT_ROOT / "extension/common/graph-actions.js")
+        .read_text()
+        .replace("export function", "function")
+        .replace("https://learn.hawkeslearning.com", site)
+    )
+    plan = {
+        "kind": "parabola",
+        "orientation": "vertical",
+        "opening": "up",
+        "vertex": {"x": "3", "y": "-1"},
+        "points": [{"x": "4", "y": "0"}, {"x": "2", "y": "0"}],
+    }
+    for mode in ["success", "stale", "replaced", "during", "invalid"]:
+        marionette.set_context("content")
+        marionette.navigate(f"{site}/graph.html")
+        result = marionette.execute(
+            source
+            + """
+          const probe = graphOperation();
+          const offered = {snapshot: probe.snapshot, plan: """
+            + json.dumps(plan)
+            + """, coefficients: ["1","-6","8"]};
+          const mode = """
+            + json.dumps(mode)
+            + """;
+          if(mode === 'stale') document.getElementById('partInformation').textContent = 'new question';
+          if(mode === 'replaced') document.getElementById('a1').id = 'replacement';
+          if(mode === 'during') window.replaceDuringMove = true;
+          if(mode === 'invalid') offered.plan.vertex.x = '4';
+          const result = graphOperation(offered);
+          return {probe: probe.ok, result, events: window.graphEvents, forbidden: window.forbiddenEvents};
+        """
+        )["value"]
+        ok = result["probe"] and not result["forbidden"]
+        if mode == "success":
+            ok = (
+                ok
+                and result["result"].get("code") == "graph-verified"
+                and result["result"]["events"] == 8
+            )
+            ok = ok and all(event["i"] == 0 for event in result["events"])
+        else:
+            ok = ok and not result["result"]["ok"]
+            ok = ok and len(result["events"]) == (1 if mode == "during" else 0)
+        if not ok:
+            say(f"FAIL graph {mode}: {result}")
+            return 1
+    say(
+        "ok   graph: SVG keyboard placement, exact readback, invalid geometry and stale/replaced controls refused; no grading/navigation events"
+    )
+    return 0
 
 
 def open_popup_and_wait(marionette, reports, page, attempts=3):

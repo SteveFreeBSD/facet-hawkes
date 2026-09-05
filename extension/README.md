@@ -179,14 +179,16 @@ tree, visible to `document.querySelectorAll("*")` and to any mutation observer.
 Shadow DOM is the right answer when you must inject UI. Injecting none is
 strictly better, and it is what this add-on does.
 
-**Two scripts run in the page's own world, and they are the exception.**
+**Three bounded operations run in the page's own world.**
 Hawkes drives its editor through page-owned JavaScript — a `quant_wp_UI` model
 holding each question's rules, and a `keyPadButtonClick` method that loads a
 template. Neither is reachable from an isolated script, so reading the rules
 and building an answer both require the page's world.
 `content/hawkes-describe.js` reads and never writes; `common/page-actions.js`
-is the single writer, and it may only type into answer boxes and press named
-templates. The build fails if either strays: no `eval`, no clicking page
+types into answer boxes and presses named templates. `common/graph-actions.js`
+reads the graph model and dispatches only arrow/space keys to pinned SVG point
+anchors, then verifies model coefficients, SVG points, and the rendered curve.
+The build fails if these operations stray: no `eval`, no clicking page
 elements, no navigation, no requests, no markup, and no other file may touch
 the model. While these run the page can observe them — that is the documented
 cost of the MAIN world, and it is what buys the only access that works.
@@ -553,3 +555,25 @@ extension/
 ├── options/                  preferences page
 └── popup/                    toolbar panel
 ```
+
+### Parabola graphs
+
+Quadratic regression questions with supported, read-only SVG scatter points
+also use Facet. Ethnos cross-checks accessible point descriptions against SVG
+coordinates, requests strict JSON coefficients, and proves the least-squares
+normal equations exactly before rounding and using the existing answer editor.
+This reader currently accepts the observed nonzero integer coordinate descriptions.
+
+A supported vertical parabola graph uses Facet for a strict JSON geometry plan,
+including when the normal solver preference is Ethnos. The companion sends the
+instruction, exact MathML-derived function, graph bounds and snap grid. Facet
+receives no DOM, selectors, page identifiers, screenshot, or actuation command.
+Ethnos independently validates rational quadratic coefficients, vertex, opening,
+and symmetric defining points using exact mathematics before enabling Insert.
+
+Insertion pins the question and all three Hawkes controls, uses their arrow-key
+handlers, and moves only controls that still need adjustment after linked point
+updates. Every movement is checked; final control coordinates, answer coefficients,
+and SVG curve samples must agree. A changed question, replaced control, unsupported
+renderer or off-grid plan refuses. Nothing presses grading or navigation controls.
+This first shape supports rational vertical quadratics on Cartesian SVG graphs.

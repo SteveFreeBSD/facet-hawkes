@@ -320,8 +320,24 @@ def _check_main_world(problems: list[str]) -> None:
             )
     _check_main_world_writer(problems)
 
+    graph_path = Path("common/graph-actions.js")
+    graph_text = (EXTENSION_DIR / graph_path).read_text(encoding="utf-8")
+    for token in (
+        ".click(",
+        ".submit(",
+        "keyPadButtonClick",
+        "dispatchUserAnswer(",
+        "dispatchKeyDownEvent(",
+        "setAttribute(",
+        "document.createElement",
+        'code: "Enter"',
+        'code: "Tab"',
+    ):
+        if token in graph_text:
+            problems.append(f"{graph_path}: forbidden graph capability {token}")
+
     # No other script may reach the page model.
-    allowed = {MAIN_WORLD_SCRIPT, MAIN_WORLD_WRITER}
+    allowed = {MAIN_WORLD_SCRIPT, MAIN_WORLD_WRITER, Path("common/graph-actions.js")}
     for other in packaged_files():
         if other.suffix != ".js" or other in allowed:
             continue

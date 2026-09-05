@@ -100,7 +100,9 @@ def solve(request: SolveRequest, report=None) -> SolveResponse:
     from .symbolic_solver import answer_symbolic_math
 
     problem = request.problem
-    if problem is None or not (problem.screenshot_png_base64 or problem.mathml):
+    if problem is None or not (
+        problem.screenshot_png_base64 or problem.mathml or problem.graph_points
+    ):
         return error_response(
             request.request_id, "No question content was supplied.", "unsupported"
         )
@@ -112,6 +114,12 @@ def solve(request: SolveRequest, report=None) -> SolveResponse:
     # may still be right, and the panel reviews every one before insertion.
     prompt_seen = bool(problem.prompt_text.strip())
     instruction = problem.prompt_text.strip() or "Solve the question in the image."
+
+    if problem.graph_points:
+        return _solve_regression_with_facet(request, instruction, announce)
+
+    if problem.answer_shape and problem.answer_shape.kind == "graph":
+        return _solve_graph_with_facet(request, instruction, announce)
 
     if request.solve_engine == "facet":
         return _solve_with_facet(request, instruction, prompt_seen, announce)
@@ -298,6 +306,149 @@ def required_answer_parts(shape, instruction: str) -> int:
     if COMMA_SEPARATED.search(instruction):
         return 2
     return 1
+
+
+def _solve_regression_with_facet(request, instruction, announce):
+    import sympy
+
+    from .facet_client import FacetError, generate_text, safe_request_id
+    from .hawkes_graph import regression_prompt, validate_regression_plan
+
+    try:
+        if not re.search(r"\bquadratic regression\b", instruction, re.I):
+            raise ValueError(
+                "SVG point data requires a quadratic regression instruction"
+            )
+        announce("solving", "Facet quadratic regression from exact SVG points")
+        result = generate_text(
+            regression_prompt(instruction, request.problem.graph_points),
+            request_id=safe_request_id(request.request_id),
+            accelerator_required=False,
+            allow_fallback=False,
+        )
+        announce("checking", "verifying exact least-squares normal equations")
+        coefficients = validate_regression_plan(
+            result.text, request.problem.graph_points
+        )
+        rounded = coefficients
+        if re.search(r"three decimal places", instruction, re.I):
+            rounded = [
+                sympy.sign(c) * sympy.floor(abs(c) * 1000 + sympy.Rational(1, 2)) / 1000
+                for c in coefficients
+            ]
+        elif any(c.q != 1 for c in coefficients):
+            raise ValueError(
+                "fractional regression requires the supported three-decimal instruction"
+            )
+
+        def number(value):
+            return (
+                str(value)
+                if value.q == 1
+                else f"{float(value):.3f}".rstrip("0").rstrip(".")
+            )
+
+        terms = []
+        for value, suffix in zip(rounded, ["x^2", "x", ""], strict=True):
+            if not value:
+                continue
+            sign = "-" if value < 0 else "+" if terms else ""
+            magnitude = "" if suffix and abs(value) == 1 else number(abs(value))
+            terms.append(sign + magnitude + suffix)
+        entry = "".join(terms)
+    except (FacetError, ValueError, TypeError, SyntaxError) as error:
+        return error_response(
+            request.request_id, f"Regression refused: {error}", "unsupported"
+        )
+    return SolveResponse(
+        request_id=request.request_id,
+        status="ready",
+        problem_text=instruction
+        + "\nPoints: "
+        + ", ".join(f"({p.x},{p.y})" for p in request.problem.graph_points),
+        answer=AnswerPayload(display_text=entry, keyboard_entry=entry),
+        certainty=Certainty(
+            source=f"Facet · {result.actual_backend.upper()}",
+            transcription="exact",
+            insertable=True,
+            answered_by="facet",
+            router="not-run",
+            reading="svg",
+            method=result.model,
+            facet_invoked=True,
+            requested_backend=result.requested_backend,
+            actual_backend=result.actual_backend,
+            fallback=result.fallback,
+            model=result.model,
+            runtime=result.runtime,
+            device=result.device,
+            elapsed_ms=result.elapsed_ms,
+            issues=[
+                "Facet coefficients validated with exact least-squares normal equations"
+            ],
+        ),
+    )
+
+
+def _solve_graph_with_facet(request, instruction, announce):
+    from .facet_client import FacetError, generate_text, safe_request_id
+    from .hawkes_graph import graph_prompt, parse_graph_plan, validate_graph_plan
+    from .hawkes_mathml import mathml_to_latex
+
+    problem = request.problem
+    try:
+        if not problem.mathml or not re.search(
+            r"\bgraph\b.*\bparabola\b", instruction, re.I
+        ):
+            raise ValueError("graph requires exact MathML and a parabola instruction")
+        announce("solving", "Facet graph plan")
+        result = generate_text(
+            graph_prompt(
+                instruction, problem.mathml, problem.answer_shape.graph.model_dump()
+            ),
+            request_id=safe_request_id(request.request_id),
+            accelerator_required=False,
+            allow_fallback=False,
+        )
+        announce("checking", "validating Facet geometry against exact function")
+        plan = parse_graph_plan(result.text)
+        coefficients = validate_graph_plan(plan, problem.mathml)
+    except (FacetError, ValueError, TypeError, SyntaxError) as error:
+        return error_response(
+            request.request_id, f"Graph plan refused: {error}", "unsupported"
+        )
+    return SolveResponse(
+        request_id=request.request_id,
+        status="ready",
+        problem_text="\n".join(
+            (instruction, *(mathml_to_latex(m) for m in problem.mathml))
+        ),
+        answer=AnswerPayload(
+            graph_plan=plan,
+            graph_coefficients=coefficients,
+            display_text=f"Vertex ({plan.vertex.x}, {plan.vertex.y}); opens {plan.opening}; "
+            + "; ".join(f"({p.x}, {p.y})" for p in plan.points),
+        ),
+        certainty=Certainty(
+            source=f"Facet · {result.actual_backend.upper()}",
+            transcription="exact",
+            insertable=True,
+            answered_by="facet",
+            router="not-run",
+            reading="mathml",
+            router_detail="structured graph planning; exact geometry validated",
+            method=result.model,
+            facet_invoked=True,
+            requested_backend=result.requested_backend,
+            actual_backend=result.actual_backend,
+            fallback=result.fallback,
+            model=result.model,
+            runtime=result.runtime,
+            device=result.device,
+            elapsed_ms=result.elapsed_ms,
+            issues=["Graph plan mathematically validated against exact MathML"],
+        ),
+    )
 
 
 def _facet_prompt(
@@ -580,6 +731,24 @@ def _solve_from_markup(
             conversion_failed = True
     if conversion_failed or not expressions:
         return None, markup_decline_reason(True)
+
+    if re.search(
+        r"\b(?:find|identify|determine)\s+(?:the\s+)?vertex\b", instruction, re.I
+    ):
+        from .hawkes_graph import quadratic_coefficients
+
+        if len(expressions) != 1:
+            return None, "vertex requires one exact function"
+        try:
+            a, b, c = quadratic_coefficients(expressions[0])
+            h = -b / (2 * a)
+            k = a * h * h + b * h + c
+        except (ValueError, SyntaxError, TypeError, ZeroDivisionError):
+            return None, "vertex requires a rational quadratic"
+        # A vertex is one ordered pair. Parentheses are part of its answer,
+        # built with Hawkes' PBrace template when the box forbids literal ones.
+        pair = f"({h},{k})"
+        return AnswerPayload(display_text=pair, keyboard_entry=pair), ""
 
     classification = _polynomial_classification(instruction, expressions)
     if classification is not None:

@@ -75,6 +75,7 @@ export function selectAnswerFrame(results) {
       frameId: claimed[0].frameId,
       fieldId: claimed[0].result.fieldId ?? "",
     };
+    if (claimed[0].result.code === "graph-answer") return { ...selected, graph: true };
     return Array.isArray(claimed[0].result.fieldIds)
       ? { ...selected, fieldIds: [...claimed[0].result.fieldIds] }
       : selected;

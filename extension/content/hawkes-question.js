@@ -20,7 +20,7 @@
 (() => {
   const ANSWER_CONTROLS =
     'input.qbaseCSS, input[id^="txtAns"], input.boxStyle, input[id$="_optchk"], '
-    + 'input[type="radio"].opt';
+    + 'input[type="radio"].opt, #QGraph[role="application"]';
 
   const visible = (element) => {
     const rect = element.getBoundingClientRect();
@@ -31,9 +31,46 @@
   const answerTop = () => {
     const tops = [...document.querySelectorAll(ANSWER_CONTROLS)]
       .filter(visible)
+      .filter((element) => !element.closest?.("#partInformation"))
       .map((element) => element.getBoundingClientRect().top);
     return tops.length > 0 ? Math.min(...tops) : Number.POSITIVE_INFINITY;
   };
+
+  // A graph in the instruction is evidence, not an answer surface. Read only
+  // the disabled scatter points; never infer values from screenshot pixels.
+  const graphPoints = (() => {
+    const parts = [...document.querySelectorAll("#partInformation")];
+    if (parts.length !== 1 || !/quadratic regression/i.test(parts[0].textContent)) return null;
+    const svgs = [...parts[0].querySelectorAll("svg")];
+    if (svgs.length !== 1) return null;
+    const svg = svgs[0];
+    const points = [...svg.querySelectorAll("g.graph-objects > g.point.disable")];
+    const axes = ["horizontal", "vertical"].map(axis => {
+      const text = svg.querySelector(`g.${axis}-axis desc`)?.textContent ?? "";
+      const match = text.match(/starts at (-?\d+), and ends at (-?\d+);/);
+      return match ? [Number(match[1]), Number(match[2])] : null;
+    });
+    const grid = svg.querySelector("g.cartesian-grid");
+    const rect = grid?.getBBox();
+    if (points.length < 3 || points.length > 32 || axes.some(a => !a) || !rect) return null;
+    const width = rect.width;
+    const height = rect.height;
+    if (!(width > 0 && height > 0)) return null;
+    const result = [];
+    for (const point of points) {
+      const desc = point.querySelector("desc")?.textContent ?? "";
+      const circle = point.querySelector("circle");
+      const match = desc.match(/^A dot drawn (\d+) units? (left|right) of and (\d+) units? (above|below) the origin\.$/);
+      if (!circle || !match || point.querySelector("a")) return null;
+      const x = Number(match[1]) * (match[2] === "left" ? -1 : 1);
+      const y = Number(match[3]) * (match[4] === "below" ? -1 : 1);
+      const drawnX = axes[0][0] + Number(circle.getAttribute("cx")) * (axes[0][1]-axes[0][0]) / width;
+      const drawnY = axes[1][1] - Number(circle.getAttribute("cy")) * (axes[1][1]-axes[1][0]) / height;
+      if (Math.abs(drawnX-x) > 1e-9 || Math.abs(drawnY-y) > 1e-9) return null;
+      result.push({ x: String(x), y: String(y) });
+    }
+    return result;
+  })();
 
   const limit = answerTop();
 
@@ -54,7 +91,7 @@
 
   /** Verbs that mark a line as the question's own instruction. */
   const INSTRUCTION =
-    /simplify|evaluate|determine|convert|factor|express|rationaliz|find|add|subtract|multiply|expand|identify|write|state|name|list|select|choose|arrange|round|solve/i;
+    /graph|simplify|evaluate|determine|convert|factor|express|rationaliz|find|add|subtract|multiply|expand|identify|write|state|name|list|select|choose|arrange|round|solve/i;
 
   /** Prose above the answer area, in document order. */
   const lines = [...document.querySelectorAll("p, div, span, td")]
@@ -124,7 +161,18 @@
   if (qualifier && !new RegExp(`\\bsolve\\s+for\\s+${target[1]}\\b`, "i").test(promptText)) {
     promptText = `${promptText} ${qualifier}`.trim();
   }
+  if (graphPoints) {
+    const part = document.querySelectorAll("#partInformation")[0];
+    const description = part.querySelector("#partDescription");
+    let graphContainer = description?.querySelector("svg");
+    while (graphContainer && graphContainer.parentElement !== description) graphContainer = graphContainer.parentElement;
+    if (!description || !graphContainer) return { promptText: "", expressions: [] };
+    const range = document.createRange();
+    range.setStart(description, 0);
+    range.setEndBefore(graphContainer);
+    promptText = [part.querySelector(".part_status")?.textContent, range.toString()].join(" ").replace(/\s+/g, " ").trim();
+  }
   promptText = promptText.slice(0, 400);
 
-  return { promptText, expressions };
+  return { promptText, expressions, ...(graphPoints ? { graphPoints } : {}) };
 })();
