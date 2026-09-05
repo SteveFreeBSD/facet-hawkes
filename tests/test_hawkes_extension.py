@@ -1071,10 +1071,19 @@ def test_the_question_read_waits_for_mathjax() -> None:
     source = (EXTENSION_DIR / "background.js").read_text(encoding="utf-8")
     body = source.split("async function readQuestion(", 1)[1].split("\n/**", 1)[0]
     assert "attempts = 6" in body, "the read is retried while MathJax renders"
-    assert "question.expressions.length > 0" in body, (
-        "only a read that found an expression ends the retry loop"
+    assert "readableQuestion(question)" in body, (
+        "only a read that found something ends the retry loop"
     )
     assert "setTimeout" in body
+
+    # What counts as "found something" is one definition, used by the retry
+    # loop, the signature, and the decision to fall back to a screenshot. An
+    # empty expression list is still not a read: `Array.isArray([])` is true,
+    # which is the bug this whole test exists for.
+    readable = source.split("function readableQuestion(", 1)[1].split("\n}", 1)[0]
+    assert "question.expressions?.length > 0" in readable
+    assert "question.graphPoints?.length >= 3" in readable
+    assert "question.dataTable" in readable
 
 
 def test_every_injected_script_path_is_declared() -> None:

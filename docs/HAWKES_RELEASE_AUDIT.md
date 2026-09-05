@@ -6,19 +6,28 @@ audit and rollback context. A hash or a gate count anywhere below the current
 section belongs to the version its heading names and must not be quoted as
 though it described today's build.
 
-## Current: 0.44.0 — not yet packaged or audited
+## Current: 0.45.0 — not yet packaged or audited
 
 **Status:** **source complete; not built, not digested, not audited.**
 
 | Record | Value |
 |---|---|
 | Product name | Facet Hawkes Assistant |
-| Candidate artifact | `dist/facet-hawkes-0.44.0-unsigned.xpi` — not yet built |
+| Candidate artifact | `dist/facet-hawkes-0.45.0-unsigned.xpi` — not yet built |
 | Candidate SHA-256 | none; nothing has been packaged |
 | Packaged members | 31 by the current validator |
 | Add-on ID | `ethnos-hawkes@local`, deliberately unchanged |
 | Native host | `ethnos_hawkes`, deliberately unchanged |
 | Gates | see the section that records them when the candidate is frozen |
+
+0.45.0 adds the data table. A Hawkes word problem states its numbers in a real
+table with a heading over each column, and the add-on now reads that as a table
+rather than flattening it into the prompt — where, on lesson 3.3, it pushed the
+sentence saying what to do past the length limit and the question arrived asking
+nothing. With the table read exactly, the revenue question is answered by Facet's
+deterministic stage with no model call: `y = -4x² + 72x` fitted over exact
+rationals, turned at nine photos, priced at 324/9 = 36. Six checks stand between
+that answer and the two boxes, and all six are the host's own.
 
 0.44.0 makes the visible product match the architecture it has had for some
 time. Facet owns solver routing end to end — exact mathematics first, a

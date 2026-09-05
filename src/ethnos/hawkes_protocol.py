@@ -77,6 +77,38 @@ class AnswerShape(BaseModel):
         return self
 
 
+class DataTable(BaseModel):
+    """A table of quantities the question states, as the page wrote it.
+
+    Headings and cells, verbatim. Not a picture of a table, not a flattened
+    sentence, and not a description of the page: there is no element here, no
+    selector, and no geometry, so what crosses is only what a reader of the
+    printed question would have.
+
+    Cells stay strings on purpose. "$56" is a price written in dollars, and
+    deciding that it is the number 56 is a reading -- one the host makes, once,
+    where it can be checked, rather than one the browser makes silently while
+    scraping.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    columns: list[str] = Field(min_length=2, max_length=8)
+    rows: list[list[str]] = Field(min_length=2, max_length=32)
+
+    @model_validator(mode="after")
+    def rectangular(self) -> DataTable:
+        if any(len(row) != len(self.columns) for row in self.rows):
+            raise ValueError("every row must have one cell per column")
+        if any(not name.strip() for name in self.columns):
+            raise ValueError("every column must be named")
+        if any(len(name) > 80 for name in self.columns):
+            raise ValueError("a column name exceeds the size limit")
+        if any(not cell.strip() or len(cell) > 40 for row in self.rows for cell in row):
+            raise ValueError("every cell must be a short non-empty value")
+        return self
+
+
 class ProblemPayload(BaseModel):
     """What the add-on saw. Every field is optional except the screenshot."""
 
@@ -89,6 +121,10 @@ class ProblemPayload(BaseModel):
     # no transcription at all: it is exact, and costs nothing.
     mathml: list[str] = Field(default_factory=list, max_length=8)
     graph_points: list[GraphPoint] = Field(default_factory=list, max_length=32)
+    #: The question's own data table, when it stated its numbers in one. Like
+    #: `mathml`, this is the page saying what the question is rather than the
+    #: host reading it back off a picture.
+    data_table: DataTable | None = None
     #: How the page will take the answer. Absent when the add-on did not say,
     #: which is read as the single-box shape every earlier version implied.
     answer_shape: AnswerShape | None = None
@@ -151,8 +187,10 @@ class Certainty(BaseModel):
     #: Why the exact stage declined, in the words the host already uses.
     router_detail: str = ""
     #: How the question itself reached Ethnos: read from the page's markup, or
-    #: transcribed from a picture of it.
-    reading: Literal["mathml", "screenshot", "svg"] | None = None
+    #: transcribed from a picture of it. `table` is the page's own data table,
+    #: read as a table -- exact in the same way `mathml` is, and for the same
+    #: reason: the page wrote it down and nothing had to look at pixels.
+    reading: Literal["mathml", "screenshot", "svg", "table"] | None = None
     #: The named method behind the answer -- a solver's name when `answered_by`
     #: is `exact`, a model's name otherwise. Never a model name for a solver.
     method: str = ""

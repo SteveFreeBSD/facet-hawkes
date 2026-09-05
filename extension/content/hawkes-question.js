@@ -74,6 +74,66 @@
 
   const limit = answerTop();
 
+  /**
+   * The question's data table, read as a table.
+   *
+   * A word problem that carries its numbers in a table is stating them
+   * exactly, in markup, with a heading over each column saying what the
+   * quantity is. Reading that is the same kind of win as reading MathJax's
+   * MathML instead of photographing it: nothing is transcribed, nothing is
+   * measured off a picture, and the column headings survive -- which is what
+   * lets the host say which column the question is a function of rather than
+   * guessing from position.
+   *
+   * Read only when the shape is unambiguous. Hawkes lays parts of its page out
+   * with tables too, so a table without a header row of its own is not treated
+   * as data, and more than one candidate is refused rather than picked between.
+   * Values are taken verbatim, currency and all: what "$56" means as a number
+   * is the host's reading, not the page's.
+   */
+  const dataTable = (() => {
+    const clean = (node) => (node.textContent || "").replace(/\s+/g, " ").trim();
+    // The row that names the columns, or null. Two unambiguous declarations of
+    // one are accepted -- a `thead`, or a first row made entirely of `th` --
+    // and nothing else, because "the first row" of a table used for layout is
+    // not a heading and reading it as one would rename the question's data.
+    const headerRow = (table) => {
+      const head = table.tHead;
+      if (head !== null && head.rows.length > 0) {
+        return head.rows[head.rows.length - 1];
+      }
+      const first = table.rows[0] ?? null;
+      return first !== null
+        && [...first.cells].every((cell) => cell.tagName === "TH")
+        ? first
+        : null;
+    };
+    const candidates = [...document.querySelectorAll("table")].filter(
+      (table) =>
+        visible(table)
+        && table.getBoundingClientRect().top < limit
+        && table.querySelector("table") === null
+        && table.querySelector(ANSWER_CONTROLS) === null
+        && table.rows.length <= 33
+        && headerRow(table) !== null
+    );
+    if (candidates.length !== 1) return null;
+    const table = candidates[0];
+    const header = headerRow(table);
+    const columns = [...header.cells].map(clean);
+    const body = [...table.rows]
+      .filter((row) => row !== header && !(table.tHead?.contains(row) ?? false))
+      .map((row) => [...row.cells].map(clean));
+    if (columns.length < 2 || columns.length > 8) return null;
+    if (body.length < 2 || body.length > 32) return null;
+    if (columns.some((name) => name.length === 0 || name.length > 80)) return null;
+    if (body.some((row) => row.length !== columns.length)) return null;
+    if (body.some((row) => row.some((cell) => cell.length === 0 || cell.length > 40))) {
+      return null;
+    }
+    return { node: table, columns, rows: body };
+  })();
+
   const expressions = [];
   for (const math of document.querySelectorAll("math")) {
     if (!visible(math) || math.getBoundingClientRect().top >= limit) {
@@ -97,6 +157,12 @@
   const lines = [...document.querySelectorAll("p, div, span, td")]
     .filter((element) => {
       if (!visible(element) || element.getBoundingClientRect().top >= limit) {
+        return false;
+      }
+      // A cell of the data table is a quantity, not a sentence. It is read
+      // exactly, as a table, and letting it back in here would put it up for
+      // selection as the question's instruction as well.
+      if (dataTable !== null && dataTable.node.contains(element)) {
         return false;
       }
       if (element.querySelector("p, div, table")) {
@@ -167,12 +233,34 @@
     let graphContainer = description?.querySelector("svg");
     while (graphContainer && graphContainer.parentElement !== description) graphContainer = graphContainer.parentElement;
     if (!description || !graphContainer) return { promptText: "", expressions: [] };
-    const range = document.createRange();
-    range.setStart(description, 0);
-    range.setEndBefore(graphContainer);
-    promptText = [part.querySelector(".part_status")?.textContent, range.toString()].join(" ").replace(/\s+/g, " ").trim();
+    // The prose, without the table. Flattened into a sentence, a data table
+    // becomes a run of bare numbers in the middle of the question: useless to
+    // a solver, and long enough to push the sentence that says what to do past
+    // the length limit below. The table is carried exactly and separately
+    // instead, so the words and the numbers each stay what they are.
+    const walker = document.createTreeWalker(description, NodeFilter.SHOW_TEXT);
+    const spoken = [];
+    for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+      if (graphContainer.contains(node)) break;
+      if (dataTable !== null && dataTable.node.contains(node)) continue;
+      spoken.push(node.textContent);
+    }
+    promptText = [part.querySelector(".part_status")?.textContent, spoken.join(" ")]
+      .join(" ").replace(/\s+/g, " ").trim();
   }
-  promptText = promptText.slice(0, 400);
+  // Long enough for a word problem. A truncated instruction is not a shorter
+  // question, it is a different one: lesson 3.3's revenue question states the
+  // situation, then the table, then -- last -- says to fit a quadratic
+  // regression and maximize. Cut at 400 characters it asked nothing at all.
+  promptText = promptText.slice(0, 1200);
 
-  return { promptText, expressions, ...(graphPoints ? { graphPoints } : {}) };
+  return {
+    promptText,
+    expressions,
+    ...(graphPoints ? { graphPoints } : {}),
+    // The node stays here. What crosses is the reading of the table.
+    ...(dataTable
+      ? { dataTable: { columns: dataTable.columns, rows: dataTable.rows } }
+      : {}),
+  };
 })();

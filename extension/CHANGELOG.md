@@ -4,6 +4,39 @@ All notable changes to the Facet Hawkes Assistant add-on. Versions follow
 `major.minor.patch` as required by the Firefox manifest. Entries below 0.44.0
 name the add-on as it was called at the time.
 
+## 0.45.0
+
+### Added
+
+- **A question whose numbers are in a table is now read as a table.** Hawkes
+  word problems state their data in a real table with a heading over each
+  column, and the add-on now carries that across exactly — headings and cells,
+  as the page wrote them — alongside the MathML and the plotted points it
+  already read. Nothing is transcribed and nothing is measured off a picture.
+- **Lesson 3.3's revenue question is answered exactly, with no model at all.**
+  Three price/quantity/revenue rows, a quadratic regression, and "what number
+  of photos sold and what price per photo will maximize her revenue?" now
+  resolve to nine photos at thirty-six dollars in about forty milliseconds:
+  Facet fits `y = -4x² + 72x` over exact rationals, turns it at x = 9, and
+  reports 324/9 as the price. Both answers arrive as separate values and go to
+  the two answer boxes through the existing safe insertion.
+- Six checks stand between that answer and the boxes, and every one of them is
+  the host's own: the table's rows multiply out (price × photos = revenue), the
+  table agrees with the plotted points, Facet's coefficients satisfy the exact
+  least-squares normal equations, the turning point is where that curve
+  actually turns, the curve opens downwards, and the price times the count
+  gives the revenue at the turning point. A reasoned answer to this question is
+  refused outright: there would be no working to check.
+
+### Fixed
+
+- **A word problem's instruction is no longer truncated into a different
+  question.** The prompt was cut at 400 characters with the table flattened
+  into it, so on lesson 3.3 the cut landed mid-sentence and the words asking to
+  fit a curve and maximize never arrived at all: the host was given a situation
+  and no task. The table is now carried separately and the limit is 1200 —
+  both were needed, because the prose alone still runs past 400.
+
 ## 0.44.0
 
 ### Changed

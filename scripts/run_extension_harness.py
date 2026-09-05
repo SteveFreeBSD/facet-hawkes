@@ -515,6 +515,8 @@ def run(selected: str | None, headless: bool = True) -> int:
     shutil.copyfile(
         PROJECT_ROOT / "tests/fixtures/scatter.html", Path(web, "scatter.html")
     )
+    for table in ("table.html", "table-thead.html"):
+        shutil.copyfile(PROJECT_ROOT / "tests/fixtures" / table, Path(web, table))
     # The foreign origin serves the same directory on a different host name.
     build_test_extension(extension, site, report_origin)
 
@@ -573,6 +575,7 @@ def run(selected: str | None, headless: bool = True) -> int:
         if not selected:
             failures += judge_graph(marionette, site)
             failures += judge_scatter(marionette, site)
+            failures += judge_table(marionette, site)
     except ActionButtonMissing as error:
         # A harness fault, not a verdict on the add-on. Reported as such and
         # scored as nothing, because nothing was measured.
@@ -600,10 +603,66 @@ def run(selected: str | None, headless: bool = True) -> int:
     checks = (
         len(scenarios)
         + len({s.distinct for s in scenarios if s.distinct})
-        + (0 if selected else 2)
+        + (0 if selected else 4)
     )
     print(f"\n{checks - failures}/{checks} checks passed")
     return 1 if failures else 0
+
+
+def judge_table(marionette, site):
+    """A word problem whose numbers are in a table, read as a table.
+
+    Two things are under test and neither can be checked without a browser.
+    The table has to come back as columns and rows rather than as a run of
+    numbers in the middle of a sentence -- `table.rows`, `table.tHead` and
+    `cell.tagName` are layout, not string handling. And the prompt has to still
+    contain the sentence that says what to do: flattened, this page's table
+    pushes "fit a curve ... and maximize" past the length limit, so the
+    question arrives stating a situation and asking nothing.
+
+    The real markup is not in this repository, and a fixture written from a
+    guess can only confirm the guess. Two shapes are served -- a header row of
+    `th` cells, and a `thead` declaring the row without them -- so what is
+    demonstrated is that the probe reads either, rather than that it reads the
+    one I imagined.
+    """
+    failures = 0
+    for page in ("table.html", "table-thead.html"):
+        failures += judge_one_table(marionette, site, page)
+    return failures
+
+
+def judge_one_table(marionette, site, page):
+    marionette.set_context("content")
+    marionette.navigate(f"{site}/{page}")
+    source = (PROJECT_ROOT / "extension/content/hawkes-question.js").read_text()
+    result = marionette.execute("return " + source[source.index("(() => {") :])["value"]
+    problems = []
+    if result.get("dataTable") != {
+        "columns": ["Price per Photo", "Number of Photos Sold", "Revenue"],
+        "rows": [["$56", "4", "$224"], ["$52", "5", "$260"], ["$24", "12", "$288"]],
+    }:
+        problems.append(f"table read as {result.get('dataTable')}")
+    prompt = result.get("promptText", "")
+    if "quadratic regression" not in prompt or "maximize her revenue" not in prompt:
+        problems.append("the prompt lost the sentence that says what to do")
+    if "$56" in prompt or "$224" in prompt:
+        problems.append("the table was flattened into the prompt as well")
+    if result.get("graphPoints") != [
+        {"x": "4", "y": "224"},
+        {"x": "5", "y": "260"},
+        {"x": "12", "y": "288"},
+    ]:
+        problems.append(f"plotted points read as {result.get('graphPoints')}")
+    if problems:
+        say(f"FAIL {page}: {'; '.join(problems)}")
+        say(f"     prompt: {prompt[:200]}")
+        return 1
+    say(
+        f"ok   {page}: columns and rows read from the page's own table, kept "
+        "out of the prompt, and the same numbers read again off the plot"
+    )
+    return 0
 
 
 def judge_scatter(marionette, site):

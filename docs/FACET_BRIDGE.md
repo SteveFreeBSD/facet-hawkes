@@ -100,11 +100,38 @@ A graph question asks for a plan instead of a value, and says so:
 }
 ```
 
-A quadratic regression sends `"result_kind": "quadratic_regression"` and the
-normalized coordinates the add-on measured as `points`, and no expression at
-all. Each result kind takes its own fields and no others: geometry on a
-regression, or points on a parabola, is a question about something else and is
-refused rather than ignored.
+A question about *data* sends the same coordinates in place of an expression.
+Some questions have no expression to send: nobody wrote the function down, and
+it exists only as the fit to the measurements the page states.
+
+```json
+{
+  "facet_protocol_version": 2,
+  "operation": "solve_math",
+  "request_id": "ethnos-hawkes-3",
+  "problem": {
+    "instruction": "Treating revenue as a function of the number of photos sold, ... what number of photos sold and what price per photo will maximize her revenue?",
+    "points": [{"x": "4", "y": "224"}, {"x": "5", "y": "260"}, {"x": "12", "y": "288"}],
+    "answer_parts": 2
+  },
+  "constraints": {"accelerator_required": false, "allow_fallback": false}
+}
+```
+
+A value question is about written expressions or about measured points, never
+both and never neither; both sides refuse the other shapes. What crosses is the
+coordinates and nothing else -- not the table they were read out of, not its
+column headings, and not which column is which. Naming the columns is a reading
+of the question, and Ethnos does it in `src/ethnos/hawkes_table.py` before
+anything crosses.
+
+A quadratic regression *plan* still sends `"result_kind":
+"quadratic_regression"` with the same `points`. The two are different questions
+about the same page: one asks for the curve, and comes back as a plan Ethnos
+proves before drawing; the other asks where that curve is highest, and comes
+back as values. Each result kind takes its own fields and no others: geometry
+on a regression, or points on a parabola, is a question about something else
+and is refused rather than ignored.
 
 `generate_text` runs a prompt the consumer wrote. No Ethnos solve path uses it
 any more -- the graph and regression paths were the last two, and they now ask
@@ -348,8 +375,11 @@ is Ethnos's alone.
 - **`shell=False`, always.**
 - **A closed set of operations.** `generate_text` and `solve_math`, and nothing
   else. No shell command, path, URL, environment, runtime, model, or device can
-  be named in a request, on either side, and a `problem` has exactly four
-  fields: an instruction, expressions, a count, and a label.
+  be named in a request, on either side, and a `problem` carries only what the
+  requested result kind takes: an instruction, the mathematics it is about
+  (written expressions, or measured coordinates), a count, and a label -- plus
+  normalised geometry for a plan. A field that means nothing to the kind being
+  asked for is refused, not ignored.
 - **No page crosses.** MathML is converted on the Ethnos side and the markup
   itself never leaves it. Nothing about the document, window, tab, frame,
   editor, field or screenshot appears anywhere in a request. Facet has no

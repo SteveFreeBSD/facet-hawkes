@@ -350,7 +350,7 @@ async function readQuestion(tabId, frameId, attempts = 6) {
       const question = read?.result;
       if (question && Array.isArray(question.expressions)) {
         last = question;
-        if (question.expressions.length > 0 || question.graphPoints?.length >= 3) {
+        if (readableQuestion(question)) {
           return question;
         }
       }
@@ -394,12 +394,33 @@ function digest(value) {
  * question we cannot identify is always re-solved rather than assumed stale.
  */
 function questionSignature(fieldId, question) {
-  if (!question || (question.expressions.length === 0 && !(question.graphPoints?.length >= 3))) {
+  if (!readableQuestion(question)) {
     return null;
   }
   const content = `${question.promptText}\u0000${question.expressions.join("\u0000")}`
-    + (question.graphPoints ? JSON.stringify(question.graphPoints) : "");
+    + (question.graphPoints ? JSON.stringify(question.graphPoints) : "")
+    // Two questions can share a prompt and differ only in their numbers, which
+    // is exactly what a table of measurements is. Left out, the second would
+    // be the first question to the panel, and the first answer would still be
+    // on the card, insertable, against the second one's boxes.
+    + (question.dataTable ? JSON.stringify(question.dataTable) : "");
   return `${fieldId ?? ""}|${digest(content)}|${content.length}`;
+}
+
+/**
+ * Whether the page stated this question rather than merely drawing it.
+ *
+ * Three ways it can: MathJax's MathML, the exact coordinates of a plotted
+ * scatter, or a data table with its own column headings. Any one of them is
+ * an exact reading and skips the screenshot entirely.
+ */
+function readableQuestion(question) {
+  return Boolean(
+    question
+      && (question.expressions?.length > 0
+        || question.graphPoints?.length >= 3
+        || question.dataTable)
+  );
 }
 
 /**
@@ -1148,7 +1169,7 @@ async function solve(windowId = state.windowId) {
     }
 
     let screenshot = "";
-    if (question.expressions.length === 0 && !(question.graphPoints?.length >= 3)) {
+    if (!readableQuestion(question)) {
       screenshot = await captureQuestion(state.tabId, state.frameId);
       if (screenshot === null) {
         return;
@@ -1169,6 +1190,9 @@ async function solve(windowId = state.windowId) {
             prompt_text: question.promptText || "",
             mathml: question.expressions,
             ...(question.graphPoints ? { graph_points: question.graphPoints } : {}),
+            // The table's own reading of itself: headings and cells, exactly
+            // as the page wrote them. No element, no selector, no geometry.
+            ...(question.dataTable ? { data_table: question.dataTable } : {}),
             screenshot_png_base64: image,
             answer_shape: answerShapeOf(state.editor),
           },

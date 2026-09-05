@@ -141,6 +141,7 @@ def test_no_hawkes_path_writes_a_model_prompt_any_more() -> None:
         "hawkes_host.py",
         "hawkes_mathml.py",
         "hawkes_protocol.py",
+        "hawkes_table.py",
     ], "a Hawkes module appeared or vanished; confirm it belongs to this boundary"
     for path in modules:
         source = path.read_text()

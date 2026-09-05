@@ -117,6 +117,9 @@ def solve(request: SolveRequest, report=None) -> SolveResponse:
     prompt_seen = bool(problem.prompt_text.strip())
     instruction = problem.prompt_text.strip() or "Solve the question in the image."
 
+    if problem.data_table is not None and asks_for_an_optimum(instruction):
+        return _solve_table_optimum_with_facet(request, instruction, announce)
+
     if problem.graph_points:
         return _solve_regression_with_facet(request, instruction, announce)
 
@@ -294,6 +297,196 @@ def required_answer_parts(shape, instruction: str) -> int:
     if COMMA_SEPARATED.search(instruction):
         return 2
     return 1
+
+
+def optimum_direction(instruction: str) -> str | None:
+    """Which end of a fitted curve this question asks for, or None.
+
+    The words are Facet's, imported rather than copied: what counts as asking
+    for a quadratic regression, or for a maximum, is Facet's reading of a
+    question, and two spellings of it would drift apart on the first question
+    that only one of them recognised. What Ethnos does with the reading is its
+    own -- it decides which request to send, and then holds Facet's answer to
+    the same reading afterwards.
+
+    A question naming both ends, or neither, is not one of these.
+    """
+    from facet_runtime.exact.regression import (
+        MAXIMISE,
+        MINIMISE,
+        QUADRATIC_REGRESSION,
+    )
+
+    if not QUADRATIC_REGRESSION.search(instruction):
+        return None
+    wants_maximum = bool(MAXIMISE.search(instruction))
+    wants_minimum = bool(MINIMISE.search(instruction))
+    if wants_maximum == wants_minimum:
+        return None
+    return "maximum" if wants_maximum else "minimum"
+
+
+def asks_for_an_optimum(instruction: str) -> bool:
+    """Whether this question fits a curve to data and then reads its turning point."""
+    return optimum_direction(instruction) is not None
+
+
+def _solve_table_optimum_with_facet(request, instruction, announce):
+    """Answer a question about the page's own table, and prove the answer here.
+
+    The page states three measurements and asks where the quadratic through
+    them is highest. Facet computes that exactly -- no model, no accelerator,
+    nothing rounded -- and returns both the answers and its working. What this
+    function does is refuse to take either on trust.
+
+    Three separate proofs run here, against the table this host read for
+    itself:
+
+    * the coefficients Facet fitted satisfy the exact least-squares normal
+      equations over those points, which is a statement about the fit rather
+      than about the fitter;
+    * the turning point Facet reported is where that curve actually turns, and
+      it is the end of the curve this question asked for -- read from the
+      instruction here, not taken from Facet's account of it;
+    * the second answer, a rate, times the first answer gives the curve's value
+      at the turning point -- so `36 x 9 = 324` is checked, not assumed.
+
+    Anything that fails is a refusal. A reasoned answer is refused too: this
+    question has an exact answer, and a plausible one has no working to check.
+    """
+    from .facet_client import FacetError, safe_request_id, solve_math
+    from .hawkes_table import TableUnreadable, agrees_with_plot, read_table
+
+    problem = request.problem
+    table = problem.data_table
+    try:
+        announce("reading", "the question's own table")
+        reading = read_table(table.columns, table.rows, instruction)
+        checks = list(reading.checks)
+        if problem.graph_points:
+            # The same numbers, read a second time out of entirely different
+            # markup. Agreement between them is free and is worth more than any
+            # check this host could invent on its own.
+            agrees_with_plot(reading, problem.graph_points)
+            checks.append("table agrees with the plotted points")
+
+        parts_required = required_answer_parts(problem.answer_shape, instruction)
+        announce("solving", "Facet exact regression optimum")
+        solution = solve_math(
+            instruction=instruction,
+            request_id=safe_request_id(request.request_id),
+            # The measurements and how many answers the question takes. Which
+            # columns they came from, and what the page looks like, stay here.
+            points=[{"x": x, "y": y} for x, y in reading.points],
+            answer_parts=parts_required,
+            label=problem.question_label,
+            accelerator_required=False,
+            allow_fallback=False,
+        )
+        if solution.route != "exact":
+            raise ValueError(
+                "this question has an exact answer and a reasoned one cannot be "
+                f"checked; Facet took the {solution.route} route"
+            )
+        announce("checking", "proving the fit and the turning point")
+        values = _proved_optimum(
+            solution,
+            reading,
+            parts_required,
+            checks,
+            optimum_direction(instruction),
+        )
+    except (FacetError, TableUnreadable, ValueError, TypeError) as error:
+        return error_response(
+            request.request_id, f"Table question refused: {error}", "unsupported"
+        )
+
+    return SolveResponse(
+        request_id=request.request_id,
+        status="ready",
+        problem_text="\n".join(
+            (
+                instruction,
+                f"{reading.output_column} against {reading.input_column}: "
+                + ", ".join(f"({x},{y})" for x, y in reading.points),
+            )
+        ),
+        # Separate answers stay separate values all the way to the two boxes.
+        answer=answer_payload(
+            solution.answer.display, "", values, solution.answer.entry_mode
+        ),
+        certainty=_plan_certainty(solution, reading="table", issues=checks),
+    )
+
+
+def _proved_optimum(
+    solution, reading, parts_required, checks, direction
+) -> tuple[str, ...]:
+    """Check Facet's answer against this host's own reading of the table.
+
+    Returns the answer's separate values once every check has passed, and
+    raises otherwise. Facet's working is required rather than optional: an
+    answer with nothing behind it is one nothing here can prove, and an
+    unprovable answer is not inserted.
+    """
+    import sympy
+
+    from .hawkes_graph import RegressionPlan, regression_coefficients
+    from .hawkes_protocol import GraphPoint
+
+    values = list(solution.answer.parts) or (
+        [solution.answer.entry] if solution.answer.entry else []
+    )
+    if len(values) != parts_required:
+        raise ValueError(
+            f"Facet returned {len(values)} answers, not the {parts_required} "
+            "this question takes"
+        )
+    working = solution.evidence.get("computation")
+    if not isinstance(working, dict) or "coefficients" not in working:
+        raise ValueError(
+            "Facet reported no working for this answer to be checked against"
+        )
+
+    points = [GraphPoint(x=x, y=y) for x, y in reading.points]
+    coefficients = regression_coefficients(
+        RegressionPlan(
+            kind="quadratic-regression",
+            coefficients=str(working["coefficients"]).split(","),
+        ),
+        points,
+    )
+    checks.append("Facet's fit satisfies the exact least-squares normal equations")
+
+    # Facet read the instruction to decide which end of the curve to report.
+    # This host read it too, and requires the two readings to agree: an answer
+    # to the opposite question is well-formed, exact, and wrong.
+    if working.get("direction") != direction:
+        raise ValueError(
+            f"this question asks for a {direction} and Facet reports a "
+            f"{working.get('direction')!r}"
+        )
+    a, b, c = coefficients
+    if (a < 0) != (direction == "maximum"):
+        raise ValueError(f"the fitted curve has no {direction}")
+    optimum = sympy.Rational(-b, 2 * a)
+    if sympy.Rational(values[0]) != optimum:
+        raise ValueError(
+            f"Facet's answer {values[0]} is not where the fit turns ({optimum})"
+        )
+    peak = a * optimum**2 + b * optimum + c
+    checks.append(f"{direction} at {optimum} proved from the fit; value there {peak}")
+
+    if parts_required == 2:
+        # The second answer is a rate: what one unit is worth at the optimum.
+        # Multiplying it back out is the whole check, and it is exact.
+        if sympy.Rational(values[1]) * optimum != peak:
+            raise ValueError(
+                f"{values[1]} x {optimum} is not {peak}, so the second answer "
+                "is not the rate at the turning point"
+            )
+        checks.append(f"{values[1]} x {optimum} = {peak} confirms the rate")
+    return tuple(values)
 
 
 def _solve_regression_with_facet(request, instruction, announce):

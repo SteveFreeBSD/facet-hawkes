@@ -4,17 +4,20 @@ This runbook produces a Mozilla-signed add-on that installs permanently in a
 normal Firefox profile. A locally built XPI is unsigned and is only a release
 candidate; do not weaken Firefox signature enforcement to install it.
 
-## 0.44.0 candidate — not yet packaged
+## 0.45.0 candidate — not yet packaged
 
-0.44.0 renames the product to **Facet Hawkes Assistant**, removes the
-solve-engine preference, and makes Facet's routing the default for a request
-that names no pipeline. It has not been built, digested, or audited, so there
-is no frozen artifact or hash for it yet; do not submit it until it has been
-through the checks below and recorded in the
+0.44.0 renamed the product to **Facet Hawkes Assistant**, removed the
+solve-engine preference, and made Facet's routing the default for a request
+that names no pipeline. 0.45.0 adds the data table: a word problem that states
+its numbers in one is now read as a table rather than as a sentence, and
+lesson 3.3's revenue question is answered exactly with no model at all. Neither
+was built, digested, or audited, so there is no frozen artifact or hash for
+either yet; do not submit until the current one has been through the checks
+below and recorded in the
 [release audit ledger](../docs/HAWKES_RELEASE_AUDIT.md).
 
 The packaged artifact is named `facet-hawkes-<version>-unsigned.xpi`, so the
-0.44.0 candidate will be `dist/facet-hawkes-0.44.0-unsigned.xpi`. Every command
+0.45.0 candidate will be `dist/facet-hawkes-0.45.0-unsigned.xpi`. Every command
 below that names an artifact refers to that file; the hashes recorded further
 down belong to earlier, superseded candidates and are kept as history.
 
@@ -33,7 +36,7 @@ None of them is shown anywhere in the interface.
 
 ## Superseded: frozen 0.43.0 candidate
 
-Kept as the record of the last accepted candidate. It is superseded by 0.44.0
+Kept as the record of the last accepted candidate. It is superseded by 0.45.0
 and must not be uploaded as the current one:
 
 ```text
@@ -121,14 +124,14 @@ $ export PATH="$HOME/.local/opt/node-v22.23.2-linux-x64/bin:$HOME/.local/bin:$PA
 $ npm install -g --prefix ~/.local web-ext
 $ web-ext --version
 $ release_lint_dir=$(mktemp -d)
-$ unzip -q dist/facet-hawkes-0.44.0-unsigned.xpi -d "$release_lint_dir"
+$ unzip -q dist/facet-hawkes-0.45.0-unsigned.xpi -d "$release_lint_dir"
 $ web-ext lint --source-dir "$release_lint_dir" --warnings-as-errors
 ```
 
 The repository validator enforces project-specific invariants. `web-ext lint`
 and the AMO upload validator remain separate gates. Unpacking the candidate XPI
 ensures the official lint gate examines exactly the files intended for
-submission — 31 for 0.44.0 — rather than documentation or another rebuild. Fix
+submission — 31 for 0.45.0 — rather than documentation or another rebuild. Fix
 every error; review any warning before proceeding.
 
 Confirm all of the following:
@@ -229,7 +232,7 @@ substitute the separate Marionette profile for signed-artifact acceptance.
    as part of the extension smoke test.
 
 Only after the signed XPI passes this physical-browser acceptance is a version
-**released**. 0.44.0 is not yet a candidate: it has not been built or frozen.
+**released**. 0.45.0 is not yet a candidate: it has not been built or frozen.
 0.43.0 reached **release candidate complete** and was superseded before
 signing.
 

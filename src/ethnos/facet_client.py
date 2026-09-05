@@ -627,12 +627,14 @@ def solve_math(
     """Hand Facet a question and let Facet decide how it gets answered.
 
     What crosses is the question and nothing else: the instruction in words,
-    the exact expressions it is about, how many separate values its answer
-    takes, and the question's own label. A graph question adds normalised
-    geometry -- a family, an orientation, bounds and a snap grid -- or the
-    normalised coordinates a regression is fitted to. There is no field here
-    for a document, a page, an element, a picture, or an action, so a caller
-    that owns a browser cannot accidentally hand any of it over.
+    the mathematics it is about, how many separate values its answer takes, and
+    the question's own label. The mathematics is either exact expressions --
+    something somebody wrote down -- or the normalised coordinates of
+    measurements nobody wrote a function for; a value question carries exactly
+    one of the two. A graph question adds normalised geometry instead: a
+    family, an orientation, bounds and a snap grid. There is no field here for
+    a document, a page, an element, a picture, or an action, so a caller that
+    owns a browser cannot accidentally hand any of it over.
 
     `result_kind` says what to produce. `value` is an answer to write down; a
     plan is a *proposal*, and proving it stays entirely on this side.
@@ -649,8 +651,18 @@ def solve_math(
     problem: dict[str, Any] = {"instruction": instruction}
     if result_kind != VALUE:
         problem["result_kind"] = result_kind
-    if result_kind != QUADRATIC_REGRESSION:
-        expressions = list(expressions or [])
+    expressions = list(expressions or [])
+    points = list(points or [])
+    # A value question is about mathematics somebody wrote down, or about
+    # measurements nobody wrote a function for. Both at once is two questions,
+    # and neither is none. Facet enforces this too; it is checked here so a
+    # caller's mistake fails locally rather than over a transport.
+    if result_kind == VALUE and bool(expressions) == bool(points):
+        raise FacetProtocolError(
+            "a value question is about expressions or about points, not both "
+            "and not neither"
+        )
+    if result_kind == PARABOLA_PLAN or (result_kind == VALUE and not points):
         if not expressions or any(not item.strip() for item in expressions):
             raise FacetProtocolError("every expression must be non-empty")
         problem["expressions"] = expressions
@@ -664,8 +676,12 @@ def solve_math(
         if not isinstance(graph, dict) or not graph:
             raise FacetProtocolError("a parabola plan needs normalised geometry")
         problem["graph"] = graph
-    if result_kind == QUADRATIC_REGRESSION:
-        points = list(points or [])
+    if result_kind == PARABOLA_PLAN and points:
+        # A parabola plan is drawn from a function on a grid. Points are a
+        # different question's evidence, and passing them silently would have
+        # sent a question Facet reads as being about something else.
+        raise FacetProtocolError("a parabola plan is geometry, not measurements")
+    if result_kind == QUADRATIC_REGRESSION or (result_kind == VALUE and points):
         if not points or len(points) > MAX_REGRESSION_POINTS:
             raise FacetProtocolError(
                 f"a regression takes 1 to {MAX_REGRESSION_POINTS} points"

@@ -21,7 +21,7 @@ checks, advances, or silently selects anything.**
 
 ## The Firefox add-on
 
-The add-on is **Facet Hawkes Assistant**, currently **0.44.0**. It combines a
+The add-on is **Facet Hawkes Assistant**, currently **0.45.0**. It combines a
 narrow Firefox interface with a local Python companion, Facet's own solver
 routing, and an image fallback for a question the page draws as a picture:
 
@@ -46,6 +46,25 @@ routing, and an image fallback for a question the page draws as a picture:
   so the add-on leaves no persistent UI, styles, markers, or listeners in the
   Hawkes page. Its synthetic insertion events can still be observed; the add-on
   does not claim or attempt concealment.
+
+### New in 0.45.0: the question's own table
+
+A Hawkes word problem states its data in a table with a heading over each
+column. The add-on now reads that table *as a table* — headings and cells,
+exactly as the page wrote them — alongside the MathML and the plotted points it
+already read, and the host names the columns from the question's own words
+("treating revenue as a function of the number of photos sold") rather than
+from their order.
+
+That is what makes lesson 3.3's revenue question exact. Three rows, a quadratic
+regression, and "what number of photos sold and what price per photo will
+maximize her revenue?" resolve to **9 photos at $36** in about forty
+milliseconds and with no model call: Facet fits `y = -4x² + 72x` over exact
+rationals, turns it at x = 9, and reports 324/9 as the price. Before either
+number is offered for insertion the host proves all of it against its own
+reading of the table — the rows multiply out, the table agrees with the plotted
+points, the coefficients satisfy the exact least-squares normal equations, the
+turning point is where that curve turns, and 36 × 9 = 324.
 
 ### New in 0.44.0: one solver, named on the tin
 
