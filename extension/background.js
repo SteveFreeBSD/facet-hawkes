@@ -1017,7 +1017,18 @@ async function prepare(windowId = state.windowId) {
         || editor?.kind !== "multi"
         || editor.editors?.length !== fieldIds.length)
     ) {
-      fail("errorEditorUnknown");
+      // Which of the four disagreements it was. This refusal fired live on a
+      // two-field question that Facet had already answered exactly, and the
+      // log said only "the answer editor could not be read" -- true of a page
+      // whose editor model never loaded, of one that describes a single box
+      // where the DOM shows two, and of one that describes a different number
+      // of them. Those are three different faults and one message.
+      fail("errorEditorUnknown", {
+        detail:
+          `fields=${fieldIds.length} editor=${editor?.kind ?? "none"}`
+          + ` editors=${editor?.editors?.length ?? 0} ok=${Boolean(editor?.ok)}`
+          + `${editor?.code ? ` code=${editor.code}` : ""}`,
+      });
       return;
     }
     log.debug("editor-described", {

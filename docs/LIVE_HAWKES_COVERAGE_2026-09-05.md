@@ -183,3 +183,129 @@ to be inferred from which diagnostic strings appear.
   question, alongside `insertable: true` and `insertable: false`.
 - Answer lengths across five image-fallback runs on one unchanged question: 18,
   11, 19. The image path is not reproducible here.
+
+## Case 2 — L3.3 Q2/3 Step 1 of 2: two fields, answered exactly, not insertable
+
+- **Semantic shape:** two answer fields; `multiFieldEvidence.fields: 2`.
+- **Route:** **Facet Exact**, 814 ms, `insertable: true`.
+- **Insertion:** refused — `errorEditorUnknown`, phase `inserting`.
+- **Failure class:** `answer-shape`.
+- **Finding:** the DOM reported two solution fields and the page's own editor
+  model did not describe a two-editor `multi`. The gate covers four different
+  disagreements — too few fields, too many, an editor of another kind, or a
+  different count of editors — and logged the same message for all of them with
+  no detail at all. This is the same family as the `answer-not-insertable
+  {editor: "answer-parts"}` seen earlier: a question Facet answers exactly and
+  the page will not take.
+- **Instrumented:** the refusal now names which disagreement it was, and the
+  editor's kind, count and readiness.
+
+## Case 3 — L3.3 Q2/3 Step 1 of 2: quadratic regression from a scatter
+
+The same family as Case 1, after the RC1 and RC2 fixes reached the browser.
+
+- **Evidence:** the SVG scatter read exactly — proven by the route it took,
+  which cannot be reached without `graph_points`.
+- **Route:** `Facet Quadratic Regression · GPU` — the graph specialist, ~20 s,
+  coefficients then validated here against the exact least-squares normal
+  equations.
+- **Solve:** succeeded. **Insertion: succeeded** — `inserted {via:
+  "structured", answerLength: 10}` in 6.25 s, and again on a second run.
+- **Result:** this is the fix delivering. Before it, the same family read no
+  points, took a picture, spent 45 s on a local model, returned a different
+  answer each time and could never be inserted. Now it reads the figure,
+  routes to the specialist, proves the coefficients locally and types them in.
+- **Note for future observers:** a screenshot taken mid-insertion shows a
+  *partially* typed answer — nine of ten characters here — because Answer
+  Cadence types over about six seconds. That is the cadence, not a truncated
+  insertion. The log settles it: `inserted` carries the full length.
+
+## Case 4 — `errorNoFocusedField`, phase `checking`
+
+Ordinary and correct: focus left the answer box between solves. Recorded only
+so it is not counted as a defect.
+
+## Cases 5-7 — the routes working, and one refusal that is correct
+
+Recorded as a group because they went past quickly and none needed a
+screenshot.
+
+| # | Route | Solve | Insertion | Class |
+|---|---|---|---|---|
+| 5 | `Facet Reasoning · GPU`, 9.7 s | ok | **inserted**, structured, 5.0 s | — |
+| 6 | `Facet Exact`, 853 ms | ok | **inserted**, structured, 5.0 s | — |
+| 7 | `Facet Reasoning · GPU`, 11.8 s | ok | refused | `answer-shape`, by design |
+
+Case 7 is `answer-not-insertable {editor: "editor-option-answer", plan:
+"editor-option-answer"}`. The question is answered by *choosing* an option, and
+committing a choice is deliberately the reader's action, not the add-on's — so
+this refusal is the design working. It shares a shape with the earlier
+`answer-not-insertable {editor: "answer-parts"}` and with Case 2's
+`errorEditorUnknown`: **solved, and the page will not take it.** Those three
+have different sub-reasons and want telling apart, which is why Case 2's
+refusal is now instrumented.
+
+One inconsistency worth a look later: an exact solve reported
+`answeredBy: "exact"` here and `answeredBy: "facet"` in Case 2, from the same
+`Facet Exact` source.
+
+## Tally
+
+Seven observations across three questions of lesson 3.3.
+
+**Worked:** Facet Exact (814 ms, 853 ms), Facet Reasoning · GPU, the quadratic
+regression graph specialist, and the structured insertion path — four
+insertions completed live, none submitted.
+
+**Failure classes seen:** `evidence`, `region`, `safety`, `answer-shape`,
+`runtime`. Only `capability` never appeared: no question in this lesson failed
+because the mathematics was beyond the solvers.
+
+**Shared causes:** `evidence` + `region` + `safety` were one fault (RC1/RC2,
+now fixed and confirmed live). `answer-shape` is a second, separate family —
+three distinct refusals whose common feature is that Facet answered correctly
+and the page's editor would not accept it.
+
+## Case 8 — "the answer went away": the popup loses it mid-read
+
+Reported live by the owner while reading an answer he had to type himself.
+
+- **Mechanism, confirmed in the source.** `background.js` holds the whole panel
+  state in one module-level `let state = blankState()`, on a deliberately
+  non-persistent event page, and nothing writes it anywhere. `popup.js` says so
+  outright: *"A popup is torn down whenever anything else takes focus, which
+  loses the answer on screen mid-read."* The log shows the consequence — every
+  `panel-port-closed` is followed within 300 ms by `event-page-loaded`, and the
+  answer that was on the card is gone with it.
+- **Why it bit hardest here.** The question was `answer-not-insertable
+  {editor: "answer-parts"}`, so the answer *had* to be read off the card and
+  typed by hand. Typing means clicking into the Hawkes box, which moves focus,
+  which tears down the popup, which loses the answer being copied. The one case
+  where a person must read the card is the one case the card will not survive.
+- **Failure class:** `answer-shape` (the refusal) compounded by a state
+  lifetime bug.
+- **Workaround available now:** use the docked **sidebar** (Alt+Shift+S), not
+  the toolbar popup. The sidebar holds its port open, so the event page stays
+  alive and the answer stays on the card. This is already the documented
+  difference between the two surfaces.
+- **Real fix, and it should be the next slice.** Persist the panel state
+  together with its question signature, and on restore re-publish the answer
+  *only* if the signature still matches what is on screen. That is safe by
+  construction because it reuses the staleness check that already exists, and
+  it is what stops a restored answer ever appearing against a different
+  question.
+
+## Case 9 — `answer-parts` on two- and four-field questions
+
+- `multiFieldEvidence.fields: 2`, then `4`, on consecutive steps of L3.3 Q3/3.
+- **Route:** `Facet Reasoning · GPU`, ~18 s, `answerLength: 11`,
+  `insertable: true`.
+- **Insertion:** refused, `answer-not-insertable {editor: "answer-parts",
+  plan: "answer-parts"}`, three times.
+- **Failure class:** `answer-shape`.
+- **Finding:** this is the family the sweep was asked to classify, and it is
+  now clearly the *second* root cause — distinct from RC1/RC2 and unfixed. A
+  multi-field question is answered correctly and neither the direct multi-entry
+  plan nor the comma plan fits the editor the page published. Case 2's
+  `errorEditorUnknown` is the same disagreement caught one gate earlier. What
+  is missing is which of the four conditions fails, which is now logged.
