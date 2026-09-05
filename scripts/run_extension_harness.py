@@ -512,9 +512,8 @@ def run(selected: str | None, headless: bool = True) -> int:
         for name, body in scenario.pages.items():
             Path(web, name).write_text(body, encoding="utf-8")
     shutil.copyfile(PROJECT_ROOT / "tests/fixtures/graph.html", Path(web, "graph.html"))
-    shutil.copyfile(
-        PROJECT_ROOT / "tests/fixtures/scatter.html", Path(web, "scatter.html")
-    )
+    for scatter in ("scatter.html", "scatter-unreadable.html", "scatter-on-axis.html"):
+        shutil.copyfile(PROJECT_ROOT / "tests/fixtures" / scatter, Path(web, scatter))
     for table in ("table.html", "table-thead.html", "table-mathjax.html"):
         shutil.copyfile(PROJECT_ROOT / "tests/fixtures" / table, Path(web, table))
     # The foreign origin serves the same directory on a different host name.
@@ -575,6 +574,8 @@ def run(selected: str | None, headless: bool = True) -> int:
         if not selected:
             failures += judge_graph(marionette, site)
             failures += judge_scatter(marionette, site)
+            failures += judge_unreadable_scatter(marionette, site)
+            failures += judge_on_axis_scatter(marionette, site)
             failures += judge_table(marionette, site)
     except ActionButtonMissing as error:
         # A harness fault, not a verdict on the add-on. Reported as such and
@@ -603,10 +604,81 @@ def run(selected: str | None, headless: bool = True) -> int:
     checks = (
         len(scenarios)
         + len({s.distinct for s in scenarios if s.distinct})
-        + (0 if selected else 5)
+        + (0 if selected else 7)
     )
     print(f"\n{checks - failures}/{checks} checks passed")
     return 1 if failures else 0
+
+
+def judge_on_axis_scatter(marionette, site):
+    """A point on an axis is still a point.
+
+    Hawkes drops a clause whose offset is zero: a point on the vertical axis is
+    described only as "A dot drawn 5 units below the origin", and the origin
+    itself has neither clause. Requiring both clauses refused every such point,
+    which `scatter.html` never contained and lesson 3.3's live figure did --
+    the add-on read no points at all, took a picture instead, and spent
+    forty-five seconds on a model for a question Facet answers exactly.
+    """
+    marionette.set_context("content")
+    marionette.navigate(f"{site}/scatter-on-axis.html")
+    source = (PROJECT_ROOT / "extension/content/hawkes-question.js").read_text()
+    result = marionette.execute("return " + source[source.index("(() => {") :])["value"]
+    expected = [
+        {"x": "0", "y": "-5"},
+        {"x": "4", "y": "0"},
+        {"x": "0", "y": "0"},
+        {"x": "-3", "y": "2"},
+    ]
+    if result.get("graphPoints") != expected:
+        say(f"FAIL scatter-on-axis: {result.get('graphPoints')}")
+        say(f"     refusal: {(result.get('evidence') or {}).get('graph', '')!r}")
+        return 1
+    say(
+        "ok   scatter-on-axis: points on either axis, and at the origin, read "
+        "from the clauses Hawkes actually writes"
+    )
+    return 0
+
+
+def judge_unreadable_scatter(marionette, site):
+    """A figure question whose points refuse must still state its instruction.
+
+    Live, on lesson 3.3's regression question, the SVG reader refused -- the
+    point descriptions are worded differently from the sentence
+    `scatter.html` guessed -- and the prompt then came out as eleven
+    characters: "Step 1 of 2", and nothing else. Hawkes writes such a question
+    as a bare text node beside a `div` holding the graph, and every container
+    was being skipped, so the only element the instruction lived in was skipped
+    with them. A question that states no task reaches a model as a picture with
+    nothing to do about it.
+
+    Two things are pinned. The refusal is named, with the wording it did not
+    recognise and no coordinates in it. And the instruction survives anyway.
+    """
+    marionette.set_context("content")
+    marionette.navigate(f"{site}/scatter-unreadable.html")
+    source = (PROJECT_ROOT / "extension/content/hawkes-question.js").read_text()
+    result = marionette.execute("return " + source[source.index("(() => {") :])["value"]
+    problems = []
+    if result.get("graphPoints"):
+        problems.append("unrecognised point descriptions were accepted")
+    reason = (result.get("evidence") or {}).get("graph", "")
+    if not reason.startswith("point-desc-unrecognised:"):
+        problems.append(f"refusal not named: {reason!r}")
+    if any(character.isdigit() for character in reason):
+        problems.append(f"the named refusal carries question data: {reason!r}")
+    prompt = result.get("promptText", "")
+    if "quadratic regression" not in prompt:
+        problems.append(f"the instruction was lost: {prompt!r}")
+    if problems:
+        say(f"FAIL scatter-unreadable: {'; '.join(problems)}")
+        return 1
+    say(
+        f"ok   scatter-unreadable: refusal named ({reason}), and the "
+        "instruction survived into the prompt"
+    )
+    return 0
 
 
 def judge_table(marionette, site):

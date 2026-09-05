@@ -38,11 +38,20 @@
 
   // A graph in the instruction is evidence, not an answer surface. Read only
   // the disabled scatter points; never infer values from screenshot pixels.
-  const graphPoints = (() => {
+  //
+  // Every refusal is named. The codes carry no coursework -- a count, a
+  // selector, or the size of a disagreement -- and exist because "no readable
+  // markup" told a live sweep nothing at all about which of nine conditions
+  // had not held.
+  const graph = (() => {
+    const refuse = (graphReason) => ({ points: null, graphReason });
     const parts = [...document.querySelectorAll("#partInformation")];
-    if (parts.length !== 1 || !/quadratic regression/i.test(parts[0].textContent)) return null;
+    if (parts.length !== 1) return refuse(`part-count-${parts.length}`);
+    if (!/quadratic regression/i.test(parts[0].textContent)) {
+      return refuse("no-regression-instruction");
+    }
     const svgs = [...parts[0].querySelectorAll("svg")];
-    if (svgs.length !== 1) return null;
+    if (svgs.length !== 1) return refuse(`svg-count-${svgs.length}`);
     const svg = svgs[0];
     const points = [...svg.querySelectorAll("g.graph-objects > g.point.disable")];
     const axes = ["horizontal", "vertical"].map(axis => {
@@ -52,25 +61,70 @@
     });
     const grid = svg.querySelector("g.cartesian-grid");
     const rect = grid?.getBBox();
-    if (points.length < 3 || points.length > 32 || axes.some(a => !a) || !rect) return null;
+    if (points.length < 3 || points.length > 32) return refuse(`point-count-${points.length}`);
+    if (axes.some(a => !a)) {
+      return refuse(`axis-desc-${axes.map(a => (a ? "ok" : "missing")).join("-")}`);
+    }
+    if (!rect) return refuse("no-cartesian-grid");
     const width = rect.width;
     const height = rect.height;
-    if (!(width > 0 && height > 0)) return null;
+    if (!(width > 0 && height > 0)) return refuse("grid-has-no-size");
     const result = [];
+    let worst = 0;
     for (const point of points) {
       const desc = point.querySelector("desc")?.textContent ?? "";
       const circle = point.querySelector("circle");
-      const match = desc.match(/^A dot drawn (\d+) units? (left|right) of and (\d+) units? (above|below) the origin\.$/);
-      if (!circle || !match || point.querySelector("a")) return null;
-      const x = Number(match[1]) * (match[2] === "left" ? -1 : 1);
-      const y = Number(match[3]) * (match[4] === "below" ? -1 : 1);
-      const drawnX = axes[0][0] + Number(circle.getAttribute("cx")) * (axes[0][1]-axes[0][0]) / width;
-      const drawnY = axes[1][1] - Number(circle.getAttribute("cy")) * (axes[1][1]-axes[1][0]) / height;
-      if (Math.abs(drawnX-x) > 1e-9 || Math.abs(drawnY-y) > 1e-9) return null;
+      if (!circle) return refuse("point-without-circle");
+      if (point.querySelector("a")) return refuse("point-is-actionable");
+      // Hawkes drops a clause whose offset is zero. A point on the vertical
+      // axis is described only as "A dot drawn 5 units below the origin", and
+      // the origin itself has neither clause -- so requiring both refused
+      // every point that sits on an axis, which is what `scatter.html` never
+      // contained and lesson 3.3's live figure did. Each clause is read on its
+      // own and a missing one is zero, but the sentence as a whole still has to
+      // be one of Hawkes' own: anything else is refused rather than guessed.
+      const drawn = /^A dot drawn (?:at )?(.*?)\s*the origin\.$/i.exec(desc);
+      const horizontal = drawn && /(\d+)\s+units?\s+(left|right)\s+of\b/i.exec(drawn[1]);
+      const vertical = drawn && /(\d+)\s+units?\s+(above|below)\b/i.exec(drawn[1]);
+      const match = drawn && (horizontal || vertical || drawn[1].trim().length === 0);
+      if (!match) {
+        // The wording, with every number masked. `scatter.html` guessed this
+        // sentence and live Hawkes says something else; the shape is what is
+        // needed to fix that, and masking the digits keeps the point's
+        // coordinates -- which are question data -- out of the log.
+        const shape = desc
+          .replace(/\d+/g, "#")
+          .replace(/\s+/g, " ")
+          .trim()
+          .slice(0, 60);
+        return refuse(`point-desc-unrecognised:${shape}`);
+      }
+      const x = horizontal
+        ? Number(horizontal[1]) * (horizontal[2].toLowerCase() === "left" ? -1 : 1)
+        : 0;
+      const y = vertical
+        ? Number(vertical[1]) * (vertical[2].toLowerCase() === "below" ? -1 : 1)
+        : 0;
+      // Measured from the grid's own corner. The offset was missing, so this
+      // check only agreed when the plotting area happened to start at 0,0 --
+      // true of a hand-authored fixture and of no real SVG, which is why the
+      // cross-check passed offline and could not pass live. A bbox origin has
+      // to come off the coordinate before it is scaled.
+      const drawnX = axes[0][0]
+        + (Number(circle.getAttribute("cx")) - rect.x) * (axes[0][1]-axes[0][0]) / width;
+      const drawnY = axes[1][1]
+        - (Number(circle.getAttribute("cy")) - rect.y) * (axes[1][1]-axes[1][0]) / height;
+      worst = Math.max(worst, Math.abs(drawnX - x), Math.abs(drawnY - y));
+      if (Math.abs(drawnX-x) > 1e-9 || Math.abs(drawnY-y) > 1e-9) {
+        // The size of the disagreement, not the coordinates: enough to tell a
+        // wrong reading from a rounded one, and no question content at all.
+        return refuse(`drawn-mismatch-${worst.toPrecision(3)}`);
+      }
       result.push({ x: String(x), y: String(y) });
     }
-    return result;
+    return { points: result, graphReason: "" };
   })();
+  const graphPoints = graph.points;
 
   const limit = answerTop();
 
@@ -174,6 +228,26 @@
   const INSTRUCTION =
     /graph|simplify|evaluate|determine|convert|factor|express|rationaliz|find|add|subtract|multiply|expand|identify|write|state|name|list|select|choose|arrange|round|solve/i;
 
+  /**
+   * An element's own words: the text directly inside it, with the text of any
+   * nested element left out.
+   *
+   * Hawkes writes a figure question as prose *and* a figure inside one
+   * container -- the instruction is a bare text node, and the graph is a
+   * sibling `div`. Skipping every container therefore skipped the only place
+   * the instruction was. Live, on lesson 3.3's regression question, that left
+   * an eleven-character prompt reading "Step 1 of 2" and nothing else: no
+   * exact operation can match that, so the question went to a model as a
+   * picture with no statement of what to do about it.
+   */
+  const ownWords = (element) =>
+    [...element.childNodes]
+      .filter((node) => node.nodeType === 3)
+      .map((node) => node.textContent)
+      .join(" ")
+      .replace(/\s+/g, " ")
+      .trim();
+
   /** Prose above the answer area, in document order. */
   const lines = [...document.querySelectorAll("p, div, span, td")]
     .filter((element) => {
@@ -183,16 +257,17 @@
       // A cell of the data table is a quantity, not a sentence. It is read
       // exactly, as a table, and letting it back in here would put it up for
       // selection as the question's instruction as well.
-      if (dataTable !== null && dataTable.node.contains(element)) {
-        return false;
-      }
-      if (element.querySelector("p, div, table")) {
-        return false;   // a container, not the sentence itself
-      }
-      const length = (element.textContent || "").trim().length;
-      return length > 3 && length < 400;
+      return !(dataTable !== null && dataTable.node.contains(element));
     })
-    .map((element) => element.textContent.trim());
+    .map((element) =>
+      // A container contributes only its own words, so the figure, the table
+      // and every nested sentence stay out of it and are considered on their
+      // own terms.
+      element.querySelector("p, div, table") !== null
+        ? ownWords(element)
+        : (element.textContent || "").trim()
+    )
+    .filter((text) => text.length > 3 && text.length < 400);
 
   /**
    * Which step of a multi-step question this is.
@@ -278,6 +353,15 @@
   return {
     promptText,
     expressions,
+    // Why the exact readings were refused, when they were. Codes only: a
+    // count, a selector name, or the size of a disagreement. Carried so the
+    // diagnostic log can say which condition did not hold, instead of leaving
+    // "no readable markup" to stand for nine different faults.
+    evidence: {
+      graph: graph.graphReason,
+      table: dataTable === null ? "no-data-table" : "",
+      promptChars: promptText.length,
+    },
     ...(graphPoints ? { graphPoints } : {}),
     // The node stays here. What crosses is the reading of the table.
     ...(dataTable

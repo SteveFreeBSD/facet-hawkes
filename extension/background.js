@@ -868,7 +868,11 @@ function measureQuestionBounds() {
   const answerTop = Math.min(
     ...controls.map((element) => element.getBoundingClientRect().top),
   );
-  const instruction = /simplify|evaluate|determine|convert|factor|express|rationaliz|find|solve|write|calculate|perform|use the|following|assum/i;
+  // The same verbs the question probe reads instructions with. Two lists drift:
+  // this one had no `graph`, `identify`, `select` or `round`, so an instruction
+  // the probe recognised could be invisible to the crop and the question would
+  // reach neither route.
+  const instruction = /graph|simplify|evaluate|determine|convert|factor|express|rationaliz|find|add|subtract|multiply|expand|identify|write|state|name|list|select|choose|arrange|round|solve|calculate|perform|use the|following|assum/i;
   const candidates = [...document.querySelectorAll("p, div, span, td, math")]
     .filter((element) => {
       const rect = element.getBoundingClientRect();
@@ -878,10 +882,20 @@ function measureQuestionBounds() {
       if (element.localName === "math") {
         return true;
       }
-      if (element.querySelector("p, div, table")) {
-        return false;
-      }
-      const value = (element.textContent || "").trim();
+      // A container's own words still count. Hawkes writes a figure question as
+      // a bare text node beside a `div` holding the graph, so skipping every
+      // container skipped the only element the instruction was in -- and with
+      // no candidate there is no crop, which is the whole of
+      // `errorQuestionRegion` on that layout.
+      const value =
+        element.querySelector("p, div, table") !== null
+          ? [...element.childNodes]
+              .filter((node) => node.nodeType === 3)
+              .map((node) => node.textContent)
+              .join(" ")
+              .replace(/\s+/g, " ")
+              .trim()
+          : (element.textContent || "").trim();
       return value.length >= 4 && value.length < 500 && instruction.test(value);
     });
   if (candidates.length === 0) {
@@ -1170,6 +1184,17 @@ async function solve(windowId = state.windowId) {
 
     let screenshot = "";
     if (!readableQuestion(question)) {
+      // The page stated nothing this add-on could read exactly, and the next
+      // forty-five seconds are a model looking at a picture. Which reading was
+      // refused, and why, is the one fact worth having here: without it the
+      // log says only that a question had no markup, which is true of a
+      // genuine image question and of nine different extraction faults alike.
+      log.info("evidence-refused", {
+        expressions: question.expressions?.length ?? 0,
+        graph: question.evidence?.graph ?? "unknown",
+        table: question.evidence?.table ?? "unknown",
+        promptChars: question.evidence?.promptChars ?? 0,
+      });
       screenshot = await captureQuestion(state.tabId, state.frameId);
       if (screenshot === null) {
         return;
