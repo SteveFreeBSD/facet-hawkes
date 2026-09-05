@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import socket
 import subprocess
 import time
@@ -116,6 +117,14 @@ class Marionette:
         inner = found.get("value", found) if isinstance(found, dict) else found
         self.send("WebDriver:ElementClick", {"id": inner[WEBDRIVER_ELEMENT_KEY]})
 
+    def switch_to_frame(self, index: int) -> None:
+        """Enter a child browsing context by index."""
+        self.send("WebDriver:SwitchToFrame", {"id": index})
+
+    def switch_to_top(self) -> None:
+        """Return to the top-level document."""
+        self.send("WebDriver:SwitchToFrame", {"id": None})
+
     def disconnect(self) -> None:
         """Drop the socket, leaving the browser running."""
         if self.socket:
@@ -132,6 +141,75 @@ class Marionette:
         except (MarionetteError, OSError, ConnectionError):
             pass
         self.disconnect()
+
+
+class ActionButtonMissing(RuntimeError):
+    """The add-on's toolbar action is not where a click can reach it."""
+
+
+def widget_id(addon_id: str) -> str:
+    """The DOM-safe name Firefox derives from an add-on id.
+
+    Mirrors Gecko's own `makeWidgetId`, which is what every id below is built
+    out of: `ethnos-hawkes@local` becomes `ethnos-hawkes_local`.
+    """
+    return re.sub(r"[^a-z0-9_-]", "_", addon_id.lower())
+
+
+def action_button_selector(addon_id: str) -> str:
+    """The toolbar node Firefox builds for an add-on's action, once placed."""
+    return f"#{widget_id(addon_id)}-BAP"
+
+
+def action_widget_id(addon_id: str) -> str:
+    """The CustomizableUI widget that node belongs to."""
+    return f"{widget_id(addon_id)}-browser-action"
+
+
+def pin_action_to_toolbar(marionette, addon_id: str) -> dict:
+    """Move the add-on's action into the toolbar, and prove it arrived.
+
+    Firefox files a newly installed add-on's action under
+    `unified-extensions-area` and builds its toolbar node only once the widget
+    sits somewhere visible. So on Firefox 155 `#<widget>-BAP` is not in the
+    browser document at all, and a click on that selector finds no element --
+    which is a browser layout fact, not an add-on fault.
+
+    This does what the add-on's own *Pin to Toolbar* menu item does. It changes
+    one throwaway profile's toolbar layout, grants nothing, and leaves the
+    add-on exactly as packaged: the click that follows is still a real click on
+    a real action button, which is what makes `activeTab` a real grant.
+
+    The caller must already be in chrome context. Raises `ActionButtonMissing`
+    if the node is still absent afterwards, because a harness that cannot press
+    the button has learned nothing about the add-on and must say so rather than
+    report every scenario as a silent product failure.
+    """
+    placement = marionette.execute(
+        """
+      const [widget, selector] = arguments;
+      const cui = globalThis.CustomizableUI;
+      if (!cui) return {error: "this window exposes no CustomizableUI"};
+      const before = cui.getPlacementOfWidget(widget);
+      if (!before) return {error: `${widget} is not a registered widget`};
+      if (before.area !== cui.AREA_NAVBAR) {
+        cui.addWidgetToArea(widget, cui.AREA_NAVBAR);
+      }
+      const after = cui.getPlacementOfWidget(widget);
+      return {
+        before: before.area,
+        after: after ? after.area : null,
+        node: Boolean(document.querySelector(selector)),
+      };
+    """,
+        [action_widget_id(addon_id), action_button_selector(addon_id)],
+    )["value"]
+    if placement.get("error") or not placement.get("node"):
+        raise ActionButtonMissing(
+            f"{addon_id} has no clickable toolbar action: "
+            f"{placement.get('error') or placement}"
+        )
+    return placement
 
 
 def launch(

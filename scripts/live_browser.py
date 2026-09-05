@@ -22,14 +22,24 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from harness.marionette import Marionette, MarionetteError, launch  # noqa: E402
+from harness.marionette import (  # noqa: E402
+    Marionette,
+    MarionetteError,
+    action_button_selector,
+    launch,
+    pin_action_to_toolbar,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 EXTENSION_DIR = PROJECT_ROOT / "extension"
 STATE_DIR = Path(os.environ.get("ETHNOS_LIVE_DIR", "/tmp/ethnos-live-browser"))
 PROFILE = STATE_DIR / "profile"
 PORT_FILE = STATE_DIR / "port"
+ADDON_ID = json.loads((EXTENSION_DIR / "manifest.json").read_text())[
+    "browser_specific_settings"
+]["gecko"]["id"]
 PANEL_VIEW = "PanelUI-webext-ethnos-hawkes_local-BAV"
+ACTION_BUTTON = action_button_selector(ADDON_ID)
 
 
 def connect() -> Marionette:
@@ -80,6 +90,12 @@ def start() -> int:
         addon = marionette.install_addon(str(EXTENSION_DIR))
         version = json.loads((EXTENSION_DIR / "manifest.json").read_text())["version"]
         print(f"installed {addon} version {version}")
+        # Firefox files a new add-on's action under the unified extensions
+        # button and builds no toolbar node for it, so `insert` below would
+        # find nothing to click. Pin it, as a person would.
+        marionette.set_context("chrome")
+        placement = pin_action_to_toolbar(marionette, ADDON_ID)
+        print(f"action moved from {placement['before']} to {placement['after']}")
         print("a Firefox window is open on your display, on a throwaway profile")
     finally:
         marionette.disconnect()
@@ -448,7 +464,7 @@ def insert() -> int:
           }
           return true;
         """)
-        marionette.click("#ethnos-hawkes_local-BAP")
+        marionette.click(ACTION_BUTTON)
 
         state = None
         deadline = time.monotonic() + 15

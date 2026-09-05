@@ -36,6 +36,21 @@ covers the top frame, a same-origin editor frame, a page carrying an unrelated
 cross-origin frame, a cross-origin editor, and nothing focused. It never
 touches your profile, your running Firefox, or the real Hawkes site.
 
+Firefox files a newly installed add-on's action under the unified extensions
+button and builds no toolbar node for it, so the harness pins the action to the
+toolbar in its throwaway profile first — exactly what *Pin to Toolbar* does, and
+nothing else changes. If that button cannot be produced the run stops and says
+so, rather than reporting every scenario as a silent popup: on Firefox 155 that
+distinction was the difference between one browser-layout fact and seventeen
+imaginary add-on bugs.
+
+Each fixture focuses its own answer box as it loads, and the harness checks
+that the focus actually landed before opening the panel. A cross-origin child
+cannot take focus while its window has none — Firefox ignores the call rather
+than deferring it — so where the page's own focus did not take, the harness
+clicks the answer box itself, entering the child frame to do it. Marionette
+can; the add-on cannot, which is the whole point of the cross-origin scenario.
+
 `run_settings_smoke.py` does the same for `options/options.html`, which the
 panel harness never opens. It presses the real controls and judges what the
 Answer Cadence card does: that a moved control stays a draft and reaches no

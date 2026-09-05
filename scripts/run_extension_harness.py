@@ -52,13 +52,25 @@ import urllib.parse
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from harness.marionette import Marionette, MarionetteError, launch  # noqa: E402
+from harness.marionette import (  # noqa: E402
+    ActionButtonMissing,
+    Marionette,
+    MarionetteError,
+    action_button_selector,
+    launch,
+    pin_action_to_toolbar,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 EXTENSION_DIR = PROJECT_ROOT / "extension"
 
-# Toolbar button id Firefox derives from the add-on id.
-ACTION_BUTTON = "#ethnos-hawkes_local-BAP"
+ADDON_ID = json.loads((EXTENSION_DIR / "manifest.json").read_text(encoding="utf-8"))[
+    "browser_specific_settings"
+]["gecko"]["id"]
+
+# Toolbar button id Firefox derives from the add-on id. The node only exists
+# once the action is placed in a visible area; see `pin_action_to_toolbar`.
+ACTION_BUTTON = action_button_selector(ADDON_ID)
 
 FOCUSED_FIELD = '<input id="answer" type="text"><script>answer.focus()</script>'
 
@@ -153,11 +165,23 @@ def hawkes_step(step_line: str, *, split: bool) -> str:
 class Scenario:
     """One page shape, and what the popup is expected to say about it."""
 
-    def __init__(self, name, pages, expect_enabled, expect_fragment, distinct=None):
+    def __init__(
+        self,
+        name,
+        pages,
+        expect_enabled,
+        expect_fragment,
+        distinct=None,
+        focuses=True,
+    ):
         self.name = name
         self.pages = pages
         self.expect_enabled = expect_enabled
         self.expect_fragment = expect_fragment
+        #: Whether this fixture focuses something as it loads. Every one does
+        #: except the page that exists to have nothing focused, and the panel
+        #: must not be opened until that focus has landed.
+        self.focuses = focuses
         #: Scenarios sharing a `distinct` group must each produce a different,
         #: non-null question signature. This is how the multi-step case is
         #: checked: Hawkes keeps one prompt and one expression across every
@@ -309,6 +333,7 @@ def build_scenarios(site: str, foreign: str) -> list[Scenario]:
             },
             expect_enabled=False,
             expect_fragment="click the empty Hawkes answer box",
+            focuses=False,
         ),
     ]
 
@@ -371,7 +396,13 @@ def make_server(directory: str, host: str, port: int, reports: dict):
             if self.path.startswith("/result"):
                 query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
                 token = query.get("token", [""])[0]
-                reports[token] = json.loads(query.get("data", ["{}"])[0])
+                report = json.loads(query.get("data", ["{}"])[0])
+                # The sidebar and the popup are the same document and report
+                # the same tab, so the surface is part of the key: otherwise
+                # whichever spoke last would erase the other.
+                reports[f"{'sidebar:' if report.get('sidebar') else ''}{token}"] = (
+                    report
+                )
                 self.send_response(204)
                 self.end_headers()
                 return
@@ -431,6 +462,11 @@ setTimeout(async () => {{
   fetch("{report_origin}/result?" + new URLSearchParams({{
     token,
     data: JSON.stringify({{
+      // Which surface is speaking. Firefox opens a temporarily installed
+      // add-on's sidebar by itself, and the sidebar is this same document --
+      // so without this a sidebar that was never granted activeTab could
+      // answer for the toolbar popup that was.
+      sidebar: inSidebar,
       status: document.querySelector("#status").textContent.trim(),
       detail: document.querySelector("#detail").textContent.trim(),
       enabled: !document.querySelector("#insert").disabled,
@@ -495,6 +531,7 @@ def run(selected: str | None, headless: bool = True) -> int:
     marionette = Marionette(port=marionette_port)
 
     failures = 0
+    unreachable = ""
     signatures: dict[str, str | None] = {}
     try:
         marionette.connect()
@@ -502,11 +539,31 @@ def run(selected: str | None, headless: bool = True) -> int:
         marionette.install_addon(extension)
         time.sleep(2)
 
+        # Before anything is judged, make sure the button this harness presses
+        # is actually there. Firefox 155 files a new add-on's action under
+        # `unified-extensions-area` and builds no toolbar node for it, so every
+        # click below found nothing and every scenario reported "the popup
+        # never reported" -- a browser layout change, described seventeen times
+        # as an add-on failure.
+        marionette.set_context("chrome")
+        placement = pin_action_to_toolbar(marionette, ADDON_ID)
+        say(
+            f"ok   toolbar: {ADDON_ID} action moved from "
+            f"{placement['before']} to {placement['after']}"
+        )
+
         for scenario in scenarios:
             page = f"{scenario.name}.html"
+            # Close the previous scenario's panel and hand the page back the
+            # focus before the next one loads. A fixture focuses its own answer
+            # box as it loads, and a panel holding system focus is enough to
+            # stop that happening -- see `load`, which checks rather than
+            # assumes it did.
+            marionette.set_context("chrome")
+            close_open_panels(marionette)
+            focus_content(marionette)
             marionette.set_context("content")
-            marionette.navigate(f"{site}/{page}")
-            time.sleep(1.6)
+            load(marionette, site, page, scenario.focuses)
 
             report = open_popup_and_wait(marionette, reports, page)
             signatures[scenario.name] = (report or {}).get("signature")
@@ -516,6 +573,10 @@ def run(selected: str | None, headless: bool = True) -> int:
         if not selected:
             failures += judge_graph(marionette, site)
             failures += judge_scatter(marionette, site)
+    except ActionButtonMissing as error:
+        # A harness fault, not a verdict on the add-on. Reported as such and
+        # scored as nothing, because nothing was measured.
+        unreachable = str(error)
     finally:
         marionette.quit()
         process.terminate()
@@ -527,6 +588,14 @@ def run(selected: str | None, headless: bool = True) -> int:
             server.shutdown()
         shutil.rmtree(profile, ignore_errors=True)
         shutil.rmtree(root, ignore_errors=True)
+
+    if unreachable:
+        say(f"\nHARNESS FAULT: {unreachable}")
+        say(
+            "Nothing was checked. The add-on's action is not in this Firefox's "
+            "toolbar, so no scenario was ever exercised."
+        )
+        return 2
 
     checks = (
         len(scenarios)
@@ -619,7 +688,7 @@ def judge_graph(marionette, site):
     return 0
 
 
-def open_popup_and_wait(marionette, reports, page, attempts=3):
+def open_popup_and_wait(marionette, reports, page, attempts=3, window=6.0):
     """Click the toolbar button until this scenario's report arrives.
 
     The button toggles, so a stale open popup can swallow the first click.
@@ -631,33 +700,148 @@ def open_popup_and_wait(marionette, reports, page, attempts=3):
         close_open_panels(marionette)
         try:
             marionette.click(ACTION_BUTTON)
-        except MarionetteError:
-            pass
-        deadline = time.monotonic() + 6
+        except MarionetteError as error:
+            # Not swallowed. A click that cannot find the button proves nothing
+            # about the add-on, and reporting it as a scenario failure is how a
+            # Firefox toolbar change came to look like seventeen product bugs.
+            raise ActionButtonMissing(f"{ACTION_BUTTON} could not be clicked: {error}")
+        deadline = time.monotonic() + window
         while time.monotonic() < deadline:
-            for url, report in reports.items():
-                if url.endswith(page):
+            for key, report in reports.items():
+                url = key.removeprefix("sidebar:")
+                if url.endswith(page) and not report.get("sidebar"):
                     return report
             time.sleep(0.2)
+    # Say what did arrive. "The popup never reported" on its own is the least
+    # useful sentence this harness can print -- it was the whole of the Firefox
+    # 155 diagnosis for a week -- so the reports that exist are named, which
+    # distinguishes a popup that did not open from one that reported late or
+    # answered for the wrong page.
+    say(
+        f"     after {attempts} clicks on {ACTION_BUTTON}, reports held: "
+        f"{sorted(reports) or 'nothing at all'}"
+    )
     return None
 
 
-def close_open_panels(marionette) -> None:
-    """Dismiss any open browser panel.
+def load(marionette, site, page, focuses: bool) -> None:
+    """Put one fixture on screen, with its own focus actually landed.
+
+    A cross-origin child cannot take focus while the window it is in does not
+    have any: Firefox ignores the `focus()` call outright rather than deferring
+    it, so the parent never records the frame as focused and the panel, opened
+    next, truthfully reports that nothing is. That is a statement about a page
+    that had not finished happening, and it failed `cross-origin-editor` about
+    one run in seven.
+
+    Giving the content area focus and loading again does not fix it, because
+    the call was ignored rather than deferred. So when the page's own focus has
+    not landed, the harness clicks the answer box itself, in whichever frame
+    holds it -- which is what the add-on documents a person doing, and what the
+    scenario has always meant.
+    """
+    marionette.set_context("content")
+    marionette.navigate(f"{site}/{page}")
+    time.sleep(1.6)
+    if not focuses or wait_for_focus(marionette, timeout=2.0):
+        return
+    if not click_answer_field(marionette):
+        say(f"     {page}: nothing took focus, and no answer box could be clicked")
+
+
+def click_answer_field(marionette) -> bool:
+    """Click the fixture's answer box, in whichever frame holds it.
+
+    Marionette can enter a cross-origin child; the add-on cannot, and that
+    asymmetry is the point. The driver puts the caret where a person would have
+    put it, and what is then under test is whether the add-on can reach it.
+    """
+    frames = marionette.execute("return window.frames.length")["value"]
+    for index in [None, *range(frames)]:
+        try:
+            if index is not None:
+                marionette.switch_to_frame(index)
+            marionette.click("#answer")
+            clicked = True
+        except MarionetteError:
+            clicked = False
+        finally:
+            marionette.switch_to_top()
+        if clicked and wait_for_focus(marionette, timeout=2.0):
+            return True
+    return False
+
+
+def wait_for_focus(marionette, timeout: float = 5.0) -> bool:
+    """Let the fixture's own focus land before the panel is opened.
+
+    Every fixture focuses its answer box as it loads. A cross-origin child does
+    it from a document that is still arriving, so the parent records the frame
+    as focused a moment after the parent itself is ready -- and a panel opened
+    in that gap truthfully reports that nothing is focused, on a page that had
+    not finished happening. Waiting for the precondition is the fix; without it
+    `cross-origin-editor` failed about one run in seven.
+
+    Called in content context. Returns whether anything ended up focused; a
+    page that focuses nothing is a real scenario and one of them is deliberate,
+    so this reports rather than raises.
+    """
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            focused = marionette.execute(
+                "const active = document.activeElement;"
+                "return active === null ? '' : active.tagName;"
+            )["value"]
+        except MarionetteError:
+            return False
+        if focused not in ("", "BODY", "HTML"):
+            return True
+        time.sleep(0.15)
+    return False
+
+
+def focus_content(marionette) -> None:
+    """Put system focus back on the page area.
+
+    Called in chrome context, before a fixture is loaded.
+    """
+    try:
+        marionette.execute("gBrowser.selectedBrowser.focus(); return true;")
+    except MarionetteError:
+        pass
+
+
+def close_open_panels(marionette, timeout: float = 3.0) -> None:
+    """Dismiss any open browser panel, and wait until it has gone.
 
     The toolbar button toggles, so a popup left open from the previous scenario
     would swallow the next click -- and because the panel overlays the button,
     that click can land on the popup's own Insert button instead.
+
+    Hiding is not instant. Asking a panel to hide and clicking in the same
+    breath leaves the click landing while it is still going away, which is the
+    same swallowed click by a slower route, so this returns only once no panel
+    reports itself open or showing.
     """
-    try:
-        marionette.execute("""
-          for (const panel of document.querySelectorAll("panel")) {
-            try { panel.hidePopup(); } catch (error) { /* not open */ }
-          }
-          return true;
-        """)
-    except MarionetteError:
-        pass
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            open_panels = marionette.execute("""
+              let open = 0;
+              for (const panel of document.querySelectorAll("panel")) {
+                if (panel.state === "open" || panel.state === "showing") {
+                  open += 1;
+                  try { panel.hidePopup(); } catch (error) { /* already going */ }
+                }
+              }
+              return open;
+            """)["value"]
+        except MarionetteError:
+            return
+        if not open_panels:
+            return
+        time.sleep(0.15)
 
 
 def judge(scenario, report) -> int:
