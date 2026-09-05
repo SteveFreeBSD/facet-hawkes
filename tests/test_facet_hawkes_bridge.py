@@ -615,7 +615,40 @@ def test_the_page_prefix_is_stated_so_facet_does_not_repeat_it() -> None:
     )
 
     assert "`r =` is already written for you" in prompt
-    assert "give only the value that follows it" in prompt
+    assert "give only what follows it in each answer" in prompt
+
+
+def test_a_prefixed_question_may_still_take_several_answers(monkeypatch) -> None:
+    """`x = [box]` and two roots is one question, not two contradictory ones.
+
+    Ethnos reaches this pairing two ways, and neither consults the other: the
+    add-on reports a multi control, or the instruction asks for comma-separated
+    answers. A quadratic solved for x does both. Facet is therefore told the
+    variable *and* the count, and this holds that it may be -- refusing the
+    combination here would refuse a real Hawkes question.
+    """
+    loopback = answering(monkeypatch, text=TWO_PART_REPLY)
+
+    handle(
+        request(
+            mathml=[QUADRATIC],
+            instruction="Solve for x. Separate multiple answers with a comma.",
+            shape="multi",
+            shape_count=2,
+        )
+    )
+
+    crossed = loopback.problems[0]
+    assert crossed["answer_parts"] == 2
+    assert "Solve for x." in crossed["instruction"]
+    # Both statements reach the model, and they agree about how many answers
+    # there are. A singular one beside a contract asking for two is the fault
+    # this pairing used to carry.
+    prompt = loopback.prompts[0]
+    assert "`x =` is already written for you" in prompt
+    assert "This question takes 2 separate answers." in prompt
+    assert "only the value that follows it" not in prompt
+    assert leaks(prompt) == ()
 
 
 def test_the_browser_cannot_invent_an_answer_shape() -> None:
