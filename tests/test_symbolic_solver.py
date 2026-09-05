@@ -1112,6 +1112,16 @@ def test_live_square_root_method_equation_has_two_exact_complex_roots():
     assert result.display_text == (r"z = \frac{-4 - 6i}{7} or z = \frac{-4 + 6i}{7}")
 
 
+def test_polynomial_solver_returns_the_complete_exact_quartic_root_set():
+    from ethnos.symbolic_solver import solve_equation
+
+    result = solve_equation("y^4 = 400")
+
+    assert result is not None
+    assert result.variable == "y"
+    assert result.solutions == ("-2√5", "2√5", "-2i√5", "2i√5")
+
+
 @pytest.mark.parametrize(
     "expression",
     ["y+1=0", "y^3-1=0", "x^2+y=0"],

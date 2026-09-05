@@ -420,6 +420,42 @@ def solve_quadratic_equation(
     expression: str, *, variable: str | None = None
 ) -> PolynomialEquationResult | None:
     """Return the exact roots of one genuinely quadratic equation."""
+    result = solve_polynomial_equation(expression, variable=variable)
+    if result is None:
+        return None
+    candidate = expression.strip().strip("$`").rstrip(".,;")
+    left_text, right_text = candidate.split("=", 1)
+    try:
+        left = _safe_sympy_expression(left_text)
+        right = _safe_sympy_expression(right_text)
+        symbol = next(
+            item
+            for item in left.free_symbols | right.free_symbols
+            if item.name == result.variable
+        )
+        degree = sympy.Poly(sympy.expand(left - right), symbol).degree()
+    except (
+        StopIteration,
+        SyntaxError,
+        TypeError,
+        ValueError,
+        ZeroDivisionError,
+        sympy.PolynomialError,
+    ):
+        return None
+    return result if degree == 2 else None
+
+
+def solve_polynomial_equation(
+    expression: str, *, variable: str | None = None
+) -> PolynomialEquationResult | None:
+    """Return every exact root of one univariate quadratic or quartic equation.
+
+    A result is owned only when SymPy's exact root multiplicities account for
+    the full degree and every distinct root verifies against the original
+    equation. That completeness check matters for quartics: returning only the
+    real roots would be a valid subset, but not a solution to the question.
+    """
     candidate = expression.strip().strip("$`").rstrip(".,;")
     if candidate.count("=") != 1:
         return None
@@ -443,27 +479,23 @@ def solve_quadratic_equation(
         polynomial = sympy.Poly(sympy.expand(left - right), symbol)
     except sympy.PolynomialError:
         return None
-    if polynomial.degree() != 2:
+    degree = polynomial.degree()
+    if degree not in {2, 4}:
         return None
 
-    coefficient_a = polynomial.coeff_monomial(symbol**2)
-    coefficient_b = polynomial.coeff_monomial(symbol)
-    coefficient_c = polynomial.coeff_monomial(1)
-    discriminant = sympy.simplify(coefficient_b**2 - 4 * coefficient_a * coefficient_c)
-    roots = [
-        sympy.simplify(
-            (-coefficient_b - sympy.sqrt(discriminant)) / (2 * coefficient_a)
-        ),
-        sympy.simplify(
-            (-coefficient_b + sympy.sqrt(discriminant)) / (2 * coefficient_a)
-        ),
-    ]
+    try:
+        multiplicities = sympy.roots(polynomial.as_expr(), symbol)
+    except (NotImplementedError, TypeError, ValueError):
+        return None
+    if not multiplicities or sum(multiplicities.values()) != degree:
+        return None
+    roots = list(multiplicities)
     if any(sympy.simplify((left - right).subs(symbol, root)) != 0 for root in roots):
         return None
     ordered = tuple(
         _display(root) for root in sorted(set(roots), key=sympy.default_sort_key)
     )
-    if len(ordered) not in {1, 2}:
+    if not 1 <= len(ordered) <= 4:
         return None
     return PolynomialEquationResult(symbol.name, ordered)
 
@@ -634,7 +666,7 @@ def solve_equation(
     for solver in (
         solve_absolute_value_equation,
         solve_rational_equation,
-        solve_quadratic_equation,
+        solve_polynomial_equation,
         solve_linear_equation,
     ):
         result = solver(expression, variable=variable)

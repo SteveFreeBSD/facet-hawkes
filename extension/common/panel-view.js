@@ -140,19 +140,24 @@ function refusal(verdict) {
  * keypad templates. Only when neither works is this the user's job.
  */
 function reviewOffer(state) {
-  if (Array.isArray(state.answerParts) && state.answerParts.length === 2) {
-    const editors = state.editor?.kind === "pair" ? state.editor.editors : [];
-    const pairInsertable = Array.isArray(editors)
-      && editors.length === 2
+  if (
+    Array.isArray(state.answerParts)
+    && state.answerParts.length >= 2
+    && state.answerParts.length <= 4
+  ) {
+    const editors = state.editor?.kind === "multi" ? state.editor.editors : [];
+    const multiInsertable = Array.isArray(editors)
+      && editors.length === state.answerParts.length
       && state.answerParts.every(
         (part, index) =>
           answerFitsEditor(part, editors[index]).insertable
           || planEntry(part, editors[index]).ok
       );
-    const commaInsertable = state.editor?.kind !== "pair"
+    const commaInsertable = state.answerParts.length === 2
+      && state.editor?.kind !== "multi"
       && /separate multiple answers with a comma/i.test(state.problemText ?? "")
       && planAnswerParts(state.answerParts, state.editor).ok;
-    const insertable = pairInsertable || commaInsertable;
+    const insertable = multiInsertable || commaInsertable;
     return insertable
       ? {
           insertable: true,

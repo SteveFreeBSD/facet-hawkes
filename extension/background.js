@@ -240,7 +240,7 @@ async function enterPlainAnswer(answer, cadence) {
   return { ok: outcome.ok, code: outcome.code, answer };
 }
 
-/** One-shot insertion for the exact two-root/two-editor answer shape. */
+/** One-shot insertion for one exact multi-part answer shape. */
 async function enterPlainAnswerParts(parts, fieldIds, cadence) {
   if (typeof ethnosHawkes === "undefined") {
     return { ok: false, code: "prelude-missing" };
@@ -403,14 +403,15 @@ async function describeEditor(tabId, frameId, attempts = 5) {
   return { ok: false, code: "editor-model-missing" };
 }
 
-/** Preflight both roots against both of this question's published editors. */
-function pairedEntryPlans(parts, editor) {
+/** Preflight every answer part against this question's published editors. */
+function multiEntryPlans(parts, editor) {
   if (!(
     Array.isArray(parts)
-    && parts.length === 2
-    && editor?.kind === "pair"
+    && parts.length >= 2
+    && parts.length <= 4
+    && editor?.kind === "multi"
     && Array.isArray(editor.editors)
-    && editor.editors.length === 2
+    && editor.editors.length === parts.length
     && parts.every((part) => validateAnswer(part).ok)
   )) {
     return null;
@@ -428,15 +429,16 @@ function pairedEntryPlans(parts, editor) {
     : null;
 }
 
-function pairedAnswerFits(parts, editor) {
-  return pairedEntryPlans(parts, editor) !== null;
+function multiAnswerFits(parts, editor) {
+  return multiEntryPlans(parts, editor) !== null;
 }
 
 function commaAnswerPlan(parts, editor, problemText) {
   if (
-    editor?.kind === "pair"
+    editor?.kind === "multi"
     || !/separate multiple answers with a comma/i.test(problemText ?? "")
     || !Array.isArray(parts)
+    || parts.length !== 2
     || !parts.every((part) => validateAnswer(part).ok)
   ) {
     return null;
@@ -451,16 +453,21 @@ function commaAnswerPlan(parts, editor, problemText) {
  * The described editor carries everything the browser needs to *enter* an
  * answer — character sets, templates, slots, field ids — and none of that
  * crosses to the host, because none of it changes the mathematics. What does
- * change it is whether the page wants one value or two, and whether it is
- * answered by typing at all. Those collapse to three names.
+ * change it is whether the page wants one value or several, how many values,
+ * and whether it is answered by typing at all. Those collapse to three names.
  *
  * Anything unrecognised is reported as the single box, which is what every
  * version before this one implied and what the host still assumes when the
  * field is absent.
  */
 function answerShapeOf(editor) {
-  if (editor?.kind === "pair") {
-    return { kind: "pair" };
+  if (
+    editor?.kind === "multi"
+    && Array.isArray(editor.editors)
+    && editor.editors.length >= 2
+    && editor.editors.length <= 4
+  ) {
+    return { kind: "multi", count: editor.editors.length };
   }
   if (editor?.kind === "option") {
     return { kind: "option" };
@@ -897,6 +904,15 @@ async function prepare(windowId = state.windowId) {
     const tab = await activeHawkesTab(windowId);
     const results = await runOperation({ tabId: tab.id, allFrames: true }, INSPECT_SCRIPT);
     const choice = selectAnswerFrame(results);
+    const chosenReport = results.find((entry) => entry?.frameId === choice.frameId)?.result;
+    const evidenceReport = chosenReport ?? results.find(
+      (entry) => entry?.result?.multiFieldEvidence
+    )?.result;
+    log.info("answer-target-inspected", {
+      code: chosenReport?.code ?? choice.code ?? "",
+      fields: Array.isArray(choice.fieldIds) ? choice.fieldIds.length : 0,
+      multiFieldEvidence: evidenceReport?.multiFieldEvidence ?? null,
+    });
     if (!Number.isInteger(choice.frameId)) {
       fail(frameErrorKey(choice), {
         detail: describeResults(results),
@@ -908,9 +924,10 @@ async function prepare(windowId = state.windowId) {
     const fieldIds = Array.isArray(choice.fieldIds) ? choice.fieldIds : [];
     if (
       fieldIds.length > 0
-      && (fieldIds.length !== 2
-        || editor?.kind !== "pair"
-        || editor.editors?.length !== 2)
+      && (fieldIds.length < 2
+        || fieldIds.length > 4
+        || editor?.kind !== "multi"
+        || editor.editors?.length !== fieldIds.length)
     ) {
       fail("errorEditorUnknown");
       return;
@@ -920,8 +937,8 @@ async function prepare(windowId = state.windowId) {
       ok: editor?.ok,
       templates: editor?.templates,
     });
-    if (fieldIds.length === 2) {
-      log.info("paired-editor-described", {
+    if (fieldIds.length >= 2) {
+      log.info("multi-editor-described", {
         fieldIds,
         editorNames: editor.editors.map((item) => item.name),
         allowedCharacters: editor.editors.map((item) => item.allowedCharacters),
@@ -934,7 +951,7 @@ async function prepare(windowId = state.windowId) {
     const sameQuestion = signature !== null && signature === previous.signature;
     const alreadyInserted = sameQuestion && previous.phase === "inserted";
     const hasAnswer = sameQuestion
-      && (previous.answer !== "" || previous.answerParts?.length === 2);
+      && (previous.answer !== "" || previous.answerParts?.length >= 2);
     // What was answered, and what answered it, describe a question that is
     // still on screen in both cases -- so they outlive the insertion that
     // consumed the answer itself. Without this the sidebar watcher blanked the
@@ -1210,16 +1227,16 @@ async function acceptReply(reply) {
   const answerParts = Array.isArray(reply.answer.parts)
     ? reply.answer.parts.filter((value) => typeof value === "string")
     : [];
-  const hasPair = answerParts.length === 2 && answerParts.every(
+  const hasParts = answerParts.length >= 2 && answerParts.length <= 4 && answerParts.every(
     (value) => validateAnswer(value).ok
   );
-  // What may be typed is a narrower question than what may be shown. A pair
-  // keeps the readable equality only as its reviewed identity; its two entry
-  // values remain separate all the way to the two-field writer.
+  // What may be typed is a narrower question than what may be shown. A
+  // multi-part answer keeps the readable equality only as its reviewed
+  // identity; its entry values remain separate all the way to the field writer.
   const candidates = [reply.answer.display_text, reply.answer.keyboard_entry].filter(
     (value) => typeof value === "string" && validateAnswer(value).ok
   );
-  const answer = hasPair
+  const answer = hasParts
     ? displayText
     : candidates.find((value) => answerFitsEditor(value, state.editor).insertable) ??
       candidates[0] ??
@@ -1233,7 +1250,7 @@ async function acceptReply(reply) {
     fail("errorAnswerInvalid", { detail: displayText.slice(0, 300) });
     return;
   }
-  const entryText = hasPair
+  const entryText = hasParts
     ? ""
     :
     typeof reply.answer.keyboard_entry === "string"
@@ -1254,10 +1271,10 @@ async function acceptReply(reply) {
   // recorded a clean solve and then silence, with no failure to look for. Live,
   // six solves in a row ended that way on `2sqrt(2(-x^9))`. The panel already
   // shows the editor's own objection; this is so the log shows it too.
-  const partsFit = hasPair
-    && (pairedAnswerFits(answerParts, state.editor)
+  const partsFit = hasParts
+    && (multiAnswerFits(answerParts, state.editor)
       || commaAnswerPlan(answerParts, state.editor, reply.problem_text) !== null);
-  if (hasPair && state.editor?.kind !== "pair") {
+  if (hasParts && state.editor?.kind !== "multi") {
     log.info("multi-answer-editor-described", {
       allowedCharacters: state.editor?.allowedCharacters ?? "",
       slots: state.editor?.slots ?? {},
@@ -1267,11 +1284,11 @@ async function acceptReply(reply) {
       ),
     });
   }
-  const fits = hasPair
+  const fits = hasParts
     ? { insertable: partsFit, code: "answer-parts" }
     : answerFitsEditor(answer, state.editor);
-  const plan = hasPair
-    ? { ok: false, code: "answer-pair" }
+  const plan = hasParts
+    ? { ok: false, code: "answer-parts" }
     : planEntry(entryText, state.editor);
   if (!fits.insertable && plan.ok === false) {
     log.warn("answer-not-insertable", {
@@ -1287,7 +1304,7 @@ async function acceptReply(reply) {
     answer,
     displayText,
     entryText,
-    answerParts: hasPair ? answerParts : [],
+    answerParts: hasParts ? answerParts : [],
     problemText: reply.problem_text ?? "",
     source: answeredByBadge(certainty),
     // Absent means an older host that cannot report it; only an explicit false
@@ -1350,7 +1367,7 @@ async function buildStructured(answer, cadence, target, editor) {
  * @property {string | null} signature the question the answer was reviewed for
  * @property {string} reviewed the answer as shown and approved
  * @property {string} machineEntry the form the panel planned and offered
- * @property {string[]} answerParts two independently planned roots, when present
+ * @property {string[]} answerParts independently planned roots, when present
  * @property {string} problemText exact instruction used to choose an answer separator
  */
 
@@ -1391,6 +1408,7 @@ function ownsTarget(target) {
     && state.frameId === target.frameId
     && state.fieldId === target.fieldId
     && sameStringArray(state.fieldIds ?? [], target.fieldIds)
+    && sameStringArray(state.answerParts ?? [], target.answerParts)
     && state.signature === target.signature
     && state.answer === target.reviewed
   );
@@ -1436,7 +1454,7 @@ async function insert() {
   }
 
   // The tab is looked up by window when the field is found; this confirms the
-  // pairing still holds at the moment of writing. An event can be missed, or
+  // ownership still holds at the moment of writing. An event can be missed, or
   // arrive after a click has already been dispatched -- a check here cannot
   // be, and this is the one operation that changes the page.
   try {
@@ -1507,7 +1525,7 @@ async function insert() {
   // A performance now runs for seconds, so how long it actually took is the
   // one thing worth recording. The answer itself never enters the log.
   const entryStartedAt = Date.now();
-  if (target.answerParts.length === 2) {
+  if (target.answerParts.length >= 2) {
     const commaPlan = commaAnswerPlan(
       target.answerParts, editor, target.problemText
     );
@@ -1531,7 +1549,7 @@ async function insert() {
       }
       if (!built?.ok || built.code !== "entered") {
         const detail = built?.detail ?? "";
-        fail(insertErrorKey(built?.code ?? "answer-pair-incomplete"), {
+        fail(insertErrorKey(built?.code ?? "answer-parts-incomplete"), {
           detail,
           args: detail ? [detail] : [],
         });
@@ -1547,8 +1565,8 @@ async function insert() {
       await finishInsertion("entered both comma-separated answers", target);
       return;
     }
-    const pairEntry = pairedEntryPlans(target.answerParts, editor);
-    if (pairEntry === null) {
+    const multiEntry = multiEntryPlans(target.answerParts, editor);
+    if (multiEntry === null || target.fieldIds.length !== target.answerParts.length) {
       fail("errorEditorUnknown");
       return;
     }
@@ -1565,7 +1583,7 @@ async function insert() {
       fail("errorQuestionChanged");
       return;
     }
-    const plain = pairEntry.plain;
+    const plain = multiEntry.plain;
     let outcome;
     if (plain) {
       const [entry] = await runInjection({
@@ -1576,10 +1594,10 @@ async function insert() {
       outcome = entry?.result;
       if (
         !outcome?.ok
-        || outcome.code !== "native-input-pair"
+        || outcome.code !== "native-input-fields"
         || !sameStringArray(outcome.entered, target.answerParts)
       ) {
-        fail(insertErrorKey(outcome?.code ?? "answer-pair-incomplete"));
+        fail(insertErrorKey(outcome?.code ?? "answer-parts-incomplete"));
         return;
       }
     } else {
@@ -1588,7 +1606,7 @@ async function insert() {
           target: { tabId: target.tabId, frameIds: [target.frameId] },
           world: "MAIN",
           func: enterPlan,
-          args: [pairEntry.plans.map((plan) => plan.steps), cadence, target.fieldIds],
+          args: [multiEntry.plans.map((plan) => plan.steps), cadence, target.fieldIds],
         });
         outcome = results?.[0]?.result;
       } catch (error) {
@@ -1597,21 +1615,22 @@ async function insert() {
       }
       if (
         !outcome?.ok
-        || outcome.code !== "entered-pair"
+        || outcome.code !== "entered-fields"
         || !sameStringArray(outcome.enteredFields, target.fieldIds)
+        || outcome.completed !== target.answerParts.length
       ) {
-        fail(insertErrorKey(outcome?.code ?? "answer-pair-incomplete"));
+        fail(insertErrorKey(outcome?.code ?? "answer-parts-incomplete"));
         return;
       }
     }
     log.info("inserted", {
-      via: plain ? "plain-pair" : "structured-pair",
+      via: plain ? "plain-fields" : "structured-fields",
       fields: target.fieldIds.length,
       parts: target.answerParts.length,
       answerLength: reviewed.length,
       elapsedMs: Date.now() - entryStartedAt,
     });
-    await finishInsertion("entered both answer fields", target);
+    await finishInsertion(`entered all ${target.answerParts.length} answer fields`, target);
     return;
   }
   const typeable = reviewed && answerFitsEditor(reviewed, editor).insertable;

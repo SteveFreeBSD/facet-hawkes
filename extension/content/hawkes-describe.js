@@ -114,18 +114,18 @@
       candidates.push(offset);
     }
   }
-  if (candidates.length === 2) {
+  if (candidates.length >= 2 && candidates.length <= 4) {
     const editors = candidates.map(describe);
     return editors.every(Boolean)
-      ? { ok: true, code: "described-pair", kind: "pair", editors }
+      ? { ok: true, code: "described-multi", kind: "multi", editors }
       : { ok: false, code: "no-focused-control" };
   }
 
   let index = ui.focusedElementIndex;
   if (!Number.isInteger(index) || index < 0 || index >= ui.controlsCollection.length) {
     // Opening the sidebar clears Hawkes' cursor. Exactly one live model remains
-    // unambiguous; a two-control model is returned above and must additionally
-    // match the isolated DOM pair before insertion is offered.
+    // unambiguous; a multi-control model is returned above and must additionally
+    // match the isolated DOM solution set before insertion is offered.
     if (candidates.length !== 1) {
       return { ok: false, code: "no-focused-control" };
     }

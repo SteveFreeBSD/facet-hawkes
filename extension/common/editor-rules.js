@@ -136,7 +136,7 @@ export function insertErrorKey(code) {
     "editor-rejected-insert": "errorInsertRejected",
     "answer-fields-changed": "errorQuestionChanged",
     "answer-fields-not-empty": "errorFieldNotEditable",
-    "answer-pair-incomplete": "errorInsertRejected",
+    "answer-parts-incomplete": "errorInsertRejected",
     "editor-multiple-answer": "errorEditorUnknown",
     "answer-invalid": "errorAnswerInvalid",
     "answer-unavailable": "errorAnswerInvalid",

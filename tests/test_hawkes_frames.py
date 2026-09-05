@@ -182,7 +182,7 @@ def test_the_selection_preserves_both_pinned_field_ids(select_answer_frame):
         report(
             0,
             ready=True,
-            code="paired-answer-fields",
+            code="multi-answer-fields",
             field_id="QBase1_input\u001fQBase2_input",
             field_ids=["QBase1_input", "QBase2_input"],
         )

@@ -1,4 +1,4 @@
-"""Regressions for the narrow two-root/two-editor Hawkes answer shape."""
+"""Regressions for Hawkes questions with one structured multi-field answer."""
 
 from __future__ import annotations
 
@@ -66,7 +66,9 @@ def two_field_page():
         ];
         const separator = new Element({left: 190, top: 200, width: 20});
         separator.textContent = "or";
+        const separators = [separator];
         const extras = [];
+        globalThis.afterPlay = null;
         globalThis.window = {
           location: {origin: "https://learn.hawkeslearning.com"},
           getSelection() { return null; },
@@ -76,7 +78,7 @@ def two_field_page():
           querySelectorAll(selector) {
             if (selector.includes('input[type="radio"].opt')) return [];
             if (selector.includes('customMessageBox')) return [];
-            if (selector === "span, label, td, div") return [separator];
+            if (selector === "*") return separators;
             if (selector.includes("input.qbaseCSS")) return [...fields, ...extras];
             return [];
           },
@@ -89,6 +91,7 @@ def two_field_page():
               const failure = write(character);
               if (failure) return {failure};
             }
+            if (afterPlay) afterPlay();
             return {failure: null};
           },
         };
@@ -110,7 +113,7 @@ def settle(context):
 def test_exact_pair_is_discovered_in_left_to_right_order(two_field_page):
     assert result(two_field_page, "ethnosHawkes.inspectField()") == {
         "ready": True,
-        "code": "paired-answer-fields",
+        "code": "multi-answer-fields",
         "fieldId": "QBase1_input\u001fQBase2_input",
         "fieldIds": ["QBase1_input", "QBase2_input"],
     }
@@ -130,7 +133,7 @@ def test_both_roots_are_preflighted_then_written_to_their_pinned_fields(
     assert two_field_page.eval("fields[1].value") == "5"
     assert result(two_field_page, "outcome") == {
         "ok": True,
-        "code": "native-input-pair",
+        "code": "native-input-fields",
         "entered": ["-1", "5"],
     }
 
@@ -149,6 +152,90 @@ def test_second_editor_rejection_leaves_both_fields_untouched(two_field_page):
         "ok": False,
         "code": "input-cancelled",
     }
+
+
+def add_four_field_shape(context):
+    context.eval(
+        """
+        fields.push(
+          new HTMLInputElement({id: "QBase3_input", left: 100, top: 260, width: 80}),
+          new HTMLInputElement({id: "QBase4_input", left: 220, top: 260, width: 80})
+        );
+        const lowerOr = new Element({left: 190, top: 260, width: 20});
+        lowerOr.textContent = "or";
+        const rowOr = new Element({left: 60, top: 260, width: 20});
+        rowOr.textContent = "or";
+        separators.push(lowerOr, rowOr);
+        """
+    )
+
+
+def test_four_parts_are_written_to_four_fields_in_visual_order(two_field_page):
+    add_four_field_shape(two_field_page)
+    assert result(two_field_page, "ethnosHawkes.inspectField()") == {
+        "ready": True,
+        "code": "multi-answer-fields",
+        "fieldId": "\u001f".join(f"QBase{index}_input" for index in range(1, 5)),
+        "fieldIds": [f"QBase{index}_input" for index in range(1, 5)],
+    }
+
+    two_field_page.eval(
+        "globalThis.outcome = null; "
+        "ethnosHawkes.insertAnswerParts(['-2*sqrt(5)', '2*sqrt(5)', "
+        "'-2*i*sqrt(5)', '2*i*sqrt(5)'], "
+        "['QBase1_input', 'QBase2_input', 'QBase3_input', 'QBase4_input'])"
+        ".then(value => { outcome = value; })"
+    )
+    settle(two_field_page)
+
+    assert result(two_field_page, "fields.map(field => field.value)") == [
+        "-2*sqrt(5)",
+        "2*sqrt(5)",
+        "-2*i*sqrt(5)",
+        "2*i*sqrt(5)",
+    ]
+    assert result(two_field_page, "outcome")["ok"] is True
+
+
+def test_part_field_mismatch_refuses_before_mutation(two_field_page):
+    add_four_field_shape(two_field_page)
+    two_field_page.eval(
+        "globalThis.outcome = null; "
+        "ethnosHawkes.insertAnswerParts(['-1', '1'], "
+        "['QBase1_input', 'QBase2_input']).then(value => { outcome = value; })"
+    )
+    settle(two_field_page)
+
+    assert result(two_field_page, "outcome") == {
+        "ok": False,
+        "code": "answer-fields-changed",
+    }
+    assert result(two_field_page, "fields.map(field => field.value)") == [
+        "",
+        "",
+        "",
+        "",
+    ]
+
+
+def test_partial_multi_field_write_never_reports_success(two_field_page):
+    add_four_field_shape(two_field_page)
+    two_field_page.eval(
+        "let plays = 0; afterPlay = () => { plays += 1; "
+        "if (plays === 1) separators[0].textContent = 'and'; }; "
+        "globalThis.outcome = null; "
+        "ethnosHawkes.insertAnswerParts(['-2', '2', '-2*i', '2*i'], "
+        "['QBase1_input', 'QBase2_input', 'QBase3_input', 'QBase4_input'])"
+        ".then(value => { outcome = value; })"
+    )
+    settle(two_field_page)
+
+    assert result(two_field_page, "outcome") == {
+        "ok": False,
+        "code": "answer-fields-changed",
+        "written": 1,
+    }
+    assert two_field_page.eval("fields[0].value") == "-2"
 
 
 @pytest.mark.parametrize(

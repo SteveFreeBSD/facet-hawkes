@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 PROTOCOL_VERSION = 1
 
@@ -26,11 +26,12 @@ class AnswerShape(BaseModel):
     Deliberately one enumerated word rather than a description of the page.
     The add-on already normalises every Hawkes answer control it supports into
     one of these three, and this is the only distinction that changes what an
-    answer has to *be*: a single box takes one value, a paired `y = [] or []`
-    editor takes two, and an option question is answered by choosing rather
-    than by typing. Everything else about the page -- which field, what
-    characters it accepts, which templates it offers, where the caret goes --
-    stays on the browser side, because none of it changes the mathematics.
+    answer has to *be*: a single box takes one value, a multi-value question
+    takes the reported number of values, and an option question is answered by
+    choosing rather than by typing. Everything else about the page -- which
+    field, what characters it accepts, which templates it offers, where the
+    caret goes -- stays on the browser side, because none of it changes the
+    mathematics.
 
     What the shape *means* is decided by the host, not here. A single box is
     still a two-value answer when the question says to separate them with a
@@ -39,7 +40,16 @@ class AnswerShape(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    kind: Literal["field", "option", "pair"] = "field"
+    kind: Literal["field", "option", "multi"] = "field"
+    count: int = Field(default=1, ge=1, le=4)
+
+    @model_validator(mode="after")
+    def count_matches_kind(self) -> AnswerShape:
+        if self.kind == "multi" and self.count < 2:
+            raise ValueError("a multi answer needs at least two parts")
+        if self.kind != "multi" and self.count != 1:
+            raise ValueError("only a multi answer may have more than one part")
+        return self
 
 
 class ProblemPayload(BaseModel):
@@ -74,10 +84,9 @@ class AnswerPayload(BaseModel):
 
     display_text: str = ""
     keyboard_entry: str = ""
-    # Distinct values for the one currently supported multi-editor shape:
-    # two roots separated by Hawkes' visible "or". Keeping these structured
-    # avoids recovering mathematical boundaries from display prose later.
-    parts: list[str] = Field(default_factory=list, max_length=2)
+    # Distinct values for a multi-value answer. Keeping these structured avoids
+    # recovering mathematical boundaries from display prose later.
+    parts: list[str] = Field(default_factory=list, max_length=4)
 
 
 class Certainty(BaseModel):

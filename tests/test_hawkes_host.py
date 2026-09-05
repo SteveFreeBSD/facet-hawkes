@@ -181,6 +181,25 @@ def test_two_complex_roots_keep_fraction_plans_as_distinct_answer_parts():
     assert answer.parts == ["(-4-6*i)/7", "(-4+6*i)/7"]
 
 
+def test_quartic_keeps_all_real_and_complex_roots_as_four_answer_parts():
+    from ethnos.hawkes_host import _equation_answer
+
+    answer = _equation_answer(
+        "Solve the following polynomial equation.",
+        ["y^4 = 400"],
+    )
+
+    assert answer is not None
+    assert answer.display_text == ("y = -2√5 or y = 2√5 or y = -2i√5 or y = 2i√5")
+    assert answer.keyboard_entry == ""
+    assert answer.parts == [
+        "-2*sqrt(5)",
+        "2*sqrt(5)",
+        "-2*i*sqrt(5)",
+        "2*i*sqrt(5)",
+    ]
+
+
 def test_formula_mapping_displays_the_equality_but_enters_only_the_rhs():
     from ethnos.hawkes_host import _equation_answer
 

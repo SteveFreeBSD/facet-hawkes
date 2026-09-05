@@ -192,14 +192,14 @@ QUESTION_B = {"promptText": "Question B.", "expressions": ["b^2"]}
 ENTERED_OK = {"ok": True, "code": "native-input", "answer": "3y"}
 PAIR_INSPECT = {
     "ready": True,
-    "code": "paired-answer-fields",
+    "code": "multi-answer-fields",
     "fieldId": "QBase1_input\u001fQBase2_input",
     "fieldIds": ["QBase1_input", "QBase2_input"],
 }
 PAIR_EDITOR = {
     "ok": True,
-    "code": "described-pair",
-    "kind": "pair",
+    "code": "described-multi",
+    "kind": "multi",
     "editors": [
         {**EDITOR_OK, "allowedCharacters": "0123456789-"},
         {**EDITOR_OK, "allowedCharacters": "0123456789-"},
@@ -207,13 +207,31 @@ PAIR_EDITOR = {
 }
 PAIR_ENTERED = {
     "ok": True,
-    "code": "native-input-pair",
+    "code": "native-input-fields",
     "entered": ["-1", "5"],
+}
+FOUR_FIELD_IDS = [f"QBase{index}_input" for index in range(1, 5)]
+FOUR_INSPECT = {
+    "ready": True,
+    "code": "multi-answer-fields",
+    "fieldId": "\u001f".join(FOUR_FIELD_IDS),
+    "fieldIds": FOUR_FIELD_IDS,
+}
+FOUR_EDITOR = {
+    "ok": True,
+    "code": "described-multi",
+    "kind": "multi",
+    "editors": [{**EDITOR_OK, "allowedCharacters": "0123456789-"} for _ in range(4)],
+}
+FOUR_ENTERED = {
+    "ok": True,
+    "code": "native-input-fields",
+    "entered": ["-2", "2", "-3", "3"],
 }
 STRUCTURED_PAIR_EDITOR = {
     "ok": True,
-    "code": "described-pair",
-    "kind": "pair",
+    "code": "described-multi",
+    "kind": "multi",
     "editors": [
         {
             **EDITOR_OK,
@@ -438,6 +456,52 @@ def test_facet_parts_use_the_same_pinned_two_field_transaction(page):
     assert page.json("state.phase") == "inserted"
 
 
+def test_four_facet_parts_use_the_same_pinned_multi_field_transaction(page):
+    field_id = "\u001f".join(FOUR_FIELD_IDS)
+    page.run(
+        f"""
+        state = {{
+          ...blankState(), phase: "solving", windowId: 1, tabId: 11, frameId: 0,
+          fieldId: {json.dumps(field_id)}, fieldIds: {json.dumps(FOUR_FIELD_IDS)},
+          editor: {json.dumps(FOUR_EDITOR)},
+          signature: questionSignature(
+            {json.dumps(field_id)}, {json.dumps(QUESTION_A)}
+          ),
+        }};
+        acceptReply({{
+          status: "ready",
+          problem_text: "Find every solution.",
+          answer: {{
+            display_text: "y = -2 or y = 2 or y = -3 or y = 3",
+            keyboard_entry: "", parts: ["-2", "2", "-3", "3"]
+          }},
+          certainty: {{
+            source: "Facet · GPU", answered_by: "facet", facet_invoked: true,
+            insertable: true, model: "gpt-oss:20b", runtime: "Ollama 0.33.2"
+          }},
+        }});
+        """
+    )
+    page.pump()
+
+    assert page.json("state.answerParts") == ["-2", "2", "-3", "3"]
+    page.run("insert();")
+    page.pump()
+    page.answer(FOUR_EDITOR)
+    page.answer(QUESTION_A)
+    page.answer(FOUR_INSPECT)
+    page.answer(FOUR_ENTERED)
+    page.answer(QUESTION_A)
+
+    writes = [call for call in page.writes if call["func"] == "enterPlainAnswerParts"]
+    assert len(writes) == 1
+    assert writes[0]["args"][:2] == [
+        ["-2", "2", "-3", "3"],
+        FOUR_FIELD_IDS,
+    ]
+    assert page.json("state.phase") == "inserted"
+
+
 def test_two_fraction_roots_run_two_preflighted_plans_on_the_pinned_editors(page):
     display = "z = (-4 - 6i)/7 or z = (-4 + 6i)/7"
     parts = ["(-4-6*i)/7", "(-4+6*i)/7"]
@@ -464,9 +528,10 @@ def test_two_fraction_roots_run_two_preflighted_plans_on_the_pinned_editors(page
     page.answer(
         {
             "ok": True,
-            "code": "entered-pair",
+            "code": "entered-fields",
             "entered": ["-4-6i7", "-4+6i7"],
             "enteredFields": ["QBase1_input", "QBase2_input"],
+            "completed": 2,
         }
     )
     page.answer(QUESTION_A)

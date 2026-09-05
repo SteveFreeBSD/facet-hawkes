@@ -23,17 +23,25 @@ from ethnos.hawkes_host import _facet_prompt, handle
 from ethnos.hawkes_protocol import AnswerPayload, SolveRequest
 
 MATHML = "<math><msup><mi>x</mi><mn>2</mn></msup></math>"
+QUARTIC = (
+    "<math><mrow><msup><mi>y</mi><mn>4</mn></msup><mo>=</mo><mn>400</mn></mrow></math>"
+)
 
 
 def request(
-    *, engine="facet", mathml=None, instruction="Simplify x squared.", shape=None
+    *,
+    engine="facet",
+    mathml=None,
+    instruction="Simplify x squared.",
+    shape=None,
+    shape_count=1,
 ):
     problem = {
         "prompt_text": instruction,
         "mathml": [MATHML] if mathml is None else mathml,
     }
     if shape is not None:
-        problem["answer_shape"] = {"kind": shape}
+        problem["answer_shape"] = {"kind": shape, "count": shape_count}
     return {
         "protocol_version": 1,
         "operation": "solve_hawkes_problem",
@@ -358,6 +366,10 @@ QUADRATIC = (
 )
 INTERCEPTS = "Find the x-intercepts of the following function."
 TWO_PART_REPLY = "FINAL ANSWER: y = -1 or y = 5\nPART 1: -1\nPART 2: 5"
+FOUR_PART_REPLY = (
+    "FINAL ANSWER: y = -2 or y = 2 or y = -3 or y = 3\n"
+    "PART 1: -2\nPART 2: 2\nPART 3: -3\nPART 4: 3"
+)
 
 
 def test_a_single_field_answer_is_unchanged_by_the_shape_field(monkeypatch) -> None:
@@ -392,7 +404,14 @@ def test_a_paired_answer_shape_reaches_facet_as_a_two_part_contract(
     """The shape crosses as a requirement on the reply, not as a page."""
     seen = answering(monkeypatch, facet_result(text=TWO_PART_REPLY))
 
-    handle(request(mathml=[QUADRATIC], instruction=INTERCEPTS, shape="pair"))
+    handle(
+        request(
+            mathml=[QUADRATIC],
+            instruction=INTERCEPTS,
+            shape="multi",
+            shape_count=2,
+        )
+    )
 
     assert "This question takes 2 separate answers." in seen["prompt"]
     assert "PART 1: answer number 1 by itself" in seen["prompt"]
@@ -408,7 +427,14 @@ def test_a_structured_two_part_reply_survives_validation_intact(
     """The parts arrive as parts, never as prose to be split later."""
     answering(monkeypatch, facet_result(text=TWO_PART_REPLY))
 
-    response = handle(request(mathml=[QUADRATIC], instruction=INTERCEPTS, shape="pair"))
+    response = handle(
+        request(
+            mathml=[QUADRATIC],
+            instruction=INTERCEPTS,
+            shape="multi",
+            shape_count=2,
+        )
+    )
 
     assert response.status == "ready"
     assert response.answer.display_text == "y = -1 or y = 5"
@@ -418,6 +444,19 @@ def test_a_structured_two_part_reply_survives_validation_intact(
     assert response.answer.keyboard_entry == ""
     assert response.certainty.source == "Facet · GPU"
     assert response.certainty.insertable is True
+
+
+def test_a_structured_four_part_facet_reply_survives_validation_intact(
+    monkeypatch,
+) -> None:
+    answering(monkeypatch, facet_result(text=FOUR_PART_REPLY))
+
+    response = handle(request(shape="multi", shape_count=4))
+
+    assert response.status == "ready"
+    assert response.answer.parts == ["-2", "2", "-3", "3"]
+    assert response.answer.keyboard_entry == ""
+    assert response.certainty.answered_by == "facet"
 
 
 def test_the_comma_instruction_makes_one_box_a_two_value_answer(
@@ -467,7 +506,14 @@ def test_a_mismatched_part_count_fails_closed(monkeypatch, reply, why) -> None:
     """
     answering(monkeypatch, facet_result(text=reply))
 
-    response = handle(request(mathml=[QUADRATIC], instruction=INTERCEPTS, shape="pair"))
+    response = handle(
+        request(
+            mathml=[QUADRATIC],
+            instruction=INTERCEPTS,
+            shape="multi",
+            shape_count=2,
+        )
+    )
 
     assert response.status == "ambiguous", why
     assert response.answer is None
@@ -485,12 +531,40 @@ def test_a_paired_shape_still_never_preempts_the_exact_solver(monkeypatch) -> No
         request(
             mathml=[RATIONAL_EXPONENTS],
             instruction="Simplify. Express your answer using rational exponents.",
-            shape="pair",
+            shape="multi",
+            shape_count=2,
         )
     )
 
     assert response.status == "ready"
     assert response.certainty.source == "markup"
+
+
+def test_four_exact_roots_never_invoke_facet(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "ethnos.facet_client.generate_text",
+        lambda *_a, **_k: pytest.fail("a complete exact quartic reached Facet"),
+    )
+
+    response = handle(
+        request(
+            mathml=[QUARTIC],
+            instruction="Solve the following polynomial equation.",
+            shape="multi",
+            shape_count=4,
+        )
+    )
+
+    assert response.status == "ready"
+    assert response.answer.parts == [
+        "-2*sqrt(5)",
+        "2*sqrt(5)",
+        "-2*i*sqrt(5)",
+        "2*i*sqrt(5)",
+    ]
+    assert response.certainty.answered_by == "exact"
+    assert response.certainty.router == "solved"
+    assert response.certainty.facet_invoked is False
 
 
 def test_the_page_prefix_is_stated_so_facet_does_not_repeat_it() -> None:
@@ -512,6 +586,16 @@ def test_the_browser_cannot_invent_an_answer_shape() -> None:
             {
                 **request(),
                 "problem": {"mathml": [MATHML], "answer_shape": {"fieldId": "QBase1"}},
+            }
+        )
+    with pytest.raises(ValueError):
+        SolveRequest.model_validate(
+            {
+                **request(),
+                "problem": {
+                    "mathml": [MATHML],
+                    "answer_shape": {"kind": "multi", "count": 1},
+                },
             }
         )
 
@@ -540,7 +624,7 @@ def _lift(source: str, name: str) -> str:
 @pytest.mark.parametrize(
     ("described", "expected"),
     [
-        ({"kind": "pair"}, "pair"),
+        ({"kind": "multi", "editors": [{}, {}]}, "multi"),
         ({"kind": "option"}, "option"),
         ({"kind": "dynamic"}, "field"),
         ({"kind": "textbox"}, "field"),
@@ -564,7 +648,10 @@ def test_the_browser_normalises_every_editor_into_one_shape_word(
         context.eval(f"JSON.stringify(answerShapeOf({json.dumps(described)}))")
     )
 
-    assert shape == {"kind": expected}
+    expected_shape = {"kind": expected}
+    if expected == "multi":
+        expected_shape["count"] = 2
+    assert shape == expected_shape
     # Whatever the browser reports, the protocol must accept it.
     assert (
         SolveRequest.model_validate(

@@ -293,8 +293,8 @@ def required_answer_parts(shape, instruction: str) -> int:
     on the question as much as on the page, because a single box is still a
     two-value answer when the instruction says to separate them with a comma.
     """
-    if shape is not None and shape.kind == "pair":
-        return 2
+    if shape is not None and shape.kind == "multi":
+        return shape.count
     if COMMA_SEPARATED.search(instruction):
         return 2
     return 1
@@ -335,7 +335,7 @@ def _facet_prompt(
             f"This question takes {parts} separate answers.\n"
             f"Reply with exactly {parts + 1} labelled lines and nothing else, "
             "and keep every label exactly as written here:\n"
-            "FINAL ANSWER: both answers as the page would display them\n"
+            "FINAL ANSWER: all answers as the page would display them\n"
             + "".join(
                 f"PART {index}: answer number {index} by itself\n"
                 for index in range(1, parts + 1)
@@ -513,9 +513,8 @@ def _solve_with_facet(
         problem_text="\n".join((instruction, *expressions)),
         answer=AnswerPayload(
             display_text=final_math,
-            # A multi-part answer is carried in `parts`. Leaving the single
-            # entry empty is what the exact two-root path already does: there
-            # is no one string that can be typed into two separate boxes.
+            # A multi-part answer is carried in `parts`; there is no one string
+            # that can be typed into several separate boxes.
             keyboard_entry="" if answer_parts else entry_for(final_math),
             parts=answer_parts,
         ),
@@ -669,7 +668,7 @@ def _equation_answer(instruction: str, expressions: list[str]) -> AnswerPayload 
     return AnswerPayload(
         display_text=result.display_text,
         keyboard_entry=entries[0] if len(entries) == 1 else "",
-        parts=entries if len(entries) == 2 else [],
+        parts=entries if len(entries) > 1 else [],
     )
 
 

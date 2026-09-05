@@ -22,18 +22,18 @@
 /**
  * @param {Array<{op: string, text?: string, name?: string}>|Array<Array<{
  *   op: string, text?: string, name?: string
- * }>>} steps one plan, or two independently preflighted plans
+ * }>>} steps one plan, or independently preflighted plans for multiple fields
  * @param {object} cadence
- * @param {string[]} targetFieldIds exact two-field target, empty for one editor
+ * @param {string[]} targetFieldIds exact multi-field target, empty for one editor
  * @returns {Promise<{ok: boolean, code: string, entered?: string, detail?: string}>}
  */
 export async function enterPlan(steps, cadence = {}, targetFieldIds = []) {
   const SETTLE_MS = 4000;
-  const paired = Array.isArray(targetFieldIds) && targetFieldIds.length === 2;
-  const plans = paired ? steps : [steps];
+  const multi = Array.isArray(targetFieldIds) && targetFieldIds.length >= 2 && targetFieldIds.length <= 4;
+  const plans = multi ? steps : [steps];
   if (
     !Array.isArray(plans)
-    || plans.length !== (paired ? 2 : 1)
+    || plans.length !== (multi ? targetFieldIds.length : 1)
     || !plans.every((plan) => Array.isArray(plan))
   ) {
     return { ok: false, code: "answer-invalid" };
@@ -293,11 +293,11 @@ export async function enterPlan(steps, cadence = {}, targetFieldIds = []) {
     return found;
   };
 
-  // A structured two-part answer must name two distinct page-owned editors.
-  // Resolve both before the first write; DOM order alone is not enough because
+  // A structured multi-part answer must name distinct page-owned editors.
+  // Resolve all of them before the first write; DOM order alone is not enough because
   // loading a fraction replaces the first editor's base input.
   const pinnedControls = [];
-  if (paired) {
+  if (multi) {
     for (const fieldId of targetFieldIds) {
       const matches = [];
       for (let index = 0; index < ui.controlsCollection.length; index += 1) {
@@ -312,7 +312,7 @@ export async function enterPlan(steps, cadence = {}, targetFieldIds = []) {
       }
       pinnedControls.push(matches[0]);
     }
-    if (pinnedControls[0] === pinnedControls[1]) {
+    if (new Set(pinnedControls).size !== pinnedControls.length) {
       return { ok: false, code: "answer-fields-changed" };
     }
   }
@@ -425,6 +425,17 @@ export async function enterPlan(steps, cadence = {}, targetFieldIds = []) {
   const answerIsEmpty = () =>
     ids().every((id) => (document.getElementById(id)?.value ?? "") === "");
 
+  /** Whether one pinned page-owned editor still exists and contains an answer. */
+  const controlHasAnswer = (control) => {
+    const div = control?.objMyDiv;
+    const root = div && (div.jquery ? div[0] : div);
+    if (!root || root.isConnected === false) {
+      return false;
+    }
+    const inputs = [...(root.querySelectorAll?.("input.qbaseCSS") ?? [])];
+    return inputs.some((input) => typeof input.value === "string" && input.value !== "");
+  };
+
   /**
    * Undo a half-built answer, so nothing wrong is left in the box.
    *
@@ -474,7 +485,7 @@ export async function enterPlan(steps, cadence = {}, targetFieldIds = []) {
 
   /** Report a failure, leaving no partial answer behind. */
   const abandon = async (code, detail) => {
-    const controls = paired ? pinnedControls : [currentControl()];
+    const controls = multi ? pinnedControls : [currentControl()];
     for (const control of controls) {
       activeControl = control;
       await clearAnswer();
@@ -494,7 +505,7 @@ export async function enterPlan(steps, cadence = {}, targetFieldIds = []) {
   // produced half-built answers -- the characters landed, the structure did
   // not, and nothing said so.
   if (
-    (paired ? pinnedControls : [currentControl()])
+    (multi ? pinnedControls : [currentControl()])
       .some((control) => control?.enabled === false)
   ) {
     return { ok: false, code: "editor-disabled" };
@@ -502,10 +513,10 @@ export async function enterPlan(steps, cadence = {}, targetFieldIds = []) {
 
   const enteredParts = [];
   for (let planIndex = 0; planIndex < plans.length; planIndex += 1) {
-    activeControl = paired ? pinnedControls[planIndex] : null;
-    let cursor = paired ? targetFieldIds[planIndex] : ids()[0];
+    activeControl = multi ? pinnedControls[planIndex] : null;
+    let cursor = multi ? targetFieldIds[planIndex] : ids()[0];
     const target = cursor ? document.getElementById(cursor) : null;
-    if (!target || (paired && target.value !== "")) {
+    if (!target || (multi && target.value !== "")) {
       return await abandon("answer-fields-changed");
     }
     // One frame per template loaded, so a slot move returns to the structure it
@@ -574,12 +585,21 @@ export async function enterPlan(steps, cadence = {}, targetFieldIds = []) {
     );
   }
 
-  if (paired) {
+  if (multi) {
+    if (
+      pinnedControls.some(
+        (control) =>
+          !Array.from(ui.controlsCollection).includes(control) || !controlHasAnswer(control)
+      )
+    ) {
+      return await abandon("answer-parts-incomplete");
+    }
     return {
       ok: true,
-      code: "entered-pair",
+      code: "entered-fields",
       entered: enteredParts,
       enteredFields: [...targetFieldIds],
+      completed: enteredParts.length,
     };
   }
   activeControl = null;

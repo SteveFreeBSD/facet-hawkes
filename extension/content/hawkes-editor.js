@@ -122,7 +122,7 @@ var ethnosHawkes = (function () {
       // A docked sidebar can hold Firefox focus while the page only reports
       // BODY. If Hawkes exposes exactly one visible, editable answer input,
       // there is no ambiguity to resolve and requiring another click merely
-      // makes the sidebar appear broken. Never guess when two fields remain.
+      // makes the sidebar appear broken. Never guess when several fields remain.
       const candidates = [...document.querySelectorAll(HAWKES_FIELD_SELECTOR)].filter(
         (element) =>
           element.getBoundingClientRect().width > 0
@@ -139,15 +139,17 @@ var ethnosHawkes = (function () {
   }
 
   /**
-   * The one supported multi-field shape: two Hawkes editors with a visible
-   * literal "or" between them on the same answer row.
+   * One complete Hawkes solution set: two through four editors joined by the
+   * expected number of visible literal "or" separators.
    *
-   * Geometry and the separator are both required. Merely seeing two inputs
+   * Geometry and every separator are required. Merely seeing several inputs
    * is not enough: they could be unrelated fields in a word problem.
    *
    * @returns {Element[]}
    */
-  function pairedSolutionFields() {
+  let lastSolutionFieldEvidence = { fields: 0, separatorCandidates: 0, separators: 0 };
+
+  function solutionFields() {
     const fields = [...document.querySelectorAll(HAWKES_FIELD_SELECTOR)]
       .filter(
         (element) =>
@@ -160,29 +162,68 @@ var ethnosHawkes = (function () {
       .sort((left, right) => {
         const a = left.getBoundingClientRect();
         const b = right.getBoundingClientRect();
-        return a.left - b.left || a.top - b.top;
+        return a.top - b.top || a.left - b.left;
       });
-    if (fields.length !== 2 || fields[0].id === fields[1].id) {
+    if (
+      fields.length < 2
+      || fields.length > 4
+      || new Set(fields.map((field) => field.id)).size !== fields.length
+    ) {
+      lastSolutionFieldEvidence = {
+        fields: fields.length,
+        separatorCandidates: 0,
+        separators: 0,
+      };
       return [];
     }
-    const [left, right] = fields.map((field) => field.getBoundingClientRect());
-    if (left.right > right.left) {
-      return [];
-    }
-    const separators = [...document.querySelectorAll("span, label, td, div")]
-      .filter((element) => (element.textContent || "").trim().toLowerCase() === "or")
-      .map((element) => element.getBoundingClientRect())
-      .filter((rect) => rect.width > 0 && rect.height > 0);
-    const between = separators.some((rect) => {
-      const rowCenter = (left.top + left.bottom + right.top + right.bottom) / 4;
-      return (
-        rect.left >= left.right - 2
-        && rect.right <= right.left + 2
-        && rowCenter >= rect.top - 4
-        && rowCenter <= rect.bottom + 4
+    const rectangles = fields.map((field) => field.getBoundingClientRect());
+    const bounds = {
+      left: Math.min(...rectangles.map((rect) => rect.left)),
+      right: Math.max(...rectangles.map((rect) => rect.right)),
+      top: Math.min(...rectangles.map((rect) => rect.top)),
+      bottom: Math.max(...rectangles.map((rect) => rect.bottom)),
+    };
+    const saysOr = (element) => {
+      const values = [
+        element.textContent,
+        element.innerText,
+        element.value,
+        element.getAttribute?.("aria-label"),
+      ];
+      if (typeof window.getComputedStyle === "function") {
+        for (const pseudo of ["::before", "::after"]) {
+          try {
+            values.push(window.getComputedStyle(element, pseudo).content);
+          } catch {
+            // This element has no readable generated content.
+          }
+        }
+      }
+      return values.some(
+        (value) => String(value ?? "").trim().replace(/^['"]|['"]$/g, "").toLowerCase() === "or"
       );
-    });
-    return between ? fields : [];
+    };
+    const separatorCandidates = [...document.querySelectorAll("*")].filter(saysOr);
+    const separators = separatorCandidates
+      .map((element) => element.getBoundingClientRect())
+      .filter(
+        (rect) =>
+          rect.width > 0
+          && rect.height > 0
+          && rect.right >= bounds.left - 60
+          && rect.left <= bounds.right + 60
+          && rect.bottom >= bounds.top - 12
+          && rect.top <= bounds.bottom + 12
+      );
+    lastSolutionFieldEvidence = {
+      fields: fields.length,
+      separatorCandidates: separatorCandidates.length,
+      separators: separators.length,
+    };
+    // Hawkes may wrap one visible separator in nested elements whose boxes are
+    // not identical. Those are duplicate evidence, not extra separators. The
+    // field count still fixes how many separators the shape must provide.
+    return separators.length >= fields.length - 1 ? fields : [];
   }
 
   /**
@@ -279,13 +320,13 @@ var ethnosHawkes = (function () {
     if (revealed) {
       return { ready: true, code: "focused-answer-field", fieldId: revealed.id || "" };
     }
-    const pair = pairedSolutionFields();
-    if (pair.length === 2) {
+    const fields = solutionFields();
+    if (fields.length >= 2) {
       return {
         ready: true,
-        code: "paired-answer-fields",
-        fieldId: pair.map((field) => field.id).join("\u001f"),
-        fieldIds: pair.map((field) => field.id),
+        code: "multi-answer-fields",
+        fieldId: fields.map((field) => field.id).join("\u001f"),
+        fieldIds: fields.map((field) => field.id),
       };
     }
     // Some questions are answered by choosing an option. That is still an
@@ -297,13 +338,25 @@ var ethnosHawkes = (function () {
     }
     const target = focusedAnswerField();
     if (!target) {
-      return { ready: false, code: "no-focused-answer-field" };
+      const report = {
+        ready: false,
+        code: "no-focused-answer-field",
+      };
+      if (lastSolutionFieldEvidence.fields >= 2) {
+        report.multiFieldEvidence = lastSolutionFieldEvidence;
+      }
+      return report;
     }
     if (isNativeField(target) && (target.disabled || target.readOnly)) {
       return { ready: false, code: "field-not-editable" };
     }
     // The id identifies the field; prompt and MathML identify the question.
-    return { ready: true, code: "focused-answer-field", fieldId: target.id || "" };
+    return {
+      ready: true,
+      code: "focused-answer-field",
+      fieldId: target.id || "",
+      multiFieldEvidence: lastSolutionFieldEvidence,
+    };
   }
 
   /** Ask the page whether it accepts this input before changing anything. */
@@ -469,7 +522,7 @@ var ethnosHawkes = (function () {
     if (!revealed && focusedOption()) {
       return { ok: false, code: "editor-option-answer" };
     }
-    if (pairedSolutionFields().length > 0) {
+    if (solutionFields().length > 0) {
       return { ok: false, code: "editor-multiple-answer" };
     }
     if (hawkesDialogOpen()) {
@@ -493,23 +546,24 @@ var ethnosHawkes = (function () {
     return { ok: false, code: "unsupported-field" };
   }
 
-  /** Insert two already-separated roots into the exact pinned pair. */
+  /** Insert one structured solution set into its exact pinned fields. */
   async function insertAnswerParts(parts, expectedFieldIds, cadenceOptions = {}) {
     if (!originAllowed()) {
       return { ok: false, code: "wrong-site" };
     }
     if (
       !Array.isArray(parts)
-      || parts.length !== 2
+      || parts.length < 2
+      || parts.length > 4
       || !parts.every(answerIsSupported)
       || !Array.isArray(expectedFieldIds)
-      || expectedFieldIds.length !== 2
+      || expectedFieldIds.length !== parts.length
     ) {
       return { ok: false, code: "answer-invalid" };
     }
-    const fields = pairedSolutionFields();
+    const fields = solutionFields();
     if (
-      fields.length !== 2
+      fields.length !== parts.length
       || fields.some((field, index) => field.id !== expectedFieldIds[index])
     ) {
       return { ok: false, code: "answer-fields-changed" };
@@ -517,7 +571,7 @@ var ethnosHawkes = (function () {
     if (fields.some((field) => !isNativeField(field) || field.value !== "")) {
       return { ok: false, code: "answer-fields-not-empty" };
     }
-    // Validate both editors before the first mutation. Hawkes uses this event
+    // Validate every editor before the first mutation. Hawkes uses this event
     // to reject characters that its published model does not accept.
     if (!fields.every((field, index) => beforeInputAccepted(field, parts[index]))) {
       return { ok: false, code: "input-cancelled" };
@@ -525,9 +579,9 @@ var ethnosHawkes = (function () {
 
     const cadence = normalizedCadence(cadenceOptions);
     for (let index = 0; index < fields.length; index += 1) {
-      const current = pairedSolutionFields();
+      const current = solutionFields();
       if (
-        current.length !== 2
+        current.length !== parts.length
         || current.some((field, offset) => field.id !== expectedFieldIds[offset])
       ) {
         return { ok: false, code: "answer-fields-changed", written: index };
@@ -539,14 +593,15 @@ var ethnosHawkes = (function () {
         return { ...outcome, written: index };
       }
     }
-    const settled = pairedSolutionFields();
+    const settled = solutionFields();
     if (
-      settled.length !== 2
+      settled.length !== parts.length
+      || settled.some((field, index) => field.id !== expectedFieldIds[index])
       || settled.some((field, index) => field.value !== parts[index])
     ) {
-      return { ok: false, code: "answer-pair-incomplete", written: 2 };
+      return { ok: false, code: "answer-parts-incomplete", written: parts.length };
     }
-    return { ok: true, code: "native-input-pair", entered: [...parts] };
+    return { ok: true, code: "native-input-fields", entered: [...parts] };
   }
 
   return {

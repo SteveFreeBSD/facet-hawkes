@@ -964,9 +964,11 @@ def test_the_only_editor_control_is_described_after_sidebar_takes_focus() -> Non
     # after the isolated DOM probe independently identifies the exact pair.
     paired = describe(2)
     assert paired["ok"] is True
-    assert paired["kind"] == "pair"
+    assert paired["kind"] == "multi"
     assert len(paired["editors"]) == 2
-    assert describe(3) == {"ok": False, "code": "no-focused-control"}
+    assert len(describe(3)["editors"]) == 3
+    assert len(describe(4)["editors"]) == 4
+    assert describe(5) == {"ok": False, "code": "no-focused-control"}
 
 
 def test_the_question_signature_is_built_from_the_question_not_the_editor() -> None:

@@ -76,7 +76,7 @@ OPTION = {
 
 TWO_INTEGER_EDITORS = {
     "ok": True,
-    "kind": "pair",
+    "kind": "multi",
     "editors": [
         {
             "ok": True,
@@ -99,7 +99,7 @@ TWO_INTEGER_EDITORS = {
 
 TWO_FRACTION_EDITORS = {
     "ok": True,
-    "kind": "pair",
+    "kind": "multi",
     "editors": [
         {
             "ok": True,
