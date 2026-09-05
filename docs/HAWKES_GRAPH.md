@@ -6,13 +6,16 @@ exact MathML and normalizes the graph bounds, snap spacing and geometry family.
 All question nodes, graph model references, control IDs and DOM remain in Firefox.
 
 Facet is invoked for graph planning even when the text solver preference is
-Ethnos. The request uses the existing `generate_text` protocol and routing,
-with `accelerator_required=false` and `allow_fallback=false`. Its prompt carries
-only instruction, exact MathML-derived expression and normalized graph context.
-No browser commands or screenshot cross this boundary.
+Ethnos. The request uses `solve_math` with `result_kind: "parabola_plan"`,
+`accelerator_required=false` and `allow_fallback=false`. It carries only the
+instruction, the exact MathML-derived expression and the normalized graph
+context; the markup itself, the browser commands and any screenshot do not
+cross. Facet picks the parabola specialist, writes the prompt, and parses the
+reply -- so this side no longer constructs a model prompt for a graph at all.
 
-The response must be one JSON object, without markdown, prose, duplicate keys or
-extra properties. Coordinate values are integer or rational strings:
+The reply Facet parses must be one JSON object, without markdown, prose,
+duplicate keys or extra properties. Coordinate values are integer or rational
+strings, and a decimal approximation is refused:
 
 ```json
 {
@@ -24,13 +27,23 @@ extra properties. Coordinate values are integer or rational strings:
 }
 ```
 
+It crosses back as `answer.plan`, structured, carrying no display text, entry or
+parts: a plan is a proposal, and one arriving shaped like a settled answer is
+refused.
+
 This is the actual plan returned by Facet for `f(x)=(x-3)^2-1` during development.
-Ethnos independently parses the function, obtains the rational polynomial
-coefficients, and proves the vertex, opening, both point incidences and symmetry.
+Facet's strict parse is a check on the model, not a warrant. Ethnos re-validates
+the schema, then independently parses the function from the page's own markup,
+obtains the rational polynomial coefficients, and proves the vertex, opening,
+both point incidences and symmetry. A plan that is well-formed but untrue of the
+function is refused here, after Facet was perfectly happy with it.
 For this function the coefficients are `(1,-6,8)`, so the vertex is
 `(-b/(2a),f(-b/(2a)))=(3,-1)` and each defining point gives curvature `a=1`.
-A failure carries no insertable answer. Successful provenance identifies Facet,
-its actual model, runtime, backend, device and elapsed time.
+A failure carries no insertable answer. Successful provenance identifies the
+specialist that ran -- `Facet Parabola Plan · GPU` -- with its actual model,
+runtime, backend, device and elapsed time, and a router state of `not-run`: the
+deterministic solvers answer expressions rather than geometry, so they were
+never asked, which is a different claim from having tried and declined.
 
 Before insertion, the event page pins its window, tab, frame, question signature,
 reviewed plan and original graph snapshot. The injected operation additionally

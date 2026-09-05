@@ -54,7 +54,24 @@ FACET_OPERATIONS: tuple[str, ...] = ("generate_text", "solve_math")
 FACET_ROUTES: frozenset[str] = frozenset({"exact", "reasoning"})
 FACET_ENTRY_MODES: frozenset[str] = frozenset({"verbatim", "math", "auto"})
 
+#: What Facet may be asked to produce. `value` is an answer to write down. The
+#: other two are *plans*: a proposal Ethnos proves for itself before anything
+#: is drawn, and which carry no writable value at all.
+VALUE = "value"
+PARABOLA_PLAN = "parabola_plan"
+QUADRATIC_REGRESSION = "quadratic_regression"
+FACET_RESULT_KINDS: frozenset[str] = frozenset(
+    {VALUE, PARABOLA_PLAN, QUADRATIC_REGRESSION}
+)
+PLAN_KINDS: frozenset[str] = frozenset({PARABOLA_PLAN, QUADRATIC_REGRESSION})
+
+#: What the deterministic stage may report having done. `not-run` belongs only
+#: to a plan: the exact solvers answer expressions, not geometry, so they were
+#: never asked -- which is a different claim from having tried and declined.
+FACET_ROUTER_STATES: frozenset[str] = frozenset({"solved", "declined", "not-run"})
+
 MAX_ANSWER_PARTS = 4
+MAX_REGRESSION_POINTS = 32
 
 # Deployment configuration. Nothing in the protocol or in any caller depends
 # on where Facet runs; an alternate transport address can be selected before
@@ -187,11 +204,26 @@ def _request_payload(
     return payload
 
 
+def _unique_keys(pairs):
+    """Refuse a repeated key anywhere in a response.
+
+    `json.loads` keeps the last of a repeated key silently. A plan naming a
+    vertex twice would be read as whichever came last, and nothing after this
+    point could tell that a choice had been made on its behalf.
+    """
+    seen: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in seen:
+            raise FacetProtocolError(f"Facet named {key} more than once")
+        seen[key] = value
+    return seen
+
+
 def _envelope(stdout: str) -> dict[str, Any]:
     if len(stdout.encode("utf-8")) > MAX_RESPONSE_BYTES:
         raise FacetProtocolError("Facet response exceeded the size limit")
     try:
-        envelope = json.loads(stdout)
+        envelope = json.loads(stdout, object_pairs_hook=_unique_keys)
     except json.JSONDecodeError as error:
         raise FacetProtocolError("Facet returned malformed JSON") from error
     if not isinstance(envelope, dict):
@@ -355,23 +387,30 @@ def generate_text(
 class FacetAnswer:
     """One answer, in the shape the question asked for.
 
-    `display` is the whole answer as it would be read. `entry` is the single
-    value a one-value question takes, and `parts` carries the separate values
-    when a question takes more than one. Exactly one of the two is populated,
-    because there is no single string that could be typed into several boxes
-    and recovering the boundary between two answers by splitting display prose
-    afterwards is guessing at mathematics after the fact.
+    `kind` says which shape that is, and the shapes do not overlap. A `value`
+    answer carries `display`, and exactly one of `entry` or `parts`: there is
+    no single string that could be typed into several boxes, and recovering the
+    boundary between two answers by splitting display prose afterwards is
+    guessing at mathematics after the fact.
 
     `entry_mode` says how literally to take a value: `verbatim` means it is
     already exactly what belongs in an answer, `math` means it is mathematics
     to be rendered in the consumer's own entry syntax, and `auto` means it is
     mathematics unless it is a plain phrase.
+
+    A plan carries `plan` and nothing else -- no display, no entry, no parts.
+    It is a *proposal* about geometry, not an answer, and Ethnos proves it
+    against the page's own mathematics before any of it is actuated. Leaving
+    room for a value on a plan would let a reasoned proposal arrive shaped
+    like a settled answer.
     """
 
-    display: str
-    entry: str
-    parts: tuple[str, ...]
-    entry_mode: str
+    kind: str
+    display: str = ""
+    entry: str = ""
+    parts: tuple[str, ...] = ()
+    entry_mode: str = ""
+    plan: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -425,9 +464,24 @@ def _optional_text(payload: dict[str, Any], field: str, where: str) -> str | Non
     return value
 
 
-def _answer(payload: Any) -> FacetAnswer:
+def _answer(payload: Any, expected_kind: str) -> FacetAnswer:
+    """Read one answer of the kind that was asked for, or refuse it.
+
+    A result of a different kind than the one requested is refused outright.
+    Ethnos asked for geometry or for a value, and acting on the other would
+    mean acting on an answer to a question nobody asked.
+    """
     if not isinstance(payload, dict):
         raise FacetProtocolError("Facet result carried no answer object")
+    kind = payload.get("kind")
+    if kind not in FACET_RESULT_KINDS:
+        raise FacetProtocolError(f"Facet returned an unknown answer kind {kind!r}")
+    if kind != expected_kind:
+        raise FacetProtocolError(
+            f"Facet answered with {kind}, but {expected_kind} was asked for"
+        )
+    if kind in PLAN_KINDS:
+        return _plan_answer(payload, kind)
     display = _required_text(payload, "display", "answer")
     entry = payload.get("entry", "")
     if not isinstance(entry, str):
@@ -451,6 +505,7 @@ def _answer(payload: Any) -> FacetAnswer:
             "Facet answer must carry exactly one of a single entry or separate parts"
         )
     return FacetAnswer(
+        kind=kind,
         display=display,
         entry=entry,
         parts=tuple(parts),
@@ -458,7 +513,24 @@ def _answer(payload: Any) -> FacetAnswer:
     )
 
 
-def _solution(payload: dict[str, Any], *, allow_fallback: bool) -> FacetSolution:
+def _plan_answer(payload: dict[str, Any], kind: str) -> FacetAnswer:
+    """Read a proposed plan, and refuse one carrying a writable value.
+
+    A plan is proved before it is actuated. A `display`, an `entry` or a
+    `parts` list beside one would be a value that skipped that proof, so their
+    presence is refused rather than ignored.
+    """
+    if set(payload) != {"kind", "plan"}:
+        raise FacetProtocolError(f"a {kind} result carries only a plan")
+    plan = payload["plan"]
+    if not isinstance(plan, dict) or not plan:
+        raise FacetProtocolError(f"Facet returned no plan for {kind}")
+    return FacetAnswer(kind=kind, plan=plan)
+
+
+def _solution(
+    payload: dict[str, Any], *, allow_fallback: bool, expected_kind: str = VALUE
+) -> FacetSolution:
     """Read a routed solve, and refuse one that contradicts itself.
 
     Facet states both which route it took and what that route used. Those two
@@ -469,12 +541,12 @@ def _solution(payload: dict[str, Any], *, allow_fallback: bool) -> FacetSolution
     route = payload.get("route")
     if route not in FACET_ROUTES:
         raise FacetProtocolError(f"Facet reported an unknown route {route!r}")
-    answer = _answer(payload.get("answer"))
+    answer = _answer(payload.get("answer"), expected_kind)
     provenance = payload.get("provenance")
     if not isinstance(provenance, dict):
         raise FacetProtocolError("Facet result carried no provenance")
     router = provenance.get("router")
-    if router not in {"solved", "declined"}:
+    if router not in FACET_ROUTER_STATES:
         raise FacetProtocolError(f"Facet reported an unknown router state {router!r}")
     detail = provenance.get("router_detail", "")
     if not isinstance(detail, str):
@@ -518,10 +590,21 @@ def _solution(payload: dict[str, Any], *, allow_fallback: bool) -> FacetSolution
             raise FacetProtocolError(
                 "Facet claimed an exact answer but named a model or a processor"
             )
-    elif router != "declined" or not solution.model or not solution.actual_backend:
-        raise FacetProtocolError(
-            "Facet claimed a reasoned answer without naming what reasoned"
-        )
+        if answer.kind != VALUE:
+            raise FacetProtocolError("the exact solvers answer values, not plans")
+    else:
+        if not solution.model or not solution.actual_backend:
+            raise FacetProtocolError(
+                "Facet claimed a reasoned answer without naming what reasoned"
+            )
+        # A value was reasoned because the deterministic stage declined it. A
+        # plan was reasoned because there was no deterministic stage to ask.
+        # Either claim is fine; the wrong one for the kind is not.
+        wanted = "declined" if answer.kind == VALUE else "not-run"
+        if router != wanted:
+            raise FacetProtocolError(
+                f"a reasoned {answer.kind} cannot come from a router that says {router}"
+            )
     if fallback and not allow_fallback:
         raise FacetProtocolError("Facet reported a fallback this request forbade")
     return solution
@@ -530,10 +613,13 @@ def _solution(payload: dict[str, Any], *, allow_fallback: bool) -> FacetSolution
 def solve_math(
     *,
     instruction: str,
-    expressions: list[str],
     request_id: str,
+    expressions: list[str] | None = None,
     answer_parts: int = 1,
     label: str = "",
+    result_kind: str = VALUE,
+    graph: dict[str, Any] | None = None,
+    points: list[dict[str, str]] | None = None,
     accelerator_required: bool = True,
     allow_fallback: bool = False,
     timeout: float = DEFAULT_TIMEOUT_SECONDS,
@@ -542,28 +628,51 @@ def solve_math(
 
     What crosses is the question and nothing else: the instruction in words,
     the exact expressions it is about, how many separate values its answer
-    takes, and the question's own label. There is no field here for a document,
-    a page, an element, a picture, or an action, so a caller that owns a
-    browser cannot accidentally hand any of it over.
+    takes, and the question's own label. A graph question adds normalised
+    geometry -- a family, an orientation, bounds and a snap grid -- or the
+    normalised coordinates a regression is fitted to. There is no field here
+    for a document, a page, an element, a picture, or an action, so a caller
+    that owns a browser cannot accidentally hand any of it over.
+
+    `result_kind` says what to produce. `value` is an answer to write down; a
+    plan is a *proposal*, and proving it stays entirely on this side.
 
     `answer_parts` is a requirement on the reply -- a property of the question,
     not of the page -- and `accelerator_required` is a need rather than a
     device. Which route answers, and on what, is Facet's to decide and Facet's
     to report.
     """
+    if result_kind not in FACET_RESULT_KINDS:
+        raise FacetProtocolError(f"{result_kind} is not a Facet result kind")
     if not instruction.strip():
         raise FacetProtocolError("instruction must be a non-empty string")
-    if not expressions or any(not item.strip() for item in expressions):
-        raise FacetProtocolError("every expression must be non-empty")
-    if not 1 <= answer_parts <= MAX_ANSWER_PARTS:
-        raise FacetProtocolError(
-            f"answer_parts must be 1 to {MAX_ANSWER_PARTS}, not {answer_parts}"
-        )
-    problem: dict[str, Any] = {
-        "instruction": instruction,
-        "expressions": list(expressions),
-        "answer_parts": answer_parts,
-    }
+    problem: dict[str, Any] = {"instruction": instruction}
+    if result_kind != VALUE:
+        problem["result_kind"] = result_kind
+    if result_kind != QUADRATIC_REGRESSION:
+        expressions = list(expressions or [])
+        if not expressions or any(not item.strip() for item in expressions):
+            raise FacetProtocolError("every expression must be non-empty")
+        problem["expressions"] = expressions
+    if result_kind == VALUE:
+        if not 1 <= answer_parts <= MAX_ANSWER_PARTS:
+            raise FacetProtocolError(
+                f"answer_parts must be 1 to {MAX_ANSWER_PARTS}, not {answer_parts}"
+            )
+        problem["answer_parts"] = answer_parts
+    if result_kind == PARABOLA_PLAN:
+        if not isinstance(graph, dict) or not graph:
+            raise FacetProtocolError("a parabola plan needs normalised geometry")
+        problem["graph"] = graph
+    if result_kind == QUADRATIC_REGRESSION:
+        points = list(points or [])
+        if not points or len(points) > MAX_REGRESSION_POINTS:
+            raise FacetProtocolError(
+                f"a regression takes 1 to {MAX_REGRESSION_POINTS} points"
+            )
+        if any(set(point) != {"x", "y"} for point in points):
+            raise FacetProtocolError("a point is one x and one y")
+        problem["points"] = points
     if label.strip():
         problem["label"] = label
     return _solution(
@@ -576,4 +685,5 @@ def solve_math(
             timeout=timeout,
         ),
         allow_fallback=allow_fallback,
+        expected_kind=result_kind,
     )

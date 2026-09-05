@@ -1,13 +1,12 @@
 """Graph plans cross the Facet boundary only as strictly validated geometry."""
 
 import json
-from dataclasses import replace
 
 import pytest
 
 from ethnos.hawkes_graph import parse_graph_plan, validate_graph_plan
 from ethnos.hawkes_host import handle
-from facet_loopback import facet
+from facet_loopback import facet, reasoning
 from test_hawkes_provenance import FACET_RUN
 from test_hawkes_insertion_ownership import page, QUESTION_A  # noqa: F401
 
@@ -77,13 +76,7 @@ def test_invalid_facet_geometry_rejected(change):
 
 
 def test_graph_invokes_facet_and_reports_real_provenance(monkeypatch):
-    calls = []
-
-    def facet(prompt, **kwargs):
-        calls.append((prompt, kwargs))
-        return replace(FACET_RUN, text=json.dumps(PLAN))
-
-    monkeypatch.setattr("ethnos.facet_client.generate_text", facet)
+    loopback = facet(monkeypatch, **reasoning(json.dumps(PLAN)))
     result = handle(
         {
             "operation": "solve_hawkes_problem",
@@ -97,10 +90,11 @@ def test_graph_invokes_facet_and_reports_real_provenance(monkeypatch):
         }
     )
     assert result.status == "ready"
-    assert len(calls) == 1
-    assert "f(x)=(x-3)^2-1" in calls[0][0]
-    assert "vertex-and-symmetric-points" in calls[0][0]
-    assert calls[0][1]["accelerator_required"] is False
+    assert len(loopback.prompts) == 1
+    # Facet builds the prompt now, from the question Ethnos sent it.
+    assert "f(x)=(x-3)^2-1" in loopback.prompts[0]
+    assert "vertex-and-symmetric-points" in loopback.prompts[0]
+    assert loopback.requests[0]["constraints"]["accelerator_required"] is False
     assert result.certainty.facet_invoked
     assert result.certainty.answered_by == "facet"
     assert result.certainty.model == FACET_RUN.model
@@ -272,16 +266,10 @@ def test_regression_coefficients_are_checked_exactly():
 
 
 def test_svg_regression_reaches_facet_without_a_screenshot(monkeypatch):
-    calls = []
-
-    def facet(prompt, **kwargs):
-        calls.append(prompt)
-        return replace(
-            FACET_RUN,
-            text='{"kind":"quadratic-regression","coefficients":["3","18","20"]}',
-        )
-
-    monkeypatch.setattr("ethnos.facet_client.generate_text", facet)
+    loopback = facet(
+        monkeypatch,
+        **reasoning('{"kind":"quadratic-regression","coefficients":["3","18","20"]}'),
+    )
     result = handle(
         {
             "operation": "solve_hawkes_problem",
@@ -296,7 +284,7 @@ def test_svg_regression_reaches_facet_without_a_screenshot(monkeypatch):
             },
         }
     )
-    assert len(calls) == 1
+    assert len(loopback.prompts) == 1
     assert result.status == "ready"
     assert result.answer.keyboard_entry == "3x^2+18x+20"
     assert result.certainty.reading == "svg"

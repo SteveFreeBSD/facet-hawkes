@@ -64,9 +64,35 @@ There are two operations. `solve_math` is the one that carries a question:
 }
 ```
 
-`generate_text` runs a prompt Ethnos wrote, and is what the graph and quadratic
-regression paths still use: they need a model to produce a plan that Ethnos
-then proves for itself against the exact page mathematics.
+A graph question asks for a plan instead of a value, and says so:
+
+```json
+{
+  "facet_protocol_version": 2,
+  "operation": "solve_math",
+  "request_id": "ethnos-hawkes-2",
+  "problem": {
+    "result_kind": "parabola_plan",
+    "instruction": "Graph the parabola.",
+    "expressions": ["f(x)=(x-3)^2-1"],
+    "graph": {"family": "parabola", "orientation": "vertical",
+              "bounds": [-10.0, 10.0, -10.0, 10.0], "snap": [0.5, 0.5],
+              "controls": "vertex-and-symmetric-points"}
+  },
+  "constraints": {"accelerator_required": false, "allow_fallback": false}
+}
+```
+
+A quadratic regression sends `"result_kind": "quadratic_regression"` and the
+normalized coordinates the add-on measured as `points`, and no expression at
+all. Each result kind takes its own fields and no others: geometry on a
+regression, or points on a parabola, is a question about something else and is
+refused rather than ignored.
+
+`generate_text` runs a prompt the consumer wrote. No Ethnos solve path uses it
+any more -- the graph and regression paths were the last two, and they now ask
+for a plan through `solve_math` -- so nothing in Ethnos constructs a model
+prompt. The operation stays because it is part of the protocol Facet speaks.
 
 A constraint is a *need*, not a device. `accelerator_required` says the work
 must not land on a CPU; which accelerator satisfies that is Facet's decision.
@@ -127,8 +153,39 @@ An exact solve is the same envelope with the other route:
 
 `route` is the decision the whole boundary exists to move. `exact` means Facet
 computed the answer deterministically and no model ran at all; `reasoning`
-means the deterministic stage declined -- `router_detail` says which gap -- and
-a model answered instead.
+means a model answered -- because the deterministic stage declined, which
+`router_detail` names, or because there was no deterministic stage to ask.
+
+### A plan is a proposal, not an answer
+
+A graph result carries a plan and nothing else:
+
+```json
+{"route": "reasoning",
+ "answer": {"kind": "parabola_plan",
+            "plan": {"kind": "parabola", "orientation": "vertical",
+                     "opening": "up", "vertex": {"x": "3", "y": "-1"},
+                     "points": [{"x": "4", "y": "0"}, {"x": "2", "y": "0"}]}},
+ "provenance": {"source": "Facet Parabola Plan · GPU", "method": "gpt-oss:20b",
+                "router": "not-run",
+                "router_detail": "a graph plan has no deterministic route",
+                "runtime": "Ollama 0.33.2", "actual_backend": "gpu", "...": "..."}}
+```
+
+There is deliberately no `display`, `entry` or `parts` on a plan. Ethnos refuses
+one that carries them, because a value beside a plan is a value that skipped the
+proof. `router: "not-run"` is the honest state: the exact solvers answer
+expressions rather than geometry, so they were never asked.
+
+Facet parses the model's reply strictly -- exact schema, no extra or duplicate
+keys, exact integer or rational coordinates, never a decimal -- and that is a
+check on the model, not a warrant. Ethnos re-validates the schema and then
+proves the mathematics for itself: the polynomial coefficients, the vertex, the
+opening, both point incidences and the symmetry for a parabola; the rank
+requirement and the exact least-squares normal equations for a regression, with
+rounding applied only after the exact fit is proved. A plan Facet accepted and
+Ethnos disproves reaches nothing. Two independent readings of an untrusted reply
+is the point of the split, and the second one is the one that decides.
 
 ### The answer stays structured
 

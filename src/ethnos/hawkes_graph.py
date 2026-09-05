@@ -70,28 +70,6 @@ def validate_graph_plan(plan: GraphPlan, mathml: list[str]) -> list[str]:
     return [str(value) for value in (a, b, c)]
 
 
-def graph_prompt(instruction: str, mathml: list[str], context: dict) -> str:
-    return (
-        "Produce a graph plan for the exact function. Return ONLY one JSON object, "
-        "no markdown, prose, code, or extra keys. Coordinates must be exact integer "
-        'or rational STRINGS (for example "-3/2"). Required schema: '
-        '{"kind":"parabola","orientation":"vertical","opening":"up or down",'
-        '"vertex":{"x":"rational","y":"rational"},'
-        '"points":[{"x":"rational","y":"rational"},'
-        '{"x":"rational","y":"rational"}]}. '
-        "Derive the vertex, opening and two symmetric defining points from the function. "
-        "First point must be right of vertex, second left. Prefer one unit horizontal "
-        "offset if it fits the bounds and snap grid. You have no browser actions.\n"
-        + json.dumps(
-            {
-                "instruction": instruction,
-                "exact_expression": [mathml_to_latex(m) for m in mathml],
-                "graph_answer": context,
-            }
-        )
-    )
-
-
 class RegressionPlan(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     kind: Literal["quadratic-regression"]
@@ -99,10 +77,22 @@ class RegressionPlan(BaseModel):
 
 
 def validate_regression_plan(text: str, points: list[GraphPoint]):
-    """Validate Facet's least-squares coefficients with exact normal equations."""
+    """Read a regression plan out of one JSON reply and prove it exactly."""
+    return regression_coefficients(
+        RegressionPlan.model_validate(_strict_json(text)), points
+    )
+
+
+def regression_coefficients(plan: RegressionPlan, points: list[GraphPoint]):
+    """Validate least-squares coefficients with exact normal equations.
+
+    The proof is this host's, not Facet's. Facet proposes three coefficients;
+    what makes them insertable is that they satisfy the exact normal equations
+    against the coordinates the add-on measured, and a fit that merely looks
+    right does not.
+    """
     import sympy
 
-    plan = RegressionPlan.model_validate(_strict_json(text))
     coefficients = [sympy.Rational(GraphPoint(x=s, y="0").x) for s in plan.coefficients]
     if len(points) < 3:
         raise ValueError("regression requires at least three points")
@@ -117,17 +107,3 @@ def validate_regression_plan(text: str, points: list[GraphPoint]):
             "Facet coefficients fail the exact least-squares normal equations"
         )
     return coefficients
-
-
-def regression_prompt(instruction: str, points: list[GraphPoint]) -> str:
-    return (
-        "Find the quadratic least-squares regression y=a*x^2+b*x+c for these exact "
-        "SVG point coordinates. Return ONLY JSON with exactly this schema: "
-        '{"kind":"quadratic-regression","coefficients":["a","b","c"]}. '
-        "Coefficients must be exact integer or rational strings, NOT decimal "
-        "approximations. Ethnos will independently verify and round them for display. "
-        "No prose, markdown, browser commands, or extra keys.\n"
-        + json.dumps(
-            {"instruction": instruction, "points": [p.model_dump() for p in points]}
-        )
-    )

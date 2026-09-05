@@ -297,27 +297,40 @@ def required_answer_parts(shape, instruction: str) -> int:
 
 
 def _solve_regression_with_facet(request, instruction, announce):
+    """Fit a quadratic to the points the page drew, and prove the fit here.
+
+    Facet proposes coefficients; this proves them. The proof is the exact
+    least-squares normal equations against the same normalised coordinates the
+    add-on measured, so a plausible-looking fit that is not the least-squares
+    fit is refused rather than rounded and typed in.
+    """
     import sympy
 
-    from .facet_client import FacetError, generate_text, safe_request_id
-    from .hawkes_graph import regression_prompt, validate_regression_plan
+    from .facet_client import FacetError, safe_request_id, solve_math
+    from .hawkes_graph import RegressionPlan, regression_coefficients
 
+    points = request.problem.graph_points
     try:
         if not re.search(r"\bquadratic regression\b", instruction, re.I):
             raise ValueError(
                 "SVG point data requires a quadratic regression instruction"
             )
         announce("solving", "Facet quadratic regression from exact SVG points")
-        result = generate_text(
-            regression_prompt(instruction, request.problem.graph_points),
+        solution = solve_math(
+            instruction=instruction,
             request_id=safe_request_id(request.request_id),
+            result_kind="quadratic_regression",
+            # Normalised coordinates only. Which SVG elements they came from,
+            # and how they were measured, stays here.
+            points=[point.model_dump() for point in points],
             accelerator_required=False,
             allow_fallback=False,
         )
         announce("checking", "verifying exact least-squares normal equations")
-        coefficients = validate_regression_plan(
-            result.text, request.problem.graph_points
-        )
+        # Re-validated here rather than trusted: Facet parsed this plan too,
+        # and two independent readings of an untrusted reply is the point.
+        plan = RegressionPlan.model_validate(solution.answer.plan)
+        coefficients = regression_coefficients(plan, points)
         rounded = coefficients
         if re.search(r"three decimal places", instruction, re.I):
             rounded = [
@@ -353,24 +366,11 @@ def _solve_regression_with_facet(request, instruction, announce):
         status="ready",
         problem_text=instruction
         + "\nPoints: "
-        + ", ".join(f"({p.x},{p.y})" for p in request.problem.graph_points),
+        + ", ".join(f"({p.x},{p.y})" for p in points),
         answer=AnswerPayload(display_text=entry, keyboard_entry=entry),
-        certainty=Certainty(
-            source=f"Facet · {result.actual_backend.upper()}",
-            transcription="exact",
-            insertable=True,
-            answered_by="facet",
-            router="not-run",
+        certainty=_plan_certainty(
+            solution,
             reading="svg",
-            method=result.model,
-            facet_invoked=True,
-            requested_backend=result.requested_backend,
-            actual_backend=result.actual_backend,
-            fallback=result.fallback,
-            model=result.model,
-            runtime=result.runtime,
-            device=result.device,
-            elapsed_ms=result.elapsed_ms,
             issues=[
                 "Facet coefficients validated with exact least-squares normal equations"
             ],
@@ -379,8 +379,15 @@ def _solve_regression_with_facet(request, instruction, announce):
 
 
 def _solve_graph_with_facet(request, instruction, announce):
-    from .facet_client import FacetError, generate_text, safe_request_id
-    from .hawkes_graph import graph_prompt, parse_graph_plan, validate_graph_plan
+    """Ask Facet for a parabola plan, and prove the geometry here.
+
+    Facet proposes a vertex, an opening and two defining points. Every one of
+    them is then checked against the page's own MathML -- re-converted here
+    rather than taken from what was sent -- so a plan that is well-formed but
+    wrong about the function never reaches the graph actuator.
+    """
+    from .facet_client import FacetError, safe_request_id, solve_math
+    from .hawkes_graph import GraphPlan, validate_graph_plan
     from .hawkes_mathml import mathml_to_latex
 
     problem = request.problem
@@ -390,16 +397,23 @@ def _solve_graph_with_facet(request, instruction, announce):
         ):
             raise ValueError("graph requires exact MathML and a parabola instruction")
         announce("solving", "Facet graph plan")
-        result = generate_text(
-            graph_prompt(
-                instruction, problem.mathml, problem.answer_shape.graph.model_dump()
-            ),
+        solution = solve_math(
+            instruction=instruction,
             request_id=safe_request_id(request.request_id),
+            # The mathematics, not the markup: reading MathJax is a fact about
+            # the page, and the page does not cross.
+            expressions=[mathml_to_latex(item) for item in problem.mathml],
+            result_kind="parabola_plan",
+            # Normalised geometry: a family, an orientation, bounds and a snap
+            # grid. No element, no handle, and no way to move anything.
+            graph=problem.answer_shape.graph.model_dump(),
             accelerator_required=False,
             allow_fallback=False,
         )
         announce("checking", "validating Facet geometry against exact function")
-        plan = parse_graph_plan(result.text)
+        # Re-validated here rather than trusted, and then proved against the
+        # markup this host converts for itself.
+        plan = GraphPlan.model_validate(solution.answer.plan)
         coefficients = validate_graph_plan(plan, problem.mathml)
     except (FacetError, ValueError, TypeError, SyntaxError) as error:
         return error_response(
@@ -417,25 +431,40 @@ def _solve_graph_with_facet(request, instruction, announce):
             display_text=f"Vertex ({plan.vertex.x}, {plan.vertex.y}); opens {plan.opening}; "
             + "; ".join(f"({p.x}, {p.y})" for p in plan.points),
         ),
-        certainty=Certainty(
-            source=f"Facet · {result.actual_backend.upper()}",
-            transcription="exact",
-            insertable=True,
-            answered_by="facet",
-            router="not-run",
+        certainty=_plan_certainty(
+            solution,
             reading="mathml",
-            router_detail="structured graph planning; exact geometry validated",
-            method=result.model,
-            facet_invoked=True,
-            requested_backend=result.requested_backend,
-            actual_backend=result.actual_backend,
-            fallback=result.fallback,
-            model=result.model,
-            runtime=result.runtime,
-            device=result.device,
-            elapsed_ms=result.elapsed_ms,
             issues=["Graph plan mathematically validated against exact MathML"],
         ),
+    )
+
+
+def _plan_certainty(solution, *, reading: str, issues: list[str]) -> Certainty:
+    """Provenance for a plan Facet proposed and this host then proved.
+
+    Facet's own account of the run is reported rather than assembled here --
+    which specialist answered, on which processor, with which model. The
+    `issues` line is the one claim that is not Facet's: it is this host saying
+    what it checked before letting anything be actuated.
+    """
+    return Certainty(
+        source=solution.source,
+        transcription="exact",
+        insertable=True,
+        answered_by="facet",
+        router=solution.router,
+        router_detail=solution.router_detail,
+        reading=reading,
+        method=solution.method,
+        facet_invoked=True,
+        requested_backend=solution.requested_backend,
+        actual_backend=solution.actual_backend,
+        fallback=solution.fallback,
+        model=solution.model,
+        runtime=solution.runtime,
+        device=solution.device,
+        elapsed_ms=solution.elapsed_ms,
+        issues=issues,
     )
 
 

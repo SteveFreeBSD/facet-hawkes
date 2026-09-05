@@ -209,6 +209,7 @@ def result(**changes) -> dict:
     made = {
         "route": "exact",
         "answer": {
+            "kind": "value",
             "display": "y^(27/20)",
             "entry": "y^(27/20)",
             "parts": [],
@@ -248,10 +249,14 @@ def result(**changes) -> dict:
             result(provenance=provenance(fallback=True)),
             "a fallback this request forbade",
         ),
-        (result(answer={"display": "x", "entry_mode": "auto"}), "no value at all"),
+        (
+            result(answer={"kind": "value", "display": "x", "entry_mode": "auto"}),
+            "no value at all",
+        ),
         (
             result(
                 answer={
+                    "kind": "value",
                     "display": "x",
                     "entry": "1",
                     "parts": ["1", "2"],
@@ -263,6 +268,7 @@ def result(**changes) -> dict:
         (
             result(
                 answer={
+                    "kind": "value",
                     "display": "x",
                     "entry": "",
                     "parts": ["1", " "],
@@ -273,12 +279,25 @@ def result(**changes) -> dict:
         ),
         (
             result(
-                answer={"display": "x", "entry": "1", "parts": [], "entry_mode": "?"}
+                answer={
+                    "kind": "value",
+                    "display": "x",
+                    "entry": "1",
+                    "parts": [],
+                    "entry_mode": "?",
+                }
             ),
             "an entry mode Ethnos cannot follow",
         ),
         (
-            result(answer={"display": "", "entry": "1", "entry_mode": "auto"}),
+            result(
+                answer={
+                    "kind": "value",
+                    "display": "",
+                    "entry": "1",
+                    "entry_mode": "auto",
+                }
+            ),
             "an answer with nothing to display",
         ),
         (result(answer="y^(27/20)"), "an answer that is not structured at all"),
