@@ -440,6 +440,7 @@ def test_the_client_reaches_facet_and_nothing_else() -> None:
 
 def test_the_reasoning_prompt_never_offers_an_action() -> None:
     """A model on the reasoning route is asked for a value, not for a step."""
+    from facet_runtime.prompts import leaks
     from facet_runtime.solve import MathProblem, reasoning_prompt
 
     prompt = reasoning_prompt(
@@ -448,6 +449,8 @@ def test_the_reasoning_prompt_never_offers_an_action() -> None:
 
     for control in ("submit", "check", "next", "skip", "click", "press", "button"):
         assert re.search(rf"\b{control}\b", prompt) is None
+    # Not an action, and not a caller either: Facet names neither.
+    assert leaks(prompt) == ()
 
 
 def test_the_suite_cannot_reach_the_real_facet_host() -> None:

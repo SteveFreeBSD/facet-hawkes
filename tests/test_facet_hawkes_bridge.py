@@ -25,6 +25,7 @@ from pathlib import Path
 import pytest
 
 from facet_loopback import FakeAdapter, facet, reasoning
+from facet_runtime.prompts import leaks
 from facet_runtime.solve import MathProblem, reasoning_prompt
 
 from ethnos import hawkes_host
@@ -447,9 +448,12 @@ def test_a_paired_answer_shape_reaches_facet_as_a_two_part_contract(
     assert "This question takes 2 separate answers." in prompt
     assert "PART 1: answer number 1 by itself" in prompt
     assert "PART 2: answer number 2 by itself" in prompt
-    # Facet is told what to produce, never what the page is made of.
-    for leak in ("field", "editor", "input", "box id", "DOM", "radio"):
-        assert leak not in prompt.replace("answer box", "")
+    # Facet is told what to produce, never what the page is made of -- and
+    # never that a page is what is asking. The vocabulary is Facet's own list,
+    # so this gate tightens whenever Facet's does.
+    assert leaks(prompt) == ()
+    for leak in ("input", "radio"):
+        assert leak not in prompt
 
 
 def test_a_structured_two_part_reply_survives_validation_intact(
@@ -599,13 +603,19 @@ def test_four_exact_roots_never_reach_a_model(monkeypatch) -> None:
 
 
 def test_the_page_prefix_is_stated_so_facet_does_not_repeat_it() -> None:
-    """`r = [box]` already prints the label; repeating it would be typed in."""
+    """`r = [box]` already prints the label; repeating it would be typed in.
+
+    Ethnos cares that Facet is told to answer with the value alone. How Facet
+    words that is Facet's own business, and it no longer words it in terms of
+    a page, because nothing on the far side of that boundary has a page.
+    """
     prompt = prompt_for(
         "Solve the following formula for the indicated variable. Solve for r.",
         ["C=2*pi*r"],
     )
 
-    assert "already prints `r =` beside the answer" in prompt
+    assert "`r =` is already written for you" in prompt
+    assert "give only the value that follows it" in prompt
 
 
 def test_the_browser_cannot_invent_an_answer_shape() -> None:
