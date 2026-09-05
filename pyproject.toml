@@ -3,8 +3,12 @@ name = "ethnos"
 version = "0.1.0"
 description = "Local-first PDF study, quiz, and agent-review system with auditable Ollama workflows."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
+    # The exact solvers live in Facet, because Facet is what routes between
+    # them and a reasoning model. Ethnos calls the same implementation Facet
+    # runs rather than keeping a second copy that would drift out of step.
+    "facet-runtime",
     "ollama>=0.6.0",
     "pydantic>=2.11.0",
     "pymupdf>=1.26.0",
@@ -21,6 +25,9 @@ dev = [
 
 [project.scripts]
 ethnos = "ethnos.cli:main"
+
+[tool.uv.sources]
+facet-runtime = { path = "../facet-runtime", editable = true }
 
 [build-system]
 requires = ["hatchling"]

@@ -7,6 +7,7 @@ import pytest
 
 from ethnos.hawkes_graph import parse_graph_plan, validate_graph_plan
 from ethnos.hawkes_host import handle
+from facet_loopback import facet
 from test_hawkes_provenance import FACET_RUN
 from test_hawkes_insertion_ownership import page, QUESTION_A  # noqa: F401
 
@@ -212,12 +213,7 @@ def test_factored_vertex_is_exact_and_keeps_ordered_pair_parentheses(monkeypatch
     assert answer.keyboard_entry == "(2,0)"
     assert answer.display_text == "(2,0)"
     assert answer.parts == []
-    monkeypatch.setattr(
-        "ethnos.facet_client.generate_text",
-        lambda *a, **k: pytest.fail(
-            "Facet must not guess a vertex that is exactly derivable"
-        ),
-    )
+    loopback = facet(monkeypatch)
     result = handle(
         {
             "operation": "solve_hawkes_problem",
@@ -227,8 +223,10 @@ def test_factored_vertex_is_exact_and_keeps_ordered_pair_parentheses(monkeypatch
             "problem": {"mathml": [markup], "prompt_text": "Find the vertex."},
         }
     )
+    assert loopback.prompts == [], "a model guessed an exactly derivable vertex"
     assert result.certainty.answered_by == "exact"
-    assert not result.certainty.facet_invoked
+    assert result.certainty.source == "Facet Exact"
+    assert result.answer.keyboard_entry == "(2,0)"
 
 
 def test_vertex_pair_uses_hawkes_parenthesis_template():

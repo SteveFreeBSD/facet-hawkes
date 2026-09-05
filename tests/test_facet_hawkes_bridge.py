@@ -1,25 +1,39 @@
-"""Hawkes across the Facet boundary: Ethnos keeps the question, Facet the run.
+"""Hawkes across the Facet boundary: Ethnos keeps the page, Facet the answering.
 
 The protocol itself is covered in `test_facet_client.py`. What is checked here
-is the division of labour: that Hawkes prompting and answer handling stay on
-the Ethnos side, that the browser cannot reach past the boundary, and that a
+is the division of labour, and it is not the division it used to be. Ethnos ran
+the exact solvers and asked Facet only about what they declined, so the routing
+decision -- exact mathematics or a reasoning model -- was made by the side that
+owns the browser. Facet makes it now.
+
+These tests run the real Facet in-process (see `facet_loopback`), so the route
+is genuinely decided on the far side: Ethnos builds its real request, Facet's
+real router runs the real deterministic solvers, and only the model is a stand-
+in. That is also what makes the two routes distinguishable -- if the stand-in
+is ever asked anything, reasoning ran.
+
+What must still hold on this side: the browser cannot reach past the boundary,
+nothing about the page crosses it, structured answers survive intact, and a
 Facet failure is reported rather than quietly answered locally.
 """
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
+
+from facet_loopback import FakeAdapter, facet, reasoning
+from facet_runtime.solve import MathProblem, reasoning_prompt
 
 from ethnos import hawkes_host
 from ethnos.facet_client import (
     FacetExecutionError,
     FacetProtocolError,
-    FacetResult,
     FacetTransportError,
 )
-from ethnos.hawkes_host import _facet_prompt, handle
+from ethnos.hawkes_host import handle
 from ethnos.hawkes_protocol import AnswerPayload, SolveRequest
 
 MATHML = "<math><msup><mi>x</mi><mn>2</mn></msup></math>"
@@ -52,40 +66,20 @@ def request(
     }
 
 
-def facet_result(**changes) -> FacetResult:
-    fields = {
-        "text": "FINAL ANSWER: x^2",
-        "requested_backend": "gpu",
-        "actual_backend": "gpu",
-        "runtime": "Ollama 0.33.2",
-        "model": "gpt-oss:20b",
-        "device": "AMD Radeon 890M Graphics (RADV STRIX1)",
-        "elapsed_ms": 812.5,
-        "fallback": False,
-        "metrics": {"generated_tokens": 12, "decode_tps": 21.2},
-        "evidence": {"source": "ollama /api/ps", "device_resident_fraction": 1.0},
-    }
-    fields.update(changes)
-    return FacetResult(**fields)
+def prompt_for(instruction, expressions, *, label="", parts=1) -> str:
+    """The prompt Facet writes for a question it decided to reason about."""
+    return reasoning_prompt(MathProblem(instruction, tuple(expressions), parts, label))
 
 
-def answering(monkeypatch, result):
-    """Stand in for the whole Facet call, and record what Ethnos asked for."""
-    seen: dict = {}
-
-    def fake_generate_text(prompt, **kwargs):
-        seen["prompt"] = prompt
-        seen["kwargs"] = kwargs
-        if isinstance(result, Exception):
-            raise result
-        return result
-
-    monkeypatch.setattr("ethnos.facet_client.generate_text", fake_generate_text)
-    return seen
+def answering(monkeypatch, text="FINAL ANSWER: x^2", **overrides):
+    """A real Facet whose reasoning route, if reached, answers with `text`."""
+    adapters = reasoning(text)
+    adapters.update(overrides)
+    return facet(monkeypatch, **adapters)
 
 
 def test_a_hawkes_question_succeeds_through_the_new_bridge(monkeypatch) -> None:
-    answering(monkeypatch, facet_result())
+    answering(monkeypatch)
 
     response = handle(request())
 
@@ -97,56 +91,85 @@ def test_a_hawkes_question_succeeds_through_the_new_bridge(monkeypatch) -> None:
 
 
 def test_the_panel_reports_where_the_work_actually_ran(monkeypatch) -> None:
-    answering(monkeypatch, facet_result(actual_backend="npu", device="AMD XDNA2 NPU"))
+    answering(
+        monkeypatch,
+        gpu=FakeAdapter("gpu", available=False),
+        npu=FakeAdapter("npu", text="FINAL ANSWER: x^2", device="AMD XDNA2 NPU"),
+    )
 
     certainty = handle(request()).certainty
 
-    # Not "GPU", and not "casbox": the provenance is what Facet reported.
-    assert certainty.source == "Facet · NPU"
+    # Not "GPU", and not "casbox": the provenance is what Facet reported, and
+    # which accelerator answered was Facet's decision, not a request.
+    assert certainty.source == "Facet Reasoning · NPU"
     assert certainty.device == "AMD XDNA2 NPU"
     assert certainty.model == "gpt-oss:20b"
     assert certainty.runtime == "Ollama 0.33.2"
-    assert certainty.elapsed_ms == 812.5
+    assert certainty.elapsed_ms >= 0
 
 
 def test_ethnos_asks_for_a_constraint_and_never_for_a_device(monkeypatch) -> None:
-    seen = answering(monkeypatch, facet_result())
+    loopback = answering(monkeypatch)
 
     handle(request())
 
-    assert seen["kwargs"]["accelerator_required"] is True
-    assert seen["kwargs"]["allow_fallback"] is False
-    assert set(seen["kwargs"]) == {
+    crossed = loopback.requests[0]
+    assert crossed["constraints"] == {
+        "accelerator_required": True,
+        "allow_fallback": False,
+    }
+    # The whole of what crosses: an operation, an id to correlate a reply, the
+    # question, and a need. No runtime, model, device, host, or path.
+    assert set(crossed) == {
+        "facet_protocol_version",
+        "operation",
         "request_id",
-        "accelerator_required",
-        "allow_fallback",
+        "problem",
+        "constraints",
     }
 
 
+def test_nothing_about_the_page_crosses_the_boundary(monkeypatch) -> None:
+    """The request describes a question. There is no way to describe a page."""
+    loopback = answering(monkeypatch)
+
+    handle(request())
+
+    problem = loopback.problems[0]
+    assert set(problem) == {"instruction", "expressions", "answer_parts"}
+    assert problem["instruction"] == "Simplify x squared."
+    # The markup itself stays here: converting MathJax is a fact about the
+    # page, and Facet is handed the mathematics rather than the document.
+    assert problem["expressions"] == ["x^2"]
+    assert "<math" not in json.dumps(loopback.requests)
+
+
 def test_a_browser_request_id_is_reduced_before_it_crosses(monkeypatch) -> None:
-    seen = answering(monkeypatch, facet_result())
+    loopback = answering(monkeypatch)
     hostile = request()
     hostile["request_id"] = "id with spaces; and ;$(id)"
 
     handle(hostile)
 
-    assert seen["kwargs"]["request_id"] == "ethnos-id-with-spaces--and----id"
+    assert loopback.requests[0]["request_id"] == "ethnos-id-with-spaces--and----id"
 
 
-def test_the_hawkes_prompt_is_built_by_ethnos_not_by_facet(monkeypatch) -> None:
-    seen = answering(monkeypatch, facet_result())
+def test_the_reasoning_prompt_is_facets_to_write(monkeypatch) -> None:
+    """Ethnos hands over a question; the prompt is a consequence of routing.
+
+    It used to be built here and sent whether or not it was needed. Facet
+    decides whether reasoning happens at all, so Facet writes what it asks.
+    """
+    loopback = answering(monkeypatch)
 
     handle(request())
 
-    # Facet receives a bounded intelligence request. Everything that makes it a
-    # Hawkes request -- the instruction, the expression, the answer format --
-    # was decided on this side of the boundary.
-    assert seen["prompt"] == _facet_prompt("Simplify x squared.", ["x^2"])
-    assert "FINAL ANSWER:" in seen["prompt"]
+    assert loopback.prompts == [prompt_for("Simplify x squared.", ["x^2"])]
+    assert "FINAL ANSWER:" in loopback.prompts[0]
 
 
 def test_the_fixed_prompt_does_not_teach_placeholder_tags() -> None:
-    prompt = _facet_prompt("Simplify.", ["x^2"])
+    prompt = prompt_for("Simplify.", ["x^2"])
 
     assert "FINAL ANSWER:" in prompt
     assert "<answer>" not in prompt
@@ -188,13 +211,11 @@ def test_the_default_request_still_takes_the_local_ethnos_path(monkeypatch) -> N
         "ethnos.hawkes_host._solve_from_markup",
         lambda *_args: (AnswerPayload(display_text="x^2", keyboard_entry="x^2"), ""),
     )
-    monkeypatch.setattr(
-        "ethnos.facet_client.generate_text",
-        lambda *_a, **_k: pytest.fail("a default request reached Facet"),
-    )
+    loopback = facet(monkeypatch)
 
     response = handle(plain)
 
+    assert loopback.requests == [], "a default request reached Facet"
     assert response.status == "ready"
     assert response.certainty.source == "markup"
 
@@ -202,15 +223,13 @@ def test_the_default_request_still_takes_the_local_ethnos_path(monkeypatch) -> N
 def test_facet_mode_requires_exact_markup_and_reaches_nothing_without_it(
     monkeypatch,
 ) -> None:
-    monkeypatch.setattr(
-        "ethnos.facet_client.generate_text",
-        lambda *_a, **_k: pytest.fail("Facet was called without MathML"),
-    )
+    loopback = facet(monkeypatch)
     without = request(mathml=[])
     without["problem"]["screenshot_png_base64"] = "not-used"
 
     response = handle(without)
 
+    assert loopback.requests == [], "Facet was called without MathML"
     assert response.status == "unsupported"
     assert response.answer is None
     assert "requires readable Hawkes MathML" in response.message
@@ -228,11 +247,15 @@ def test_facet_mode_requires_exact_markup_and_reaches_nothing_without_it(
 def test_a_facet_failure_is_reported_and_never_answered_locally(
     monkeypatch, failure
 ) -> None:
-    answering(monkeypatch, failure)
-    # The exact solvers run once, ahead of Facet, and decline this question.
+    def failing(**_kwargs):
+        raise failure
+
+    monkeypatch.setattr("ethnos.facet_client.solve_math", failing)
     # The invariant is what happens after Facet fails: nothing may answer in
     # its place, because a substituted answer would carry a provenance nobody
-    # asked for. Counting the calls says both things at once.
+    # asked for. The local solvers are now the ones that must not run -- Facet
+    # owns the routing, so a local answer here would be a second opinion the
+    # panel would label as Facet's.
     attempts = []
     real = hawkes_host._solve_from_markup
 
@@ -244,7 +267,7 @@ def test_a_facet_failure_is_reported_and_never_answered_locally(
 
     response = handle(request())
 
-    assert len(attempts) == 1, "the local solver ran again after Facet failed"
+    assert attempts == [], "the local solver answered in Facet's place"
     assert response.status == "error"
     assert response.answer is None
     assert response.certainty is None
@@ -254,24 +277,23 @@ def test_a_facet_failure_is_reported_and_never_answered_locally(
 def test_a_facet_run_with_no_final_answer_is_ambiguous_not_inserted(
     monkeypatch,
 ) -> None:
-    answering(monkeypatch, facet_result(text="I think it is probably x squared."))
+    answering(monkeypatch, text="I think it is probably x squared.")
 
     response = handle(request())
 
     assert response.status == "ambiguous"
     assert response.answer is None
+    assert response.certainty is None
 
 
 def test_an_unwanted_origin_never_reaches_facet(monkeypatch) -> None:
-    monkeypatch.setattr(
-        "ethnos.facet_client.generate_text",
-        lambda *_a, **_k: pytest.fail("a foreign origin reached Facet"),
-    )
+    loopback = facet(monkeypatch)
     foreign = request()
     foreign["origin"] = "https://example.com"
 
     response = handle(foreign)
 
+    assert loopback.requests == [], "a foreign origin reached Facet"
     assert response.status == "error"
     assert "origin is not allowed" in response.message
 
@@ -299,17 +321,15 @@ DOMAIN_INSTRUCTION = (
 )
 
 
-def test_an_exactly_solvable_question_never_reaches_facet(monkeypatch) -> None:
-    """SymPy keeps what it can answer, even when the browser chose Facet.
+def test_an_exactly_solvable_question_never_reaches_a_model(monkeypatch) -> None:
+    """Facet keeps what its solvers can answer, and no model is asked.
 
-    Choosing the Facet engine chooses where the *remainder* goes. It does not
-    buy a model's opinion of a question that exact mathematics already settles
-    in a millisecond, and settles checkably.
+    This is the whole of the routing decision, and it is made on the far side
+    now. Facet runs the deterministic solvers first and answers from them, so a
+    question exact mathematics settles in a millisecond never costs a model's
+    opinion -- and the answer is the one the exact path always gave.
     """
-    monkeypatch.setattr(
-        "ethnos.facet_client.generate_text",
-        lambda *_a, **_k: pytest.fail("an exactly solvable question reached Facet"),
-    )
+    loopback = answering(monkeypatch)
 
     response = handle(
         request(
@@ -318,10 +338,13 @@ def test_an_exactly_solvable_question_never_reaches_facet(monkeypatch) -> None:
         )
     )
 
+    assert loopback.prompts == [], "an exactly solvable question reached a model"
     assert response.status == "ready"
     assert response.answer.display_text == "y^(27/20)"
-    # Reported as the exact reading it was, not as a Facet run.
-    assert response.certainty.source == "markup"
+    # Reported as the exact route it was, not as a reasoned one.
+    assert response.certainty.source == "Facet Exact"
+    assert response.certainty.answered_by == "exact"
+    assert response.certainty.router == "solved"
     assert response.certainty.transcription == "exact"
     assert response.certainty.insertable is True
     assert response.certainty.model is None
@@ -331,27 +354,28 @@ def test_facet_answers_the_question_that_falls_past_the_exact_solver(
     monkeypatch,
 ) -> None:
     """The live shape: exact path declines, Facet reasons, no screenshot."""
-    seen = answering(
-        monkeypatch,
-        facet_result(text="FINAL ANSWER: (-∞,-3)∪(-3,3)∪(3,∞)"),
-    )
+    loopback = answering(monkeypatch, text="FINAL ANSWER: (-∞,-3)∪(-3,3)∪(3,∞)")
 
     response = handle(request(mathml=[DOMAIN_RATIONAL], instruction=DOMAIN_INSTRUCTION))
 
     # Ethnos handed Facet the exact expression off the page. Nothing was
     # transcribed, and no picture was taken.
-    assert "\\frac{x+1}{x^2-9}" in seen["prompt"]
-    assert DOMAIN_INSTRUCTION in seen["prompt"]
+    assert loopback.problems[0]["expressions"] == ["\\frac{x+1}{x^2-9}"]
+    assert DOMAIN_INSTRUCTION in loopback.prompts[0]
     assert response.status == "ready"
     assert response.answer.display_text == "(-∞,-3)∪(-3,3)∪(3,∞)"
-    assert response.certainty.source == "Facet · GPU"
+    assert response.certainty.source == "Facet Reasoning · GPU"
+    assert response.certainty.router == "declined"
+    assert response.certainty.router_detail == (
+        "no exact operation matched the instruction"
+    )
     assert response.certainty.insertable is True
 
 
 def test_the_question_label_reaches_facet_when_the_page_supplied_one() -> None:
     """The label is the only thing separating two steps of one problem."""
-    labelled = _facet_prompt("Simplify.", ["x^2"], label="Question 4 of 12")
-    plain = _facet_prompt("Simplify.", ["x^2"])
+    labelled = prompt_for("Simplify.", ["x^2"], label="Question 4 of 12")
+    plain = prompt_for("Simplify.", ["x^2"])
 
     assert "Question: Question 4 of 12" in labelled
     # A page that supplied no label adds no empty line to the prompt.
@@ -374,14 +398,15 @@ FOUR_PART_REPLY = (
 
 def test_a_single_field_answer_is_unchanged_by_the_shape_field(monkeypatch) -> None:
     """The one-box path is exactly what it was before shapes existed."""
-    seen = answering(monkeypatch, facet_result())
+    loopback = answering(monkeypatch)
 
     response = handle(request(shape="field"))
 
     # The single-value contract, word for word as it was.
-    assert "Your entire response must be one line" in seen["prompt"]
-    assert "PART 1:" not in seen["prompt"]
-    assert seen["prompt"] == _facet_prompt("Simplify x squared.", ["x^2"])
+    prompt = loopback.prompts[0]
+    assert "Your entire response must be one line" in prompt
+    assert "PART 1:" not in prompt
+    assert prompt == prompt_for("Simplify x squared.", ["x^2"])
     assert response.answer.display_text == "x^2"
     assert response.answer.keyboard_entry == "x^2"
     assert response.answer.parts == []
@@ -391,18 +416,19 @@ def test_an_absent_shape_is_read_as_the_single_box_it_always_was(
     monkeypatch,
 ) -> None:
     """An add-on that says nothing gets exactly the old behaviour."""
-    seen = answering(monkeypatch, facet_result())
+    loopback = answering(monkeypatch)
 
     handle(request())
 
-    assert seen["prompt"] == _facet_prompt("Simplify x squared.", ["x^2"])
+    assert loopback.problems[0]["answer_parts"] == 1
+    assert loopback.prompts[0] == prompt_for("Simplify x squared.", ["x^2"])
 
 
 def test_a_paired_answer_shape_reaches_facet_as_a_two_part_contract(
     monkeypatch,
 ) -> None:
     """The shape crosses as a requirement on the reply, not as a page."""
-    seen = answering(monkeypatch, facet_result(text=TWO_PART_REPLY))
+    loopback = answering(monkeypatch, text=TWO_PART_REPLY)
 
     handle(
         request(
@@ -413,19 +439,24 @@ def test_a_paired_answer_shape_reaches_facet_as_a_two_part_contract(
         )
     )
 
-    assert "This question takes 2 separate answers." in seen["prompt"]
-    assert "PART 1: answer number 1 by itself" in seen["prompt"]
-    assert "PART 2: answer number 2 by itself" in seen["prompt"]
+    # What crosses is a count. Which controls the add-on saw, and what it is
+    # going to do with two values, stays here.
+    assert loopback.problems[0]["answer_parts"] == 2
+    assert set(loopback.problems[0]) == {"instruction", "expressions", "answer_parts"}
+    prompt = loopback.prompts[0]
+    assert "This question takes 2 separate answers." in prompt
+    assert "PART 1: answer number 1 by itself" in prompt
+    assert "PART 2: answer number 2 by itself" in prompt
     # Facet is told what to produce, never what the page is made of.
     for leak in ("field", "editor", "input", "box id", "DOM", "radio"):
-        assert leak not in seen["prompt"].replace("answer box", "")
+        assert leak not in prompt.replace("answer box", "")
 
 
 def test_a_structured_two_part_reply_survives_validation_intact(
     monkeypatch,
 ) -> None:
     """The parts arrive as parts, never as prose to be split later."""
-    answering(monkeypatch, facet_result(text=TWO_PART_REPLY))
+    answering(monkeypatch, text=TWO_PART_REPLY)
 
     response = handle(
         request(
@@ -442,14 +473,14 @@ def test_a_structured_two_part_reply_survives_validation_intact(
     # No single string can be typed into two separate boxes, and the exact
     # two-root path already leaves this empty for the same reason.
     assert response.answer.keyboard_entry == ""
-    assert response.certainty.source == "Facet · GPU"
+    assert response.certainty.source == "Facet Reasoning · GPU"
     assert response.certainty.insertable is True
 
 
 def test_a_structured_four_part_facet_reply_survives_validation_intact(
     monkeypatch,
 ) -> None:
-    answering(monkeypatch, facet_result(text=FOUR_PART_REPLY))
+    answering(monkeypatch, text=FOUR_PART_REPLY)
 
     response = handle(request(shape="multi", shape_count=4))
 
@@ -463,7 +494,7 @@ def test_the_comma_instruction_makes_one_box_a_two_value_answer(
     monkeypatch,
 ) -> None:
     """Ethnos reads the shape out of the question, not only out of the page."""
-    seen = answering(monkeypatch, facet_result(text=TWO_PART_REPLY))
+    loopback = answering(monkeypatch, text=TWO_PART_REPLY)
 
     handle(
         request(
@@ -476,7 +507,8 @@ def test_the_comma_instruction_makes_one_box_a_two_value_answer(
         )
     )
 
-    assert "This question takes 2 separate answers." in seen["prompt"]
+    assert loopback.problems[0]["answer_parts"] == 2
+    assert "This question takes 2 separate answers." in loopback.prompts[0]
 
 
 @pytest.mark.parametrize(
@@ -502,9 +534,10 @@ def test_a_mismatched_part_count_fails_closed(monkeypatch, reply, why) -> None:
     """An answer of the wrong shape is worse than no answer.
 
     Nothing downstream would question it: the insertion path takes `parts` and
-    types them into real answer fields.
+    types them into real answer fields. Facet refuses first, because it is what
+    asked for the shape; Ethnos refuses again, because it is what would type it.
     """
-    answering(monkeypatch, facet_result(text=reply))
+    answering(monkeypatch, text=reply)
 
     response = handle(
         request(
@@ -521,11 +554,8 @@ def test_a_mismatched_part_count_fails_closed(monkeypatch, reply, why) -> None:
 
 
 def test_a_paired_shape_still_never_preempts_the_exact_solver(monkeypatch) -> None:
-    """Shape changes what Facet is asked for, never whether it is asked."""
-    monkeypatch.setattr(
-        "ethnos.facet_client.generate_text",
-        lambda *_a, **_k: pytest.fail("an exactly solvable question reached Facet"),
-    )
+    """Shape changes what a model would be asked, never whether one is."""
+    loopback = answering(monkeypatch)
 
     response = handle(
         request(
@@ -536,15 +566,13 @@ def test_a_paired_shape_still_never_preempts_the_exact_solver(monkeypatch) -> No
         )
     )
 
+    assert loopback.prompts == [], "a shaped question preempted the exact solver"
     assert response.status == "ready"
-    assert response.certainty.source == "markup"
+    assert response.certainty.source == "Facet Exact"
 
 
-def test_four_exact_roots_never_invoke_facet(monkeypatch) -> None:
-    monkeypatch.setattr(
-        "ethnos.facet_client.generate_text",
-        lambda *_a, **_k: pytest.fail("a complete exact quartic reached Facet"),
-    )
+def test_four_exact_roots_never_reach_a_model(monkeypatch) -> None:
+    loopback = answering(monkeypatch)
 
     response = handle(
         request(
@@ -562,17 +590,19 @@ def test_four_exact_roots_never_invoke_facet(monkeypatch) -> None:
         "-2*i*sqrt(5)",
         "2*i*sqrt(5)",
     ]
+    assert loopback.prompts == [], "a complete exact quartic reached a model"
     assert response.certainty.answered_by == "exact"
     assert response.certainty.router == "solved"
-    assert response.certainty.facet_invoked is False
+    # Facet answered it -- with mathematics, which is the distinction that
+    # matters. `answered_by` is what says no model took part.
+    assert response.certainty.facet_invoked is True
 
 
 def test_the_page_prefix_is_stated_so_facet_does_not_repeat_it() -> None:
     """`r = [box]` already prints the label; repeating it would be typed in."""
-    prompt = _facet_prompt(
+    prompt = prompt_for(
         "Solve the following formula for the indicated variable. Solve for r.",
         ["C=2*pi*r"],
-        prefix="r",
     )
 
     assert "already prints `r =` beside the answer" in prompt

@@ -20,9 +20,21 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.14"]
+        # Ethnos calls Facet's exact solvers, and facet-runtime needs 3.12.
+        python-version: ["3.12", "3.14"]
+    defaults:
+      run:
+        working-directory: facet-hawkes
     steps:
       - uses: actions/checkout@v6
+        with:
+          path: facet-hawkes
+      # The exact solvers live in Facet and are a path dependency of this
+      # package, so the sibling checkout is part of installing it at all.
+      - uses: actions/checkout@v6
+        with:
+          repository: SteveFreeBSD/facet-runtime
+          path: facet-runtime
       - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}

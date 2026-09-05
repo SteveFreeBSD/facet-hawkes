@@ -25,6 +25,8 @@ import time
 from pathlib import Path
 from typing import BinaryIO
 
+from facet_runtime.exact import EXACT_METHOD as FACET_EXACT_METHOD
+
 from .hawkes_protocol import (
     MAX_MESSAGE_BYTES,
     AnswerPayload,
@@ -272,25 +274,11 @@ COMMA_SEPARATED = re.compile(
 
 #: Names for the deterministic solvers, so a reader is never left wondering
 #: whether the thing that answered was a model. Neither of these is one.
-EXACT_METHOD = "SymPy exact symbolic"
+#: `EXACT_METHOD` is taken from the solver itself, which lives in Facet now:
+#: two places naming the same solver differently is how a panel ends up
+#: claiming an engine that did not run.
+EXACT_METHOD = FACET_EXACT_METHOD
 POLYNOMIAL_METHOD = "exact polynomial expansion"
-
-#: The variable a formula question isolates, which Hawkes then prints beside
-#: the answer box as `r =`. Read here rather than borrowed from the solver:
-#: this is a fact about what the page displays, not about how to solve.
-ANSWER_PREFIX = re.compile(r"\bsolve\s+for\s+([A-Za-z])\b", re.IGNORECASE)
-
-
-def answer_prefix(instruction: str) -> str:
-    """The label the page already prints beside the box, or an empty string."""
-    match = ANSWER_PREFIX.search(instruction)
-    return match.group(1) if match else ""
-
-
-#: `PART 1: ...` from a multi-part Facet reply. Structured on purpose: the
-#: alternative is recovering mathematical boundaries out of display prose,
-#: which is exactly the reparsing this exists to avoid.
-FACET_PART = re.compile(r"(?im)^\s*PART\s+(\d+)\s*:\s*(.+?)\s*$")
 
 
 def required_answer_parts(shape, instruction: str) -> int:
@@ -451,100 +439,60 @@ def _solve_graph_with_facet(request, instruction, announce):
     )
 
 
-def _facet_prompt(
-    instruction: str,
-    expressions: list[str],
-    *,
-    label: str = "",
-    parts: int = 1,
-    prefix: str = "",
-) -> str:
-    """State the question in the terms Ethnos already holds exactly.
+def answer_payload(
+    display: str, entry: str, parts: tuple[str, ...] | list[str], entry_mode: str
+) -> AnswerPayload:
+    """Turn one exactly-shaped answer into the page's answer model.
 
-    Every part of this came off the page as markup, so nothing here is a
-    transcription and none of it needed a picture. The question's own label is
-    context rather than instruction: it is sometimes the only thing that
-    distinguishes one step of a problem from the next.
-
-    The answer shape is stated as a requirement on the reply, never as a
-    description of the page. Facet is told how many values to produce and what
-    a value may contain; it is told nothing about fields, editors, or where an
-    answer is going to be typed, because none of that is its to reason about.
+    This is the browser side of the boundary and stays here: Facet reports the
+    values and how literally to take them, and Ethnos decides what has to be
+    typed to produce them. The maths keyboard, its function forms and its
+    implicit multiplication are facts about the Hawkes editor, not about the
+    mathematics, so Facet is never told about any of it.
     """
-    rendered = "\n".join(f"- {expression}" for expression in expressions)
-    heading = f"Question: {label.strip()}\n" if label.strip() else ""
-    # The page already prints the variable and the equals sign beside the box,
-    # so repeating them would be entered literally and be wrong.
-    labelled = (
-        f"The page already prints `{prefix} =` beside the answer, so give only "
-        "the value that follows it.\n"
-        if prefix
-        else ""
+    from facet_runtime.exact import entry_text
+
+    from .answer_image import keyboard_entry_for_math
+
+    def render(value: str) -> str:
+        literal = entry_text(value, entry_mode)
+        return literal if literal is not None else keyboard_entry_for_math(value)
+
+    return AnswerPayload(
+        display_text=display,
+        # A multi-part answer is carried in `parts`; there is no one string
+        # that can be typed into several separate boxes.
+        keyboard_entry=render(entry) if entry else "",
+        parts=[render(value) for value in parts],
     )
-    if parts > 1:
-        contract = (
-            f"This question takes {parts} separate answers.\n"
-            f"Reply with exactly {parts + 1} labelled lines and nothing else, "
-            "and keep every label exactly as written here:\n"
-            "FINAL ANSWER: all answers as the page would display them\n"
-            + "".join(
-                f"PART {index}: answer number {index} by itself\n"
-                for index in range(1, parts + 1)
-            )
-            + "Every line must begin with its own label, including each PART "
-            "line. A PART line holds only what belongs in that one answer box: "
-            "no label repeated inside it, no variable name, no equals sign, no "
-            '"or", no explanation.'
-        )
-    else:
-        contract = (
-            "Your entire response must be one line beginning with the exact words "
-            "FINAL ANSWER: followed by only what belongs in the Hawkes answer box. "
-            "Do not repeat the input expression or output an equals sign. Never output "
-            "angle brackets or a trailing period. Do not explain."
-        )
-    return (
-        "Solve this Hawkes precalculus question.\n"
-        f"{heading}"
-        f"Instruction: {instruction}\n"
-        f"Expression(s):\n{rendered}\n"
-        f"{labelled}"
-        f"{contract}"
-    )
-
-
-def _facet_answer_parts(text: str, expected: int) -> list[str] | None:
-    """Read the `PART n:` lines of a multi-part reply, or refuse.
-
-    Returns None unless the reply carries exactly the parts that were asked
-    for, numbered from one and in order. A reply that produced a different
-    count did not answer the question that was asked -- it answered a
-    differently shaped one -- and an answer of the wrong shape is worse than
-    no answer, because the insertion path would place it into real fields.
-    """
-    found = FACET_PART.findall(text)
-    if len(found) != expected:
-        return None
-    if [index for index, _ in found] != [str(n) for n in range(1, expected + 1)]:
-        return None
-    values = [value.strip() for _, value in found]
-    return values if all(values) else None
 
 
 def _solve_with_facet(
     request: SolveRequest, instruction: str, prompt_seen: bool, announce
 ) -> SolveResponse:
-    """Exact mathematics first, then Facet for what genuinely falls past it.
+    """Hand the question to Facet, and let Facet decide how it is answered.
 
-    Facet is the reasoning fallback, not a replacement for the exact solvers.
-    Anything SymPy can settle is settled here, in milliseconds, with no model,
-    no accelerator and no network -- and its answer is checkable rather than
-    merely plausible. Facet is asked only about the questions that would
-    otherwise cost a screenshot, two vision readings, and the better part of a
-    minute, which is the one place a reasoning model is worth its latency.
+    This is the boundary that moved. Ethnos used to run the exact solvers here
+    and ask Facet only about what they declined, which meant the routing
+    decision -- the single most consequential thing about a solve -- was made
+    by the side that owns the browser. It is now made by the side that owns the
+    answering: Facet runs the same deterministic solvers first, in milliseconds
+    with no model and no accelerator, and reaches a reasoning model only for
+    what genuinely falls past them. Which route ran comes back in the result.
+
+    What crosses is the question: the instruction, the exact expressions read
+    off the page's own markup, how many separate values the answer takes, and
+    the question's label. The markup itself does not cross, because converting
+    it is a fact about MathJax rather than about mathematics, and nothing about
+    the document, the window, the frame, the editor or the fields crosses at
+    all. What comes back is validated here before anything is typed anywhere.
     """
-    from .answer_image import extract_final_math, keyboard_entry_for_math
-    from .facet_client import FacetError, generate_text, safe_request_id
+    from .facet_client import (
+        FacetError,
+        FacetExecutionError,
+        safe_request_id,
+        solve_math,
+    )
     from .hawkes_mathml import UnsupportedMathML, mathml_to_latex
 
     problem = request.problem
@@ -554,7 +502,6 @@ def _solve_with_facet(
             "Facet experimental mode currently requires readable Hawkes MathML.",
             "unsupported",
         )
-    expressions = []
     try:
         expressions = [mathml_to_latex(item) for item in problem.mathml]
     except UnsupportedMathML:
@@ -571,126 +518,94 @@ def _solve_with_facet(
         )
 
     announce("reading", "exact page markup")
-    announce("solving", "exact solver")
-    # The deterministic path keeps everything it can answer. Sending one of
-    # these to Facet would trade a checkable millisecond for an unverifiable
-    # second, and would do it on exactly the questions least in need of a
-    # model. The engine the browser chose decides where the *rest* goes.
-    started = time.perf_counter()
-    exact, decline = _solve_from_markup(instruction, problem.mathml)
-    exact_ms = (time.perf_counter() - started) * 1000
-    if exact is not None:
-        return SolveResponse(
-            request_id=request.request_id,
-            status="ready",
-            problem_text=instruction,
-            answer=exact,
-            certainty=Certainty(
-                prompt_seen=prompt_seen,
-                source="markup",
-                transcription="exact",
-                insertable=True,
-                issues=[],
-                answered_by="exact",
-                router="solved",
-                reading="mathml",
-                method=EXACT_METHOD,
-                # Selecting Facet does not mean Facet ran. It did not.
-                facet_invoked=False,
-                elapsed_ms=exact_ms,
-            ),
-        )
-
-    # Past the exact solvers. `decline` names which of the two gaps this was,
-    # which is the thing a live fallback otherwise cannot tell you.
-    announce("solving", f"Facet ({decline})")
     # What the page will take, decided here and stated to Facet as a
-    # requirement on its reply. Facet is never told about fields or editors:
-    # how many values an answer needs is a property of the question, and
-    # where they are typed is nobody's business but Ethnos's.
+    # requirement on its reply. How many values a question has is a property of
+    # the question; where they are typed is nobody's business but Ethnos's, so
+    # Facet is told the count and nothing about the fields it came from.
     parts_required = required_answer_parts(problem.answer_shape, instruction)
+    announce("solving", "Facet solver routing")
     # A need, not a device. Ethnos requires accelerated execution and refuses a
     # fallback; which accelerator satisfies that is Facet's to decide and
     # Facet's to report, so nothing here assumes a GPU or a particular host.
+    # An exactly solved question satisfies it by needing no processor at all.
     try:
-        result = generate_text(
-            _facet_prompt(
-                instruction,
-                expressions,
-                label=problem.question_label,
-                parts=parts_required,
-                prefix=answer_prefix(instruction),
-            ),
+        solution = solve_math(
+            instruction=instruction,
+            expressions=expressions,
             request_id=safe_request_id(request.request_id),
+            answer_parts=parts_required,
+            label=problem.question_label,
             accelerator_required=True,
             allow_fallback=False,
         )
+    except FacetExecutionError as error:
+        if error.kind == "unusable_result":
+            # Facet ran and what came back cannot be an answer. Reported as
+            # ambiguous rather than as a failure, because the distinction is
+            # what tells a reader whether to try again or to look at the page.
+            return error_response(
+                request.request_id,
+                f"Facet returned no usable answer: {error.detail}",
+                "ambiguous",
+            )
+        return error_response(request.request_id, f"Facet did not answer: {error}")
     except FacetError as error:
         # Facet is the engine the user chose. A failure here is reported as a
         # failure and never quietly becomes a local Ethnos answer: a
         # substituted answer would carry a provenance nobody asked for.
         return error_response(request.request_id, f"Facet did not answer: {error}")
-    final_math = extract_final_math(result.text)
-    if not final_math:
+
+    # Fail closed on a result of the wrong shape. Facet already refuses to
+    # return the wrong number of reasoned answers; Ethnos checks it too,
+    # because Ethnos is what would type them into real answer boxes. The exact
+    # route is deliberately not held to this: a quartic has four roots whatever
+    # the page's control looked like, and that is the mathematics answering.
+    if (
+        solution.route == "reasoning"
+        and len(solution.answer.parts or (solution.answer.entry,)) != parts_required
+    ):
         return error_response(
             request.request_id,
-            "Facet returned no FINAL ANSWER for this question.",
+            f"Facet did not return the {parts_required} separate answers "
+            "this question needs.",
             "ambiguous",
         )
-
-    def entry_for(value: str) -> str:
-        """Machine form, unless the answer is prose like "No Solution"."""
-        prose = re.fullmatch(r"[A-Za-z][A-Za-z ]*", value) is not None
-        return value if prose else keyboard_entry_for_math(value)
-
-    answer_parts: list[str] = []
-    if parts_required > 1:
-        values = _facet_answer_parts(result.text, parts_required)
-        if values is None:
-            # Fail closed. The question needs a known number of values and
-            # this reply does not carry them, so there is nothing here that
-            # may reach an answer field.
-            return error_response(
-                request.request_id,
-                f"Facet did not return the {parts_required} separate answers "
-                "this question needs.",
-                "ambiguous",
-            )
-        answer_parts = [entry_for(value) for value in values]
 
     return SolveResponse(
         request_id=request.request_id,
         status="ready",
         problem_text="\n".join((instruction, *expressions)),
-        answer=AnswerPayload(
-            display_text=final_math,
-            # A multi-part answer is carried in `parts`; there is no one string
-            # that can be typed into several separate boxes.
-            keyboard_entry="" if answer_parts else entry_for(final_math),
-            parts=answer_parts,
+        answer=answer_payload(
+            solution.answer.display,
+            solution.answer.entry,
+            solution.answer.parts,
+            solution.answer.entry_mode,
         ),
         certainty=Certainty(
             prompt_seen=prompt_seen,
-            # Where the work ran is reported, not assumed.
-            source=f"Facet · {result.actual_backend.upper()}",
+            # Facet's own identity for the route it took, reported rather than
+            # assembled here: "Facet Exact", or "Facet Reasoning · GPU".
+            source=solution.source,
             transcription="exact",
             insertable=True,
             issues=[],
-            answered_by="facet",
-            # The exact solvers ran and declined; that is why Facet was asked,
-            # and the decline is carried so the panel can say which gap it was.
-            router="declined",
-            router_detail=decline,
+            # An exact answer is an exact answer wherever it was computed. The
+            # question a reader is asking is whether a model produced it, and
+            # on the exact route none did.
+            answered_by="exact" if solution.route == "exact" else "facet",
+            router=solution.router,
+            router_detail=solution.router_detail,
             reading="mathml",
-            method=result.model,
+            method=solution.method,
+            # True on both routes now: Facet answered, one way or the other.
             facet_invoked=True,
-            requested_backend=result.requested_backend,
-            actual_backend=result.actual_backend,
-            fallback=result.fallback,
-            model=result.model,
-            runtime=result.runtime,
-            device=result.device,
-            elapsed_ms=result.elapsed_ms,
+            requested_backend=solution.requested_backend,
+            actual_backend=solution.actual_backend,
+            fallback=solution.fallback,
+            model=solution.model,
+            runtime=solution.runtime,
+            device=solution.device,
+            elapsed_ms=solution.elapsed_ms,
         ),
     )
 
@@ -713,14 +628,18 @@ def markup_decline_reason(markup_failed: bool) -> str:
 def _solve_from_markup(
     instruction: str, markup: list[str]
 ) -> tuple[AnswerPayload | None, str]:
-    """Solve straight from the page's MathML.
+    """Solve straight from the page's MathML, or say why not.
+
+    Ethnos converts the markup, because reading MathJax is a fact about the
+    page. The mathematics itself is Facet's deterministic solver -- the same
+    one Facet runs when it routes a question -- so the local engine and the
+    Facet engine cannot answer the same question differently.
 
     Returns the answer and an empty reason, or None and why it declined.
     """
-    from .answer_image import extract_final_math, keyboard_entry_for_math
+    from facet_runtime.exact import solve_exact
+
     from .hawkes_mathml import UnsupportedMathML, mathml_to_latex
-    from .polynomial_solver import answer_polynomial_product
-    from .symbolic_solver import answer_symbolic_math
 
     expressions: list[str] = []
     conversion_failed = False
@@ -732,195 +651,44 @@ def _solve_from_markup(
     if conversion_failed or not expressions:
         return None, markup_decline_reason(True)
 
-    if re.search(
-        r"\b(?:find|identify|determine)\s+(?:the\s+)?vertex\b", instruction, re.I
-    ):
-        from .hawkes_graph import quadratic_coefficients
-
-        if len(expressions) != 1:
-            return None, "vertex requires one exact function"
-        try:
-            a, b, c = quadratic_coefficients(expressions[0])
-            h = -b / (2 * a)
-            k = a * h * h + b * h + c
-        except (ValueError, SyntaxError, TypeError, ZeroDivisionError):
-            return None, "vertex requires a rational quadratic"
-        # A vertex is one ordered pair. Parentheses are part of its answer,
-        # built with Hawkes' PBrace template when the box forbids literal ones.
-        pair = f"({h},{k})"
-        return AnswerPayload(display_text=pair, keyboard_entry=pair), ""
-
-    classification = _polynomial_classification(instruction, expressions)
-    if classification is not None:
-        return classification, ""
-
-    # "Is this a real number?" is decidable before any solver runs: an even
-    # root of a negative number is not real, and every other case here is.
-    # Observed repeatedly in lesson 1.2 -- the square root of -100 -- where the
-    # symbolic solver produced `10*I`, which is not an answer to the question
-    # asked, and the host then reported the question unsupported.
-    realness = _realness_answer(instruction, expressions)
-    if realness is not None:
-        return realness, ""
-
-    equation = _equation_answer(instruction, expressions)
-    if equation is not None:
-        return equation, ""
-
-    result = answer_symbolic_math(problem_text=instruction, expressions=expressions)
-    if result is None:
-        result = answer_polynomial_product(f"{instruction}\n{expressions[0]}")
-    if result is None:
-        # Only the exact solvers are trusted without a transcription. Handing
-        # the markup to the model here would give an answer with no independent
-        # check behind it at all.
-        return None, markup_decline_reason(False)
-
-    final_math = extract_final_math(result.raw_response)
-    if not final_math:
-        return None, "the exact solver produced no final answer"
-    prose = re.fullmatch(r"[A-Za-z][A-Za-z ]*", final_math) is not None
-    return AnswerPayload(
-        display_text=final_math,
-        keyboard_entry=final_math if prose else keyboard_entry_for_math(final_math),
+    solution, decline = solve_exact(instruction, expressions)
+    if solution is None:
+        return None, decline
+    return answer_payload(
+        solution.display, solution.entry, solution.parts, solution.entry_mode
     ), ""
 
 
 def _equation_answer(instruction: str, expressions: list[str]) -> AnswerPayload | None:
-    """Map a unified exact equation result to Hawkes' structured answer model."""
-    from .answer_image import keyboard_entry_for_math
-    from .symbolic_solver import (
-        AbsoluteValueEquationResult,
-        LinearEquationResult,
-        _requested_operation,
-        _requested_variable,
-        solve_equation,
-    )
+    """Map one exact equation result onto the page's structured answer model."""
+    from facet_runtime.exact import solve_one_equation
 
-    if _requested_operation(instruction) != "solve" or len(expressions) != 1:
-        return None
-    target = _requested_variable(instruction)
-    result = solve_equation(expressions[0], variable=target)
-    if result is None:
-        return None
-    if isinstance(result, AbsoluteValueEquationResult):
-        keyboard_entry = result.classification
-        if len(result.solutions) == 1:
-            keyboard_entry = result.solutions[0]
-        return AnswerPayload(
-            display_text=result.display_text,
-            keyboard_entry=keyboard_entry,
-        )
-    if isinstance(result, LinearEquationResult):
-        if result.solution is None:
-            return AnswerPayload(
-                display_text=result.classification,
-                keyboard_entry=result.classification,
-            )
-        if target is not None:
-            return AnswerPayload(
-                display_text=f"{result.variable} = {result.solution}",
-                keyboard_entry=keyboard_entry_for_math(result.solution),
-            )
-        return AnswerPayload(
-            display_text=(
-                f"{result.classification} ({result.variable} = {result.solution})"
-            ),
-            keyboard_entry=result.solution,
-        )
-    entries = [keyboard_entry_for_math(solution) for solution in result.solutions]
-    if not entries:
-        return AnswerPayload(
-            display_text=result.classification,
-            keyboard_entry=result.classification,
-        )
-    return AnswerPayload(
-        display_text=result.display_text,
-        keyboard_entry=entries[0] if len(entries) == 1 else "",
-        parts=entries if len(entries) > 1 else [],
-    )
+    return _shaped(solve_one_equation(instruction, expressions))
 
 
 def _polynomial_classification(
     instruction: str, expressions: list[str]
 ) -> AnswerPayload | None:
     """Classify polynomial-choice questions without needing a screenshot."""
-    if not re.search(r"polynomial\s+or\s+a\s+non[- ]polynomial", instruction, re.I):
-        return None
-    from .symbolic_solver import _safe_sympy_expression
+    from facet_runtime.exact import classify_polynomial
 
-    for expression in expressions:
-        try:
-            value = _safe_sympy_expression(expression)
-            if not value.is_polynomial(*value.free_symbols):
-                raise ValueError("fractional or negative exponent")
-        except (SyntaxError, TypeError, ValueError, ZeroDivisionError):
-            return AnswerPayload(
-                display_text="Non-Polynomial", keyboard_entry="Non-Polynomial"
-            )
-        return AnswerPayload(display_text="Polynomial", keyboard_entry="Polynomial")
-    return None
+    return _shaped(classify_polynomial(instruction, expressions))
 
 
 def _realness_answer(instruction: str, expressions: list[str]) -> AnswerPayload | None:
-    """Answer "determine if this is a real number", or None if not asked.
+    """Answer "determine if this is a real number", or None if not asked."""
+    from facet_runtime.exact import evaluate_real_radical
 
-    The question offers two options -- "Real Number" and "Not a Real Number" --
-    and asks for the value only when it is real. Selecting the option stays the
-    reader's action; this only says which one is right.
+    return _shaped(evaluate_real_radical(instruction, expressions))
 
-    The test is the index's parity, not SymPy's principal branch: `(-27)**(1/3)`
-    evaluates to a complex number, but the real cube root of -27 is -3, and the
-    question means the real one. Only an *even* root of a negative fails to be
-    real.
-    """
-    import sympy
 
-    text = instruction.lower()
-    if "real number" not in text:
+def _shaped(solution) -> AnswerPayload | None:
+    """One exact solution as an answer this page could take, or nothing."""
+    if solution is None:
         return None
-    # Hawkes uses two prompt families for the same rule. Some ask whether the
-    # radical is real; others say to evaluate it and explicitly direct the
-    # student to indicate "Not a Real Number" when it is not. The latter is
-    # what the live sqrt(-36) question used, so limiting this branch to
-    # determine/decide/whether allowed SymPy's complex `6*I` to escape.
-    asks_for_realness = any(
-        phrase in text
-        for phrase in (
-            "determine",
-            "decide",
-            "whether",
-            "not a real number",
-        )
+    return answer_payload(
+        solution.display, solution.entry, solution.parts, solution.entry_mode
     )
-    if not asks_for_realness:
-        return None
-
-    from .symbolic_solver import _safe_sympy_expression
-
-    match = re.fullmatch(
-        r"\\sqrt(?:\[(\d+)\])?\{(.+)\}", expressions[0].strip(), re.DOTALL
-    )
-    if match is None:
-        return None
-    index = int(match.group(1) or 2)
-    try:
-        radicand = _safe_sympy_expression(match.group(2), positive_symbols=False)
-    except Exception:
-        return None
-    if radicand.free_symbols or not radicand.is_real:
-        return None  # a value that depends on a variable is not this question
-
-    if radicand.is_negative and index % 2 == 0:
-        return AnswerPayload(
-            display_text="Not a Real Number",
-            keyboard_entry="Not a Real Number",
-        )
-    value = sympy.real_root(radicand, index)
-    exact = sympy.nsimplify(value, rational=True)
-    if not exact.is_rational:
-        return None  # an irrational value is not what this question asks for
-    return AnswerPayload(display_text=str(exact), keyboard_entry=str(exact))
 
 
 def handle(raw: dict, report=None) -> SolveResponse:

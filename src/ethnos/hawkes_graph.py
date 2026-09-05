@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import json
-import re
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from .hawkes_mathml import mathml_to_latex
+
+# Facet's exact vertex route reads these same coefficients, so there is one
+# implementation and this module uses it. Re-exported: `quadratic_coefficients`
+# has always been part of this module's surface.
+from .symbolic_solver import quadratic_coefficients
 
 
 class GraphPoint(BaseModel):
@@ -86,29 +90,6 @@ def graph_prompt(instruction: str, mathml: list[str], context: dict) -> str:
             }
         )
     )
-
-
-def quadratic_coefficients(function: str):
-    """Safely derive exact coefficients for any single-letter function of x."""
-    import sympy
-
-    from .symbolic_solver import _safe_sympy_expression
-
-    match = re.fullmatch(r"\s*(?:[A-Za-z]\s*\(\s*x\s*\)|y)\s*=\s*(.+)", function)
-    if not match:
-        raise ValueError("graph requires an explicit function of x")
-    expression = _safe_sympy_expression(match[1])
-    x = sympy.Symbol("x", real=True)
-    try:
-        polynomial = sympy.Poly(expression, x)
-    except sympy.PolynomialError as error:
-        raise ValueError("graph requires a polynomial in x") from error
-    if polynomial.degree() != 2 or any(
-        not c.is_Rational for c in polynomial.all_coeffs()
-    ):
-        raise ValueError("graph requires a rational quadratic")
-    a, b, c = polynomial.all_coeffs()
-    return a, b, c
 
 
 class RegressionPlan(BaseModel):

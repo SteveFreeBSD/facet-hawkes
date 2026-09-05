@@ -1,10 +1,19 @@
-"""Ethnos client for the Facet remote protocol v1.
+"""Ethnos client for the Facet remote protocol v2.
 
-Ethnos owns the question: the browser work, the exact solvers, retrieval, the
-prompt, and what to do with an answer. Facet owns the execution: which runtime,
-which processor, the metrics, and the evidence that the work ran where Facet
-says it ran. This module is the whole of the boundary between them, and nothing
-Hawkes-specific belongs in it.
+Ethnos owns the page: the browser work, the markup capture, which question is
+being answered, what shape its answer takes, and what may be typed where. Facet
+owns the answering: whether a question is settled by deterministic exact
+mathematics or by a reasoning model, which runtime and which processor runs it,
+the metrics, and the evidence that the work ran where Facet says it ran. This
+module is the whole of the boundary between them, and nothing Hawkes-specific
+belongs in it.
+
+There are two ways to cross. `generate_text` runs a prompt Ethnos wrote, and is
+what the graph and regression paths use: they need a model to produce a plan
+that Ethnos then proves for itself. `solve_math` hands over a *question* --
+an instruction, the exact expressions it is about, and how many separate values
+its answer takes -- and lets Facet route it. The second is the one that moved:
+the exact solvers used to run here and Facet saw only what they declined.
 
 A caller states a *constraint* -- "this must not run on a CPU", "do not accept
 a fallback" -- and receives a typed result carrying the provenance Facet
@@ -33,11 +42,19 @@ from dataclasses import dataclass
 from typing import Any
 from uuid import uuid4
 
-FACET_PROTOCOL_VERSION = 1
+FACET_PROTOCOL_VERSION = 2
 
 #: Operations this client knows how to ask for. Facet enforces its own closed
 #: set; this one exists so a typo here fails locally rather than remotely.
-FACET_OPERATIONS: tuple[str, ...] = ("generate_text",)
+FACET_OPERATIONS: tuple[str, ...] = ("generate_text", "solve_math")
+
+#: The routes Facet may report having taken, and how literally a value it
+#: returns must be read. Both are closed sets: a route or a mode this client
+#: does not know is a result it cannot safely act on, not one to guess at.
+FACET_ROUTES: frozenset[str] = frozenset({"exact", "reasoning"})
+FACET_ENTRY_MODES: frozenset[str] = frozenset({"verbatim", "math", "auto"})
+
+MAX_ANSWER_PARTS = 4
 
 # Deployment configuration. Nothing in the protocol or in any caller depends
 # on where Facet runs; an alternate transport address can be selected before
@@ -136,25 +153,28 @@ def safe_request_id(candidate: str, *, prefix: str = "ethnos") -> str:
 def _request_payload(
     operation: str,
     request_id: str,
-    prompt: str,
+    body: dict[str, Any],
     *,
     accelerator_required: bool,
     allow_fallback: bool,
 ) -> str:
+    """Serialise one request, refusing locally what Facet would refuse anyway.
+
+    `body` carries the one field the named operation takes -- a prompt, or a
+    problem -- and nothing else. There is no field here through which a caller
+    could name a runtime, a model, a device, or a machine, because there is no
+    such field in the protocol.
+    """
     if operation not in FACET_OPERATIONS:
         raise FacetProtocolError(f"{operation} is not a Facet operation")
     if not REQUEST_ID_PATTERN.match(request_id):
         raise FacetProtocolError("request_id is not in the shape Facet accepts")
-    if not prompt.strip():
-        raise FacetProtocolError("prompt must be a non-empty string")
-    if len(prompt.encode("utf-8")) > MAX_PROMPT_BYTES:
-        raise FacetProtocolError("prompt exceeds the Facet protocol size limit")
-    return json.dumps(
+    payload = json.dumps(
         {
             "facet_protocol_version": FACET_PROTOCOL_VERSION,
             "operation": operation,
             "request_id": request_id,
-            "prompt": prompt,
+            **body,
             "constraints": {
                 "accelerator_required": accelerator_required,
                 "allow_fallback": allow_fallback,
@@ -162,6 +182,9 @@ def _request_payload(
         },
         separators=(",", ":"),
     )
+    if len(payload.encode("utf-8")) > MAX_PROMPT_BYTES:
+        raise FacetProtocolError("request exceeds the Facet protocol size limit")
+    return payload
 
 
 def _envelope(stdout: str) -> dict[str, Any]:
@@ -225,13 +248,10 @@ def _result(payload: dict[str, Any]) -> FacetResult:
     )
 
 
-def _interpret(
-    completed: subprocess.CompletedProcess[str],
-    *,
-    operation: str,
-    request_id: str,
-    allow_fallback: bool,
-) -> FacetResult:
+def _result_object(
+    completed: subprocess.CompletedProcess[str], *, operation: str, request_id: str
+) -> dict[str, Any]:
+    """Read one answered envelope, or raise the reason it is not one."""
     if not completed.stdout.strip():
         detail = completed.stderr.strip()[:400]
         raise FacetTransportError(
@@ -262,32 +282,23 @@ def _interpret(
     result = envelope.get("result")
     if not isinstance(result, dict):
         raise FacetProtocolError("Facet claimed success without a result")
-    parsed = _result(result)
-    # Facet already refuses this. Ethnos asked for it, so Ethnos checks it too:
-    # the one provenance claim a consumer can verify, it should verify.
-    if parsed.fallback and not allow_fallback:
-        raise FacetProtocolError("Facet reported a fallback this request forbade")
-    return parsed
+    return result
 
 
-def generate_text(
-    prompt: str,
-    *,
+def _exchange(
+    operation: str,
     request_id: str,
-    accelerator_required: bool = False,
-    allow_fallback: bool = False,
-    timeout: float = DEFAULT_TIMEOUT_SECONDS,
-) -> FacetResult:
-    """Execute one bounded intelligence request on Facet, or raise.
-
-    `accelerator_required` is a need, not a device: it says the work must not
-    land on a CPU, and leaves the choice of accelerator to Facet.
-    """
-    operation = "generate_text"
+    body: dict[str, Any],
+    *,
+    accelerator_required: bool,
+    allow_fallback: bool,
+    timeout: float,
+) -> dict[str, Any]:
+    """Send one request over the fixed transport and return its result object."""
     payload = _request_payload(
         operation,
         request_id,
-        prompt,
+        body,
         accelerator_required=accelerator_required,
         allow_fallback=allow_fallback,
     )
@@ -303,9 +314,266 @@ def generate_text(
         )
     except (OSError, subprocess.SubprocessError) as error:
         raise FacetTransportError(f"Facet SSH transport failed: {error}") from error
-    return _interpret(
-        completed,
-        operation=operation,
-        request_id=request_id,
+    return _result_object(completed, operation=operation, request_id=request_id)
+
+
+def generate_text(
+    prompt: str,
+    *,
+    request_id: str,
+    accelerator_required: bool = False,
+    allow_fallback: bool = False,
+    timeout: float = DEFAULT_TIMEOUT_SECONDS,
+) -> FacetResult:
+    """Execute one bounded intelligence request on Facet, or raise.
+
+    `accelerator_required` is a need, not a device: it says the work must not
+    land on a CPU, and leaves the choice of accelerator to Facet.
+    """
+    if not prompt.strip():
+        raise FacetProtocolError("prompt must be a non-empty string")
+    if len(prompt.encode("utf-8")) > MAX_PROMPT_BYTES:
+        raise FacetProtocolError("prompt exceeds the Facet protocol size limit")
+    parsed = _result(
+        _exchange(
+            "generate_text",
+            request_id,
+            {"prompt": prompt},
+            accelerator_required=accelerator_required,
+            allow_fallback=allow_fallback,
+            timeout=timeout,
+        )
+    )
+    # Facet already refuses this. Ethnos asked for it, so Ethnos checks it too:
+    # the one provenance claim a consumer can verify, it should verify.
+    if parsed.fallback and not allow_fallback:
+        raise FacetProtocolError("Facet reported a fallback this request forbade")
+    return parsed
+
+
+@dataclass(frozen=True)
+class FacetAnswer:
+    """One answer, in the shape the question asked for.
+
+    `display` is the whole answer as it would be read. `entry` is the single
+    value a one-value question takes, and `parts` carries the separate values
+    when a question takes more than one. Exactly one of the two is populated,
+    because there is no single string that could be typed into several boxes
+    and recovering the boundary between two answers by splitting display prose
+    afterwards is guessing at mathematics after the fact.
+
+    `entry_mode` says how literally to take a value: `verbatim` means it is
+    already exactly what belongs in an answer, `math` means it is mathematics
+    to be rendered in the consumer's own entry syntax, and `auto` means it is
+    mathematics unless it is a plain phrase.
+    """
+
+    display: str
+    entry: str
+    parts: tuple[str, ...]
+    entry_mode: str
+
+
+@dataclass(frozen=True)
+class FacetSolution:
+    """How Facet answered a question, and what it used to do it.
+
+    `route` is the decision this whole boundary exists to move: `exact` means
+    Facet computed the answer with its deterministic solvers and no model ran
+    at all; `reasoning` means the deterministic stage declined -- `router_detail`
+    says which gap -- and a model answered instead. Everything after `answer`
+    is provenance, carried whole so a consumer can say where an answer came
+    from without taking anyone's word for it.
+    """
+
+    route: str
+    answer: FacetAnswer
+    source: str
+    method: str
+    router: str
+    router_detail: str
+    runtime: str
+    model: str | None
+    device: str | None
+    requested_backend: str | None
+    actual_backend: str | None
+    elapsed_ms: float
+    fallback: bool
+    metrics: dict[str, Any]
+    evidence: dict[str, Any]
+
+
+def _required_text(payload: dict[str, Any], field: str, where: str) -> str:
+    value = payload.get(field)
+    if not isinstance(value, str) or not value.strip():
+        raise FacetProtocolError(f"Facet {where} omitted {field}")
+    return value
+
+
+def _optional_text(payload: dict[str, Any], field: str, where: str) -> str | None:
+    """A provenance field that is genuinely absent on one of the two routes.
+
+    None is an answer here -- an exact solve used no model and no processor,
+    and says so -- but a present-and-empty value is not: that is a claim that
+    failed to be made rather than one that does not apply.
+    """
+    value = payload.get(field, None)
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        raise FacetProtocolError(f"Facet {where} reported an empty {field}")
+    return value
+
+
+def _answer(payload: Any) -> FacetAnswer:
+    if not isinstance(payload, dict):
+        raise FacetProtocolError("Facet result carried no answer object")
+    display = _required_text(payload, "display", "answer")
+    entry = payload.get("entry", "")
+    if not isinstance(entry, str):
+        raise FacetProtocolError("Facet answer entry was not a string")
+    parts = payload.get("parts", [])
+    if not isinstance(parts, list) or len(parts) > MAX_ANSWER_PARTS:
+        raise FacetProtocolError(
+            f"Facet answer carried more than {MAX_ANSWER_PARTS} parts"
+        )
+    if any(not isinstance(part, str) or not part.strip() for part in parts):
+        raise FacetProtocolError("Facet answer carried an empty part")
+    mode = payload.get("entry_mode")
+    if mode not in FACET_ENTRY_MODES:
+        # An unknown mode is an instruction Ethnos cannot follow. Guessing at
+        # it would decide, on no evidence, whether to rewrite a value that is
+        # about to be typed into a real answer box.
+        raise FacetProtocolError(f"Facet answer named an unknown entry_mode {mode!r}")
+    if bool(entry.strip()) == bool(parts):
+        # Both or neither: either two competing answers, or none at all.
+        raise FacetProtocolError(
+            "Facet answer must carry exactly one of a single entry or separate parts"
+        )
+    return FacetAnswer(
+        display=display,
+        entry=entry,
+        parts=tuple(parts),
+        entry_mode=mode,
+    )
+
+
+def _solution(payload: dict[str, Any], *, allow_fallback: bool) -> FacetSolution:
+    """Read a routed solve, and refuse one that contradicts itself.
+
+    Facet states both which route it took and what that route used. Those two
+    claims have to agree: an exact solve naming a model, or a reasoned answer
+    naming no processor, is a result whose provenance is wrong, and provenance
+    that is wrong about itself may not be trusted about anything else.
+    """
+    route = payload.get("route")
+    if route not in FACET_ROUTES:
+        raise FacetProtocolError(f"Facet reported an unknown route {route!r}")
+    answer = _answer(payload.get("answer"))
+    provenance = payload.get("provenance")
+    if not isinstance(provenance, dict):
+        raise FacetProtocolError("Facet result carried no provenance")
+    router = provenance.get("router")
+    if router not in {"solved", "declined"}:
+        raise FacetProtocolError(f"Facet reported an unknown router state {router!r}")
+    detail = provenance.get("router_detail", "")
+    if not isinstance(detail, str):
+        raise FacetProtocolError("Facet reported a malformed router_detail")
+    elapsed = provenance.get("elapsed_ms")
+    if (
+        not isinstance(elapsed, (int, float))
+        or isinstance(elapsed, bool)
+        or elapsed < 0
+    ):
+        raise FacetProtocolError("Facet result omitted elapsed_ms")
+    fallback = provenance.get("fallback")
+    if not isinstance(fallback, bool):
+        raise FacetProtocolError("Facet result omitted fallback")
+    metrics, evidence = provenance.get("metrics"), provenance.get("evidence")
+    if not isinstance(metrics, dict) or not isinstance(evidence, dict):
+        raise FacetProtocolError("Facet result omitted metrics or evidence")
+    solution = FacetSolution(
+        route=route,
+        answer=answer,
+        source=_required_text(provenance, "source", "provenance"),
+        method=_required_text(provenance, "method", "provenance"),
+        router=router,
+        router_detail=detail,
+        runtime=_required_text(provenance, "runtime", "provenance"),
+        model=_optional_text(provenance, "model", "provenance"),
+        device=_optional_text(provenance, "device", "provenance"),
+        requested_backend=_optional_text(provenance, "requested_backend", "provenance"),
+        actual_backend=_optional_text(provenance, "actual_backend", "provenance"),
+        elapsed_ms=float(elapsed),
+        fallback=fallback,
+        # Passed through whole, so a metric or a proof Ethnos has never heard
+        # of still reaches whoever asked for the provenance.
+        metrics=dict(metrics),
+        evidence=dict(evidence),
+    )
+    if route == "exact":
+        if router != "solved":
+            raise FacetProtocolError("Facet claimed an exact answer it did not solve")
+        if solution.model or solution.actual_backend:
+            raise FacetProtocolError(
+                "Facet claimed an exact answer but named a model or a processor"
+            )
+    elif router != "declined" or not solution.model or not solution.actual_backend:
+        raise FacetProtocolError(
+            "Facet claimed a reasoned answer without naming what reasoned"
+        )
+    if fallback and not allow_fallback:
+        raise FacetProtocolError("Facet reported a fallback this request forbade")
+    return solution
+
+
+def solve_math(
+    *,
+    instruction: str,
+    expressions: list[str],
+    request_id: str,
+    answer_parts: int = 1,
+    label: str = "",
+    accelerator_required: bool = True,
+    allow_fallback: bool = False,
+    timeout: float = DEFAULT_TIMEOUT_SECONDS,
+) -> FacetSolution:
+    """Hand Facet a question and let Facet decide how it gets answered.
+
+    What crosses is the question and nothing else: the instruction in words,
+    the exact expressions it is about, how many separate values its answer
+    takes, and the question's own label. There is no field here for a document,
+    a page, an element, a picture, or an action, so a caller that owns a
+    browser cannot accidentally hand any of it over.
+
+    `answer_parts` is a requirement on the reply -- a property of the question,
+    not of the page -- and `accelerator_required` is a need rather than a
+    device. Which route answers, and on what, is Facet's to decide and Facet's
+    to report.
+    """
+    if not instruction.strip():
+        raise FacetProtocolError("instruction must be a non-empty string")
+    if not expressions or any(not item.strip() for item in expressions):
+        raise FacetProtocolError("every expression must be non-empty")
+    if not 1 <= answer_parts <= MAX_ANSWER_PARTS:
+        raise FacetProtocolError(
+            f"answer_parts must be 1 to {MAX_ANSWER_PARTS}, not {answer_parts}"
+        )
+    problem: dict[str, Any] = {
+        "instruction": instruction,
+        "expressions": list(expressions),
+        "answer_parts": answer_parts,
+    }
+    if label.strip():
+        problem["label"] = label
+    return _solution(
+        _exchange(
+            "solve_math",
+            request_id,
+            {"problem": problem},
+            accelerator_required=accelerator_required,
+            allow_fallback=allow_fallback,
+            timeout=timeout,
+        ),
         allow_fallback=allow_fallback,
     )

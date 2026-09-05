@@ -497,7 +497,11 @@ function answeredByBadge(certainty) {
   const source = certainty?.source ?? "";
   switch (certainty?.answered_by) {
     case "exact":
-      return "Ethnos Exact";
+      // An exact answer is exact wherever it was computed, and Facet is where
+      // the solvers now run when the Facet engine is chosen. Its own name for
+      // the route it took is the honest badge; "Ethnos Exact" is right only
+      // when Ethnos itself did the solving.
+      return certainty?.facet_invoked ? source || "Facet Exact" : "Ethnos Exact";
     case "model":
       return "Ethnos model";
     case "facet":
@@ -529,11 +533,16 @@ function provenanceNotes(certainty) {
   if (certainty?.method) {
     lines.push(`${engine === "exact" ? "Method" : "Reasoner"}: ${certainty.method}`);
   }
-  if (certainty?.router === "solved") {
-    lines.push("Router: Ethnos Exact answered");
-  } else if (certainty?.router === "declined") {
-    const why = certainty.router_detail ? ` (${certainty.router_detail})` : "";
-    lines.push(`Router: Ethnos Exact declined${why}`);
+  if (certainty?.router === "solved" || certainty?.router === "declined") {
+    // Whose deterministic stage made the call. Facet owns the routing when it
+    // was asked; Ethnos still routes its own local solves.
+    const router = certainty?.facet_invoked ? "Facet Exact" : "Ethnos Exact";
+    const why =
+      certainty.router === "declined" && certainty.router_detail
+        ? ` (${certainty.router_detail})`
+        : "";
+    const verdict = certainty.router === "solved" ? "answered" : "declined";
+    lines.push(`Router: ${router} ${verdict}${why}`);
   }
   if (engine !== "facet") {
     // Worth stating rather than leaving to inference: choosing the Facet

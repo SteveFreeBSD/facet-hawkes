@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import pytest
 
+from facet_loopback import facet
+
 from ethnos.hawkes_host import handle
 from ethnos.symbolic_solver import solve_rational_equation
 
@@ -130,13 +132,9 @@ def test_a_complex_root_is_handed_back_rather_than_called_no_real_solution() -> 
 
 
 def solve_through_host(monkeypatch, *, engine="facet"):
-    monkeypatch.setattr(
-        "ethnos.facet_client.generate_text",
-        lambda *_a, **_k: pytest.fail(
-            "Facet ran for a question the exact path settled"
-        ),
-    )
-    return handle(
+    """Answer it through the host, with a real Facet whose model never speaks."""
+    loopback = facet(monkeypatch)
+    response = handle(
         {
             "protocol_version": 1,
             "operation": "solve_hawkes_problem",
@@ -150,13 +148,20 @@ def solve_through_host(monkeypatch, *, engine="facet"):
             },
         }
     )
+    assert loopback.prompts == [], "a model was asked a question the solvers settled"
+    return response
 
 
 @pytest.mark.parametrize("engine", ["ethnos", "facet"])
-def test_the_host_answers_it_exactly_and_never_reaches_facet(
+def test_the_host_answers_it_exactly_and_never_reaches_a_model(
     monkeypatch, engine
 ) -> None:
-    """Exact-first routing holds: choosing Facet does not send this to Facet."""
+    """Exact-first routing holds on both engines, and answers identically.
+
+    The local engine runs the deterministic solvers here; the Facet engine runs
+    the same solvers on the Facet side. That they are the same implementation
+    is the point: the structured two-root answer is byte-identical either way.
+    """
     response = solve_through_host(monkeypatch, engine=engine)
 
     assert response.status == "ready"
@@ -166,17 +171,18 @@ def test_the_host_answers_it_exactly_and_never_reaches_facet(
     assert response.answer.display_text == r"x = \frac{-4}{3} or x = 2"
 
 
-def test_the_panel_reports_ethnos_exact_and_says_facet_did_not_run(
+def test_the_panel_reports_an_exact_answer_and_names_no_model(
     monkeypatch,
 ) -> None:
     certainty = solve_through_host(monkeypatch).certainty
 
     assert certainty.answered_by == "exact"
     assert certainty.method == "SymPy exact symbolic"
-    assert certainty.facet_invoked is False
     assert certainty.router == "solved"
     assert certainty.reading == "mathml"
-    assert certainty.source == "markup"
+    # Facet answered it, deterministically, and says which route that was.
+    assert certainty.facet_invoked is True
+    assert certainty.source == "Facet Exact"
     # Nothing Facet-shaped on an answer Facet did not produce.
     assert certainty.model is None
     assert certainty.device is None

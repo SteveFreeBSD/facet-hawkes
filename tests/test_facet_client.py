@@ -242,7 +242,7 @@ def test_success_claimed_alongside_a_failed_exit_is_not_believed(
         ask()
 
 
-@pytest.mark.parametrize("version", [0, 2, "1", 1.5, True, None])
+@pytest.mark.parametrize("version", [0, 1, 3, "2", 2.5, True, None])
 def test_a_reply_in_another_protocol_version_is_refused(monkeypatch, version) -> None:
     answering(monkeypatch, ok_envelope(facet_protocol_version=version))
 

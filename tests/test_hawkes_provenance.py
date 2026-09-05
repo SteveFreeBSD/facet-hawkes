@@ -19,6 +19,8 @@ from pathlib import Path
 
 import pytest
 
+from facet_loopback import FakeAdapter, facet, reasoning
+
 from ethnos.facet_client import FacetResult, FacetTransportError
 from ethnos.hawkes_host import handle
 
@@ -60,7 +62,13 @@ def ask(markup, instruction, *, engine="facet"):
     )
 
 
+#: What Facet's reasoning route says when it is reached at all.
+REASONED = "FINAL ANSWER: (-∞,-3)∪(-3,3)∪(3,∞)"
+
+
 def facet_answering(monkeypatch, result):
+    """The graph and regression paths still hand Facet a prompt of their own."""
+
     def fake(_prompt, **_kwargs):
         if isinstance(result, Exception):
             raise result
@@ -83,29 +91,31 @@ FACET_RUN = FacetResult(
 )
 
 
-def test_facet_selected_and_exactly_solved_says_so_and_says_facet_did_not_run(
-    monkeypatch,
-) -> None:
-    """The quiet misleading case: Facet chosen, Facet never called."""
-    monkeypatch.setattr(
-        "ethnos.facet_client.generate_text",
-        lambda *_a, **_k: pytest.fail("Facet ran for an exactly solved question"),
-    )
+def test_facet_solves_it_exactly_and_says_no_model_was_asked(monkeypatch) -> None:
+    """The quiet misleading case, the other way round: Facet ran, no model did.
+
+    Facet is now the side that decides between exact mathematics and reasoning,
+    so an exactly solved question does reach Facet -- and the claim worth being
+    able to check is no longer "Facet was not called" but "nothing reasoned".
+    """
+    loopback = facet(monkeypatch)
 
     certainty = ask(EXACTLY_SOLVED, EXACT_INSTRUCTION).certainty
 
+    assert loopback.prompts == [], "a model was asked an exactly solvable question"
     assert certainty.answered_by == "exact"
-    assert certainty.facet_invoked is False
+    assert certainty.facet_invoked is True
     assert certainty.router == "solved"
     assert certainty.reading == "mathml"
     # A solver, named as a solver. Never a model name, and never "model".
     assert certainty.method == "SymPy exact symbolic"
-    # Nothing Facet-shaped may appear on an answer Facet did not produce.
+    assert certainty.source == "Facet Exact"
+    assert certainty.runtime.startswith("SymPy ")
+    # Nothing model-shaped may appear on an answer no model produced.
     assert certainty.model is None
-    assert certainty.runtime is None
     assert certainty.device is None
     assert certainty.actual_backend is None
-    assert certainty.fallback is None
+    assert certainty.fallback is False
     # Timed, because "instant" is a claim worth being able to check.
     assert certainty.elapsed_ms is not None and certainty.elapsed_ms >= 0
 
@@ -113,15 +123,17 @@ def test_facet_selected_and_exactly_solved_says_so_and_says_facet_did_not_run(
 def test_a_facet_answer_names_the_router_the_reasoner_and_the_processor(
     monkeypatch,
 ) -> None:
-    facet_answering(monkeypatch, FACET_RUN)
+    loopback = facet(monkeypatch, **reasoning(REASONED))
 
     certainty = ask(DECLINED, DECLINED_INSTRUCTION).certainty
 
+    assert len(loopback.prompts) == 1, "the reasoning route was not the one that ran"
     assert certainty.answered_by == "facet"
     assert certainty.facet_invoked is True
-    # Why Facet was reached at all, in the router's own words.
+    # Why the reasoning route was reached at all, in the router's own words.
     assert certainty.router == "declined"
     assert certainty.router_detail == "no exact operation matched the instruction"
+    assert certainty.source == "Facet Reasoning · GPU"
     assert certainty.method == "gpt-oss:20b"
     assert certainty.runtime == "Ollama 0.33.2"
     assert certainty.requested_backend == "gpu"
@@ -130,31 +142,31 @@ def test_a_facet_answer_names_the_router_the_reasoner_and_the_processor(
     assert certainty.fallback is False
     # The expression still came off the page, not out of a picture.
     assert certainty.reading == "mathml"
-    assert certainty.elapsed_ms == 10386.5
+    # Timed by Facet, over the whole routed solve rather than the model call.
+    assert certainty.elapsed_ms >= 0
 
 
-def test_a_requested_backend_is_reported_beside_the_one_that_ran(
+def test_the_processor_that_ran_is_facets_choice_and_not_ethnoss(
     monkeypatch,
 ) -> None:
-    """What Ethnos asked for and what happened are separate claims."""
-    facet_answering(
-        monkeypatch,
-        FacetResult(
-            **{
-                **FACET_RUN.__dict__,
-                "requested_backend": "gpu",
-                "actual_backend": "npu",
-            }
-        ),
-    )
+    """Ethnos asked for an accelerator. Which one is Facet's to pick and report."""
+    adapters = reasoning(REASONED)
+    adapters["gpu"] = FakeAdapter("gpu", available=False)
+    loopback = facet(monkeypatch, **adapters)
 
     certainty = ask(DECLINED, DECLINED_INSTRUCTION).certainty
 
-    assert (certainty.requested_backend, certainty.actual_backend) == ("gpu", "npu")
+    # Nothing on the Ethnos side named a device; the GPU simply was not there.
+    assert "npu" not in json.dumps(loopback.requests)
+    assert (certainty.requested_backend, certainty.actual_backend) == ("npu", "npu")
+    assert certainty.device == "fake npu device"
 
 
 def test_a_facet_failure_claims_no_answer_source_at_all(monkeypatch) -> None:
-    facet_answering(monkeypatch, FacetTransportError("no route to host"))
+    def unreachable(**_kwargs):
+        raise FacetTransportError("no route to host")
+
+    monkeypatch.setattr("ethnos.facet_client.solve_math", unreachable)
 
     response = ask(DECLINED, DECLINED_INSTRUCTION)
 
@@ -165,21 +177,20 @@ def test_a_facet_failure_claims_no_answer_source_at_all(monkeypatch) -> None:
 
 
 def test_no_provenance_survives_into_the_next_question(monkeypatch) -> None:
-    """A Facet run must leave nothing behind on the answer that follows it."""
-    facet_answering(monkeypatch, FACET_RUN)
+    """A reasoned run must leave nothing behind on the answer that follows it."""
+    loopback = facet(monkeypatch, **reasoning(REASONED))
     first = ask(DECLINED, DECLINED_INSTRUCTION).certainty
     assert first.model == "gpt-oss:20b"
 
-    monkeypatch.setattr(
-        "ethnos.facet_client.generate_text",
-        lambda *_a, **_k: pytest.fail("Facet ran for an exactly solved question"),
-    )
     second = ask(EXACTLY_SOLVED, EXACT_INSTRUCTION).certainty
 
+    assert len(loopback.prompts) == 1, "the second question reached a model"
     assert second.answered_by == "exact"
-    assert second.facet_invoked is False
-    for stale in ("model", "runtime", "device", "actual_backend", "fallback"):
+    # Every claim that belongs to a model run, and to nothing else.
+    for stale in ("model", "device", "actual_backend", "requested_backend"):
         assert getattr(second, stale) is None, f"{stale} survived the last question"
+    assert second.runtime != first.runtime
+    assert second.method != first.method
 
 
 def test_the_local_model_fallback_is_not_called_an_exact_solver() -> None:
@@ -273,7 +284,7 @@ def test_the_panel_names_every_layer_of_a_facet_solve(notes) -> None:
     # The reasoner is labelled as one. A solver would have said "Method".
     assert "Reasoner: gpt-oss:20b" in lines
     assert (
-        "Router: Ethnos Exact declined (no exact operation matched the instruction)"
+        "Router: Facet Exact declined (no exact operation matched the instruction)"
         in lines
     )
     assert "Runtime: Ollama 0.33.2" in lines
