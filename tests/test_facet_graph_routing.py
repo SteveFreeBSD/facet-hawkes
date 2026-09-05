@@ -125,17 +125,33 @@ def test_a_regression_request_goes_through_solve_math(monkeypatch) -> None:
 
 
 def test_no_hawkes_path_writes_a_model_prompt_any_more() -> None:
-    """The last two prompts written here are gone, and nothing replaced them."""
-    for name in ("hawkes_host.py", "hawkes_graph.py"):
-        source = (PROJECT_ROOT / "src" / "ethnos" / name).read_text()
-        assert "generate_text" not in source, f"{name} still calls a model directly"
+    """The last two prompts written here are gone, and nothing replaced them.
+
+    Every Hawkes module is read, not a fixed pair of them. Naming two files
+    meant a third could be added tomorrow and reintroduce a prompt with this
+    test still green, which is the whole failure mode it exists to prevent.
+    Ethnos writes prompts elsewhere quite legitimately -- quizzes, benchmarks,
+    reading an image -- so the scope is the Hawkes path and nothing wider.
+    """
+    modules = sorted((PROJECT_ROOT / "src" / "ethnos").glob("hawkes_*.py"))
+
+    assert [path.name for path in modules] == [
+        "hawkes_coverage.py",
+        "hawkes_graph.py",
+        "hawkes_host.py",
+        "hawkes_mathml.py",
+        "hawkes_protocol.py",
+    ], "a Hawkes module appeared or vanished; confirm it belongs to this boundary"
+    for path in modules:
+        source = path.read_text()
+        assert "generate_text" not in source, f"{path.name} calls a model directly"
         for prompting in (
             "Return ONLY",
             "FINAL ANSWER",
             "Reply with",
             "Do not explain",
         ):
-            assert prompting not in source, f"{name} still writes a prompt"
+            assert prompting not in source, f"{path.name} still writes a prompt"
 
 
 # --- the structured plans survive the protocol exactly ----------------------
