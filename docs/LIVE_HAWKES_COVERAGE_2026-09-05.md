@@ -157,10 +157,24 @@ went 11 → 192 about four minutes after RC1 landed. But the RC2 clause fix,
 written at 23:44:04 UTC, was still absent from refusals logged at 23:45:46,
 while the isolated harness parses that exact sentence.
 
-So propagation is real but not reliable, and the safe assumption is that a
-content-script change needs the temporary add-on reloading before the live
-session exercises it. Timestamps in the diagnostic log are **UTC**; the machine
-clock is CDT, which is a five-hour trap when correlating a fix with a failure.
+The two facts pin it exactly. Both changes live in the same file, yet the
+refusal logged at 23:44:34 carried the `:shape` suffix added at ~23:33 and did
+*not* carry the clause fix written at 23:44:04. So the browser was holding one
+snapshot of that file, taken somewhere between those two edits — a single
+reload at about 23:39 UTC, which is also when `promptChars` changed. Nothing has
+re-read it since; `event-page-loaded` fires every forty seconds and does not.
+
+**A content-script change needs the temporary add-on reloaded.** The clause fix
+and the bbox fix are in the tree, pass 24/24 in the isolated harness, and are
+not yet what the live session is running.
+
+Timestamps in the diagnostic log are **UTC** while the machine clock is CDT —
+a five-hour trap when correlating a fix with a failure, and one that briefly
+made a working fix look broken.
+
+The cheap way to never repeat this: have the probe report a short build marker
+alongside its evidence, so the log says which code ran rather than leaving it
+to be inferred from which diagnostic strings appear.
 
 ## Further observations on Case 1
 
