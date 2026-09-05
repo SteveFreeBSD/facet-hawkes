@@ -4,10 +4,37 @@ This runbook produces a Mozilla-signed add-on that installs permanently in a
 normal Firefox profile. A locally built XPI is unsigned and is only a release
 candidate; do not weaken Firefox signature enforcement to install it.
 
-## Frozen 0.43.0 candidate
+## 0.44.0 candidate — not yet packaged
 
-The accepted local candidate is frozen. Do not rebuild or alter packaged
-source before submission unless AMO requires a source change:
+0.44.0 renames the product to **Facet Hawkes Assistant**, removes the
+solve-engine preference, and makes Facet's routing the default for a request
+that names no pipeline. It has not been built, digested, or audited, so there
+is no frozen artifact or hash for it yet; do not submit it until it has been
+through the checks below and recorded in the
+[release audit ledger](../docs/HAWKES_RELEASE_AUDIT.md).
+
+The packaged artifact is named `facet-hawkes-<version>-unsigned.xpi`, so the
+0.44.0 candidate will be `dist/facet-hawkes-0.44.0-unsigned.xpi`. Every command
+below that names an artifact refers to that file; the hashes recorded further
+down belong to earlier, superseded candidates and are kept as history.
+
+These identifiers deliberately do **not** change with the product name, and a
+review that flags them as leftovers is wrong:
+
+- the add-on ID `ethnos-hawkes@local`, which Firefox keys the installation and
+  its `storage.local` to — renaming it orphans the profile;
+- the native-messaging host `ethnos_hawkes` and the launcher the installer
+  writes to `~/.local/share/ethnos-hawkes/`, which are already registered on
+  disk;
+- the wire value `solve_engine="ethnos"`, which names the companion's own image
+  path in the native protocol.
+
+None of them is shown anywhere in the interface.
+
+## Superseded: frozen 0.43.0 candidate
+
+Kept as the record of the last accepted candidate. It is superseded by 0.44.0
+and must not be uploaded as the current one:
 
 ```text
 dist/ethnos-hawkes-0.43.0-unsigned.xpi
@@ -94,15 +121,15 @@ $ export PATH="$HOME/.local/opt/node-v22.23.2-linux-x64/bin:$HOME/.local/bin:$PA
 $ npm install -g --prefix ~/.local web-ext
 $ web-ext --version
 $ release_lint_dir=$(mktemp -d)
-$ unzip -q dist/ethnos-hawkes-0.43.0-unsigned.xpi -d "$release_lint_dir"
+$ unzip -q dist/facet-hawkes-0.44.0-unsigned.xpi -d "$release_lint_dir"
 $ web-ext lint --source-dir "$release_lint_dir" --warnings-as-errors
 ```
 
 The repository validator enforces project-specific invariants. `web-ext lint`
-and the AMO upload validator remain separate gates. Unpacking the frozen XPI
-ensures the official lint gate examines the exact 30 files intended for
-submission, rather than documentation or another rebuild. Fix every error;
-review any warning before proceeding.
+and the AMO upload validator remain separate gates. Unpacking the candidate XPI
+ensures the official lint gate examines exactly the files intended for
+submission — 31 for 0.44.0 — rather than documentation or another rebuild. Fix
+every error; review any warning before proceeding.
 
 Confirm all of the following:
 
@@ -122,7 +149,7 @@ Confirm all of the following:
 $ python3 scripts/build_extension.py
 ```
 
-The output is `dist/ethnos-hawkes-<version>-unsigned.xpi` plus a SHA-256 digest.
+The output is `dist/facet-hawkes-<version>-unsigned.xpi` plus a SHA-256 digest.
 Before the candidate is frozen, re-running the build from unchanged packaged
 sources must print the same digest. Once frozen, keep that exact candidate and
 digest together and do not rebuild before submission.
@@ -201,8 +228,10 @@ substitute the separate Marionette profile for signed-artifact acceptance.
    duplicate-insertion guard, and removal footprint. Never press Hawkes submit
    as part of the extension smoke test.
 
-Only after the signed XPI passes this physical-browser acceptance is 0.43.0
-**released**. Until then its status remains **release candidate complete**.
+Only after the signed XPI passes this physical-browser acceptance is a version
+**released**. 0.44.0 is not yet a candidate: it has not been built or frozen.
+0.43.0 reached **release candidate complete** and was superseded before
+signing.
 
 Firefox Release and Beta require Mozilla-signed extensions. Mozilla documents
 both listed and unlisted distribution in its

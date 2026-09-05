@@ -101,7 +101,15 @@ class SolveRequest(BaseModel):
     operation: Literal["health", "solve_hawkes_problem"]
     request_id: str = Field(max_length=64)
     origin: str = Field(default="", max_length=200)
-    solve_engine: Literal["ethnos", "facet"] = "ethnos"
+    #: Which pipeline answers this question. `facet` is the routed solver --
+    #: exact mathematics, reasoning, and the graph specialists, all decided by
+    #: Facet -- and is the default because it is the architecture: a caller that
+    #: says nothing should get how questions are answered now, not how they were
+    #: answered before the routing moved. `ethnos` remains the wire name for the
+    #: companion's own reader, which answers a question stated as a picture
+    #: rather than as mathematics. It is a capability, not a product choice, and
+    #: the browser no longer offers it as one.
+    solve_engine: Literal["ethnos", "facet"] = "facet"
     problem: ProblemPayload | None = None
 
 
@@ -148,8 +156,8 @@ class Certainty(BaseModel):
     #: The named method behind the answer -- a solver's name when `answered_by`
     #: is `exact`, a model's name otherwise. Never a model name for a solver.
     method: str = ""
-    #: Whether Facet was asked at all. False on an exact solve even when Facet
-    #: was the selected engine, because it genuinely was not called.
+    #: Whether Facet was asked at all. False on the companion's own image
+    #: path, which is the only route that does not reach Facet.
     facet_invoked: bool = False
     #: What Ethnos required of Facet, and what Facet reported doing. Both are
     #: carried because a difference between them is the thing worth seeing.

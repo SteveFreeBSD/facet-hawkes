@@ -80,6 +80,15 @@ log at any time, and none of it contains the question or the answer.
 
 ## Checks
 
+> **On the names in these commands.** The add-on is **Facet Hawkes Assistant**,
+> but several identifiers below still spell `ethnos`: `ethnosHawkes`, the
+> `ethnos-hawkes-host` process, the `ethnos_hawkes` native host, and the
+> `ethnos-hawkes@local` add-on ID. Those are retained compatibility
+> identifiers — Firefox and the installed native registration are keyed to
+> them — and they are not shown anywhere in the interface. Type them exactly as
+> written; a check that finds `facet` in their place is testing the wrong
+> thing.
+
 ### 1. The page cannot see the add-on
 
 Before clicking anything, in the **page's** console (F12 on the lesson tab):
@@ -123,9 +132,9 @@ A cancel that leaves the host running is a bug: it keeps a model loaded.
 
 Open the **Recognized problem** fold and compare it with the question.
 
-This is the only place a misreading can be caught. If Ethnos read the question
-wrongly, everything after it is wrong however confident it looks. When the two
-readers disagree the panel says so and refuses to insert.
+This is the only place a misreading can be caught. If the companion read the
+question wrongly, everything after it is wrong however confident it looks. When
+the two readers disagree the panel says so and refuses to insert.
 
 For a screenshot fallback, leave **Limit screenshots to the question region**
 on. If safe bounds cannot be found, the panel must say that no screenshot was
@@ -277,11 +286,11 @@ question without restarting Firefox.
 
 ### 13. The connection check answers without a solve
 
-Settings → Ethnos connection → **Test connection**.
+Settings → Facet connection → **Test connection**.
 
 **Expected:** with the host registered, a round-trip time in milliseconds,
 within a moment — it loads no model. With the host removed
-(`install_native_host.py --uninstall --write`), a legible "Ethnos is not
+(`install_native_host.py --uninstall --write`), a legible "Facet is not
 reachable" rather than a wait.
 
 ### 14. The diagnostic log records shapes, not coursework
@@ -301,6 +310,35 @@ and reopen the panel.
 **Expected:** panel background, text, accent and focus ring all follow, with no
 white flash on open in dark mode. On Windows, with High Contrast on, every
 colour is replaced by the system pair and every button keeps a visible border.
+
+### 16. Every visible surface says Facet
+
+Nothing here needs a solve.
+
+**Expected:** `about:addons` lists **Facet Hawkes Assistant**; the toolbar
+button's tooltip and the sidebar header say the same; the panel header says
+**Facet**; the main button says **Solve with Facet**; the Settings page title
+says **Facet Hawkes Assistant settings**. No panel string, status, or error
+message says Ethnos. The internal identifiers in the note above are unchanged
+and are not visible from any of these screens.
+
+### 17. Settings states the pipeline instead of offering a choice
+
+Settings → Solving.
+
+**Expected:** no **Solve engine** selector, and no control anywhere that picks
+between solvers. In its place a readout naming **Facet Exact**, **Facet
+Reasoning**, the two graph specialists, and the last Facet run the add-on
+happened to see (or *Not observed yet*), with a note saying Facet routes every
+question the page states as mathematics and that a question drawn as a picture
+is read from an image instead.
+
+Upgrading from a profile that had the old setting: open Settings →
+Diagnostics after the first start and look for `settings-migrated` with
+`removed: ["solveEngine"]` — the default **Normal activity** level records it.
+It appears once. Reload the add-on and confirm no second `settings-migrated`
+entry is added: the key is gone, not re-removed on every start. A profile that
+never held the setting logs nothing, which is also correct.
 
 ## Reporting
 

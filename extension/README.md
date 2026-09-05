@@ -1,18 +1,41 @@
-# Ethnos Hawkes Assistant
+# Facet Hawkes Assistant
 
-A Firefox add-on that reads the Hawkes question on screen, asks the local
-Ethnos pipeline to solve it, shows you the problem and answer together, and
-places the answer in the field you focused — only when you ask.
+A Firefox add-on that reads the Hawkes question on screen, asks Facet to solve
+it, shows you the problem and answer together, and places the answer in the
+field you focused — only when you ask.
 
-The add-on reads Hawkes' own MathML first. Only a question the exact solver
-cannot handle falls back to a screenshot, which goes over Firefox native
-messaging to the local Ethnos host and is deleted when that call ends. The
-browser package has no network API; the native host uses the Ollama endpoint
-configured for Ethnos, which must remain local for an entirely local setup.
-The optional **Facet (experimental)** engine sends only the instruction and
-MathML-derived expression through a fixed SSH bridge to the Facet host
-configured in Ethnos; it never sends a screenshot and exposes no destination or
-execution setting to the browser.
+The add-on reads Hawkes' own MathML and hands it to Facet, which decides how
+the question gets answered: exact mathematics first, a reasoning model only for
+what those decline, and a parabola or quadratic-regression specialist for a
+graph. It sends only the instruction and the MathML-derived expressions, never
+a screenshot, and exposes no destination, model, or device to the browser. The
+Facet host is this machine unless the companion has been configured otherwise.
+
+Only a question the page draws as a picture rather than stating as mathematics
+falls back to a screenshot, which goes over Firefox native messaging to the
+local companion and is deleted when that call ends. The browser package has no
+network API; that fallback uses the Ollama endpoint the companion is configured
+for, which must remain local for an entirely local setup. Which path answered
+is named in the panel every time.
+
+## About the names
+
+The product is **Facet Hawkes Assistant**, and nothing in the interface says
+anything else. Several internal identifiers still spell `ethnos`, and they are
+kept on purpose:
+
+| Identifier | What it is | Why it stays |
+| --- | --- | --- |
+| `ethnos-hawkes@local` | the add-on ID | Firefox keys the installation and its `storage.local` to it; renaming it orphans an installed profile and its preferences. |
+| `ethnos_hawkes` | the registered native-messaging host | already written into `~/.mozilla/native-messaging-hosts/`; renaming it means every user re-runs the installer. |
+| `deploy/firefox/ethnos-hawkes-host` and `~/.local/share/ethnos-hawkes/` | the launcher the installer writes | same registration, on disk. |
+| `ethnosHawkes` | the single name the editor script exposes in its own sandbox | not visible to the page, and not visible to anyone. |
+| `ethnos:*` | internal message names between the panel and the event page | never rendered. |
+| `ethnos` | the Python package this repository ships | the companion's import path. |
+| `solve_engine="ethnos"` | a value in the native protocol | names the companion's own image path, which is what it has always meant. |
+
+They are compatibility identifiers, not branding. A rename would cost a
+reinstall and a lost profile to buy nothing anyone can see.
 
 ## Scope
 
@@ -22,7 +45,7 @@ What it does:
   injects nothing until you open its toolbar panel or sidebar;
 - reads the visible question's MathML on demand and captures only an isolated
   question region when that exact path explicitly declines;
-- shows the problem Ethnos read back beside the answer, so you can check the
+- shows the problem it read back beside the answer, so you can check the
   transcription before trusting the answer;
 - inserts that answer at the caret of the field you focused, after a second,
   separate click;
@@ -35,8 +58,9 @@ What it does not do, by construction:
 - make any network request — there is no `fetch` or `XMLHttpRequest` in the
   package, and the build fails if any appears. The only outbound channel is
   native messaging to one registered local host;
-- reach Ethnos or screenshot the tab from injected code — both are forbidden in
-  anything under `content/`, because the page it runs in is not trusted;
+- reach the companion or screenshot the tab from injected code — both are
+  forbidden in anything under `content/`, because the page it runs in is not
+  trusted;
 - read your account, cookies, or session tokens;
 - run on any other site, start a separate browser profile, or change Firefox
   preferences.
@@ -98,8 +122,8 @@ backlog it exists to print. `--strict` fails on those too. Add phrasings to
 The add-on fails closed, and there are three reasons it will show an answer but
 not let you insert it:
 
-- **The two readers disagreed.** Ethnos transcribes the screenshot twice with
-  different models and compares them. If they differ on a sign, exponent,
+- **The two readers disagreed.** The companion transcribes the screenshot twice
+  with different models and compares them. If they differ on a sign, exponent,
   radical, or fraction boundary, the answer is displayed with the disagreement
   and insertion stays disabled. An answer to the wrong question is worse than
   no answer.
@@ -318,16 +342,16 @@ screenshot is sent to that companion, the required category is
 
 The companion uses the material only to answer the requested question. Exact
 MathML cases stay within the companion process. Screenshot/model fallbacks are
-sent to the Ollama endpoint configured in Ethnos; keep that endpoint on
-loopback for a fully local setup. Nothing is sold, shared for advertising, or
+sent to the Ollama endpoint the companion is configured for; keep that endpoint
+on loopback for a fully local setup. Nothing is sold, shared for advertising, or
 used for analytics. See [`PRIVACY.md`](PRIVACY.md) for the complete disclosure.
 `scripts/build_extension.py` requires this exact manifest shape.
 
 ## Install the solver host
 
-The add-on is inert until Ethnos is registered with Firefox. This writes two
-small files — a launcher and a manifest — and nothing else. No service, no
-port, no daemon:
+The add-on is inert until the companion is registered with Firefox. This
+writes two small files — a launcher and a manifest — and nothing else. No
+service, no port, no daemon:
 
 ```console
 $ python3 deploy/firefox/install_native_host.py          # print the targets
@@ -355,8 +379,8 @@ and the refusal paths without loading a model.
 2. Open `about:debugging#/runtime/this-firefox` in a separate tab.
 3. Choose **Load Temporary Add-on**.
 4. Select `extension/manifest.json`, or a built
-   `dist/ethnos-hawkes-<version>-unsigned.xpi`.
-5. Return to Hawkes and pin **Ethnos Hawkes Assistant** from the extensions menu
+   `dist/facet-hawkes-<version>-unsigned.xpi`.
+5. Return to Hawkes and pin **Facet Hawkes Assistant** from the extensions menu
    if its toolbar button is not visible.
 
 A temporary add-on does not create a Firefox profile or change any preference,
@@ -367,12 +391,12 @@ and Firefox removes it on restart.
 1. Open the question. If it has more than one visible answer box, click the
    box you mean so its caret is visible. A question with one visible box is
    found even when the open sidebar has moved focus back to the page body.
-2. Click the **Ethnos Hawkes Assistant** toolbar button.
+2. Click the **Facet Hawkes Assistant** toolbar button.
 3. With the default automatic-solve setting, solving starts when the field is
    found. Otherwise click **Solve**. Exact MathML cases normally finish in
    under a second; screenshot fallback can take about a minute.
-4. **Read the recognized problem against the screen.** If Ethnos transcribed
-   the question wrongly, everything after it is wrong, and this is the only
+4. **Read the recognized problem against the screen.** If the question was
+   transcribed wrongly, everything after it is wrong, and this is the only
    place you can catch it.
 5. If the answer is insertable, click **Insert answer** once.
 6. Check the answer box yourself. The add-on never submits; use the site's own
@@ -439,6 +463,14 @@ costs you the preference rather than the add-on.
 There is deliberately **no automatic-insertion setting**. A second, separate
 click is the add-on's safety contract, and a test asserts no such preference
 appears.
+
+There is no solve-engine setting either, and there is nothing left for one to
+mean: Facet routes every question the page states as mathematics, and a
+question drawn as a picture goes to the companion's image reader because Facet
+has no reader for one. Settings states that pipeline — exact mathematics,
+reasoning, the graph specialists, and the last Facet run the add-on happened to
+see — instead of asking which one to use. A `solveEngine` left in a profile
+upgraded from 0.43.0 or earlier is inert and is removed on the next start.
 
 **Test connection** asks the local host to identify itself. It loads no model,
 so it answers at once — rather than a solve spending a minute finding out that
@@ -559,17 +591,19 @@ extension/
 ### Parabola graphs
 
 Quadratic regression questions with supported, read-only SVG scatter points
-also use Facet. Ethnos cross-checks accessible point descriptions against SVG
-coordinates, requests strict JSON coefficients, and proves the least-squares
-normal equations exactly before rounding and using the existing answer editor.
+also use Facet. The companion cross-checks accessible point descriptions
+against SVG coordinates, requests strict JSON coefficients, and proves the
+least-squares normal equations exactly before rounding and using the existing
+answer editor.
 This reader currently accepts the observed nonzero integer coordinate descriptions.
 
-A supported vertical parabola graph uses Facet for a strict JSON geometry plan,
-including when the normal solver preference is Ethnos. The companion sends the
-instruction, exact MathML-derived function, graph bounds and snap grid. Facet
-receives no DOM, selectors, page identifiers, screenshot, or actuation command.
-Ethnos independently validates rational quadratic coefficients, vertex, opening,
-and symmetric defining points using exact mathematics before enabling Insert.
+A supported vertical parabola graph uses Facet for a strict JSON geometry plan.
+The companion sends the instruction, exact MathML-derived function, graph bounds
+and snap grid. Facet receives no DOM, selectors, page identifiers, screenshot,
+or actuation command. The companion independently validates rational quadratic
+coefficients, vertex, opening, and symmetric defining points using exact
+mathematics before enabling Insert — Facet proposes a plan and the side that
+would draw it proves that plan, which is the whole point of the split.
 
 Insertion pins the question and all three Hawkes controls, uses their arrow-key
 handlers, and moves only controls that still need adjustment after linked point

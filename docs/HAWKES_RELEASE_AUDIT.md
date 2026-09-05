@@ -1,6 +1,50 @@
-# Ethnos Hawkes Assistant release audit ledger
+# Facet Hawkes Assistant release audit ledger
 
-## Current 0.43.0 candidate
+This ledger runs newest first. The current candidate is the first section; the
+sections after it are the record of superseded and historical ones, kept for
+audit and rollback context. A hash or a gate count anywhere below the current
+section belongs to the version its heading names and must not be quoted as
+though it described today's build.
+
+## Current: 0.44.0 — not yet packaged or audited
+
+**Status:** **source complete; not built, not digested, not audited.**
+
+| Record | Value |
+|---|---|
+| Product name | Facet Hawkes Assistant |
+| Candidate artifact | `dist/facet-hawkes-0.44.0-unsigned.xpi` — not yet built |
+| Candidate SHA-256 | none; nothing has been packaged |
+| Packaged members | 31 by the current validator |
+| Add-on ID | `ethnos-hawkes@local`, deliberately unchanged |
+| Native host | `ethnos_hawkes`, deliberately unchanged |
+| Gates | see the section that records them when the candidate is frozen |
+
+0.44.0 makes the visible product match the architecture it has had for some
+time. Facet owns solver routing end to end — exact mathematics first, a
+reasoning model only for what those decline, and the parabola and
+quadratic-regression specialists for a graph — and every surface a user reads
+now says Facet. The Solve engine preference is removed, because it chose
+between a division of labour that no longer exists; a `solveEngine` left in an
+upgraded profile is inert and is deleted on the next start.
+
+A question the page draws as a picture rather than stating as mathematics is
+still read by the companion's own image pipeline, and is labelled **Local
+exact** or **Local model** rather than being credited to Facet. That path keeps
+`solve_engine="ethnos"` on the wire, which is a retained protocol identifier
+rather than a product name.
+
+There is no permission, host, native-protocol, or data-collection change. The
+add-on ID and the registered native host are unchanged, so an existing
+installation and its stored preferences survive the rename. The artifact
+filename changes from `ethnos-hawkes-<version>-unsigned.xpi` to
+`facet-hawkes-<version>-unsigned.xpi`.
+
+Until this candidate is built, hashed, and put through the gates in
+[`extension/RELEASE.md`](../extension/RELEASE.md), the rows below are history
+and not a description of it.
+
+## Superseded: 0.43.0 candidate
 
 **Prepared:** 4 September 2026
 
@@ -58,7 +102,7 @@ The candidate and its recorded hash are frozen. No further packaged-source
 edit or rebuild belongs to 0.38.0 unless AMO forces a change, in which case the
 version and release evidence must be regenerated.
 
-## Provenance ledger
+### 0.38.0 provenance ledger
 
 | Record | Value |
 |---|---|
@@ -83,7 +127,7 @@ therefore the first immutable, reproducible source snapshot for the candidate,
 but it is deliberately not mislabeled as a historical artifact-producing
 commit.
 
-## Outcome
+### 0.38.0 outcome
 
 The extension, native companion boundary, installer, test protocol, privacy
 notice, and release procedure now form one documented release path. The local
@@ -99,7 +143,7 @@ signed artifact is retained separately at
 `dist/ethnos-hawkes-0.38.0-mozilla-signed.xpi`; it installed normally, but the
 physical-acceptance finding prevents promotion to a released version.
 
-## Verification completed
+### 0.38.0 verification completed
 
 | Gate | Result |
 |---|---|
@@ -128,7 +172,7 @@ The launcher is generated atomically, the manifest authorizes only
 native message. Firefox was deliberately not restarted during the audit
 because an existing browser session was in use.
 
-## Hardening decisions
+### 0.38.0 hardening decisions
 
 - One standing host scope: `*://learn.hawkeslearning.com/*`; no broad URL
   pattern and no declarative content script.
@@ -149,7 +193,7 @@ because an existing browser session was in use.
 - Native installation no longer points Firefox at or deletes a launcher inside
   the source checkout. Install and uninstall target only two generated files.
 
-## Live evidence
+### 0.38.0 live evidence
 
 The existing Hawkes session verified the repaired structured and sidebar paths:
 
@@ -163,7 +207,7 @@ See [Hawkes E2E proof](HAWKES_E2E_PROOF.md) and
 [editor findings](HAWKES_EDITOR_FINDINGS.md) for the captured reasoning and
 editor protocol.
 
-## Physical-acceptance finding and next gate
+### 0.38.0 physical-acceptance finding and next gate
 
 The installed Mozilla-signed 0.38.0 panel correctly recognized Question 5,
 Step 2 and produced `14`. Pressing Solve again began a real three-pass local

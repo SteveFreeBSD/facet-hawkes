@@ -295,7 +295,7 @@ export function describeView(state, now = 0, { docked = false } = {}) {
           : state.errorKey
             ? "popupRetryButton"
             // The same button, renamed for what pressing it would now mean.
-            // "Solve with Ethnos" beside an answer already in the box reads as
+            // "Solve with Facet" beside an answer already in the box reads as
             // the next step rather than as starting the question over.
             : stance === "placed"
               ? "popupSolveAgainButton"

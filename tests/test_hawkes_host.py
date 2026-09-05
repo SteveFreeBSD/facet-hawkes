@@ -294,6 +294,8 @@ def test_a_non_png_screenshot_is_refused_before_any_model_call():
             "operation": "solve_hawkes_problem",
             "request_id": "r1",
             "origin": "https://learn.hawkeslearning.com",
+            # Screenshots belong to the companion's own reader; Facet has none.
+            "solve_engine": "ethnos",
             "problem": {"screenshot_png_base64": "bm90IGEgcG5n"},  # "not a png"
         }
     )
@@ -310,6 +312,7 @@ def test_invalid_base64_is_refused():
             "operation": "solve_hawkes_problem",
             "request_id": "r1",
             "origin": "https://learn.hawkeslearning.com",
+            "solve_engine": "ethnos",
             "problem": {"screenshot_png_base64": "!!!not base64!!!"},
         }
     )

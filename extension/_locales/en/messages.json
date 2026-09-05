@@ -1,6 +1,6 @@
 {
   "extensionName": {
-    "message": "Ethnos Hawkes Assistant",
+    "message": "Facet Hawkes Assistant",
     "description": "Name shown in the Firefox add-ons list and toolbar."
   },
   "extensionDescription": {
@@ -8,7 +8,7 @@
     "description": "Add-on summary shown in about:addons."
   },
   "actionTitle": {
-    "message": "Ethnos Hawkes Assistant",
+    "message": "Facet Hawkes Assistant",
     "description": "Tooltip for the toolbar button."
   },
   "popupInsertButton": {
@@ -20,7 +20,7 @@
     "description": "Link from the popup to the add-on preferences page."
   },
   "popupSafetyNote": {
-    "message": "Ethnos runs locally and never submits, checks, or navigates. You review every answer before it is inserted. Closing this panel does not stop a solve.",
+    "message": "Facet runs locally and never submits, checks, or navigates. You review every answer before it is inserted. Closing this panel does not stop a solve.",
     "description": "Standing scope note shown at the bottom of the popup."
   },
   "statusChecking": {
@@ -40,8 +40,8 @@
     "description": "Shown after a successful insertion in the toolbar popup, which closes as soon as focus moves and so stops watching."
   },
   "statusInsertedWatching": {
-    "message": "Answer placed in the field. Review it on the page and submit there — Ethnos is watching for the next question.",
-    "description": "Shown after a successful insertion in the docked sidebar, which stays open and keeps watching for the next question."
+    "message": "Answer placed in the field. Review it on the page and submit there — the panel is watching for the next question.",
+    "description": "Shown after insertion in the sidebar, which stays open and keeps watching."
   },
   "errorNoTab": {
     "message": "No active Firefox tab was found.",
@@ -76,7 +76,7 @@
     "description": "Error when the stored answer fails validation."
   },
   "optionsTitle": {
-    "message": "Ethnos Hawkes Assistant settings",
+    "message": "Facet Hawkes Assistant settings",
     "description": "Title of the preferences page."
   },
   "optionsSaved": {
@@ -126,8 +126,8 @@
     "description": "Error when several frames claim the caret and the target is ambiguous."
   },
   "popupSolveButton": {
-    "message": "Solve with Ethnos",
-    "description": "Button that captures the question and asks Ethnos to solve it."
+    "message": "Solve with Facet",
+    "description": "Button that captures the question and asks Facet to solve it."
   },
   "popupSolveAgainButton": {
     "message": "Solve again",
@@ -135,30 +135,30 @@
   },
   "popupProblemHeading": {
     "message": "Recognized problem",
-    "description": "Heading above the transcription Ethnos read back."
+    "description": "Heading above the transcription the solver read back."
   },
   "statusSolving": {
-    "message": "Working locally",
-    "description": "Shown while Ethnos works."
+    "message": "Working…",
+    "description": "Shown while Facet works."
   },
   "statusSolved": {
     "message": "Ready. Check it against the screen, then press Insert.",
     "description": "Shown when an answer is ready and insertable."
   },
   "errorEthnosUnreachable": {
-    "message": "Ethnos is not reachable. Run deploy/firefox/install_native_host.py --write, then restart Firefox.",
-    "description": "Error when the native host is missing or refused."
+    "message": "Facet is not reachable. Run deploy/firefox/install_native_host.py --write, then restart Firefox.",
+    "description": "Error when the native companion cannot be reached."
   },
   "errorEthnosTimeout": {
-    "message": "Ethnos did not answer in time. It may still be loading a model; try again.",
-    "description": "Error when the host exceeds the request timeout."
+    "message": "Facet did not answer in time. It may still be loading a model; try again.",
+    "description": "Error when the companion does not reply before the deadline."
   },
   "errorEthnosVersion": {
-    "message": "Ethnos replied with a protocol this add-on does not speak. Update both sides.",
-    "description": "Error on a protocol version mismatch."
+    "message": "Facet replied with a protocol this add-on does not speak. Update both sides.",
+    "description": "Error when the companion speaks a different protocol version."
   },
   "errorNoCapture": {
-    "message": "This question needs screenshot fallback, which a Firefox sidebar cannot authorize. Open Ethnos from its toolbar button and retry there.",
+    "message": "This question needs screenshot fallback, which a Firefox sidebar cannot authorize. Open Facet from its toolbar button and retry there.",
     "description": "Error when screenshot fallback lacks an activeTab grant."
   },
   "errorQuestionRegion": {
@@ -166,11 +166,11 @@
     "description": "Privacy error when a screenshot cannot be cropped without including unrelated page content."
   },
   "errorSolveRefused": {
-    "message": "Ethnos would not answer this question. The reason is shown below.",
+    "message": "Facet would not answer this question. The reason is shown below.",
     "description": "Error when the host returns a non-ready status."
   },
   "errorTranscriptionDisputed": {
-    "message": "Ethnos's two readers disagreed about the question, so nothing may be inserted. Read the notes below.",
+    "message": "The two readers disagreed about the question, so nothing may be inserted. Read the notes below.",
     "description": "Error when image transcription was not independently confirmed."
   },
   "errorAnswerNeedsTemplate": {
@@ -218,8 +218,8 @@
     "description": "Shown when the final question identity cannot be read before insertion."
   },
   "commandOpenPanel": {
-    "message": "Open the Ethnos panel",
-    "description": "Description of the keyboard shortcut that opens the popup."
+    "message": "Open the Facet panel",
+    "description": "Keyboard shortcut description for the toolbar panel."
   },
   "popupCancelButton": {
     "message": "Cancel",
@@ -262,7 +262,7 @@
     "description": "Error when a page operation exceeds its deadline."
   },
   "errorOptionAnswer": {
-    "message": "Answered by choosing an option. The answer is above — select it yourself; Ethnos does not click choices.",
+    "message": "Answered by choosing an option. The answer is above — select it yourself; this add-on does not click choices.",
     "description": "Shown when the focused control is a radio option rather than a field."
   },
   "stageCapturing": {
@@ -282,7 +282,7 @@
     "description": "Progress stage: producing the answer."
   },
   "statusSolvedUnread": {
-    "message": "Ethnos could not read this question's instruction, so this answer comes from the picture alone. Check it against the screen before inserting.",
+    "message": "The question's instruction could not be read, so this answer comes from the picture alone. Check it against the screen before inserting.",
     "description": "Shown when an answer is ready but the page's own instruction never reached the solver, which forces the least reliable path."
   },
   "statusWillBuild": {
@@ -681,22 +681,6 @@
     "message": "Solving",
     "description": "Heading for the solving preferences."
   },
-  "optionsSolveEngineLabel": {
-    "message": "Solve engine",
-    "description": "Label for the experimental solve-engine selector."
-  },
-  "optionsSolveEngineEthnos": {
-    "message": "Ethnos only",
-    "description": "Name of the default Ethnos solve engine."
-  },
-  "optionsSolveEngineFacet": {
-    "message": "Ethnos, then Facet",
-    "description": "Name of the experimental Facet solve engine."
-  },
-  "optionsSolveEngineHelp": {
-    "message": "Exact math runs locally first either way. This chooses what happens to a question the exact solvers decline.",
-    "description": "Scope and destination of the experimental Facet engine."
-  },
   "optionsCropLabel": {
     "message": "Limit screenshots to the question region",
     "description": "Label for the screenshot-cropping preference."
@@ -768,8 +752,8 @@
     "description": "Shown when Firefox rejects a keyboard shortcut."
   },
   "optionsConnectionHeading": {
-    "message": "Ethnos connection",
-    "description": "Heading for the native-host connection check."
+    "message": "Facet connection",
+    "description": "Heading for the reachability check."
   },
   "optionsConnectionHelp": {
     "message": "Asks the local host to identify itself. It loads no model, so this answers at once — before a solve spends a minute finding out.",
@@ -780,11 +764,11 @@
     "description": "Button that checks the native host is reachable."
   },
   "optionsConnectionChecking": {
-    "message": "Asking Ethnos…",
+    "message": "Asking Facet…",
     "description": "Shown while the connection check is running."
   },
   "optionsConnectionOk": {
-    "message": "Ethnos answered in $MS$ ms.",
+    "message": "Facet answered in $MS$ ms.",
     "description": "Shown when the native host replies.",
     "placeholders": {
       "ms": {
@@ -880,19 +864,19 @@
     "description": "Shown when writing a preference to storage fails."
   },
   "commandOpenSidebar": {
-    "message": "Open the Ethnos sidebar",
-    "description": "Description of the keyboard shortcut that opens the sidebar."
+    "message": "Open the Facet sidebar",
+    "description": "Keyboard shortcut description for the sidebar."
   },
   "popupSidebarHint": {
     "message": "Open in the sidebar so it stays put while solving.",
     "description": "Offered in the popup, which closes whenever focus moves."
   },
   "optionsPipelineExactLabel": {
-    "message": "Exact engine",
+    "message": "Exact mathematics",
     "description": "Label for the deterministic solver in the settings pipeline readout."
   },
   "optionsPipelineReasonerLabel": {
-    "message": "Reasoning engine",
+    "message": "Reasoning",
     "description": "Label for whatever answers a question the exact solvers decline."
   },
   "optionsPipelineObservedLabel": {
@@ -900,23 +884,27 @@
     "description": "Label for the most recent Facet run the add-on actually saw."
   },
   "optionsPipelineExactValue": {
-    "message": "SymPy, on this machine",
-    "description": "The exact engine is always local and is never a model."
-  },
-  "optionsPipelineReasonerEthnos": {
-    "message": "None. Declined questions are reported, not answered.",
-    "description": "Reasoning engine when the Ethnos-only engine is selected."
+    "message": "Facet Exact — deterministic, no model",
+    "description": "The exact stage runs first and never involves a model."
   },
   "optionsPipelineReasonerFacet": {
-    "message": "Facet, over SSH",
-    "description": "Reasoning engine when Facet is selected."
+    "message": "Facet Reasoning — only what the exact solvers decline",
+    "description": "The reasoning stage, which runs only after the exact stage declines."
+  },
+  "optionsPipelineGraphLabel": {
+    "message": "Graph answers",
+    "description": "Label for the two graph specialists in the pipeline readout."
+  },
+  "optionsPipelineGraphValue": {
+    "message": "Facet Parabola Plan and Quadratic Regression",
+    "description": "The two graph specialists, which Facet routes to directly."
   },
   "optionsPipelineObservedNone": {
     "message": "Not observed yet",
     "description": "Shown when no Facet run has been seen, so nothing is known about its model."
   },
-  "optionsPipelineObservedUnused": {
-    "message": "Not applicable while Ethnos answers alone",
-    "description": "Shown when Facet is not the selected engine."
+  "optionsPipelineHelp": {
+    "message": "Facet routes every question: exact mathematics first, a reasoning model only for what those decline, and the graph specialists for a parabola or a regression. It runs on the Facet host the companion is configured for, which is this computer unless you have pointed it elsewhere. A question the page does not state as mathematics is read from a picture instead.",
+    "description": "Describes the solve path, which is no longer a choice."
   }
 }

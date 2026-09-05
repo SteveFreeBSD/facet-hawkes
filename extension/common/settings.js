@@ -69,10 +69,6 @@ export const ENTRY_GENRES = Object.freeze([
 
 /** @type {Record<string, Setting>} */
 export const SETTINGS = {
-  /* Experimental solver selection. The browser chooses only this closed enum;
-     every executable, host, backend, and prompt remains native-host-owned. */
-  solveEngine: { kind: "enum", fallback: "ethnos", values: Object.freeze(["ethnos", "facet"]) },
-
   /* Start solving as soon as an answer field is found, rather than waiting for
      a click. Insertion is never automatic; that is the add-on's whole safety
      contract and is deliberately not a preference. */
@@ -124,6 +120,25 @@ export const SETTINGS = {
 
 /** Names of every preference, for iteration and for clearing them all. */
 export const SETTING_KEYS = Object.freeze(Object.keys(SETTINGS));
+
+/**
+ * Preferences that no longer exist, kept here only so a profile that has one
+ * can be cleaned up.
+ *
+ * `solveEngine` chose between answering in the companion and asking Facet,
+ * back when the browser was the side that decided how a question got answered.
+ * Facet owns that routing now -- exact mathematics, reasoning, and the graph
+ * specialists are all its call -- so there is nothing left for the choice to
+ * mean, and a browser that still offered it would be describing an
+ * architecture that no longer exists.
+ *
+ * Dropping the key from {@link SETTINGS} is already enough to make a stored
+ * value inert: {@link readSettings} reads {@link SETTING_KEYS} and nothing
+ * else, so an old `"ethnos"` sitting in storage is never read and cannot
+ * select anything. {@link migrateSettings} removes it as well, so the profile
+ * does not carry a preference that no screen can show and no code can honour.
+ */
+export const OBSOLETE_SETTING_KEYS = Object.freeze(["solveEngine"]);
 
 /** Every default, as a plain object. */
 export function defaultSettings() {
@@ -286,7 +301,36 @@ export async function writeSettings(values) {
 
 /** Put every preference back to its default. */
 export async function resetSettings() {
-  await browser.storage.local.remove([...SETTING_KEYS]);
+  await browser.storage.local.remove([...SETTING_KEYS, ...OBSOLETE_SETTING_KEYS]);
+}
+
+/**
+ * Drop preferences that no longer exist from an already-installed profile.
+ *
+ * Safe to call on every startup: it reads first and writes only when there is
+ * something to remove, so an ordinary launch costs one storage read. Storage
+ * being unavailable is not worth failing a solve over -- the stale key is
+ * already inert -- so a failure is reported and swallowed.
+ *
+ * @returns {Promise<string[]>} the keys actually removed, for the log.
+ */
+export async function migrateSettings() {
+  let stored = {};
+  try {
+    stored = (await browser.storage.local.get([...OBSOLETE_SETTING_KEYS])) ?? {};
+  } catch {
+    return [];
+  }
+  const stale = OBSOLETE_SETTING_KEYS.filter((key) => key in stored);
+  if (stale.length === 0) {
+    return [];
+  }
+  try {
+    await browser.storage.local.remove(stale);
+  } catch {
+    return [];
+  }
+  return stale;
 }
 
 /**

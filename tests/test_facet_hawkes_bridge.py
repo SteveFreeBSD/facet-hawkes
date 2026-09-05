@@ -205,9 +205,27 @@ def test_the_browser_chooses_an_engine_and_nothing_else() -> None:
         SolveRequest.model_validate({**request(), "solve_engine": "garbage"})
 
 
-def test_the_default_request_still_takes_the_local_ethnos_path(monkeypatch) -> None:
-    plain = request(engine="ethnos")
+def test_a_request_that_names_no_pipeline_is_routed_by_facet(monkeypatch) -> None:
+    """The default is the architecture, not the one it replaced.
+
+    It used to be the companion's own path, from when the browser decided how a
+    question got answered. A caller that says nothing now gets how questions are
+    answered today; the companion's reader is reached by asking for it.
+    """
+    plain = request()
     plain.pop("solve_engine")
+    loopback = answering(monkeypatch)
+
+    response = handle(plain)
+
+    assert loopback.requests, "a default request did not reach Facet"
+    assert response.status == "ready"
+    assert response.certainty.facet_invoked is True
+
+
+def test_a_request_may_still_ask_for_the_companions_own_reader(monkeypatch) -> None:
+    """A question drawn as a picture has no mathematics for Facet to route."""
+    plain = request(engine="ethnos")
     monkeypatch.setattr(
         "ethnos.hawkes_host._solve_from_markup",
         lambda *_args: (AnswerPayload(display_text="x^2", keyboard_entry="x^2"), ""),
@@ -216,7 +234,7 @@ def test_the_default_request_still_takes_the_local_ethnos_path(monkeypatch) -> N
 
     response = handle(plain)
 
-    assert loopback.requests == [], "a default request reached Facet"
+    assert loopback.requests == [], "the companion's own path reached Facet"
     assert response.status == "ready"
     assert response.certainty.source == "markup"
 
@@ -233,7 +251,7 @@ def test_facet_mode_requires_exact_markup_and_reaches_nothing_without_it(
     assert loopback.requests == [], "Facet was called without MathML"
     assert response.status == "unsupported"
     assert response.answer is None
-    assert "requires readable Hawkes MathML" in response.message
+    assert "none could be read" in response.message
 
 
 @pytest.mark.parametrize(

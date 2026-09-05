@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="color-scheme" content="light dark">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title data-i18n="optionsTitle">Ethnos Hawkes Assistant settings</title>
+    <title data-i18n="optionsTitle">Facet Hawkes Assistant settings</title>
     <link rel="stylesheet" href="options.css">
   </head>
   <body>
@@ -13,24 +13,17 @@
         <h1 data-i18n="optionsSolvingHeading">Solving</h1>
 
         <div class="field">
-          <label class="field__label" for="solveEngine"
-                 data-i18n="optionsSolveEngineLabel">Solve engine</label>
-          <select id="solveEngine" class="input input--select" data-setting="solveEngine">
-            <option value="ethnos" data-i18n="optionsSolveEngineEthnos">Ethnos only</option>
-            <option value="facet" data-i18n="optionsSolveEngineFacet">Ethnos, then Facet</option>
-          </select>
-          <p class="note" data-i18n="optionsSolveEngineHelp">
-            Exact math runs locally first either way. This chooses what happens to a
-            question the exact solvers decline.
-          </p>
           <dl id="pipeline" class="pipeline">
-            <dt data-i18n="optionsPipelineExactLabel">Exact engine</dt>
-            <dd id="pipeline-exact">SymPy, on this machine</dd>
-            <dt data-i18n="optionsPipelineReasonerLabel">Reasoning engine</dt>
+            <dt data-i18n="optionsPipelineExactLabel">Exact mathematics</dt>
+            <dd id="pipeline-exact">—</dd>
+            <dt data-i18n="optionsPipelineReasonerLabel">Reasoning</dt>
             <dd id="pipeline-reasoner">—</dd>
+            <dt data-i18n="optionsPipelineGraphLabel">Graph answers</dt>
+            <dd id="pipeline-graph">—</dd>
             <dt data-i18n="optionsPipelineObservedLabel">Last observed run</dt>
             <dd id="pipeline-observed">—</dd>
           </dl>
+          <p class="note" data-i18n="optionsPipelineHelp"></p>
         </div>
 
         <label class="check">
@@ -276,7 +269,7 @@
       </section>
 
       <section class="card">
-        <h1 data-i18n="optionsConnectionHeading">Ethnos connection</h1>
+        <h1 data-i18n="optionsConnectionHeading">Facet connection</h1>
         <p class="note" data-i18n="optionsConnectionHelp">
           Asks the local host to identify itself. It loads no model, so this answers at once — before a solve spends a minute finding out.
         </p>

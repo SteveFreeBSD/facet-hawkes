@@ -1,14 +1,19 @@
 # Ethnos
 
 <p align="center">
-  <img src="extension/icons/icon-128.png" width="96" height="96" alt="Ethnos Hawkes Assistant icon">
+  <img src="extension/icons/icon-128.png" width="96" height="96" alt="Facet Hawkes Assistant icon">
 </p>
 
 <p align="center"><strong>A local-first Firefox assistant built for Hawkes math.</strong></p>
 
-Ethnos turns a Hawkes question into a checked, ready-to-place answer without
+This repository is **Ethnos**: the Python package, the CLI, the study and quiz
+tooling, and the local companion behind the Firefox add-on. The add-on itself
+is **Facet Hawkes Assistant**, which is the name on the toolbar and the only
+one a user ever reads.
+
+It turns a Hawkes question into a checked, ready-to-place answer without
 handing the page to a cloud service. Focus the answer box, open the add-on, and
-review what Ethnos read alongside what it solved. One separate click places the
+review what it read alongside what it solved. One separate click places the
 answer using Hawkes' own math editor. **You stay in control: it never submits,
 checks, advances, or silently selects anything.**
 
@@ -16,12 +21,14 @@ checks, advances, or silently selects anything.**
 
 ## The Firefox add-on
 
-The current add-on source is **0.43.0**. It combines a narrow Firefox interface
-with a local Python companion, exact symbolic solving, and an Ollama fallback:
+The add-on is **Facet Hawkes Assistant**, currently **0.44.0**. It combines a
+narrow Firefox interface with a local Python companion, Facet's own solver
+routing, and an image fallback for a question the page draws as a picture:
 
-- **Exact before AI.** The add-on reads Hawkes' MathML and routes factoring,
-  expansion, simplification, rationalization, evaluation, polynomial ordering,
-  degree, coefficients, and classification through SymPy. Results are checked
+- **Exact before AI.** The add-on reads Hawkes' MathML and hands it to Facet,
+  which routes factoring, expansion, simplification, rationalization,
+  evaluation, polynomial ordering, degree, coefficients, and classification
+  through SymPy before any model is considered. Results are checked
   algebraically and typically arrive in milliseconds.
 - **See what it saw.** The panel puts the recognized problem beside the answer.
   Screenshot fallbacks use two different local readers and disable insertion
@@ -37,8 +44,19 @@ with a local Python companion, exact symbolic solving, and an Ollama fallback:
   Ollama on loopback and the whole solve stays on your machine.
 - **No injected interface.** The toolbar panel and Settings are Firefox pages,
   so the add-on leaves no persistent UI, styles, markers, or listeners in the
-  Hawkes page. Its synthetic insertion events can still be observed; Ethnos
+  Hawkes page. Its synthetic insertion events can still be observed; the add-on
   does not claim or attempt concealment.
+
+### New in 0.44.0: one solver, named on the tin
+
+The add-on is **Facet Hawkes Assistant**. Facet owns solver routing end to end
+— exact mathematics first, a reasoning model only for what those decline, and
+the parabola and quadratic-regression specialists for a graph — so the Settings
+choice between "Ethnos only" and "Ethnos, then Facet" is gone. It described a
+division of labour that no longer exists, and a preference left over in an
+upgraded profile is removed rather than honoured. A question the page draws as
+a picture rather than stating as mathematics is still read from an image by the
+companion.
 
 ### New in 0.43.0: Answer Cadence
 
@@ -61,9 +79,10 @@ window, or question changes while an answer is being placed.
 
 ### The workflow
 
-1. Focus the Hawkes answer field and open Ethnos with `Alt+Shift+E`.
-2. Let the exact solver answer immediately, or wait for the local vision/model
-   fallback when the page does not expose enough structured math.
+1. Focus the Hawkes answer field and open the add-on with `Alt+Shift+E`.
+2. Let Facet's exact solvers answer immediately, or wait for reasoning, a graph
+   specialist, or the image fallback when the page does not expose enough
+   structured math.
 3. Compare **Recognized problem** with the question on screen.
 4. Click **Insert answer**. Review the field, then decide what to do in Hawkes.
 

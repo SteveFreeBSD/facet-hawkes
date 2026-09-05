@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate and package the Ethnos Hawkes Firefox extension.
+"""Validate and package the Facet Hawkes Firefox extension.
 
 This repository-specific validator supplements Mozilla's `web-ext lint`: it
 enforces the project's narrower permission and zero-persistent-site-footprint
@@ -85,7 +85,7 @@ FORBIDDEN_TOKENS = (
 # rules: read from `window`, never write to it, and add nothing to the DOM.
 CONTENT_DIR = Path("content")
 CONTENT_SCRIPT_FORBIDDEN = (
-    # An injected script must never be able to reach Ethnos, capture the tab,
+    # An injected script must never be able to reach the companion, capture the tab,
     # or open a connection: the page it runs in is not trusted. Nor may it use
     # any form of postMessage, which the page could intercept.
     "postMessage",
@@ -773,7 +773,7 @@ def build(output_dir: Path = DIST_DIR) -> Path:
     """Write a reproducible XPI and return its path."""
     manifest = _load_manifest()
     output_dir.mkdir(parents=True, exist_ok=True)
-    target = output_dir / f"ethnos-hawkes-{manifest['version']}-unsigned.xpi"
+    target = output_dir / f"facet-hawkes-{manifest['version']}-unsigned.xpi"
 
     with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
         for path in packaged_files():

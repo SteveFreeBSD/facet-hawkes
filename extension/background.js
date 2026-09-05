@@ -24,12 +24,31 @@ import { enterPlan } from "/common/page-actions.js";
 import { describeError, initLog, log, setLogLevel } from "/common/log.js";
 import {
   defaultSettings,
+  migrateSettings,
   onSettingsChanged,
   readSettings,
   resolveEntryCadence,
 } from "/common/settings.js";
 
 const NATIVE_HOST = "ethnos_hawkes";
+
+/**
+ * Which pipeline in the companion answers a question.
+ *
+ * Not a preference any more, and not a choice the browser is entitled to make.
+ * Facet owns routing: it runs the deterministic solvers first, reaches a
+ * reasoning model only for what those decline, and sends a parabola or a
+ * regression to its own specialist. The browser asks for that and reads back
+ * which route ran.
+ *
+ * `IMAGE_PIPELINE` is the companion's own reader, for a question the page
+ * states as a picture rather than as mathematics -- there is nothing for Facet
+ * to route in that case, because there is no expression to route. It is a
+ * capability fallback, not an engine the user picks, and `"ethnos"` remains
+ * its name on the wire because the native host and its protocol still use it.
+ */
+const SOLVE_PIPELINE = "facet";
+const IMAGE_PIPELINE = "ethnos";
 const PROTOCOL_VERSION = 1;
 
 /** How long `health` may take. It loads no model, so this is a connectivity
@@ -71,6 +90,16 @@ let settingsReady = refreshSettings();
 async function refreshSettings() {
   settings = await readSettings();
   setLogLevel(settings.logLevel);
+  // An upgraded profile can still hold a preference that was retired. It is
+  // already inert -- nothing reads it -- so this is tidying rather than a
+  // correction, and it must not delay the first solve.
+  migrateSettings()
+    .then((removed) => {
+      if (removed.length > 0) {
+        log.info("settings-migrated", { removed });
+      }
+    })
+    .catch((error) => log.warn("settings-migration-failed", { error: describeError(error) }));
   return settings;
 }
 
@@ -497,13 +526,13 @@ function answeredByBadge(certainty) {
   const source = certainty?.source ?? "";
   switch (certainty?.answered_by) {
     case "exact":
-      // An exact answer is exact wherever it was computed, and Facet is where
-      // the solvers now run when the Facet engine is chosen. Its own name for
-      // the route it took is the honest badge; "Ethnos Exact" is right only
-      // when Ethnos itself did the solving.
-      return certainty?.facet_invoked ? source || "Facet Exact" : "Ethnos Exact";
+      // An exact answer is exact wherever it was computed. Facet names the
+      // route it took, and that name is the honest badge; the companion's own
+      // copy of the same solvers answers only on the picture path, and saying
+      // so is what keeps the two distinguishable.
+      return certainty?.facet_invoked ? source || "Facet Exact" : "Local exact";
     case "model":
-      return "Ethnos model";
+      return "Local model";
     case "facet":
       return source || "Facet";
     default:
@@ -515,7 +544,7 @@ function answeredByBadge(certainty) {
  * The expandable provenance block: who did what, in the order it happened.
  *
  * Each layer is named separately on purpose. A solver is not a model, the
- * thing that read the picture is not the thing that answered, and what Ethnos
+ * thing that read the picture is not the thing that answered, and what was
  * *asked* of a backend is not necessarily what the backend *did* — collapsing
  * any of those would make an answer look better sourced than it is.
  *
@@ -534,9 +563,10 @@ function provenanceNotes(certainty) {
     lines.push(`${engine === "exact" ? "Method" : "Reasoner"}: ${certainty.method}`);
   }
   if (certainty?.router === "solved" || certainty?.router === "declined") {
-    // Whose deterministic stage made the call. Facet owns the routing when it
-    // was asked; Ethnos still routes its own local solves.
-    const router = certainty?.facet_invoked ? "Facet Exact" : "Ethnos Exact";
+    // Whose deterministic stage made the call. Facet owns the routing for every
+    // question the page states as mathematics; the companion routes only what
+    // it read from a picture.
+    const router = certainty?.facet_invoked ? "Facet Exact" : "Local exact";
     const why =
       certainty.router === "declined" && certainty.router_detail
         ? ` (${certainty.router_detail})`
@@ -545,8 +575,8 @@ function provenanceNotes(certainty) {
     lines.push(`Router: ${router} ${verdict}${why}`);
   }
   if (engine !== "facet") {
-    // Worth stating rather than leaving to inference: choosing the Facet
-    // engine does not mean Facet ran, and this is the line that says so.
+    // Worth stating rather than leaving to inference: a question read from a
+    // picture never reaches Facet at all, and this is the line that says so.
     lines.push(`Facet: ${certainty?.facet_invoked ? "invoked" : "not invoked"}`);
   }
   if (certainty?.runtime) {
@@ -623,7 +653,7 @@ function sameStringArray(left, right) {
   );
 }
 
-// --- Ethnos ----------------------------------------------------------------
+// --- the native companion --------------------------------------------------
 
 /**
  * Ask the native host one named operation.
@@ -1086,7 +1116,8 @@ async function solve(windowId = state.windowId) {
   });
 
   try {
-    // Confirm Ethnos is even installed before spending a minute on a capture.
+    // Confirm the companion is even installed before spending a minute on a
+    // capture.
     const health = await askEthnos(
       "health", {}, HEALTH_TIMEOUT_MS, undefined, controller.signal
     );
@@ -1128,12 +1159,12 @@ async function solve(windowId = state.windowId) {
     }
 
     const solveDeadline = Date.now() + settings.solveTimeoutSeconds * 1000;
-    const askToSolve = (image) =>
+    const askToSolve = (image, pipeline) =>
       askEthnos(
         "solve_hawkes_problem",
         {
           origin: "https://learn.hawkeslearning.com",
-          solve_engine: settings.solveEngine,
+          solve_engine: pipeline,
           problem: {
             prompt_text: question.promptText || "",
             mathml: question.expressions,
@@ -1150,17 +1181,17 @@ async function solve(windowId = state.windowId) {
         controller.signal
       );
 
-    let reply = await askToSolve(screenshot);
-    // Markup can be perfectly readable yet outside the exact solver's current
-    // vocabulary. Capture only after that cheap path explicitly declines, so
-    // ordinary questions leave no screenshot and pay no vision-model cost.
-    if (
-      reply?.status === "unsupported"
-      && settings.solveEngine === "ethnos"
-      && question.expressions.length > 0
-      && screenshot.length === 0
-      && !controller.signal.aborted
-    ) {
+    // Facet is asked about the mathematics, never about a picture: it has no
+    // reader for one, so sending the capture here would hand image data to a
+    // path that cannot use it and would be refused anyway.
+    let reply = await askToSolve("", SOLVE_PIPELINE);
+    // Facet answers what the page states as mathematics. A question drawn as a
+    // picture states none, and markup can be perfectly readable yet outside the
+    // solvers' current vocabulary -- both come back `unsupported`, and both are
+    // then read from an image instead. Capture only after that cheap path
+    // explicitly declines, so an ordinary question leaves no screenshot and
+    // pays no vision-model cost.
+    if (reply?.status === "unsupported" && !controller.signal.aborted) {
       // The host says which decline this was; without it a live fallback
       // reports only that the exact path did not work, which is the one thing
       // already obvious from the minute it then takes.
@@ -1168,11 +1199,13 @@ async function solve(windowId = state.windowId) {
         expressions: question.expressions.length,
         why: String(reply.message || "").slice(0, 120),
       });
-      screenshot = await captureQuestion(state.tabId, state.frameId);
-      if (screenshot === null || controller.signal.aborted) {
-        return;
+      if (screenshot.length === 0) {
+        screenshot = await captureQuestion(state.tabId, state.frameId);
+        if (screenshot === null || controller.signal.aborted) {
+          return;
+        }
       }
-      reply = await askToSolve(screenshot);
+      reply = await askToSolve(screenshot, IMAGE_PIPELINE);
     }
     if (controller.signal.aborted) {
       return;

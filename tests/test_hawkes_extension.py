@@ -1,4 +1,4 @@
-"""Shipping requirements for the Ethnos Hawkes Firefox add-on.
+"""Shipping requirements for the Facet Hawkes Firefox add-on.
 
 These tests are the automated half of the extension review checklist: they pin
 the permission surface, the promises made in `extension/README.md`, and the fact
@@ -88,17 +88,20 @@ def test_the_host_is_asked_only_named_operations():
     # command, path, model name, or URL for the host to act on.
     assert 'askEthnos("health"' in background
     assert '"solve_hawkes_problem"' in background
-    assert "solve_engine: settings.solveEngine" in background
-    assert 'operation: "health" | "solve_hawkes_problem"' in background or True
+    # The pipeline is a constant, not a preference: Facet owns routing, and the
+    # picture reader is a capability fallback rather than a second engine.
+    assert 'const SOLVE_PIPELINE = "facet";' in background
+    assert 'const IMAGE_PIPELINE = "ethnos";' in background
+    assert "solve_engine: pipeline," in background
+    assert "settings.solveEngine" not in background
     for smuggled in ("model:", "path:", "command:", "script:"):
         assert smuggled not in background
 
     settings = (EXTENSION_DIR / "common" / "settings.js").read_text()
     options = (EXTENSION_DIR / "options" / "options.html").read_text()
-    assert 'solveEngine: { kind: "enum", fallback: "ethnos"' in settings
-    assert 'values: Object.freeze(["ethnos", "facet"])' in settings
-    assert 'data-setting="solveEngine"' in options
-    assert 'value="facet"' in options
+    assert "solveEngine" not in options
+    assert 'OBSOLETE_SETTING_KEYS = Object.freeze(["solveEngine"])' in settings
+    assert "solveEngine: {" not in settings
 
 
 def test_health_is_checked_before_a_capture_is_spent():
@@ -666,7 +669,7 @@ def test_build_produces_a_reproducible_package(tmp_path, manifest):
     first = build_extension.build(tmp_path / "a")
     second = build_extension.build(tmp_path / "b")
 
-    assert first.name == f"ethnos-hawkes-{manifest['version']}-unsigned.xpi"
+    assert first.name == f"facet-hawkes-{manifest['version']}-unsigned.xpi"
     assert first.read_bytes() == second.read_bytes()
 
     with zipfile.ZipFile(first) as archive:

@@ -221,6 +221,8 @@ def test_the_host_reports_an_exact_reading():
             "operation": "solve_hawkes_problem",
             "request_id": "m1",
             "origin": "https://learn.hawkeslearning.com",
+            # The companion's own reader, which is what these check.
+            "solve_engine": "ethnos",
             "problem": {
                 "prompt_text": "Simplify. Express your answer using rational exponents.",
                 "mathml": [RATIONAL_EXPONENTS],
@@ -245,6 +247,8 @@ def test_the_host_answers_live_linear_q1_from_mathml_without_a_screenshot():
             "operation": "solve_hawkes_problem",
             "request_id": "linear-q1",
             "origin": "https://learn.hawkeslearning.com",
+            # The companion's own reader, which is what these check.
+            "solve_engine": "ethnos",
             "problem": {
                 "prompt_text": "Solve the following linear equation.",
                 "mathml": [LINEAR_EQUATION_Q1],
@@ -268,6 +272,8 @@ def test_the_host_rearranges_live_formula_q3_and_returns_only_its_rhs_for_entry(
             "operation": "solve_hawkes_problem",
             "request_id": "formula-q3",
             "origin": "https://learn.hawkeslearning.com",
+            # The companion's own reader, which is what these check.
+            "solve_engine": "ethnos",
             "problem": {
                 "prompt_text": (
                     "Solve the following formula for the indicated variable. "
@@ -294,6 +300,8 @@ def test_the_host_answers_live_absolute_value_q9_without_a_screenshot():
             "operation": "solve_hawkes_problem",
             "request_id": "absolute-q9",
             "origin": "https://learn.hawkeslearning.com",
+            # The companion's own reader, which is what these check.
+            "solve_engine": "ethnos",
             "problem": {
                 "prompt_text": "Solve the following absolute value equation.",
                 "mathml": [ABSOLUTE_VALUE_Q9],
@@ -317,6 +325,8 @@ def test_the_host_answers_live_lesson_18_q1_without_a_screenshot():
             "operation": "solve_hawkes_problem",
             "request_id": "lesson-18-q1",
             "origin": "https://learn.hawkeslearning.com",
+            # The companion's own reader, which is what these check.
+            "solve_engine": "ethnos",
             "problem": {
                 "prompt_text": (
                     "Solve the following quadratic equation by factoring. "
@@ -344,6 +354,8 @@ def test_the_host_answers_live_lesson_18_q2_without_a_screenshot():
             "operation": "solve_hawkes_problem",
             "request_id": "lesson-18-q2",
             "origin": "https://learn.hawkeslearning.com",
+            # The companion's own reader, which is what these check.
+            "solve_engine": "ethnos",
             "problem": {
                 "prompt_text": (
                     "Solve the following quadratic equation by the square root method. "
@@ -373,6 +385,8 @@ def test_the_host_keeps_live_q4_roots_separate_for_the_comma_editor():
             "operation": "solve_hawkes_problem",
             "request_id": "lesson-18-q4",
             "origin": "https://learn.hawkeslearning.com",
+            # The companion's own reader, which is what these check.
+            "solve_engine": "ethnos",
             "problem": {
                 "prompt_text": (
                     "Solve the following quadratic equation using the quadratic "
@@ -403,6 +417,8 @@ def test_the_host_answers_live_complex_q8_from_markup():
             "operation": "solve_hawkes_problem",
             "request_id": "complex-q8",
             "origin": "https://learn.hawkeslearning.com",
+            # The companion's own reader, which is what these check.
+            "solve_engine": "ethnos",
             "problem": {
                 "prompt_text": "Simplify the following expression.",
                 "mathml": [COMPLEX_Q8],
@@ -425,6 +441,8 @@ def test_the_host_answers_live_complex_q9_from_markup():
             "operation": "solve_hawkes_problem",
             "request_id": "complex-q9",
             "origin": "https://learn.hawkeslearning.com",
+            # The companion's own reader, which is what these check.
+            "solve_engine": "ethnos",
             "problem": {
                 "prompt_text": "Evaluate the following square root expression.",
                 "mathml": [COMPLEX_Q9],
@@ -447,6 +465,8 @@ def test_the_host_answers_live_complex_q11_from_markup():
             "operation": "solve_hawkes_problem",
             "request_id": "complex-q11",
             "origin": "https://learn.hawkeslearning.com",
+            # The companion's own reader, which is what these check.
+            "solve_engine": "ethnos",
             "problem": {
                 "prompt_text": "Simplify the following expression.",
                 "mathml": [COMPLEX_Q11],
@@ -469,6 +489,8 @@ def test_the_host_answers_live_complex_q12_from_markup():
             "operation": "solve_hawkes_problem",
             "request_id": "complex-q12",
             "origin": "https://learn.hawkeslearning.com",
+            # The companion's own reader, which is what these check.
+            "solve_engine": "ethnos",
             "problem": {
                 "prompt_text": "Simplify the following square root expression.",
                 "mathml": [COMPLEX_Q12],
@@ -496,6 +518,8 @@ def test_markup_that_cannot_be_solved_exactly_does_not_reach_the_model():
             "operation": "solve_hawkes_problem",
             "request_id": "m2",
             "origin": "https://learn.hawkeslearning.com",
+            # The companion's own reader, which is what these check.
+            "solve_engine": "ethnos",
             "problem": {
                 "prompt_text": "Graph the function.",
                 "mathml": ["<math><mi>x</mi></math>"],

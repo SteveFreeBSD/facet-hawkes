@@ -13,6 +13,7 @@ Ethnos (caspian)                            Facet (currently casbox)
                                               solver routing
                                               exact deterministic mathematics
                                               reasoning model for the rest
+                                              parabola / regression plans
                                               CPU / GPU / NPU selection
   structured result        <-- structured answer + provenance ---------
   validation
@@ -30,13 +31,29 @@ Neither reaches into the other. Ethnos never names a device, a model, a runtime,
 or a host in a request, and Facet never learns which document, window, frame,
 field or editor a question came from -- or that there is a browser at all.
 
+## A note on the two names
+
+"Ethnos" on this page means the browser side of the boundary: this repository,
+its `ethnos` Python package, and the native companion the add-on talks to. It
+is not what the product is called. The add-on is **Facet Hawkes Assistant**,
+and nothing a user reads says Ethnos.
+
+The name survives in the places where changing it would cost a reinstall and
+buy nothing anyone can see: the Python package namespace, the add-on ID
+`ethnos-hawkes@local` that Firefox keys an installation and its `storage.local`
+to, the registered native-messaging host `ethnos_hawkes`, the
+`~/.local/share/ethnos-hawkes/` launcher the installer writes, the `ethnos:*`
+internal messages, and the wire value `solve_engine="ethnos"` that names the
+companion's own image path. Those are identifiers, not branding. Where this
+document says Ethnos it is naming a side of a boundary; where it says Facet
+Hawkes Assistant it is naming the product.
+
 ## One solver, not two
 
 The exact solvers live in `facet_runtime.exact` and are a package dependency of
 Ethnos. `ethnos.symbolic_solver` and `ethnos.polynomial_solver` re-export them,
-so Ethnos's own local paths -- the screenshot pipeline, the coverage sweep, the
-CLI, and the `ethnos` engine's markup route -- call the same implementation
-Facet runs when it routes.
+so Ethnos's own local paths -- the image fallback, the coverage sweep and the
+CLI -- call the same implementation Facet runs when it routes.
 
 They were moved rather than copied because two copies of an exact solver do not
 stay exact for long. They agree on the day they are made and drift afterwards,
@@ -229,7 +246,40 @@ client knows how to read, and that is a compatible change rather than a failed
 solve. Adding a request field, an operation, or a constraint is not compatible
 and moves the version.
 
-## How Facet routes a question
+## The route is fixed
+
+There is no engine to choose, and the browser is not offered one. A question
+the page states as mathematics goes to Facet, always: the add-on sends a
+constant, `solve_engine="facet"`, and reads back which route Facet took. The
+`solveEngine` preference that used to pick between answering in the companion
+and asking Facet is gone. It described a division of labour that stopped
+existing when the routing moved, and a browser that offers a choice it cannot
+honour is worse than one that offers none. A value left behind in an upgraded
+profile is inert -- the schema no longer knows the key, so nothing reads it --
+and `migrateSettings()` removes it on the next start.
+
+### The one path that is not Facet
+
+Some Hawkes questions are drawn rather than stated: the mathematics is in a
+picture, and the page exposes no MathML to convert. There is nothing for Facet
+to route in that case, because there is no expression to route, so those
+questions are read by the companion's own image pipeline instead -- two
+independent transcriptions by local vision models, compared before anything may
+be inserted.
+
+That path is reached only after the Facet request has come back `unsupported`,
+so an ordinary question leaves no screenshot and pays no vision-model cost. The
+capture is never sent to Facet, which has no reader for one and would refuse it.
+On the wire the image path still names itself `solve_engine="ethnos"`, because
+that is the value the native protocol has always used for the companion's own
+route; it is a retained protocol identifier and not an engine anyone selects.
+
+An answer from that path says so. The panel badges it **Local exact** or
+**Local model** rather than naming a Facet route, and the provenance block
+records `Facet: not invoked`, because a question Facet never saw must not
+inherit its provenance.
+
+### How Facet routes what it is given
 
 Facet reads the question's own verb, runs the exact operation that matches, and
 checks the answer against its own input. That path costs a millisecond, needs
@@ -305,9 +355,10 @@ is Ethnos's alone.
   editor, field or screenshot appears anywhere in a request. Facet has no
   browser API and no way to start a process, and is gated for both.
 - **Bounded JSON.** 16 KiB per request, 12 KiB per prompt, 1 MiB per response.
-- **The browser chooses an engine and nothing else.** `solveEngine` is an
-  enum of two values. Every execution field is rejected by the add-on protocol.
-  A browser-supplied request id is reduced to a bounded shape before it crosses.
+- **The browser chooses nothing.** It names no engine, host, model, or device:
+  the pipeline field carries a constant, and every execution field is rejected
+  by the add-on protocol. A browser-supplied request id is reduced to a bounded
+  shape before it crosses.
 - **Fail closed.** Status is read before the exit code, so a helper that exits
   zero on failure still cannot produce an answer, and a helper that claims
   success while exiting non-zero is not believed.

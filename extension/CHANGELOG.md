@@ -1,7 +1,48 @@
 # Changelog
 
-All notable changes to the Ethnos Hawkes Assistant add-on. Versions follow
-`major.minor.patch` as required by the Firefox manifest.
+All notable changes to the Facet Hawkes Assistant add-on. Versions follow
+`major.minor.patch` as required by the Firefox manifest. Entries below 0.44.0
+name the add-on as it was called at the time.
+
+## 0.44.0
+
+### Changed
+
+- **The add-on is now Facet Hawkes Assistant.** Facet has owned solver routing
+  for some time — exact mathematics first, a reasoning model only for what
+  those decline, and the parabola and quadratic-regression specialists for a
+  graph — while every visible surface still said Ethnos. The name in the
+  add-ons list, the toolbar tooltip, the sidebar, the panel heading, the
+  Settings title, the solve button, the icon's accessible name, and every
+  status and error message now say what actually answers.
+- Provenance names the route Facet reports — **Facet Exact**, **Facet
+  Reasoning · GPU**, **Facet Parabola Plan · GPU**, **Facet Quadratic
+  Regression · GPU** — and the method, runtime, backend, device, and timing
+  behind it are unchanged. A question read from a picture is answered by the
+  companion and is labelled **Local exact** or **Local model**, because saying
+  Facet answered it would not be true.
+- A request that names no pipeline is now routed by Facet. It used to fall to
+  the companion's own path, which is how questions were answered before the
+  routing moved.
+
+### Removed
+
+- **The Solve engine setting.** "Ethnos only" and "Ethnos, then Facet"
+  described a division of labour that no longer exists, and a browser that
+  offers a choice it cannot honour is worse than one that offers none. Facet
+  routes every question the page states as mathematics; a question the page
+  draws as a picture is read by the companion, which is a capability fallback
+  rather than an engine anyone picks. Settings now states what the pipeline is
+  instead of asking which one to use.
+- A `solveEngine` value left in an upgraded profile is removed on the next
+  start. It is inert before that too: the schema no longer knows the key, so
+  nothing reads it and it can select nothing.
+
+### Fixed
+
+- A question with no readable mathematics no longer sends its screenshot to
+  Facet, which has no reader for one and would refuse it. The capture goes only
+  to the path that can use it.
 
 ## 0.43.0
 

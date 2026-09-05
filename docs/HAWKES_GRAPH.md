@@ -5,8 +5,10 @@ vertical parabola with a vertex and two symmetric control points. Ethnos reads
 exact MathML and normalizes the graph bounds, snap spacing and geometry family.
 All question nodes, graph model references, control IDs and DOM remain in Firefox.
 
-Facet is invoked for graph planning even when the text solver preference is
-Ethnos. The request uses `solve_math` with `result_kind: "parabola_plan"`,
+Facet does the graph planning. There is no solver preference to override any
+more -- Facet routes every question the page states as mathematics, and a graph
+is one of them -- and the request uses `solve_math` with
+`result_kind: "parabola_plan"`,
 `accelerator_required=false` and `allow_fallback=false`. It carries only the
 instruction, the exact MathML-derived expression and the normalized graph
 context; the markup itself, the browser commands and any screenshot do not
@@ -88,7 +90,10 @@ A later live question asked for the vertex of `p(x)=(x-6)(x+2)+16`. The old
 text fallback inserted the unchecked Facet value `2,4`, which was both wrong
 and missing the ordered-pair parentheses. The shared rational-quadratic
 derivation now handles single-letter function names and gives `(2,0)` directly
-with Ethnos Exact provenance. The existing entry planner builds Hawkes' `PBrace`
+with exact provenance. That log line reads `Ethnos Exact` because it predates
+the rename; the same route is badged **Facet Exact** now, and the companion's
+own copy of the solvers -- reached only from the image path -- is badged
+**Local exact**. The existing entry planner builds Hawkes' `PBrace`
 template and types `2,0` inside it, respecting the field's published character
 set. The normal-profile log records exact solving and structured insertion
 at 05:57:39 and 05:57:45 UTC; the owner then advanced to Step 2.

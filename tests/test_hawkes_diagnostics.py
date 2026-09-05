@@ -46,12 +46,25 @@ var console = {
   error: function (line, data) { recorded.push(["error", line, data]); },
 };
 var stored = {};
+function asKeys(keys) {
+  if (keys === undefined || keys === null) { return Object.keys(stored); }
+  return Array.isArray(keys) ? keys : [keys];
+}
 var browser = {
   storage: {
     local: {
-      get: function () { return Promise.resolve(stored); },
+      get: function (keys) {
+        var out = {};
+        asKeys(keys).forEach(function (key) {
+          if (Object.prototype.hasOwnProperty.call(stored, key)) { out[key] = stored[key]; }
+        });
+        return Promise.resolve(out);
+      },
       set: function (patch) { Object.assign(stored, patch); return Promise.resolve(); },
-      remove: function () { return Promise.resolve(); },
+      remove: function (keys) {
+        asKeys(keys).forEach(function (key) { delete stored[key]; });
+        return Promise.resolve();
+      },
     },
     onChanged: { addListener: function () {} },
   },
@@ -79,6 +92,26 @@ def context():
 
 def evaluate(context, expression):
     return json.loads(context.eval(f"JSON.stringify({expression})"))
+
+
+def resolve(context, expression):
+    """Run one promise-returning expression to completion and read its value.
+
+    QuickJS does not drain its job queue between evaluations, so an `async`
+    function otherwise never gets past its first `await` and a test of it would
+    assert nothing at all.
+    """
+    context.eval(
+        f"var settled = undefined; ({expression}).then(v => {{ settled = v; }});"
+    )
+    for _ in range(100):
+        if not context.execute_pending_job():
+            break
+    return json.loads(context.eval("JSON.stringify(settled)"))
+
+
+def seed_storage(context, values):
+    context.eval(f"stored = {json.dumps(values)};")
 
 
 # --- redaction -------------------------------------------------------------
@@ -219,7 +252,6 @@ def test_the_log_never_leaves_the_machine():
 def test_every_default_survives_a_round_trip(context):
     defaults = evaluate(context, "defaultSettings()")
 
-    assert defaults["solveEngine"] == "ethnos"
     assert set(defaults) == set(evaluate(context, "SETTING_KEYS"))
     for key, value in defaults.items():
         assert evaluate(context, f"coerce({json.dumps(key)}, {json.dumps(value)})") == {
@@ -237,7 +269,6 @@ def test_every_default_survives_a_round_trip(context):
         ("panelWidth", 9000, 360),
         ("autoSolve", "yes", True),
         ("logLevel", "chatty", "info"),
-        ("solveEngine", "garbage", "ethnos"),
     ],
 )
 def test_a_value_the_schema_rejects_falls_back_to_the_default(
@@ -254,11 +285,50 @@ def test_a_setting_the_schema_does_not_know_is_refused(context):
 
 
 @pytest.mark.parametrize("engine", ["ethnos", "facet"])
-def test_solve_engine_accepts_only_the_closed_enum(context, engine):
-    assert evaluate(context, f'coerce("solveEngine", "{engine}")') == {
-        "ok": True,
-        "value": engine,
-    }
+def test_the_retired_engine_choice_is_not_a_preference_any_more(context, engine):
+    """Facet owns routing, so there is nothing for the browser to choose.
+
+    Not merely hidden: the schema does not know the key, which is what makes a
+    value left in an upgraded profile unable to select anything.
+    """
+    assert "solveEngine" not in evaluate(context, "SETTING_KEYS")
+    assert "solveEngine" not in evaluate(context, "defaultSettings()")
+    assert evaluate(context, f'coerce("solveEngine", "{engine}")')["ok"] is False
+
+
+def test_a_stored_engine_preference_cannot_reach_a_solve(context):
+    """The upgrade path's real requirement: an old value must be inert."""
+    seed_storage(context, {"solveEngine": "ethnos", "panelWidth": 420})
+
+    settings = resolve(context, "readSettings()")
+
+    assert "solveEngine" not in settings
+    # The rest of the profile is untouched by any of this.
+    assert settings["panelWidth"] == 420
+
+
+def test_an_upgraded_profile_has_the_retired_preference_removed(context):
+    seed_storage(context, {"solveEngine": "ethnos", "panelWidth": 420})
+
+    removed = resolve(context, "migrateSettings()")
+
+    assert removed == ["solveEngine"]
+    assert evaluate(context, "stored") == {"panelWidth": 420}
+
+
+def test_migrating_a_profile_that_never_had_it_changes_nothing(context):
+    seed_storage(context, {"panelWidth": 420})
+
+    assert resolve(context, "migrateSettings()") == []
+    assert evaluate(context, "stored") == {"panelWidth": 420}
+
+
+def test_resetting_also_clears_what_was_retired(context):
+    seed_storage(context, {"solveEngine": "ethnos", "panelWidth": 420})
+
+    resolve(context, "resetSettings().then(() => null)")
+
+    assert evaluate(context, "stored") == {}
 
 
 def test_the_timeout_the_solver_uses_is_the_one_that_was_set():

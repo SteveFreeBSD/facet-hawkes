@@ -251,9 +251,11 @@ def test_the_panel_says_facet_was_not_invoked_on_an_exact_solve(notes) -> None:
         }
     )
 
-    assert "Answered by: Ethnos Exact" in lines
+    # The companion's own copy of the same solvers, on the picture path. Named
+    # for where it ran rather than for the product it used to belong to.
+    assert "Answered by: Local exact" in lines
     assert "Method: SymPy exact symbolic" in lines
-    assert "Router: Ethnos Exact answered" in lines
+    assert "Router: Local exact answered" in lines
     assert "Facet: not invoked" in lines
     assert "Question read: page MathML" in lines
     assert "Elapsed: 3 ms" in lines
@@ -309,23 +311,31 @@ def test_an_older_host_reporting_no_engine_is_not_relabelled(notes) -> None:
     assert lines == ["Source: symbolic", "Facet: not invoked"]
 
 
-def test_the_settings_wording_matches_what_the_engine_setting_does() -> None:
+def test_the_settings_wording_describes_routing_rather_than_a_choice() -> None:
+    """The readout is a statement of the architecture, not of a preference."""
     messages = json.loads(
         (EXTENSION / "_locales" / "en" / "messages.json").read_text(encoding="utf-8")
     )
-    help_text = messages["optionsSolveEngineHelp"]["message"]
 
-    # The old wording said Facet was a separate MathML-only path. It has not
-    # been one since the exact solvers started running first.
-    assert "MathML-only path" not in help_text
-    assert "Exact math runs locally first" in help_text
+    # The choice is gone, and so is every string that offered it.
+    for retired in (
+        "optionsSolveEngineLabel",
+        "optionsSolveEngineHelp",
+        "optionsSolveEngineEthnos",
+        "optionsSolveEngineFacet",
+        "optionsPipelineReasonerEthnos",
+        "optionsPipelineObservedUnused",
+    ):
+        assert retired not in messages
+
+    help_text = messages["optionsPipelineHelp"]["message"]
     assert "decline" in help_text
-    # The choice is named for what it selects: what happens after the exact
-    # stage, not who answers everything.
-    assert messages["optionsSolveEngineEthnos"]["message"] == "Ethnos only"
-    assert messages["optionsSolveEngineFacet"]["message"] == "Ethnos, then Facet"
-    # SymPy is named as a solver, and nowhere called a model.
-    assert messages["optionsPipelineExactValue"]["message"] == "SymPy, on this machine"
+    # Each of Facet's three routes is named, in the order they are tried.
+    assert "Facet Exact" in messages["optionsPipelineExactValue"]["message"]
+    assert "Facet Reasoning" in messages["optionsPipelineReasonerFacet"]["message"]
+    graph = messages["optionsPipelineGraphValue"]["message"]
+    assert "Facet Parabola Plan" in graph and "Quadratic Regression" in graph
+    # The exact stage is a solver, and nowhere called a model.
     assert "model" not in messages["optionsPipelineExactLabel"]["message"].lower()
 
 
@@ -344,3 +354,45 @@ def test_the_settings_page_shows_the_pipeline_without_asking_the_network() -> No
         assert reaching_out not in pipeline
     # An unobserved reasoner is said to be unobserved rather than assumed.
     assert "optionsPipelineObservedNone" in pipeline
+
+
+@pytest.mark.parametrize(
+    ("answered_by", "source"),
+    [
+        ("exact", "Facet Exact"),
+        ("facet", "Facet Reasoning \u00b7 GPU"),
+        ("facet", "Facet Parabola Plan \u00b7 GPU"),
+        ("facet", "Facet Quadratic Regression \u00b7 GPU"),
+    ],
+)
+def test_the_panel_shows_facets_own_name_for_the_route_it_took(
+    notes, answered_by, source
+) -> None:
+    """Each route is a different answer to "who answered this", so each is named.
+
+    Facet reports which of its four routes ran; the panel repeats that rather
+    than flattening it to one word. A parabola plan and a regression are not
+    "reasoning" even though both reach a model, and an exact answer is not
+    either.
+    """
+    lines = notes(
+        {
+            "source": source,
+            "answered_by": answered_by,
+            "facet_invoked": True,
+            "method": "gpt-oss:20b",
+            "runtime": "Ollama 0.33.2",
+            "requested_backend": "gpu",
+            "actual_backend": "gpu",
+            "device": "AMD Radeon 890M Graphics (RADV STRIX1)",
+            "elapsed_ms": 8199.1,
+        }
+    )
+
+    assert f"Answered by: {source}" in lines
+    # The detail behind the badge survives alongside it.
+    assert "Runtime: Ollama 0.33.2" in lines
+    assert "Backend: gpu" in lines
+    assert any(line.startswith("Device: AMD Radeon 890M") for line in lines)
+    assert any(line.startswith("Elapsed:") for line in lines)
+    assert not [line for line in lines if "Ethnos" in line]

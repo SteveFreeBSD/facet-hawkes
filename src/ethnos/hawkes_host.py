@@ -528,7 +528,7 @@ def _solve_with_facet(
     if problem is None or not problem.mathml:
         return error_response(
             request.request_id,
-            "Facet experimental mode currently requires readable Hawkes MathML.",
+            "Facet needs mathematics read from the page; none could be read here.",
             "unsupported",
         )
     try:
@@ -536,13 +536,13 @@ def _solve_with_facet(
     except UnsupportedMathML:
         return error_response(
             request.request_id,
-            "Facet experimental mode currently requires readable Hawkes MathML.",
+            "Facet needs mathematics read from the page; none could be read here.",
             "unsupported",
         )
     if not expressions:
         return error_response(
             request.request_id,
-            "Facet experimental mode currently requires readable Hawkes MathML.",
+            "Facet needs mathematics read from the page; none could be read here.",
             "unsupported",
         )
 
@@ -579,9 +579,10 @@ def _solve_with_facet(
             )
         return error_response(request.request_id, f"Facet did not answer: {error}")
     except FacetError as error:
-        # Facet is the engine the user chose. A failure here is reported as a
-        # failure and never quietly becomes a local Ethnos answer: a
-        # substituted answer would carry a provenance nobody asked for.
+        # Facet is where every question stated as mathematics is answered. A
+        # failure here is reported as a failure and never quietly becomes a
+        # local answer: a substituted answer would carry a provenance nobody
+        # asked for.
         return error_response(request.request_id, f"Facet did not answer: {error}")
 
     # Fail closed on a result of the wrong shape. Facet already refuses to
