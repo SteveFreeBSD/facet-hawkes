@@ -324,6 +324,18 @@ def test_currency_and_separators_are_presentation_not_value():
     assert read_number("5.5") * 2 == 11
 
 
+def test_mathjax_leaves_invisible_operators_and_they_are_not_digits():
+    """Found live, on lesson 3.3's next question.
+
+    MathJax renders "$80" with an invisible-times between the parts, so a cell
+    read off the page carries characters that show nothing. The add-on drops
+    them and so does this, because the same page can reach here by more than
+    one route and neither should refuse a number the page shows plainly.
+    """
+    assert read_number("$\u206280") == 80
+    assert read_number("\u20621,250\u200b") == 1250
+
+
 def test_a_cell_that_is_not_a_number_is_refused():
     with pytest.raises(TableUnreadable, match="not a plain number"):
         read_number("about 40")

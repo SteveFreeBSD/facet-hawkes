@@ -92,7 +92,28 @@
    * is the host's reading, not the page's.
    */
   const dataTable = (() => {
-    const clean = (node) => (node.textContent || "").replace(/\s+/g, " ").trim();
+    /**
+     * One cell's text, with MathJax counted once.
+     *
+     * MathJax leaves two copies of every expression in the document: the
+     * glyphs a reader sees, and a visually hidden MathML copy for assistive
+     * technology. `textContent` returns both, so a live cell holding $80 came
+     * back as "$\u206280$\u206280" and was refused as not a number. The
+     * assistive copy is dropped -- unless dropping it leaves nothing, which is
+     * what an SVG-output MathJax cell looks like, and then it is all there is.
+     * Invisible operators go either way: they are markup, not digits.
+     */
+    const clean = (node) => {
+      const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+      const seen = [];
+      const hidden = [];
+      for (let text = walker.nextNode(); text !== null; text = walker.nextNode()) {
+        const target = text.parentElement?.closest("mjx-assistive-mml") ?? null;
+        (target === null ? seen : hidden).push(text.textContent);
+      }
+      const text = seen.join("").trim().length > 0 ? seen.join("") : hidden.join("");
+      return text.replace(/[\u2061-\u2064\u200b\ufeff]/g, "").replace(/\s+/g, " ").trim();
+    };
     // The row that names the columns, or null. Two unambiguous declarations of
     // one are accepted -- a `thead`, or a first row made entirely of `th` --
     // and nothing else, because "the first row" of a table used for layout is

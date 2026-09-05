@@ -515,7 +515,7 @@ def run(selected: str | None, headless: bool = True) -> int:
     shutil.copyfile(
         PROJECT_ROOT / "tests/fixtures/scatter.html", Path(web, "scatter.html")
     )
-    for table in ("table.html", "table-thead.html"):
+    for table in ("table.html", "table-thead.html", "table-mathjax.html"):
         shutil.copyfile(PROJECT_ROOT / "tests/fixtures" / table, Path(web, table))
     # The foreign origin serves the same directory on a different host name.
     build_test_extension(extension, site, report_origin)
@@ -603,7 +603,7 @@ def run(selected: str | None, headless: bool = True) -> int:
     checks = (
         len(scenarios)
         + len({s.distinct for s in scenarios if s.distinct})
-        + (0 if selected else 4)
+        + (0 if selected else 5)
     )
     print(f"\n{checks - failures}/{checks} checks passed")
     return 1 if failures else 0
@@ -621,13 +621,18 @@ def judge_table(marionette, site):
     question arrives stating a situation and asking nothing.
 
     The real markup is not in this repository, and a fixture written from a
-    guess can only confirm the guess. Two shapes are served -- a header row of
-    `th` cells, and a `thead` declaring the row without them -- so what is
-    demonstrated is that the probe reads either, rather than that it reads the
-    one I imagined.
+    guess can only confirm the guess. Three shapes are served -- a header row
+    of `th` cells, a `thead` declaring the row without them, and prices left in
+    the document by MathJax -- so what is demonstrated is that the probe reads
+    any of them, rather than that it reads the one I imagined.
+
+    The third is not imagined. Live, a cell holding $80 came back as
+    "$\u206280$\u206280": MathJax leaves the glyphs a reader sees *and* a
+    hidden MathML copy for assistive technology, `textContent` returns both,
+    and the host refused the result as not a number.
     """
     failures = 0
-    for page in ("table.html", "table-thead.html"):
+    for page in ("table.html", "table-thead.html", "table-mathjax.html"):
         failures += judge_one_table(marionette, site, page)
     return failures
 

@@ -36,6 +36,11 @@ FUNCTION_OF = re.compile(
     re.IGNORECASE | re.DOTALL,
 )
 
+#: Characters a page uses to join or separate parts of an expression without
+#: showing anything: MathML's invisible operators, a zero-width space, and a
+#: byte-order mark.
+INVISIBLE = frozenset("\u2061\u2062\u2063\u2064\u200b\ufeff")
+
 MIN_ROWS = 3
 
 
@@ -68,7 +73,11 @@ def read_number(cell: str):
     """
     import sympy
 
-    cleaned = cell.replace("$", "").replace(",", "").replace("%", "").strip()
+    # Invisible operators are markup, not digits. MathJax leaves them between
+    # the parts of a rendered expression, and a reading that let one through
+    # here would refuse a number the page shows perfectly plainly.
+    cleaned = "".join(character for character in cell if character not in INVISIBLE)
+    cleaned = cleaned.replace("$", "").replace(",", "").replace("%", "").strip()
     if not PLAIN_NUMBER.fullmatch(cleaned):
         raise TableUnreadable(f"{cell!r} is not a plain number")
     return sympy.Rational(cleaned)
