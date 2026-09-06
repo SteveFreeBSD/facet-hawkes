@@ -792,10 +792,39 @@ def test_the_build_rejects_a_selector_for_an_element_that_is_not_there(
     assert "'renamed'" in problems[0]
 
 
-def test_the_shipped_tree_passes_both_checks():
+def test_the_build_rejects_an_import_of_a_file_that_is_not_there(tmp_path, monkeypatch):
+    """An import that resolves to nothing is not a warning in a module.
+
+    Firefox refuses the whole script, so the settings page comes up blank and
+    the event page never starts -- and nothing else here would notice: the
+    constant checks read one file at a time, and the tests concatenate only the
+    modules they already know about.
+    """
+    tree = tmp_path / "extension"
+    (tree / "options").mkdir(parents=True)
+    (tree / "common").mkdir()
+    (tree / "common" / "real.js").write_text("export const REAL = 1;\n")
+    (tree / "options" / "options.js").write_text(
+        'import { REAL } from "../common/real.js";\n'
+        'import { GONE } from "../common/gone.js";\n'
+        'import { ALSO } from "/common/missing.js";\n'
+        "void REAL; void GONE; void ALSO;\n"
+    )
+    monkeypatch.setattr(build_extension, "EXTENSION_DIR", tree)
+
+    problems: list[str] = []
+    build_extension._check_import_paths(problems)
+
+    assert len(problems) == 2
+    assert "options/options.js: imports ../common/gone.js" in problems[0]
+    assert "imports /common/missing.js" in problems[1]
+
+
+def test_the_shipped_tree_passes_every_check():
     problems: list[str] = []
     build_extension._check_declaration_order(problems)
     build_extension._check_element_ids(problems)
+    build_extension._check_import_paths(problems)
 
     assert problems == []
 

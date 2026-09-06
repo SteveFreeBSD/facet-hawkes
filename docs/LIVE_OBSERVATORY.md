@@ -35,6 +35,7 @@ was recorded as a fix that did not work.
 | Facet | Route, model, backend and device for every run that reached a runtime |
 | Ollama | Service and runner state, asked only when a run named a runtime |
 | Cadence | Timing measurements, only for runs where Cadence performed |
+| Retained failures | The bounded ledger of runs that ended badly while nobody was watching |
 | Screenshot | Present only when `--screenshot` is given with `--bundle` |
 
 `--bundle` also writes machine-readable `observation.jsonl` — one JSON object
@@ -137,13 +138,32 @@ screenshot inherits that. A screenshot is coursework: it needs `--screenshot`
 *and* `--bundle`, is written `0600` into a `0700` directory, and the command
 prints the `rm -rf` that removes it. **Delete the bundle after reading it.**
 
+## When nobody was watching
+
+Everything above assumes the session is still there. A refusal from an hour ago
+has had the entries explaining it pushed out of the ring by ordinary use, so
+this command answers about it only by accident.
+
+The add-on therefore keeps its own bounded ledger of runs that ended in a
+diagnostic terminal state, and one offline command reads it back grouped by
+fault:
+
+```console
+$ python3 scripts/triage_hawkes_failures.py
+```
+
+This report names the ledger's shape under **Retained failures**; that command
+is where a failure is actually triaged. See
+[Retained failure ledger](FAILURE_LEDGER.md).
+
 ## Known blind spots
 
 - The build marker does not cover the panel, the settings page or the content
   scripts. Their staleness shows only as `changed_since_event_page_loaded`.
 - Stage transitions are logged at `debug`, which is off by default. The trail is
-  therefore reported once, on the entry that ends the run, and a run that never
-  ends leaves none.
+  reported once, on the entry that ends the run, and a run that never ends
+  leaves none — but a run that *ends badly* now carries its whole trail into a
+  retained record, whatever the log level.
 - Nothing correlates a Facet run on the far side of the SSH boundary beyond the
   request id. The observer reports what the host said it did, not an independent
   reading of the remote.
@@ -151,6 +171,7 @@ prints the `rm -rf` that removes it. **Delete the bundle after reading it.**
 
 ## See also
 
+- [Retained failure ledger](FAILURE_LEDGER.md) — triaging failures after the fact
 - [Hawkes live findings](HAWKES_LIVE_FINDINGS.md) — what live testing has exposed
 - [Hawkes development flow](HAWKES_DEVELOPMENT_FLOW.md) — where this fits
 - [Ollama troubleshooting](OLLAMA_TROUBLESHOOTING.md) — when the runtime is the fault

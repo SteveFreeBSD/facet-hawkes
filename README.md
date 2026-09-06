@@ -126,6 +126,19 @@ The add-on fails closed when it cannot identify one safe target, when the
 question changes mid-solve, when two screenshot readers disagree, or when the
 answer needs an editor template Hawkes has not enabled.
 
+Nothing has to be watching for those. A run that fails, is refused, or produces
+an answer the editor will not take leaves one bounded, redacted record behind,
+and one offline command reads them back grouped by fault:
+
+```bash
+python3 scripts/triage_hawkes_failures.py
+```
+
+The ledger holds no question text, no answer text and no screenshot; it is
+capped at 40 records, 64 groups, 14 days and 96 KB, evicts the oldest by
+itself, and **Settings -> Diagnostics -> Clear** erases it along with the log.
+See [Retained failure ledger](docs/FAILURE_LEDGER.md).
+
 ### Install and verify
 
 Firefox 142 or newer, Python 3.11+, `uv`, and a local Ollama installation are
@@ -455,3 +468,7 @@ documents are:
   security properties, and where the Facet host is configured.
 - [Ollama Troubleshooting](docs/OLLAMA_TROUBLESHOOTING.md): model, Vulkan,
   response, and stability failures.
+- [Live Hawkes Observatory](docs/LIVE_OBSERVATORY.md): one correlated look at
+  the live session, from one clock.
+- [Retained failure ledger](docs/FAILURE_LEDGER.md): what a failure leaves
+  behind when nobody was watching, and how to triage it afterwards.

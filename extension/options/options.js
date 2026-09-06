@@ -27,6 +27,7 @@ import {
   writeSettings,
 } from "../common/settings.js";
 import { clearLog, describeError, formatEntry, initLog, log, readLog, setLogLevel } from "../common/log.js";
+import { clearFailures, readFailures } from "../common/failure-record.js";
 
 /** The toolbar-button command, which is the one shortcut this add-on has. */
 const ACTION_COMMAND = "_execute_action";
@@ -851,9 +852,20 @@ async function showLog() {
     logView.append(row);
   }
   logView.scrollTop = logView.scrollHeight;
-  logSummary.textContent = entries.length === 0
+  // The ledger is storage the user did not ask for and cannot see in this
+  // view, so it is counted here. Hidden retained state would be a worse
+  // bargain than no retained state at all, and Clear below erases both.
+  const failures = await readFailures();
+  const kept = failures.groups.reduce((total, group) => total + (group.count ?? 0), 0);
+  const counted = entries.length === 0
     ? message("optionsDiagnosticsEmpty")
     : message("optionsDiagnosticsCount", [String(shown.length), String(entries.length)]);
+  logSummary.textContent = kept === 0
+    ? counted
+    : `${counted} ${message("optionsDiagnosticsFailures", [
+      String(kept),
+      String(failures.groups.length),
+    ])}`;
 }
 
 async function copyLog() {
@@ -899,6 +911,10 @@ on(document.querySelector("#log-refresh"), "click", showLog);
 on(document.querySelector("#log-copy"), "click", copyLog);
 on(document.querySelector("#log-clear"), "click", async () => {
   await clearLog();
+  // Clearing diagnostics clears every one of them. A ledger that survived the
+  // button labelled Clear would be exactly the kind of quiet retention this
+  // add-on promises not to have.
+  await clearFailures();
   await showLog();
   say(logStatus, message("optionsDiagnosticsCleared"), "ready");
 });

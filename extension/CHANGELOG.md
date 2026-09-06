@@ -31,8 +31,32 @@ name the add-on as it was called at the time.
   target changed" for a moved tab, an advanced question, a re-solved answer and
   a second window's claim alike. The pinned snapshot is logged when it is
   taken, so before and after both exist.
+- **A failure no longer has to be watched to be diagnosed.** A run that fails,
+  is refused, or produces an answer the editor will not take now leaves one
+  bounded record in `storage.local`, assembled from the state the event page was
+  already holding rather than read back out of the log -- so it does not depend
+  on diagnostics having been turned up beforehand, which a live failure never
+  is. Records are grouped by a fingerprint folded from the diagnostic fields two
+  instances of one fault have in common, so a recurring problem is counted
+  rather than reported four times as four questions.
+- **The editor's own description of itself is kept by default.** `answer-needs-
+  template` names one of fraction, radical, exponent and parentheses against a
+  character set that was not recorded anywhere, and diagnosing that cost a
+  screenshot of the owner's coursework to reach a guess. What the page says
+  about its own control -- readable, enabled, maximum length, permitted
+  characters, offered templates, keypad slots, and one of these per field on a
+  multi-field question -- is now recorded at `info` and carried into the record.
+  What the student typed into that control is specifically not read.
+- The ledger is bounded by 40 records, 64 groups, 14 days and 96 KB, whichever
+  binds first; it evicts the oldest automatically and keeps a count of what it
+  dropped. Settings -> Diagnostics counts it and **Clear** erases it along with
+  the ring, so it is not storage the user cannot see or remove.
+- Writing a record starts no timer, opens no port, sends no message and is
+  never awaited, so an unattended session behaves exactly as it would without
+  it.
 - None of the above records coursework: identifiers are locally generated, the
-  marker is folded from code, and the snapshot is shapes and counts. See
+  marker is folded from code, and every record is shapes, counts and the page's
+  own vocabulary, built by name and filtered against a fixed allowlist. See
   [PRIVACY.md](PRIVACY.md).
 
 ## 0.46.0 · RC5-Cadence

@@ -219,18 +219,44 @@ def find_store(profile: Path) -> Path:
     return max(found, key=lambda path: path.stat().st_size)
 
 
-def read_entries(store: Path) -> list[dict]:
-    """Copy the database first: Firefox may be running and holding it."""
+def decode_values(store: Path) -> list:
+    """Every value in the store, decoded.
+
+    Copies the database first: Firefox may be running and holding it. Reading
+    a live profile through a copy is what makes every tool built on this one
+    safe to point at the owner's session mid-question.
+    """
     with tempfile.TemporaryDirectory(prefix="ethnos-log-") as work:
         copy = Path(work) / "store.sqlite"
         shutil.copy(store, copy)
         rows = sqlite3.connect(copy).execute("select data from object_data").fetchall()
 
-    entries: list[dict] = []
+    values = []
     for (blob,) in rows:
         if not blob:
             continue
-        value = Clone(snappy_decompress(bytes(blob))).read()
+        values.append(Clone(snappy_decompress(bytes(blob))).read())
+    return values
+
+
+def read_storage(store: Path) -> dict:
+    """`storage.local` as one dictionary, merged across however many rows hold it.
+
+    The log is one key in there; preferences and the retained failure ledger
+    are others. Callers that want a specific key should come through here
+    rather than re-deriving which row it landed in.
+    """
+    merged: dict = {}
+    for value in decode_values(store):
+        if isinstance(value, dict):
+            merged.update(value)
+    return merged
+
+
+def read_entries(store: Path) -> list[dict]:
+    """The diagnostic ring, oldest first, wherever storage nested it."""
+    entries: list[dict] = []
+    for value in decode_values(store):
         for candidate in _log_arrays(value):
             entries.extend(candidate)
     # By time, not by `seq`: the sequence counter restarts whenever the

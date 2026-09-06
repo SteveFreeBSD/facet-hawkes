@@ -1,6 +1,6 @@
 # Privacy notice — Facet Hawkes Assistant
 
-Last updated: 5 September 2026
+Last updated: 6 September 2026
 
 ## What is processed
 
@@ -51,12 +51,41 @@ category.
   toolbar popup is closed. It is shown again only after the active tab's
   question signature matches, and Firefox clears it when the browser session
   ends. It is never written to `storage.local` or to diagnostics.
-- Screenshots are not stored by the extension.
+- Screenshots are not stored by the extension, and are never captured
+  automatically by any diagnostic. A diagnostic screenshot is taken only when a
+  local command is run with an explicit flag, into a directory whose deletion
+  command that command prints.
 - Browser-originated screenshots and transcriptions use a temporary directory
   that is removed when the native-host request finishes.
-- `storage.local` contains preferences and a bounded diagnostic ring only.
-  Diagnostic payloads redact question text, answers, screenshots, and profile
-  identifiers. The user can clear the ring in Settings.
+- `storage.local` contains preferences, a bounded diagnostic ring, and a
+  bounded ledger of failed runs. Diagnostic payloads redact question text,
+  answers, screenshots, and profile identifiers. The user can clear the ring
+  and the ledger together in Settings, where both are counted.
+- The failure ledger exists so a failure can be diagnosed after the fact
+  without anyone having had to be watching when it happened. A run is recorded
+  only when it reaches a terminal state that is explicitly diagnostic: it
+  failed, the companion refused it, or it produced an answer the page's editor
+  will not accept. A successful run records nothing.
+  - Each record holds the run and generation identifiers, the time, the error
+    key and refusal label, the stage trail, the window/tab/frame the operation
+    was about, the page's own description of its answer control (whether it is
+    readable and enabled, its maximum length, the characters and templates it
+    accepts, its keypad slots), whether the question was readable as
+    mathematics and how many expressions it had, the route and runtime that
+    answered, the native-host request identifiers, and the lengths and
+    verdicts describing the answer's shape.
+  - It never holds question text, answer text, what the user has typed into
+    the answer box, credentials, or a screenshot. Every field is constructed by
+    name and filtered again against a fixed allowlist before storage, and no
+    setting or debug mode widens it.
+  - Records are grouped by a fingerprint folded from those diagnostic fields
+    alone, so repeated instances of one fault are counted together. The
+    fingerprint is a local grouping key with no meaning outside this profile.
+  - The ledger is bounded by all of: 40 records, 64 groups, 14 days, and 96 KB.
+    Whichever binds first, the oldest are evicted automatically when the next
+    failure is recorded, and the ledger keeps a count of what it dropped.
+  - Nothing transmits it. It is read back, when someone chooses to, by a local
+    command that opens a copy of the profile database.
 - Each diagnostic entry also carries two identifiers that exist so one failure
   can be reconstructed: `gen`, naming the event page's current lifetime, and
   `run`, naming one user operation. Both are locally generated values with no
@@ -65,7 +94,8 @@ category.
   can be matched. Neither carries page content.
 - The add-on records a short digest of its own source text so a diagnosis can
   tell which build is running. It is computed from code, never from the page,
-  and is only ever written to the ring.
+  and is written only to the ring and to a retained failure record, so a fault
+  can be told apart from one already fixed in a build that is not loaded.
 - The configured Ollama service may have its own logging or retention policy;
   that is controlled by the operator of that endpoint.
 
@@ -89,7 +119,8 @@ cadence model and its safety boundary are documented in the
 
 ## User control
 
-The user can cancel a solve, disable automatic solving, clear diagnostics, or
+The user can cancel a solve, disable automatic solving, clear diagnostics --
+which clears the ring and the retained failure ledger together -- or
 remove the add-on at any time. Removing the separately installed native host
 registration prevents all companion communication. The add-on never submits,
 checks, or advances a question.

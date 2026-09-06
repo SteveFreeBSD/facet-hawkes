@@ -135,11 +135,20 @@ def test_the_message_itself_is_never_written_to_the_ring():
     `background.js` is written.
     """
     background = BACKGROUND.read_text(encoding="utf-8")
-    entry = background[background.index('log.warn("solve-refused"') :][:300]
+    entry = background[background.index("runFacts.refusal = refusalReason") :][:400]
 
-    assert "why: refusalReason(message)" in entry
+    assert "runFacts.refusal = refusalReason(message)" in entry
+    assert "why: runFacts.refusal" in entry
     assert "message.slice" not in entry
     assert "message.split" not in entry
+    # The label now outlives the ring as well: a retained failure record keeps
+    # it so an offline triage can group refusals by kind. That makes "only a
+    # label this file authored" a property of every assignment, not of one.
+    assignments = re.findall(r"runFacts\.refusal\s*=\s*([^;\n]+)", background)
+    assert assignments and all(
+        value.strip() in {'""', "refusalReason(message)"} for value in assignments
+    ), assignments
+    assert "refusal: runFacts.refusal," in background
     # The full text still reaches the panel, which is not persisted.
     assert "detail: message" in background
 

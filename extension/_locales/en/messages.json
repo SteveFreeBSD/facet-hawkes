@@ -843,6 +843,20 @@
       }
     }
   },
+  "optionsDiagnosticsFailures": {
+    "message": "$KEPT$ retained failure(s) in $GROUPS$ group(s).",
+    "description": "Appended to the diagnostics summary when the add-on is holding bounded records of failed runs.",
+    "placeholders": {
+      "kept": {
+        "content": "$1",
+        "example": "11"
+      },
+      "groups": {
+        "content": "$2",
+        "example": "3"
+      }
+    }
+  },
   "optionsCopied": {
     "message": "Copied to the clipboard.",
     "description": "Confirmation after a copy."

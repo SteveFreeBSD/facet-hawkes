@@ -36,6 +36,34 @@ Read [Live Hawkes Observatory](docs/LIVE_OBSERVATORY.md) once; it explains the
 run id, the build marker and the failure classes. The two tools below remain
 worth reaching for directly when you already know what you are looking at.
 
+## Looking at failures nobody was watching
+
+**If the failure is not on screen right now, start here instead.**
+
+```console
+$ python3 scripts/triage_hawkes_failures.py
+```
+
+The owner uses Hawkes with nothing attached. A run that fails, is refused, or
+produces an answer the editor will not take leaves one bounded record behind,
+and this reads them back offline -- grouped by fault, ordered so the one worth
+your afternoon is first, classified by the same eight rules the observatory
+uses. Firefox does not have to be running and this touches nothing at all.
+
+```console
+$ python3 scripts/triage_hawkes_failures.py --group f1:<fingerprint>
+$ python3 scripts/triage_hawkes_failures.py --export f1:<fingerprint>
+```
+
+`--group` prints one fault in full, including the page's own description of the
+answer control that refused it -- which is what a diagnosis of a refused
+insertion actually needs, and which used to cost a screenshot of the owner's
+coursework to guess at. `--export` writes a sanitized bundle and prints its
+`rm -rf`. Read [Retained failure ledger](docs/FAILURE_LEDGER.md) once.
+
+The ledger holds no coursework and never will; it is bounded to 40 records,
+64 groups, 14 days and 96 KB, and evicts the oldest by itself.
+
 `scripts/inspect_live_firefox.py` reads the owner's running
 Firefox: it enumerates windows through KWin, can briefly focus one, captures it
 with Spectacle, and restores whatever was active before. It never launches
@@ -93,7 +121,8 @@ needing mode A.
   in to Hawkes directly — not through Canvas, a school portal, CAS/SSO, or an
   LMS redirect. Do not open Canvas URLs to start a test.
 - **Delete Hawkes screenshots after reading them.** An observatory bundle
-  prints its own `rm -rf`; run it.
+  prints its own `rm -rf`; run it. A triage bundle prints one too, and never
+  contains a screenshot.
 
 ## Working notes
 
@@ -108,6 +137,9 @@ needing mode A.
   panel decision under QuickJS, the coverage sweep answers "would this question
   have gone to a model?" in about a second, and both catch more than a
   screenshot does.
+- You do not need to sit and watch for a failure any more, and should not.
+  Ask the owner to work normally, then triage what accumulated. A failure
+  caught live and a failure read back an hour later carry the same evidence.
 - "Zero footprint" means no persistent extension-created state or UI in the
   visited website. It is not a claim of undetectability; see
   `extension/README.md` and `extension/PRIVACY.md`.

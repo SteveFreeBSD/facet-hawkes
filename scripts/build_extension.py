@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -633,6 +634,39 @@ def _check_view_message_keys(messages: dict, problems: list[str]) -> None:
             )
 
 
+#: `import ... from "<path>"`, in the two forms the tree uses: absolute from the
+#: package root, as the event page's modules are, and relative, as the panel and
+#: settings pages are.
+IMPORT_TARGET = re.compile(r"""^\s*import\s[\s\S]*?from\s+["']([^"']+)["']""", re.M)
+
+
+def _check_import_paths(problems: list[str]) -> None:
+    """Every module a script imports must be a file that is actually shipped.
+
+    An import that resolves to nothing is not a warning in a module: Firefox
+    refuses to load the whole script, so the settings page comes up blank and
+    the event page never starts at all. Nothing else here would catch it --
+    the constant checks read one file at a time, and the tests concatenate the
+    modules they already know about.
+    """
+    shipped = {path.as_posix() for path in packaged_files()}
+    for path in sorted(EXTENSION_DIR.rglob("*.js")):
+        relative = path.relative_to(EXTENSION_DIR)
+        source = path.read_text(encoding="utf-8")
+        for target in IMPORT_TARGET.findall(source):
+            if "://" in target:
+                problems.append(f"{relative}: import from outside the package: {target}")
+                continue
+            resolved = (
+                Path(target.lstrip("/"))
+                if target.startswith("/")
+                else (relative.parent / target)
+            )
+            wanted = Path(os.path.normpath(resolved)).as_posix()
+            if wanted not in shipped:
+                problems.append(f"{relative}: imports {target}, which is not a shipped file")
+
+
 def _check_undefined_constants(problems: list[str]) -> None:
     """Every SHOUTING_CASE name a script uses must be declared or imported.
 
@@ -689,6 +723,7 @@ def validate() -> list[str]:
     _check_scripts(problems)
     _check_declaration_order(problems)
     _check_undefined_constants(problems)
+    _check_import_paths(problems)
     _check_element_ids(problems)
     _check_shared_constants(problems)
     _check_cadence_score(problems)

@@ -40,6 +40,7 @@ MODULES = (
     "common/answer-session.js",
     "common/editor-rules.js",
     "common/editor-plan.js",
+    "common/failure-record.js",
     "common/frames.js",
     "common/cadence.js",
     "common/cadence-audio.js",
@@ -51,7 +52,7 @@ MODULES = (
 )
 
 HARNESS = """
-globalThis.__H = { timers: [], calls: [], pending: [], logged: [] };
+globalThis.__H = { timers: [], calls: [], pending: [], logged: [], localStored: {} };
 const __H = globalThis.__H;
 
 // Timers carry their delay so the pump can run the short retry sleeps without
@@ -100,10 +101,17 @@ globalThis.browser = {
     getManifest: () => ({ version: "test" }),
   },
   storage: {
+    // A real store, not a stub. The event page keeps its bounded ledger of
+    // failed runs in `storage.local`, and a harness that swallowed every write
+    // would let a test assert a record was kept when nothing was written.
     local: {
-      get: () => Promise.resolve({}),
-      set: () => Promise.resolve(),
-      remove: () => Promise.resolve(),
+      get: (key) => Promise.resolve(
+        Object.prototype.hasOwnProperty.call(__H.localStored, key)
+          ? { [key]: __H.localStored[key] }
+          : {}
+      ),
+      set: (patch) => { Object.assign(__H.localStored, patch); return Promise.resolve(); },
+      remove: (key) => { delete __H.localStored[key]; return Promise.resolve(); },
     },
     session: {
       get: (key) => Promise.resolve(

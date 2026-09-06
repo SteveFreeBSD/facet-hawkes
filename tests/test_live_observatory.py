@@ -530,7 +530,11 @@ def test_it_reads_the_profile_database_through_a_copy():
     place would be taking a lock on the session under observation."""
     reader = SCRIPT.parent / "read_extension_log.py"
     assert "shutil.copy(store, copy)" in reader.read_text(encoding="utf-8")
-    assert "shutil.copy(store_path, copy)" in SOURCE
+    # And the observer has no second way in. It reads the ring and the retained
+    # failure ledger through that one reader, so there is exactly one place
+    # where the rule "copy it first" has to hold.
+    assert "reader.read_storage(store_path)" in SOURCE
+    assert "sqlite3" not in _code_only(SOURCE)
 
 
 def test_it_writes_nothing_into_the_profile_or_the_extension():

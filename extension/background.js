@@ -27,6 +27,7 @@ import { describeResults, selectAnswerFrame } from "/common/frames.js";
 import { graphOperation } from "/common/graph-actions.js";
 import { enterPlan } from "/common/page-actions.js";
 import { collectSources, foldSources } from "/common/build-marker.js";
+import { buildFailureRecord, recordFailure } from "/common/failure-record.js";
 import {
   currentRun,
   describeError,
@@ -65,6 +66,9 @@ const GENERATION = `g${Date.now().toString(36)}${Math.floor(Math.random() * 0xff
   .toString(16)
   .padStart(4, "0")}`;
 
+/** This build's declared version. Read once; it cannot change under us. */
+const MANIFEST_VERSION = browser.runtime.getManifest().version;
+
 /**
  * Stages this run has passed through, oldest first.
  *
@@ -82,6 +86,51 @@ let runRequests = 0;
 const MAX_RUN_STAGES = 24;
 
 /**
+ * What this run has learned that a retained failure record would need.
+ *
+ * The ring is two hundred entries shared by every context, so by the time an
+ * agent is asked about a refusal from an hour ago the entries explaining it
+ * have been pushed out by ordinary use. A run that ends badly therefore keeps
+ * one bounded record of its own, and the record is assembled from these --
+ * values this page is already holding -- rather than scraped back out of the
+ * log. That is what makes it independent of the log level: the evidence that
+ * has actually diagnosed live failures is kept whether or not anyone thought
+ * to turn diagnostics up first.
+ */
+let runFacts = blankRunFacts();
+
+/**
+ * The solve that produced the answer now held, kept across the run boundary.
+ *
+ * Solving and inserting are two gestures and therefore two runs, so by the
+ * time an insertion fails, `runFacts` describes the insertion and knows
+ * nothing about what answered the question. This is only ever read back when
+ * its run id still matches `state.solveRun`, so it names the solve that
+ * actually produced this answer rather than whichever one happened to be last.
+ */
+let lastSolve = null;
+
+/** The running build's marker, once it has been folded. For the record. */
+let buildMarker = "";
+
+function blankRunFacts() {
+  return {
+    evidence: null,
+    certainty: null,
+    refusal: "",
+    notInsertable: null,
+    events: [],
+  };
+}
+
+/** Note a diagnostic event this run saw, for the offline failure classes. */
+function noteRunEvent(name) {
+  if (!runFacts.events.includes(name) && runFacts.events.length < MAX_RUN_STAGES) {
+    runFacts.events.push(name);
+  }
+}
+
+/**
  * Start attributing everything that follows to one user operation.
  *
  * The id is carried on every log entry, and is what the native host and, in
@@ -91,6 +140,7 @@ const MAX_RUN_STAGES = 24;
 function startRun() {
   runStages = [];
   runRequests = 0;
+  runFacts = blankRunFacts();
   setRun(newRunId());
 }
 
@@ -350,16 +400,94 @@ function update(changes) {
 }
 
 function fail(errorKey, { detail = "", args = [] } = {}) {
+  const stopped = { phase: state.phase, stage: state.stage };
   log.warn("failed", {
     errorKey,
-    phase: state.phase,
-    stage: state.stage,
+    ...stopped,
     // Where it got to, not just where it stopped. "failed at solving" is true
     // of a capture that never happened and of a model that answered nothing,
     // and the trail is what separates them.
     stages: runStages.join(">"),
   });
   update({ phase: "failed", errorKey, errorArgs: args, detail });
+  retain("failed", { errorKey, ...stopped });
+}
+
+/**
+ * Leave enough behind for the agent who is not here.
+ *
+ * Everything above assumes somebody is watching: the ring holds two hundred
+ * entries shared by every context, a solve costs a dozen of them, and the
+ * evidence that explains a refusal is gone within the hour. So a run ending in
+ * a diagnostic terminal state -- it failed, the companion refused it, or it
+ * produced an answer this editor will not take -- writes one bounded record
+ * outside the ring, from the values this page is holding right now.
+ *
+ * Three properties matter more than the contents:
+ *
+ *  * It is never awaited. The panel has already been told; a diagnostic must
+ *    not sit in front of the user being told, and an operation must not be
+ *    able to fail because storage did.
+ *  * It starts nothing. No timer, no port, no message, no alarm -- the four
+ *    things that wake a suspended event page. It is one write in response to
+ *    something that has already happened, so an unattended session behaves
+ *    exactly as it would with this call removed.
+ *  * It reads no page. Every field comes from state this page already held;
+ *    nothing here goes back to the tab for more.
+ *
+ * `common/failure-record.js` owns what a record may contain. Coursework has no
+ * path into one -- see the rules at the top of that file.
+ */
+function retain(outcome, { errorKey = "", phase = "", stage = "" } = {}) {
+  const run = currentRun();
+  if (!run) {
+    // A record nothing can be correlated to is not worth a write. Every path
+    // that reaches here from a user gesture has a run; the settings page's
+    // health check mints its own.
+    return;
+  }
+  const editor = state.editor;
+  const solve = lastSolve && lastSolve.run && lastSolve.run === state.solveRun
+    ? lastSolve
+    : null;
+  // `fail` is also what `initLog`'s fatal handler calls, so this runs while the
+  // page is already in trouble. A diagnostic that could throw from there would
+  // turn a reported failure into an unreported one.
+  try {
+    recordFailure(buildFailureRecord({
+      run,
+      generation: GENERATION,
+      at: Date.now(),
+      outcome,
+      errorKey,
+      refusal: runFacts.refusal,
+      phase,
+      stage,
+      stages: runStages,
+      windowId: state.windowId,
+      tabId: state.tabId,
+      frameId: state.frameId,
+      fields: Array.isArray(state.fieldIds) && state.fieldIds.length
+        ? state.fieldIds.length
+        : (editor ? 1 : 0),
+      editor,
+      evidence: runFacts.evidence,
+      certainty: runFacts.certainty,
+      answerLength: String(state.displayText || state.answer || "").length,
+      answerParts: Array.isArray(state.answerParts) ? state.answerParts.length : 0,
+      directFit: runFacts.notInsertable?.directFit ?? [],
+      plannedFit: runFacts.notInsertable?.plannedFit ?? [],
+      hostRequests: runRequests,
+      solve,
+      marker: buildMarker,
+      version: MANIFEST_VERSION,
+      notInsertable: runFacts.notInsertable,
+      evidenceRefused: runFacts.evidence?.read === "refused",
+      events: runFacts.events,
+    }));
+  } catch (error) {
+    log.debug("failure-record-unavailable", { error: describeError(error) });
+  }
 }
 
 // Called synchronously through a pre-obtained background window reference in
@@ -1421,10 +1549,22 @@ async function prepare(windowId = state.windowId) {
       });
       return;
     }
-    log.debug("editor-described", {
+    // Kept at `info`, and complete. `answer-needs-template` names one of
+    // fraction, radical, exponent and parentheses against an unknown character
+    // set, and reading that back off the page cost a screenshot of the owner's
+    // coursework to reach a guess. All of this is what the page says about its
+    // own control -- what it accepts, what it offers, whether it is even
+    // typeable -- and none of it is what anybody typed into it.
+    log.info("editor-described", {
       kind: editor?.kind,
       ok: editor?.ok,
+      code: editor?.code ?? "",
+      enabled: editor?.enabled === true,
+      maxLength: editor?.maxLength ?? null,
+      allowedCharacters: String(editor?.allowedCharacters ?? "").slice(0, 48),
       templates: editor?.templates,
+      slots: editor?.slots ?? null,
+      editors: editor?.editors?.length ?? 0,
     });
     if (fieldIds.length >= 2) {
       log.info("multi-editor-described", {
@@ -1450,7 +1590,7 @@ async function prepare(windowId = state.windowId) {
     // card, the source and the recognized problem 1.5 seconds after a
     // successful insertion, on its very next tick.
     const context = hasAnswer || alreadyInserted;
-    log.debug("question-identified", { signature, sameQuestion, alreadyInserted });
+    log.info("question-identified", { signature, sameQuestion, alreadyInserted });
     update({
       phase: alreadyInserted ? "inserted" : hasAnswer ? "solved" : "ready",
       tabId: tab.id,
@@ -1586,10 +1726,28 @@ async function solve(windowId = state.windowId) {
       promptText: "",
       expressions: [],
     };
-    log.debug("question-read", { expressions: question.expressions.length });
+    // Kept at `info`, not `debug`. What the add-on managed to read of the
+    // question is the first fork in every failure -- an exact reading that
+    // then failed and a reading that was refused are different faults -- and
+    // requiring it to have been turned up in advance meant a live failure
+    // never had it. None of it is the question: counts and verdicts only.
+    runFacts.evidence = {
+      read: "markup",
+      expressions: question.expressions.length,
+      graph: question.evidence?.graph ?? "unknown",
+      table: question.evidence?.table ?? "unknown",
+      promptChars: question.evidence?.promptChars ?? 0,
+    };
+    log.info("question-read", {
+      expressions: runFacts.evidence.expressions,
+      graph: runFacts.evidence.graph,
+      table: runFacts.evidence.table,
+      promptChars: runFacts.evidence.promptChars,
+    });
     // The answer about to be solved belongs to the question just read, not to
     // whatever was on screen when the panel opened.
     update({ signature: questionSignature(state.fieldId, question) ?? state.signature });
+    runFacts.evidence.signature = state.signature ?? "";
     if (controller.signal.aborted) {
       return;
     }
@@ -1601,11 +1759,20 @@ async function solve(windowId = state.windowId) {
       // refused, and why, is the one fact worth having here: without it the
       // log says only that a question had no markup, which is true of a
       // genuine image question and of nine different extraction faults alike.
-      log.info("evidence-refused", {
+      runFacts.evidence = {
+        ...runFacts.evidence,
+        read: "refused",
         expressions: question.expressions?.length ?? 0,
         graph: question.evidence?.graph ?? "unknown",
         table: question.evidence?.table ?? "unknown",
         promptChars: question.evidence?.promptChars ?? 0,
+      };
+      noteRunEvent("evidence-refused");
+      log.info("evidence-refused", {
+        expressions: runFacts.evidence.expressions,
+        graph: runFacts.evidence.graph,
+        table: runFacts.evidence.table,
+        promptChars: runFacts.evidence.promptChars,
       });
       screenshot = await captureQuestion(state.tabId, state.frameId);
       if (screenshot === null) {
@@ -1766,10 +1933,12 @@ async function acceptReply(reply) {
     // label written is one this file authored. `status` is a closed set in
     // `hawkes_protocol.py` and is safe as it stands.
     const message = String(reply.message ?? "");
+    runFacts.refusal = refusalReason(message);
+    noteRunEvent("solve-refused");
     log.warn("solve-refused", {
       status: String(reply.status ?? "none"),
       hasAnswer: Boolean(reply.answer),
-      why: refusalReason(message),
+      why: runFacts.refusal,
     });
     fail("errorSolveRefused", {
       detail: message || String(reply.status).slice(0, 400),
@@ -1777,6 +1946,11 @@ async function acceptReply(reply) {
     return;
   }
   const certainty = reply.certainty ?? {};
+  // Where Facet sent this question and what answered it, kept from here on:
+  // every failure below this line is one a retained record should be able to
+  // attribute to a route and a runtime, including the ones that never reach a
+  // solved state.
+  runFacts.certainty = certainty;
   const notes = provenanceNotes(certainty);
   if (certainty.prompt_seen === false) {
     notes.push("Instruction not read from the page");
@@ -1804,6 +1978,7 @@ async function acceptReply(reply) {
       graphPlan: reply.answer.graph_plan, graphCoefficients: reply.answer.graph_coefficients,
       problemText: reply.problem_text, source: [answeredByBadge(certainty), certainty.model, certainty.device].filter(Boolean).join(" · "), detail: notes.join("\n"), errorKey: "" });
     log.info("graph-plan-validated", { facetInvoked: true, facetModel: certainty.model, backend: certainty.actual_backend, device: certainty.device, elapsedMs: certainty.elapsed_ms });
+    lastSolve = { run: currentRun(), certainty, answerLength: reply.answer.display_text.length };
     return;
   }
   const displayText = readableAnswer(reply.answer);
@@ -1882,14 +2057,14 @@ async function acceptReply(reply) {
   const partsFit = hasParts
     && (multiAnswerFits(answerParts, state.editor)
       || commaAnswerPlan(answerParts, state.editor, reply.problem_text) !== null);
+  let partsFailure = null;
   if (hasParts && !partsFit) {
     // Everything needed to see why, in one line: the answer's shape, the
     // shape the page published, and what each of the two entry routes said
     // about each part.
-    log.info(
-      "answer-parts-unplaceable",
-      describePartsFailure(answerParts, state.editor, reply.problem_text)
-    );
+    partsFailure = describePartsFailure(answerParts, state.editor, reply.problem_text);
+    noteRunEvent("answer-parts-unplaceable");
+    log.info("answer-parts-unplaceable", partsFailure);
   }
   if (hasParts && state.editor?.kind !== "multi") {
     log.info("multi-answer-editor-described", {
@@ -1908,6 +2083,15 @@ async function acceptReply(reply) {
     ? { ok: false, code: "answer-parts" }
     : planEntry(entryText, state.editor);
   if (!fits.insertable && plan.ok === false) {
+    // Which route said what, per answer part, so the record can be grouped by
+    // the disagreement rather than by the question it happened on.
+    runFacts.notInsertable = {
+      editor: fits.code ?? "",
+      plan: plan.code ?? "",
+      directFit: partsFailure?.directFit ?? [],
+      plannedFit: partsFailure?.plannedFit ?? [],
+    };
+    noteRunEvent("answer-not-insertable");
     log.warn("answer-not-insertable", {
       source: certainty.source ?? "",
       editor: fits.code,
@@ -1932,6 +2116,22 @@ async function acceptReply(reply) {
     detail: notes.join("\n"),
     errorKey: certainty.insertable ? "" : "errorTranscriptionDisputed",
   });
+  // The answer this solve produced, kept past the end of this run so the
+  // insertion -- a separate gesture, a separate run -- can still say what
+  // answered the question it is about to fail on.
+  lastSolve = { run: currentRun(), certainty, answerLength: answer.length };
+  // Two endings that are not failures and are not successes either.
+  //
+  // A solve the editor will not take shows an answer, leaves Insert disabled,
+  // and sends nothing: the ring recorded a clean solve followed by silence,
+  // and there was no failure to go looking for. A disputed transcription
+  // solved something, and said the page may not have been read as written.
+  // Both are terminal, both are diagnostic, and neither raises `fail`.
+  if (runFacts.notInsertable) {
+    retain("not-insertable", { phase: "solved", stage: "done" });
+  } else if (!certainty.insertable) {
+    retain("disputed", { errorKey: "errorTranscriptionDisputed", phase: "solved", stage: "done" });
+  }
 }
 
 /**
@@ -2553,7 +2753,12 @@ async function reportHealth(port) {
       errorKey: ok ? "" : "errorSolveRefused",
     });
   } catch (error) {
+    // A companion that does not answer is a diagnostic terminal state of its
+    // own, and the one an unattended session is least able to explain later:
+    // the settings page shows a red line and the ring holds one entry.
+    noteRunEvent("health-failed");
     log.warn("health-failed", { error: describeError(error) });
+    retain("failed", { errorKey: errorKeyOf(error), phase: "health", stage: "health" });
     port.postMessage({
       type: "ethnos:health-result",
       ok: false,
@@ -2758,7 +2963,7 @@ initLog("background", {
 // diagnosing a fixed bug in a build that did not contain the fix.
 settingsReady.then(() =>
   log.info("event-page-loaded", {
-    version: browser.runtime.getManifest().version,
+    version: MANIFEST_VERSION,
     generation: GENERATION,
     ...settings,
   })
@@ -2804,6 +3009,8 @@ function markedCode() {
     "common/editor-plan.js#planAnswerParts": planAnswerParts,
     "common/editor-plan.js#planEntry": planEntry,
     "common/editor-rules.js#answerFitsEditor": answerFitsEditor,
+    "common/failure-record.js#buildFailureRecord": buildFailureRecord,
+    "common/failure-record.js#recordFailure": recordFailure,
     "common/editor-rules.js#insertErrorKey": insertErrorKey,
     "common/frames.js#describeResults": describeResults,
     "common/frames.js#selectAnswerFrame": selectAnswerFrame,
@@ -2838,6 +3045,7 @@ function markedCode() {
     "background.js#pinInsertionTarget": pinInsertionTarget,
     "background.js#prepare": prepare,
     "background.js#questionSignature": questionSignature,
+    "background.js#retain": retain,
     "background.js#readQuestion": readQuestion,
     "background.js#readableAnswer": readableAnswer,
     "background.js#readableQuestion": readableQuestion,
@@ -2866,7 +3074,13 @@ settingsReady.then(() => {
     Promise.resolve()
       .then(() => foldSources(collectSources(markedCode())))
       .then(
-        (build) => log.info("build-marker", { ...build, generation: GENERATION }),
+        (build) => {
+          // Kept as well as logged: a retained failure record names the build
+          // it happened on, which is how "still happening after the fix"
+          // stays answerable once the ring holding this entry has rolled over.
+          buildMarker = build.marker;
+          log.info("build-marker", { ...build, generation: GENERATION });
+        },
         (error) => log.debug("build-marker-unavailable", { error: describeError(error) })
       );
   }, 0);

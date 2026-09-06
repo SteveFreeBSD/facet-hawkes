@@ -574,7 +574,17 @@ def summarize_run(group: dict, reference: dict) -> dict:
                 "prompt_chars": data.get("promptChars"),
             }
         elif event == "question-read" and run["question"] is None:
-            run["question"] = {"read": "markup", "expressions": data.get("expressions")}
+            # `question-read` moved from `debug` to `info` when the ledger
+            # landed: what the add-on managed to read is the first fork in
+            # every failure, and requiring it to have been turned up in advance
+            # meant a live failure never had it.
+            run["question"] = {
+                "read": "markup",
+                "expressions": data.get("expressions"),
+                "graph": data.get("graph"),
+                "table": data.get("table"),
+                "prompt_chars": data.get("promptChars"),
+            }
         elif event == "answer-target-inspected":
             run["editor"] = {
                 "code": data.get("code"),
@@ -676,6 +686,48 @@ def _first_failing_stage(run: dict) -> str | None:
     if run.get("failed_at_stage"):
         return run["failed_at_stage"]
     return run["stages"][-1] if run["stages"] else None
+
+
+def ledger_run(entry: dict, generations: list[str] | None = None) -> dict:
+    """A retained failure record, in the shape {@link classify} reads.
+
+    The add-on keeps its own bounded ledger of runs that ended badly, so an
+    unattended session can still be triaged an hour later -- see
+    `scripts/triage_hawkes_failures.py`. Those records are not ring entries and
+    cannot be grouped by {@link group_runs}, but they describe the same eight
+    kinds of failure, and the rules that name those are declared once, above.
+    This is the adapter, here rather than in the triage tool, so a bundle and
+    an observation can never disagree about what kind of failure a run was.
+    """
+    traits = entry.get("traits") or {}
+    outcome = traits.get("outcome") or entry.get("outcome") or "failed"
+    # A run that produced an answer this editor will not take, or one whose
+    # reading was disputed, is terminal and diagnostic without being a failed
+    # solve. `classify` reads that as an unfinished run carrying the evidence.
+    if outcome in {"not-insertable", "disputed"}:
+        outcome = "incomplete"
+    return {
+        "outcome": outcome,
+        "error_key": traits.get("errorKey") or entry.get("errorKey") or "",
+        # Exactly one, unless a caller has read a single run's own lifetimes
+        # off the ring. A group's generations count the lifetimes its separate
+        # occurrences were recorded in, which is a different claim: reading it
+        # as one would report six unrelated failures spread over two event
+        # pages as one run that outlived its own.
+        "generations": list(generations or [entry.get("generation") or "g"]),
+        "events_seen": list(traits.get("events") or []),
+        "evidence_refused": bool(traits.get("evidenceRefused")),
+        "not_insertable": traits.get("notInsertable") or None,
+    }
+
+
+def classify_ledger(entry: dict, generations: list[str] | None = None) -> dict:
+    """The failure class of one retained record or group. Never `None`."""
+    return classify(ledger_run(entry, generations)) or {
+        "class": "unclassified",
+        "why": "no rule matched",
+        "error_key": "",
+    }
 
 
 def classify(run: dict) -> dict | None:
@@ -888,6 +940,8 @@ def observe(
     )
     records.append(ollama_state(reached_a_runtime))
 
+    records.append(failure_ledger(store, reference))
+
     cadence_runs = [run for run in runs if run.get("cadence")]
     records.append(
         {
@@ -920,25 +974,63 @@ def observe(
 
 
 def _stored_values(reader, store_path: Path) -> dict:
-    """The add-on's own non-log storage, for the settings page's Facet note."""
-    found: dict = {}
+    """The add-on's own non-log storage: the Facet note and the failure ledger."""
     try:
-        import shutil
-        import sqlite3
+        return reader.read_storage(store_path)
+    except Exception:  # noqa: BLE001 - a degraded observation, not a fault
+        return {}
 
-        with tempfile.TemporaryDirectory(prefix="hawkes-observe-") as work:
-            copy = Path(work) / "store.sqlite"
-            shutil.copy(store_path, copy)
-            rows = sqlite3.connect(copy).execute("select data from object_data").fetchall()
-        for (blob,) in rows:
-            if not blob:
-                continue
-            value = reader.Clone(reader.snappy_decompress(bytes(blob))).read()
-            if isinstance(value, dict) and "facetLastSeen" in value:
-                found["facetLastSeen"] = value["facetLastSeen"]
-    except Exception:  # noqa: BLE001 - a cosmetic field; absence is not a fault
-        return found
-    return found
+
+#: Where `common/failure-record.js` keeps the retained failures.
+FAILURE_STORAGE_KEY = "failures"
+
+
+def failure_ledger(store: dict, reference: dict) -> dict:
+    """What the add-on kept from failures nobody was watching.
+
+    The ring answers "what just happened" and is two hundred entries shared by
+    every context, so a refusal from an hour ago has had the entries that
+    explain it pushed out by ordinary use. The add-on therefore keeps its own
+    bounded ledger of runs that ended in a diagnostic terminal state. This
+    reports the shape of it and points at the tool that reads it properly;
+    `scripts/triage_hawkes_failures.py` is where a failure is actually triaged.
+    """
+    stored = store.get(FAILURE_STORAGE_KEY)
+    if not isinstance(stored, dict):
+        return {
+            "record": "failures",
+            "present": False,
+            "why": "no ledger in this profile: nothing has failed since it was "
+            "installed or cleared, or this build predates the ledger",
+            "triage": "python3 scripts/triage_hawkes_failures.py",
+        }
+    records = [r for r in stored.get("records") or [] if isinstance(r, dict)]
+    groups = [g for g in stored.get("groups") or [] if isinstance(g, dict)]
+    ranked = sorted(
+        groups, key=lambda g: (-(g.get("count") or 0), -(g.get("lastSeen") or 0))
+    )
+    return {
+        "record": "failures",
+        "present": True,
+        "version": stored.get("version"),
+        "retained_records": len(records),
+        "groups": len(groups),
+        "occurrences": sum(group.get("count") or 0 for group in groups),
+        "dropped": stored.get("dropped") or {},
+        "bytes": len(json.dumps(stored, default=str)),
+        "top": [
+            {
+                "fingerprint": group.get("fingerprint"),
+                "classification": classify_ledger(group)["class"],
+                "count": group.get("count") or 0,
+                "error_key": group.get("errorKey") or group.get("outcome") or "",
+                "last_seen": _stamp(group.get("lastSeen"), reference),
+                "runs": list(group.get("runs") or [])[-3:],
+            }
+            for group in ranked[:6]
+        ],
+        "triage": "python3 scripts/triage_hawkes_failures.py",
+    }
 
 
 def code_verdict(running: dict, tree: dict, last_load: dict | None, install: dict) -> dict:
@@ -1093,6 +1185,7 @@ def summarize(records: list[dict]) -> str:
         out.extend(_run_lines(run))
 
     for name, title in (
+        ("failures", "RETAINED FAILURES"),
         ("native_host", "NATIVE HOST"),
         ("facet", "FACET"),
         ("ollama", "OLLAMA"),
@@ -1154,6 +1247,20 @@ def _run_lines(run: dict) -> list[str]:
 
 
 def _record_lines(name: str, record: dict) -> list[str]:
+    if name == "failures":
+        if not record.get("present"):
+            return [str(record.get("why")), f"triage:  {record.get('triage')}"]
+        lines = [
+            f"{record['retained_records']} record(s), {record['groups']} group(s), "
+            f"{record['occurrences']} occurrence(s), {record['bytes'] / 1024:.1f} KB"
+        ]
+        for group in record.get("top", []):
+            lines.append(
+                f"x{group['count']:<3} {group['classification']:<14}"
+                f" {group['error_key']:<28} {group['fingerprint']}"
+            )
+        lines.append(f"triage:  {record.get('triage')}")
+        return lines
     if name == "native_host":
         processes = record.get("processes") or []
         if not processes:
