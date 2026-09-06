@@ -765,6 +765,50 @@ function describePartsFailure(parts, editor, problemText) {
   };
 }
 
+/**
+ * Why one answer could not be placed in one field, in shape only.
+ *
+ * The multi-part path has reported the page's own editor rules since
+ * `answer-parts-unplaceable`; the single-field path reported two reason codes
+ * and a length. Live, on lesson 3.3's "find the vertex", that left
+ * `answer-needs-template` / `template-refused-by-question` meaning any of
+ * fraction, radical, exponent or parentheses, against an unknown character
+ * set -- and the diagnosis needed a screenshot of the owner's coursework to
+ * get as far as a guess.
+ *
+ * The same data as `describePartsFailure`, for one editor: what the page says
+ * about its own control, never what the answer says. A refusal detail is
+ * carried only when it names a template; `answer-has-rejected-characters`
+ * details the rejected characters themselves, which are the answer, so that
+ * one is reduced to a count.
+ */
+function describeFieldFailure(answer, editor, fits, plan) {
+  const templateCodes = new Set(["answer-needs-template", "template-refused-by-question"]);
+  const named = (result) =>
+    result && templateCodes.has(result.code) ? String(result.detail ?? "") : "";
+  return {
+    editorKind: editor?.kind ?? "none",
+    editorOk: Boolean(editor?.ok),
+    editorCode: editor?.code ?? "",
+    editorEnabled: editor?.enabled === true,
+    editorMaxLength: editor?.maxLength ?? null,
+    allowed: String(editor?.allowedCharacters ?? "").slice(0, 48),
+    templates: Object.entries(editor?.templates ?? {})
+      .filter(([, on]) => on === true)
+      .map(([name]) => name)
+      .join("+"),
+    hasSlots: editor?.slots !== null && editor?.slots !== undefined,
+    // Which template each route said the question does not offer. A template
+    // name is the editor's vocabulary, not the student's work.
+    editorNeeds: named(fits),
+    planNeeds: named(plan),
+    rejectedCount:
+      fits?.code === "answer-has-rejected-characters"
+        ? [...new Set(String(fits.detail ?? ""))].length
+        : 0,
+  };
+}
+
 function commaAnswerPlan(parts, editor, problemText) {
   if (
     editor?.kind === "multi"
@@ -1817,6 +1861,7 @@ async function acceptReply(reply) {
       editor: fits.code,
       plan: plan.code,
       answerLength: answer.length,
+      ...(hasParts ? {} : describeFieldFailure(answer, state.editor, fits, plan)),
     });
   }
   update({
@@ -2732,6 +2777,7 @@ function markedCode() {
     "background.js#captureQuestion": captureQuestion,
     "background.js#commaAnswerPlan": commaAnswerPlan,
     "background.js#describeEditor": describeEditor,
+    "background.js#describeFieldFailure": describeFieldFailure,
     "background.js#finishInsertion": finishInsertion,
     "background.js#insert": insert,
     "background.js#multiAnswerFits": multiAnswerFits,
