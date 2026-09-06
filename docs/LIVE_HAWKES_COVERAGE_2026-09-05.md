@@ -534,3 +534,41 @@ guess only confirms the guess"; this was the same mistake in the other
 direction — changing code to match a guess about markup I still had not seen,
 and repositioning six fixtures to agree with it. The live diagnostic caught it
 in one run, which is the argument for having built the diagnostic first.
+
+## Case 11 — the sidebar cannot take a screenshot
+
+```text
+capture-failed {"error":{"name":"Error","message":"Missing activeTab permission"}}
+failed {"errorKey":"errorNoCapture","phase":"solving","stage":"capturing"}
+```
+
+- **Failure class:** `answer-shape`/permission, and *correct* — Firefox
+  requires `activeTab` or all-sites access for `captureVisibleTab`, and the
+  add-on's one-site Hawkes grant is deliberately not enough. `activeTab` comes
+  from clicking the toolbar button; a docked sidebar never gets it.
+- **This is a cost of the sidebar workaround I recommended.** The sidebar keeps
+  the answer on the card across an event-page restart, and it cannot reach the
+  image fallback at all. So on a question with no readable markup the two
+  surfaces fail in opposite ways: the popup can photograph the question and
+  loses the answer while you read it; the sidebar keeps the answer and cannot
+  photograph anything. Neither is a whole workflow, and that is worth saying
+  before recommending either.
+- The right resolution is upstream of both: make the markup readable so no
+  screenshot is needed, which is what RC1/RC2/RC5 are for.
+
+## Case 12 — `errorQuestionUnverified`, again, and for the same reason
+
+A 57-second local-model answer, `insertable: true`, refused at insertion. Same
+structural cause as Case 1: no readable markup means a null question signature,
+and a null signature can never be verified. Recorded to show the chain is
+unchanged — while the figure cannot be read, everything downstream of it fails
+in sequence, whatever route answers.
+
+## Propagation, measured again
+
+`hawkes-question.js` was written at **00:27:15 UTC**; `drawn-mismatch-1.43` was
+logged at **00:29:14 UTC**, two minutes later; and the `via` marker — the
+previous change to the same file — first appeared at 00:25:15, so the last
+reload was before the coordinate fix existed. The fix is on disk and untested
+live. This is the third time the sweep has needed the reload distinction to
+avoid reading a stale run as a failed fix.
