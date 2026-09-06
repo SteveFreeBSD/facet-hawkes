@@ -21,7 +21,7 @@ checks, advances, or silently selects anything.**
 
 ## The Firefox add-on
 
-The add-on is **Facet Hawkes Assistant**, currently **0.45.0**. It combines a
+The add-on is **Facet Hawkes Assistant**, currently **0.46.0**. It combines a
 narrow Firefox interface with a local Python companion, Facet's own solver
 routing, and an image fallback for a question the page draws as a picture:
 

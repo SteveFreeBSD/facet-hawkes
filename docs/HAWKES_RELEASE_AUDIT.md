@@ -6,52 +6,61 @@ audit and rollback context. A hash or a gate count anywhere below the current
 section belongs to the version its heading names and must not be quoted as
 though it described today's build.
 
-## Current: 0.45.0 — not yet packaged or audited
+## Current: 0.46.0 — locally validated, publication blocked
 
-**Status:** **source complete; not built, not digested, not audited.**
+**Audited:** 6 September 2026
+
+**Status:** **unsigned candidate complete; public runtime dependency not yet
+reproducible.**
 
 | Record | Value |
 |---|---|
 | Product name | Facet Hawkes Assistant |
-| Candidate artifact | `dist/facet-hawkes-0.45.0-unsigned.xpi` — not yet built |
-| Candidate SHA-256 | none; nothing has been packaged |
-| Packaged members | 31 by the current validator |
+| Product baseline | `63588206cf0907c6d224b82fc092085c1cb69968` |
+| Required Facet runtime | `f2e09071415907cbbe1b4b905af9af6473098e8b` |
+| Candidate artifact | `dist/facet-hawkes-0.46.0-unsigned.xpi` |
+| Candidate SHA-256 | `d409796f5329ddf9708bcafe7c31f9be9e01485415270db4813c9ddf7988631c` |
+| Packaged members | 33 |
 | Add-on ID | `ethnos-hawkes@local`, deliberately unchanged |
 | Native host | `ethnos_hawkes`, deliberately unchanged |
-| Gates | see the section that records them when the candidate is frozen |
+| Reproducibility | two unchanged builds produced the same SHA-256 |
+| Hawkes repository suite | 1203 passed |
+| Facet runtime suite | 291 passed |
+| Static gates | Ruff check and format, compileall, Vulture, and 3 documentation checks passed |
+| Mozilla validator | `web-ext` 10.6.0 under Node 22.23.2: 0 errors, 0 warnings, 0 notices |
+| Archive | integrity passed; exact packaged archive linted |
+| Browser gate | unsigned XPI installed active in a clean throwaway Firefox 155.0.1 profile; Settings and popup loaded without fatal error |
+| Remaining blockers | public `facet-runtime/main` is `b6ffa6b`, missing the required 11 commits through `f2e0907`; public Hawkes homepage and CI URLs return 404 |
 
-0.45.0 adds the data table. A Hawkes word problem states its numbers in a real
-table with a heading over each column, and the add-on now reads that as a table
-rather than flattening it into the prompt — where, on lesson 3.3, it pushed the
-sentence saying what to do past the length limit and the question arrived asking
-nothing. With the table read exactly, the revenue question is answered by Facet's
-deterministic stage with no model call: `y = -4x² + 72x` fitted over exact
-rationals, turned at nine photos, priced at 324/9 = 36. Six checks stand between
-that answer and the two boxes, and all six are the host's own.
+0.46.0 makes the answer a deterministic score shared by insertion timing,
+visuals, panel narration, and local music. The established Hawkes solve,
+ownership, editor, and never-submit boundaries are unchanged. Cadence adds no
+permission, sample, model, runtime, or network dependency, and its full live
+evidence was completed before this release audit; it was not redesigned or
+re-soaked here.
 
-0.44.0 makes the visible product match the architecture it has had for some
-time. Facet owns solver routing end to end — exact mathematics first, a
-reasoning model only for what those decline, and the parabola and
-quadratic-regression specialists for a graph — and every surface a user reads
-now says Facet. The Solve engine preference is removed, because it chose
-between a division of labour that no longer exists; a `solveEngine` left in an
-upgraded profile is inert and is deleted on the next start.
+The candidate itself is reproducible. A fresh sibling checkout using the local
+runtime checkpoint imports `facet_runtime.solve` and passes extension
+validation. The same Hawkes checkpoint paired with the public runtime installs
+successfully from the lock but then fails that required import because public
+`main` is still `b6ffa6b0acbb036cacbdcc8ceed879f7de1c6e78`. This is a public
+dependency-availability failure, not an XPI failure. The chosen sibling-repo
+topology also needs to be stated in the fresh-machine instructions once that
+history is public; changing to PyPI, a pinned Git source, a submodule, or
+vendoring is a strategic choice and was not guessed during release engineering.
 
-A question the page draws as a picture rather than stating as mathematics is
-still read by the companion's own image pipeline, and is labelled **Local
-exact** or **Local model** rather than being credited to Facet. That path keeps
-`solve_engine="ethnos"` on the wire, which is a retained protocol identifier
-rather than a product name.
+The manifest homepage and README CI links point at `SteveFreeBSD/ethnos`, which
+is reachable only with repository credentials and returns 404 as a public URL.
+No public `SteveFreeBSD/facet-hawkes` repository currently exists. Making the
+existing repository public or establishing a renamed canonical repository is a
+topology decision; no unrelated URL was substituted merely to make the check
+green. The selected location must expose the add-on guide and privacy notice
+before AMO submission, and the manifest, badge, migration instructions, and CI
+checkout path must then agree on it.
 
-There is no permission, host, native-protocol, or data-collection change. The
-add-on ID and the registered native host are unchanged, so an existing
-installation and its stored preferences survive the rename. The artifact
-filename changes from `ethnos-hawkes-<version>-unsigned.xpi` to
-`facet-hawkes-<version>-unsigned.xpi`.
-
-Until this candidate is built, hashed, and put through the gates in
-[`extension/RELEASE.md`](../extension/RELEASE.md), the rows below are history
-and not a description of it.
+There is no permission, host, native-protocol, data-collection, or compatibility
+identifier change. Mozilla signing and signed-artifact physical acceptance
+remain later external gates and were not attempted.
 
 ## Superseded: 0.43.0 candidate
 

@@ -665,6 +665,20 @@ def test_changelog_matches_the_manifest_version(manifest):
     assert f"## {manifest['version']}" in changelog
 
 
+def test_public_release_files_match_the_manifest_version(manifest):
+    version = manifest["version"]
+    artifact = f"dist/facet-hawkes-{version}-unsigned.xpi"
+    readme = (PROJECT_ROOT / "README.md").read_text()
+    runbook = (EXTENSION_DIR / "RELEASE.md").read_text()
+    audit = (PROJECT_ROOT / "docs" / "HAWKES_RELEASE_AUDIT.md").read_text()
+
+    assert f"currently **{version}**" in readme
+    assert f"## {version} candidate" in runbook
+    assert f"## Current: {version}" in audit
+    assert artifact in runbook
+    assert artifact in audit
+
+
 def test_build_produces_a_reproducible_package(tmp_path, manifest):
     first = build_extension.build(tmp_path / "a")
     second = build_extension.build(tmp_path / "b")
