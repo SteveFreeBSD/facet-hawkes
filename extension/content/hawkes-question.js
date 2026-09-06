@@ -60,7 +60,15 @@
       return match ? [Number(match[1]), Number(match[2])] : null;
     });
     const grid = svg.querySelector("g.cartesian-grid");
-    const rect = grid?.getBBox();
+    // Viewport coordinates, for the grid and for every dot alike. `getBBox`
+    // reports an element's own user space, so a dot inside a translated group
+    // and the grid around it are measured in *different* spaces -- and the
+    // difference is a constant offset that looks exactly like a real
+    // disagreement. Live, subtracting the grid's `getBBox` origin put every
+    // point out by 1.43 units, which is that origin in axis units and nothing
+    // to do with the data. A client rect is the same space for both whatever
+    // transforms lie between them.
+    const rect = grid?.getBoundingClientRect();
     if (points.length < 3 || points.length > 32) return refuse(`point-count-${points.length}`);
     if (axes.some(a => !a)) {
       return refuse(`axis-desc-${axes.map(a => (a ? "ok" : "missing")).join("-")}`);
@@ -110,12 +118,19 @@
       // true of a hand-authored fixture and of no real SVG, which is why the
       // cross-check passed offline and could not pass live. A bbox origin has
       // to come off the coordinate before it is scaled.
+      const dot = circle.getBoundingClientRect();
       const drawnX = axes[0][0]
-        + (Number(circle.getAttribute("cx")) - rect.x) * (axes[0][1]-axes[0][0]) / width;
+        + (dot.left + dot.width / 2 - rect.left) * (axes[0][1]-axes[0][0]) / width;
       const drawnY = axes[1][1]
-        - (Number(circle.getAttribute("cy")) - rect.y) * (axes[1][1]-axes[1][0]) / height;
+        - (dot.top + dot.height / 2 - rect.top) * (axes[1][1]-axes[1][0]) / height;
       worst = Math.max(worst, Math.abs(drawnX - x), Math.abs(drawnY - y));
-      if (Math.abs(drawnX-x) > 1e-9 || Math.abs(drawnY-y) > 1e-9) {
+      // A rendered position is measured in fractional pixels, so exact
+      // equality is not available and never was: the old 1e-9 only ever held
+      // for coordinates authored to satisfy the arithmetic. A third of a grid
+      // unit is far tighter than any real disagreement -- a dot described in
+      // the wrong place is out by a whole unit at least -- and loose enough to
+      // survive rounding and a dot's own stroke width.
+      if (Math.abs(drawnX-x) > 0.33 || Math.abs(drawnY-y) > 0.33) {
         // The size of the disagreement, not the coordinates: enough to tell a
         // wrong reading from a rounded one, and no question content at all.
         return refuse(`drawn-mismatch-${worst.toPrecision(3)}`);

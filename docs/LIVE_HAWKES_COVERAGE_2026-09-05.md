@@ -127,12 +127,10 @@ to satisfy the code rather than to resemble Hawkes:
    `A dot drawn 5 units below the origin.` — Hawkes omits a clause whose offset
    is zero, and the origin has neither. The reader required both clauses, so it
    refused every point on an axis. `scatter.html` contained no such point.
-2. **The drawn-vs-described cross-check ignored the grid's bbox origin.** It
-   scaled `cx`/`cy` without subtracting `rect.x`/`rect.y`, so it could only
-   agree where the plotting area starts at 0,0 — true of a hand-authored
-   fixture and of no real SVG. The committed fixture coordinates had been
-   written to satisfy the wrong formula, which is why the check passed offline
-   and could not pass live.
+2. **The drawn-vs-described cross-check compared two coordinate spaces.**
+   *(This diagnosis was wrong on first attempt — see RC5 below. The original
+   formula was right; the fixture was right; subtracting the grid's `getBBox`
+   origin broke it live.)*
 
 **Fixed:** each clause is read on its own with a missing one as zero, the
 sentence as a whole must still be one of Hawkes' own, and the cross-check now
@@ -497,3 +495,42 @@ one gate later.
 **Deliberately not implemented yet.** RC3 changes where the add-on may type and
 has not been verified live; stacking a second unverified change to the same
 decision would make neither attributable. RC3 first, live, then RC4.
+
+## RC5 — a fix that was wrong, and the live log that said so
+
+Correcting the record on RC2's second half. I reasoned that "a bbox origin must
+be subtracted before scaling" and called the original formula unambiguously
+wrong. It was not, and the fixture coordinates it had been written against were
+not wrong either.
+
+Live, immediately after that change reached the browser:
+
+```text
+evidence-refused {"graph":"drawn-mismatch-1.43", "promptChars":192}
+```
+
+1.43 is 25 px at 17.5 px per unit — the grid's own origin, in axis units, and
+nothing to do with the data. `getBBox` reports an element's *own user space*,
+so a dot inside a `translate(25,25)` group and the grid around it are measured
+in different spaces; subtracting the grid's origin puts every dot out by
+exactly that origin. The dots' plot-relative coordinates were the tell all
+along, and the committed fixture had them right because it was modelled on real
+markup.
+
+**Fixed properly:** both the grid and each dot are measured with
+`getBoundingClientRect`, which is one space whatever transforms lie between
+them, and the tolerance is a third of a grid unit rather than `1e-9`. A
+rendered position is measured in fractional pixels, so exact equality was never
+available — it only ever held for coordinates authored to satisfy the
+arithmetic. A third of a unit is far tighter than any real disagreement, since
+a dot described in the wrong place is out by a whole unit at least, and the
+harness's negative control still refuses a moved description.
+
+**Fixtured:** `scatter-translated.html` puts the dots inside a translated group,
+which is the live structure and the case every other fixture lacked.
+
+**The lesson is the sweep's own, again.** RC2 was "a fixture that encodes a
+guess only confirms the guess"; this was the same mistake in the other
+direction — changing code to match a guess about markup I still had not seen,
+and repositioning six fixtures to agree with it. The live diagnostic caught it
+in one run, which is the argument for having built the diagnostic first.

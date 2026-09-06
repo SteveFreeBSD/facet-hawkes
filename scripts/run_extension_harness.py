@@ -512,7 +512,12 @@ def run(selected: str | None, headless: bool = True) -> int:
         for name, body in scenario.pages.items():
             Path(web, name).write_text(body, encoding="utf-8")
     shutil.copyfile(PROJECT_ROOT / "tests/fixtures/graph.html", Path(web, "graph.html"))
-    for scatter in ("scatter.html", "scatter-unreadable.html", "scatter-on-axis.html"):
+    for scatter in (
+        "scatter.html",
+        "scatter-unreadable.html",
+        "scatter-on-axis.html",
+        "scatter-translated.html",
+    ):
         shutil.copyfile(PROJECT_ROOT / "tests/fixtures" / scatter, Path(web, scatter))
     for table in ("table.html", "table-thead.html", "table-mathjax.html"):
         shutil.copyfile(PROJECT_ROOT / "tests/fixtures" / table, Path(web, table))
@@ -576,6 +581,7 @@ def run(selected: str | None, headless: bool = True) -> int:
             failures += judge_scatter(marionette, site)
             failures += judge_unreadable_scatter(marionette, site)
             failures += judge_on_axis_scatter(marionette, site)
+            failures += judge_translated_scatter(marionette, site)
             failures += judge_table(marionette, site)
     except ActionButtonMissing as error:
         # A harness fault, not a verdict on the add-on. Reported as such and
@@ -604,10 +610,33 @@ def run(selected: str | None, headless: bool = True) -> int:
     checks = (
         len(scenarios)
         + len({s.distinct for s in scenarios if s.distinct})
-        + (0 if selected else 7)
+        + (0 if selected else 8)
     )
     print(f"\n{checks - failures}/{checks} checks passed")
     return 1 if failures else 0
+
+
+def judge_translated_scatter(marionette, site):
+    """The dots sit in a translated group, as they do live.
+
+    `getBBox` reports an element's own user space, so a dot inside a
+    `translate(...)` group and the grid around it are measured in different
+    spaces. Subtracting the grid's `getBBox` origin then puts every point out
+    by that origin in axis units -- live, by exactly 1.43 -- which looks like a
+    real disagreement and refuses the whole figure. Client rects put both in
+    one space whatever transforms lie between.
+    """
+    marionette.set_context("content")
+    marionette.navigate(f"{site}/scatter-translated.html")
+    source = (PROJECT_ROOT / "extension/content/hawkes-question.js").read_text()
+    result = marionette.execute("return " + source[source.index("(() => {") :])["value"]
+    expected = [{"x": "-5", "y": "5"}, {"x": "-2", "y": "-4"}, {"x": "-1", "y": "5"}]
+    if result.get("graphPoints") != expected:
+        say(f"FAIL scatter-translated: {result.get('graphPoints')}")
+        say(f"     refusal: {(result.get('evidence') or {}).get('graph', '')!r}")
+        return 1
+    say("ok   scatter-translated: dots in a translated group read correctly")
+    return 0
 
 
 def judge_on_axis_scatter(marionette, site):
