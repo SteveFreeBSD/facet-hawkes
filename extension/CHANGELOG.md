@@ -9,15 +9,43 @@ name the add-on as it was called at the time.
 - The answer becomes a deterministic score shared by typing, the visual preview
   and local music. Structured entry consumes shared offsets instead of keeping
   another copy of the timing algorithm; plain multi-field entry shares one clock.
-- Classical, Jazz, Lo-fi, Electronic and Custom now orchestrate the same score.
-  Genre changes never alter timestamps. Existing profiles retain their active
-  timing, and explicit timing controls remain available for every arrangement.
-- Settings audibly previews its structured equation, with volume, mute and
-  opt-in music for actual insertion. An event-page instrument survives toolbar
-  popup teardown; sound failure never gates insertion. No new permissions,
-  samples, models, runtime or network dependency.
-- The transient, one-way presentation cue is documented as page-observable.
-  Hawkes safety, structured editor mechanics, graph actuation and never-submit
+- Classical, Jazz, Lo-fi, Electronic and Custom are five arrangements of that
+  one score, differing in mode, chord voicing, register, instrument, envelope,
+  percussion and how the phrase resolves. The expression's own operators turn
+  the harmony; a digit takes the degree of its value and a letter keeps one
+  pitch throughout an answer. Genre changes never alter a timestamp: only the
+  accompaniment carries a genre's feel, bounded at 30 ms, and the character's
+  own voice is always exactly on its score offset.
+- **A template is a fermata.** Building a fraction or an exponent takes the
+  editor real time the score never allotted. The phrase is now held for exactly
+  that overrun and resumes in tempo, instead of every remaining note falling due
+  at once; the panel names the structure while it is built and the instrument
+  sounds it. The writer reports the hold it took.
+- **Late wake-ups are no longer audible.** A long `setTimeout` was measured
+  waking 343 ms late on a four-second gap. Both transports now approach each
+  deadline in two steps, and the instrument places each voice against an anchor
+  derived from the same score, clamped to 8–60 ms after the write that caused
+  it. Measured drift over a 2–12 second answer is 1–7 ms.
+- **The second answer of a session is no longer silent.** The event page has no
+  user activation, so a device it suspended could not be resumed; it now closes
+  when idle and opens a fresh one per performance, which is the path Firefox
+  admits. The event page also unlocks for itself, so a panel whose background
+  reference has not resolved no longer costs the answer its music.
+- Settings audibly previews its structured equation, sounds its templates, and
+  reuses one output device across repeated previews instead of opening another
+  each time. Volume, mute and the insertion-music switch are grouped and
+  explained; music during insertion stays off unless turned on.
+- Navigation, tab close, tab move, window close and cancellation each end a
+  performance and close its device. Firefox's announcement that it is about to
+  suspend the event page does the same, which is what the feature relies on
+  rather than the idle timeout itself: measurement did not support the earlier
+  claim that an open port cannot keep an event page alive. Sound failure never
+  gates insertion. No new permissions, samples, models, runtime or network
+  dependency; the feature adds 11.1 KB to the package and no measurable CPU over
+  the same answer in silence.
+- The transient, one-way presentation cue is documented as page-observable, and
+  now carries an optional structure name that cannot advance the phrase. Hawkes
+  safety, structured editor mechanics, graph actuation and never-submit
   behavior retain their existing boundaries.
 
 ## 0.45.1

@@ -2,11 +2,23 @@
 
 import { CadenceInstrument } from "/common/cadence-audio.js";
 
-// Firefox's event page owns bounded insertion audio. Real score cues are
-// activity; an open port alone is NOT a keepalive. The measured default idle
-// timeout is 30s, beyond the supported 2–12s score and its short release.
-export const insertionInstrument = new CadenceInstrument();
+// Firefox's event page owns bounded insertion audio. Real score cues are its
+// only activity: nothing here sends keepalive traffic. How long Firefox then
+// keeps the page is Firefox's business and this feature does not depend on it --
+// `runtime.onSuspend` closes every presentation and the device the moment it
+// says so, and a fresh device is opened for the next answer.
+//
+// `idle: "close"` matters here and nowhere else. A background page has no user
+// activation of its own: Firefox admits a newly created AudioContext under its
+// extension-background autoplay exemption, but a resume() on a device this page
+// suspended has nothing to draw on and was observed to stay suspended -- so the
+// second answer of a session played into a stopped device. Closing when idle
+// means every performance opens a device on the path that is known to start.
+export const insertionInstrument = new CadenceInstrument(undefined, { idle: "close" });
 const presentations = new Map();
+// What the most recent performance measured, kept after its run is released so
+// the log can report it. Numbers only; never a character, note or answer.
+let lastPerformance = null;
 
 export function cancelCadence() {
   for (const run of presentations.values()) { run.release(); }
@@ -18,9 +30,21 @@ export function createCadencePresentation(target, score, options, visit, isCurre
   for (const prior of presentations.values()) { prior.release(); }
   insertionInstrument.stop();
   const channel = `facet-score:${crypto.randomUUID()}`;
-  const run = { target, score, options, visit, isCurrent, next: 0, port: null, channel, finished: false };
+  const run = { target, score, options, visit, isCurrent, next: 0, port: null,
+    channel, finished: false, heldMs: 0, lateness: [] };
   run.release = () => {
-    presentations.delete(channel);
+    if (presentations.delete(channel) && run.lateness.length > 0) {
+      lastPerformance = {
+        notes: run.lateness.length,
+        maxLatenessMs: Math.max(...run.lateness),
+        meanLatenessMs: Math.round(
+          run.lateness.reduce((total, late) => total + late, 0) / run.lateness.length
+        ),
+        driftMs: run.lateness[run.lateness.length - 1] - run.lateness[0],
+        structuralHoldMs: Math.round(run.heldMs),
+        ...insertionInstrument.timing(),
+      };
+    }
     clearTimeout(run.drain);
     try { run.port?.postMessage({ type: "close" }); } catch { /* gone */ }
   };
@@ -49,6 +73,29 @@ export function createCadencePresentation(target, score, options, visit, isCurre
   };
 }
 
+/**
+ * Forget the last performance, before a new entry begins.
+ *
+ * An insertion refused before a single character is accepted has no performance
+ * of its own, and was observed logging the previous answer's numbers as though
+ * they were its own. Clearing here rather than on read keeps
+ * {@link cadenceMeasurements} an ordinary getter that anything may ask twice.
+ */
+export function beginCadenceRun() {
+  lastPerformance = null;
+}
+
+/**
+ * What the performance that just ran actually did, for the diagnostic log.
+ *
+ * Two independent numbers, deliberately: how late each accepted write was
+ * against its own score offset, and how far ahead of that write its voice was
+ * scheduled. The first is the browser's; the second is this instrument's.
+ */
+export function cadenceMeasurements() {
+  return lastPerformance;
+}
+
 export function finishIdleCadence() {
   if (presentations.size === 0) { insertionInstrument.finish(); }
 }
@@ -64,13 +111,30 @@ export function attachCadencePort(port) {
   run.port = port;
   port.onMessage.addListener((cue) => {
     if (!presentations.has(run.channel) || (!run.finished && !run.isCurrent())
-        || cue?.index !== run.next || run.next >= run.score.notes.length
+        || cue?.index !== run.next
         || !Number.isFinite(cue.elapsedMs) || cue.elapsedMs < 0 || cue.elapsedMs > 60000) { return; }
+    // A template landing is not a scored note: it does not advance the phrase,
+    // and it is only ever the editor structure the plan already asked for.
+    if (cue.structure === true) {
+      if (typeof cue.label !== "string" || cue.label.length > 32) { return; }
+      if (run.options.enabled) { insertionInstrument.strikeStructure(cue.label, run.options); }
+      run.heldMs = Math.max(0, Math.round(cue.heldMs) || 0);
+      try {
+        run.visit({ index: run.next, elapsedMs: cue.elapsedMs, structure: cue.label,
+          heldMs: run.heldMs, durationMs: run.score.durationMs,
+          count: run.score.notes.length,
+          audio: run.options.enabled ? insertionInstrument.status() : "off" });
+      } catch { /* view gone */ }
+      return;
+    }
+    if (run.next >= run.score.notes.length) { return; }
     const index = run.next++;
     const note = run.score.notes[index];
     if (run.options.enabled) { insertionInstrument.strike(note, index, run.options); }
+    run.lateness.push(Math.round(cue.elapsedMs - note.offsetMs));
     try { run.visit({ index, elapsedMs: cue.elapsedMs, offsetMs: note.offsetMs,
-      durationMs: run.score.durationMs, count: run.score.notes.length,
+      heldMs: run.heldMs, durationMs: run.score.durationMs,
+      count: run.score.notes.length,
       audio: run.options.enabled ? insertionInstrument.status() : "off" }); } catch { /* view gone */ }
     if (run.finished && run.next === run.score.notes.length) {
       insertionInstrument.finish();
@@ -108,9 +172,17 @@ export function observeCadence(channel, count) {
   };
   const receive = (event) => {
     try {
-      if (typeof event.detail !== "string" || event.detail.length > 100) { return; }
-      const [index, elapsedMs] = JSON.parse(event.detail);
-      if (index !== next || index >= count || !Number.isFinite(elapsedMs)) { return; }
+      if (typeof event.detail !== "string" || event.detail.length > 160) { return; }
+      const [index, elapsedMs, label, heldMs] = JSON.parse(event.detail);
+      if (index !== next || !Number.isFinite(elapsedMs)) { return; }
+      if (typeof label === "string") {
+        // A template landing. It names the structure and how long the editor
+        // held the phrase; it never advances the note counter.
+        if (label.length > 32 || index > count || !Number.isFinite(heldMs)) { return; }
+        port.postMessage({ index, elapsedMs, structure: true, label, heldMs });
+        return;
+      }
+      if (index >= count) { return; }
       next += 1;
       port.postMessage({ index, elapsedMs });
     } catch { /* page data and audio delivery are never insertion failures */ }

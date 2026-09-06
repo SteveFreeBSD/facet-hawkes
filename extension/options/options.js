@@ -62,7 +62,12 @@ const cadenceAction = document.querySelector("#cadence-action");
 const cadenceEffectiveTempo = document.querySelector("#cadence-effective-tempo");
 const cadencePlannedSteps = document.querySelector("#cadence-planned-steps");
 const cadenceWindowState = document.querySelector("#cadence-window-state");
+const cadenceArrangement = document.querySelector("#cadence-arrangement");
 
+// One device for the whole Settings session. Preview restarts stop its voices
+// and suspend it; they do not open another. Settings can resume it because
+// Preview is a real click in this document, which is exactly what the event
+// page cannot do -- see `cadence-session.js`.
 const previewInstrument = new CadenceInstrument();
 const cadenceAudioStatus = document.querySelector("#cadence-audio-status");
 
@@ -467,6 +472,9 @@ function showPhrase(phrase) {
     "optionsCadenceTempoValue", [String(phrase.effectiveTempoBpm)]
   );
   cadencePlannedSteps.textContent = `${phrase.notes.length} / ${phrase.timeline.length}`;
+  cadenceArrangement.textContent = message(
+    GENRE_LABEL_KEYS[cadenceDraft().entryGenre] ?? GENRE_LABEL_KEYS.classical
+  );
   showWindowState(phrase);
   drawScore(phrase);
   showClock(phrase, 0);
@@ -574,7 +582,11 @@ function stopPreview({ announce = false, restage = false } = {}) {
   const run = previewRun;
   previewRun = null;
   run.controller.abort();
-  previewInstrument.close();
+  // Release the voices, keep the device. Closing and reopening an AudioContext
+  // for every Preview churned a real output device for no gain; this leaves one
+  // suspended instrument that the next Preview resumes in its own click.
+  previewInstrument.stop();
+  previewInstrument.finish();
   stopClock(run);
   clearCurrentPreviewMarks();
   clearStructureMarks();
@@ -697,6 +709,11 @@ async function startPreview() {
           showSemanticStep(step, index, playedPhrase, elapsed);
           if (step.kind === "character" || step.kind === "operator") {
             previewInstrument.strike(playedPhrase.notes[step.noteIndex], step.noteIndex, orchestration);
+            showAudioStatus();
+          } else if (step.kind === "structure-enter") {
+            // The same template chord insertion plays when the editor's own
+            // structure lands, so the preview demonstrates the real thing.
+            previewInstrument.strikeStructure(step.label, orchestration);
             showAudioStatus();
           }
         }

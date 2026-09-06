@@ -602,3 +602,15 @@ body {
 .cadence-audio-toggle input { accent-color: var(--accent, #78bba7); }
 .cadence-audio-status { min-height: 1.5em; margin-bottom: 0; }
 .cadence-audio-status[data-audio="ready"] { color: var(--accent, #78bba7); }
+
+/* The one preference that decides whether an answer is entered in silence. It
+   is separated from the mixer above it because turning it on is a different
+   kind of decision from setting a level. */
+.cadence-insertion {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+}
+.cadence-insertion__toggle { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; }
+.cadence-insertion .note { margin: 6px 0 0 24px; }

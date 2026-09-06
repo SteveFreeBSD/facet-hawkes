@@ -400,23 +400,23 @@
     "description": "Name of the user-defined answer-cadence preset."
   },
   "optionsCadenceGenreClassicalHelp": {
-    "message": "Chamber plucks, open fifths and a warm final chord. The score keeps its timing.",
+    "message": "Chamber plucks in a major mode over close triads, a low pizzicato under the accents, and an authentic cadence to close. No percussion.",
     "description": "Answer Cadence local music: GenreClassicalHelp."
   },
   "optionsCadenceGenreJazzHelp": {
-    "message": "Electric keys, minor sevenths and ninths. Operators turn the harmony; the score keeps its timing.",
+    "message": "Electric keys in Dorian over rootless seventh and ninth voicings, a brushed ride between the accents and a rim shot on them, ending ii-V-I. The accompaniment sits a little behind the beat; the entered character does not.",
     "description": "Answer Cadence local music: GenreJazzHelp."
   },
   "optionsCadenceGenreLofiHelp": {
-    "message": "Soft felt keys, low voicings and a mellow filter. The score keeps its timing.",
+    "message": "Felt keys a minor third lower, wide minor voicings under a dark filter, a soft kick and hat, long releases, and a plagal fall at the end.",
     "description": "Answer Cadence local music: GenreLofiHelp."
   },
   "optionsCadenceGenreElectronicHelp": {
-    "message": "Bright glass harmonics, compact releases and a clear bass pulse. The score keeps its timing.",
+    "message": "A resonant detuned lead in a minor pentatonic over stacked fifths, glass harmonics for the variables, a sub kick and tight hats, closing on an octave.",
     "description": "Answer Cadence local music: GenreElectronicHelp."
   },
   "optionsCadenceGenreCustomHelp": {
-    "message": "Choose the instrument for your score. Timing controls remain independent of every arrangement.",
+    "message": "Choose the instrument. It plays the Classical harmony and voicing, without percussion. Timing controls remain independent of every arrangement.",
     "description": "Answer Cadence local music: GenreCustomHelp."
   },
   "optionsCadenceTempoLabel": {
@@ -936,7 +936,7 @@
     "description": "Answer Cadence local music: Mute."
   },
   "optionsCadenceInsertionMusic": {
-    "message": "Play music during answer insertion",
+    "message": "Play this music while an answer is being entered",
     "description": "Answer Cadence local music: InsertionMusic."
   },
   "optionsCadenceAudioIdle": {
@@ -962,5 +962,13 @@
   "popupCadenceScore": {
     "message": "Answer Cadence",
     "description": "Answer Cadence local music: popupCadenceScore."
+  },
+  "optionsCadenceInsertionMusicHelp": {
+    "message": "Off unless you turn it on. When it is on, each voice is played by the character that was just accepted, so a refused answer stops the music with it. Sound never changes what is entered, or when.",
+    "description": "Help text under the insertion music toggle."
+  },
+  "optionsCadenceArrangement": {
+    "message": "Arrangement",
+    "description": "Telemetry label naming the arrangement the preview is playing."
   }
 }

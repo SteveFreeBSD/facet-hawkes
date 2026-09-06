@@ -79,19 +79,39 @@ companion.
 
 ### New in 0.46.0: the answer becomes a score
 
-**Answer Cadence** now turns one deterministic timeline into typing, a visual
-score and local music. Settings previews a structured equation with Classical,
-Jazz, Lo-fi, Electronic or Custom orchestration. Genre changes sound without
-moving a character's timestamp. Tempo and the 2–12 second score window remain
-independent controls, and changes remain a draft until **Apply cadence**.
+**One deterministic score drives all four things at once** — when each character
+is typed, when the playhead moves, what the panel says, and what you hear. There
+is no second clock anywhere in the feature. A note exists because a character was
+accepted; if Hawkes refuses one, the music stops with it.
 
-Volume, mute and optional insertion music are included. The local Web Audio
-instrument lives in the event page and receives finite, one-way insertion cues.
-There are no new permissions, samples, models or network dependencies. Existing
-Hawkes safety checks and graph actions remain in their established paths;
-synthetic input and transient presentation cues are observable to page code.
-Read the [Answer Cadence design note](docs/ANSWER_CADENCE.md) for architecture,
-Firefox lifecycle, sound design and the NPU assessment.
+**Answer Cadence** previews a structured equation in Settings with Classical,
+Jazz, Lo-fi, Electronic or Custom arrangement. These are five readings of the
+same score, not one sound with the waveform changed: each has its own mode,
+chord voicings, register plan, instrument, envelopes, percussion and cadence,
+and the mathematics chooses the notes — a digit takes the degree of its value, a
+letter keeps one pitch throughout an answer, an operator turns the harmony, an
+exponent lifts an octave, a denominator drops one. Changing arrangement moves no
+timestamp. Tempo and the 2–12 second window are separate controls, and changes
+stay a draft until **Apply cadence**.
+
+Building a fraction or an exponent takes the editor real time the score never
+allotted, so the phrase is *held* while it happens and resumes in tempo, rather
+than dumping every remaining note at once. Across fifteen answers entered into
+real Hawkes, each character landed within 1–11 ms of its own score offset, drift
+across a whole answer stayed between −4 and +5 ms, and every note sounded 8–38 ms
+after the character that caused it — including the answers where the editor held
+the phrase for a quarter of a second to build a template.
+
+Volume, mute and music during insertion are all in Settings; insertion music is
+off unless you turn it on. The local Web Audio instrument lives in the event
+page and receives finite, one-way cues. There are no new permissions, samples,
+models or network dependencies, and the whole feature adds 11.1 KB to the package
+and no measurable CPU beyond what entering the same answer costs in silence.
+Existing Hawkes safety checks and graph actions remain in their established
+paths; synthetic input and transient presentation cues are observable to page
+code. Read the [Answer Cadence design note](docs/ANSWER_CADENCE.md) for
+architecture, Firefox lifecycle, sound design, measurements and the NPU
+assessment.
 
 ### The workflow
 

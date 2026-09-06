@@ -193,6 +193,28 @@ var ethnosCadence = (function () {
     return error;
   }
 
+  /**
+   * Wait until a deadline, approaching it in two steps.
+   *
+   * One long `setTimeout` is coalesced with whatever else its process has
+   * pending: a four-second gap between notes was measured waking a third of a
+   * second late, which is audible. A timer that is already nearly due is fired
+   * promptly, so stopping short and re-arming turns that into a few
+   * milliseconds. It costs one extra timer per note and cannot overshoot,
+   * because every wait is still computed from the same absolute origin.
+   */
+  const APPROACH_MS = 200;
+  async function waitUntil(remaining, signal) {
+    for (let guard = 0; guard < 8; guard += 1) {
+      const wait = remaining();
+      if (wait <= 0) {
+        if (signal?.aborted) { throw cancelled(); }
+        return;
+      }
+      await pause(wait > APPROACH_MS * 1.25 ? wait - APPROACH_MS : wait, signal);
+    }
+  }
+
   /** Run one callback per scheduled note, with cancellation between notes. */
   async function playCharacters(
     characters, write, offered = {}, { signal, random, visit } = {}
@@ -202,12 +224,9 @@ var ethnosCadence = (function () {
     );
     const startedAt = offered.startedAt ?? performance.now();
     for (let index = 0; index < characters.length; index += 1) {
-      const wait = phrase.offsets[index] - (performance.now() - startedAt);
-      if (wait > 0) {
-        await pause(wait, signal);
-      } else if (signal?.aborted) {
-        throw cancelled();
-      }
+      await waitUntil(
+        () => phrase.offsets[index] - (performance.now() - startedAt), signal
+      );
       const failure = write(characters[index], index, phrase);
       if (failure) {
         return { failure, phrase };
@@ -236,19 +255,28 @@ var ethnosCadence = (function () {
       }
     }
     const score = planCharacters(notes.map((note) => note.character), offered, random);
-    // Give every note the three facts a rhythm strip needs -- when it lands,
-    // whether the arrangement leans on it, and whether a structural rest
-    // follows -- so no caller re-derives the accent rule for itself.
+    // Give every note the facts a rhythm strip and an arrangement need -- when
+    // it lands, whether the arrangement leans on it, whether a structural rest
+    // follows, how far through the phrase it is, and which position of the beat
+    // shape it occupies -- so no caller re-derives the accent rule for itself.
+    // These describe the score. They are read by orchestration; they are never
+    // written by it, and none of them can move an offset.
+    const beats = score.cadence.rhythmWeights.length;
     for (let index = 0; index < notes.length; index += 1) {
       notes[index].offsetMs = score.offsets[index] ?? score.durationMs;
       notes[index].accent = accented(index, score.cadence);
       notes[index].rest =
         restsAfter(notes[index].character) && index < notes.length - 1;
+      notes[index].beat = index % beats;
+      notes[index].position =
+        notes.length < 2 ? 1 : index / (notes.length - 1);
+      notes[index].penultimate = index === notes.length - 2;
     }
     const timeline = [];
     let noteIndex = 0;
     const openStructures = [];
     let structureIndex = 0;
+    let harmony = 0;
     for (let planIndex = 0; planIndex < steps.length; planIndex += 1) {
       const step = steps[planIndex];
       const at = score.offsets[noteIndex] ?? score.durationMs;
@@ -296,6 +324,15 @@ var ethnosCadence = (function () {
         notes[noteIndex].structures = openStructures.map((structure) => structure.name);
         notes[noteIndex].slot = openStructures[openStructures.length - 1]?.slot ?? "";
         notes[noteIndex].resolution = noteIndex === notes.length - 1;
+        notes[noteIndex].depth = openStructures.length;
+        // The expression's own grammar is the harmonic rhythm: an operator or a
+        // separator turns the chord, so `2x + 3/5` changes harmony where the
+        // mathematics does. An arrangement decides what the turn sounds like; it
+        // does not decide when one happens.
+        notes[noteIndex].harmony = harmony;
+        if (OPERATOR_PATTERN.test(character) && noteIndex < notes.length - 1) {
+          harmony += 1;
+        }
         timeline.push({
           offsetMs, kind, label: character, noteIndex,
           accent: accented(noteIndex, score.cadence),
@@ -327,12 +364,7 @@ var ethnosCadence = (function () {
   async function playSemanticPhrase(phrase, visit, { signal, startedAt = performance.now() } = {}) {
     for (let index = 0; index < phrase.timeline.length; index += 1) {
       const step = phrase.timeline[index];
-      const wait = step.offsetMs - (performance.now() - startedAt);
-      if (wait > 0) {
-        await pause(wait, signal);
-      } else if (signal?.aborted) {
-        throw cancelled();
-      }
+      await waitUntil(() => step.offsetMs - (performance.now() - startedAt), signal);
       visit(step, index, phrase, performance.now() - startedAt);
     }
     return phrase;

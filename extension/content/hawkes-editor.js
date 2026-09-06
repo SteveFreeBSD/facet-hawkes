@@ -444,6 +444,17 @@ var ethnosHawkes = (function () {
   async function playEntryCadence(characters, write, cadence) {
     cadence.startedAt ??= performance.now();
     const cursor = cadence.cursor ?? 0;
+    // Moving to the next field of a structured answer is editor work the score
+    // never allotted time for. Hold the phrase over it, exactly as the MAIN
+    // writer holds over a template, rather than letting every remaining note
+    // fall due at once the moment the field is ready.
+    const due = cadence.score?.offsets?.[cursor];
+    if (due !== undefined) {
+      const overrun = performance.now() - cadence.startedAt - due;
+      if (overrun > 0) {
+        cadence.startedAt += overrun;
+      }
+    }
     const segment = cadence.score ? { ...cadence, score: {
       ...cadence.score,
       offsets: cadence.score.offsets.slice(cursor, cursor + characters.length),

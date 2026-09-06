@@ -230,7 +230,16 @@
             </div>
           </div>
           <label class="cadence-audio-toggle"><input id="entryMusicMuted" type="checkbox" data-setting="entryMusicMuted"><span data-i18n="optionsCadenceMute">Mute music</span></label>
-          <label class="cadence-audio-toggle"><input id="entryMusicEnabled" type="checkbox" data-setting="entryMusicEnabled"><span data-i18n="optionsCadenceInsertionMusic">Play music during answer insertion</span></label>
+        </div>
+
+        <div class="cadence-insertion">
+          <label class="cadence-insertion__toggle">
+            <input id="entryMusicEnabled" type="checkbox" data-setting="entryMusicEnabled">
+            <span data-i18n="optionsCadenceInsertionMusic">Play this music while an answer is being entered</span>
+          </label>
+          <p class="note" data-i18n="optionsCadenceInsertionMusicHelp">
+            Off unless you turn it on. When it is on, each voice is played by the character that was just accepted, so a refused answer stops the music with it. Sound never changes what is entered, or when.
+          </p>
         </div>
 
         <section class="cadence-instrument" aria-labelledby="cadence-preview-heading">
@@ -274,6 +283,7 @@
             <div><dt data-i18n="optionsCadenceEffectiveTempo">Effective tempo</dt><dd id="cadence-effective-tempo">—</dd></div>
             <div><dt data-i18n="optionsCadencePlannedSteps">Notes / actions</dt><dd id="cadence-planned-steps">—</dd></div>
             <div><dt data-i18n="optionsCadenceWindowState">Hard window</dt><dd id="cadence-window-state">—</dd></div>
+            <div><dt data-i18n="optionsCadenceArrangement">Arrangement</dt><dd id="cadence-arrangement">—</dd></div>
           </dl>
           <p id="cadence-audio-status" class="note cadence-audio-status" role="status" data-i18n="optionsCadenceAudioIdle">Press Preview to hear this score. Sound stays on this device.</p>
           <p id="cadence-preview-status" class="visually-hidden" role="status" aria-live="polite"></p>

@@ -51,19 +51,76 @@ export async function enterPlan(steps, cadence = {}, targetFieldIds = []) {
   }
 
   const performanceStartedAt = performance.now();
+  // One origin for the whole performance, which structural editor work may move
+  // forward. Every note is due at an absolute offset from it, so a callback the
+  // browser wakes late costs one late note rather than shifting the rest.
+  let origin = performanceStartedAt;
   let notesStruck = 0;
+  let heldMs = 0;
+  const lateness = [];
 
-  /** Hold until this note is due. A late clock simply plays it now. */
+  /**
+   * Tell an optional listener that something happened, in the write's own turn.
+   *
+   * One-way, string-only, and never awaited. A page can observe or forge this;
+   * it confers no capability, and a failure here cannot change what was typed.
+   */
+  const emit = (payload) => {
+    try {
+      if (cadence.channel) {
+        document.dispatchEvent(new CustomEvent(cadence.channel, {
+          detail: JSON.stringify(payload),
+        }));
+      }
+    } catch { /* audio failure cannot change entry */ }
+  };
+
+  /**
+   * Hold until this note is due. A late clock simply plays it now.
+   *
+   * The deadline is approached in two steps. One long `setTimeout` is coalesced
+   * with everything else the page's process has pending -- a four-second gap
+   * between notes was measured waking a third of a second late -- while a timer
+   * that is already nearly due is fired promptly. Every wait is still computed
+   * from the same absolute origin, so this cannot overshoot and no lateness is
+   * ever carried into the next note.
+   */
   const waitForNote = async () => {
     const due = noteOffsets[notesStruck];
     notesStruck += 1;
     if (due === undefined) {
       return;
     }
-    const wait = due - (performance.now() - performanceStartedAt);
-    if (wait > 0) {
-      await new Promise((resolve) => setTimeout(resolve, wait));
+    for (let approach = 0; approach < 8; approach += 1) {
+      const wait = due - (performance.now() - origin);
+      if (wait <= 0) {
+        break;
+      }
+      const step = wait > 250 ? wait - 200 : wait;
+      await new Promise((resolve) => setTimeout(resolve, step));
     }
+    lateness.push(Math.round(performance.now() - origin - due));
+  };
+
+  /**
+   * Absorb the wall time a template actually took.
+   *
+   * Loading a fraction means pressing the editor's own key and waiting for its
+   * boxes to settle -- real work, of a length only the editor knows, that the
+   * score never allotted time for. Leaving the origin where it was made every
+   * remaining note overdue the moment the structure appeared, so the rest of
+   * the answer arrived in one burst and the music with it. Moving the origin
+   * instead makes the structure a fermata: the phrase is held while the editor
+   * builds, and the notes after it keep the spacing the score gave them.
+   */
+  const holdForStructure = (name) => {
+    const due = noteOffsets[notesStruck] ?? noteOffsets[noteOffsets.length - 1] ?? 0;
+    const overrun = performance.now() - origin - due;
+    if (overrun > 0) {
+      origin += overrun;
+      heldMs += overrun;
+    }
+    emit([notesStruck, Math.round(performance.now() - origin), name, Math.round(heldMs)]);
   };
 
   const boxes = () =>
@@ -147,16 +204,21 @@ export async function enterPlan(steps, cadence = {}, targetFieldIds = []) {
       // Emitted in the accepted write's callback. An optional, one-way
       // presentation observer hears only the index and elapsed time. A page
       // can observe/spoof this DOM cue; it confers no insertion capability.
-      try {
-        if (cadence.channel) {
-          document.dispatchEvent(new CustomEvent(cadence.channel, {
-            detail: JSON.stringify([notesStruck - 1, performance.now() - performanceStartedAt]),
-          }));
-        }
-      } catch { /* audio failure cannot change entry */ }
+      emit([notesStruck - 1, performance.now() - origin]);
     }
     return { ok: true };
   };
+
+  /** How this performance actually ran, as numbers only. */
+  const measured = () => ({
+    notes: lateness.length,
+    heldMs: Math.round(heldMs),
+    elapsedMs: Math.round(performance.now() - performanceStartedAt),
+    maxLatenessMs: lateness.length ? Math.max(...lateness) : 0,
+    meanLatenessMs: lateness.length
+      ? Math.round(lateness.reduce((total, late) => total + late, 0) / lateness.length) : 0,
+    driftMs: lateness.length ? lateness[lateness.length - 1] - lateness[0] : 0,
+  });
 
   const ui = window.quant_wp_UI;
   if (!ui || ui.controlsCollection === undefined) {
@@ -477,6 +539,7 @@ export async function enterPlan(steps, cadence = {}, targetFieldIds = []) {
           template: step.name,
           slots: fresh.filter((id) => id !== cursor),
         });
+        holdForStructure(step.name);
         continue;
       }
 
@@ -525,11 +588,12 @@ export async function enterPlan(steps, cadence = {}, targetFieldIds = []) {
       entered: enteredParts,
       enteredFields: [...targetFieldIds],
       completed: enteredParts.length,
+      timing: measured(),
     };
   }
   activeControl = null;
   const entered = boxes()
     .map((box) => box.value)
     .join("");
-  return { ok: true, code: "entered", entered };
+  return { ok: true, code: "entered", entered, timing: measured() };
 }

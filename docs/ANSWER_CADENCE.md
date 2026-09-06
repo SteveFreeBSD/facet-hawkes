@@ -7,11 +7,11 @@ and during insertion. An arrangement chooses how that score sounds.
 ## One conductor
 
 `extension/common/cadence.js` owns the timing formula and semantic score.
-It retains the previous bounded tempo/window blend, beat weights, swing,
-variation and structural rests. Variation now uses a seed derived from the
-characters, so the same answer and timing settings produce the same score.
-The first note is immediate; the last offset is corrected to the resolved
-length. Empty and single-character answers remain immediate.
+It retains the bounded tempo/window blend, beat weights, swing, variation and
+structural rests. Variation uses a seed derived from the characters, so the same
+answer and timing settings produce the same score. The first note is immediate;
+the last offset is corrected to the resolved length. Empty and single-character
+answers remain immediate.
 
 The hard window is 2–12 seconds, with independent 30–300 BPM tempo. Those are
 planned offsets, not a guarantee that a browser event loop or a slow Hawkes
@@ -19,14 +19,22 @@ editor can meet a real-time deadline. Late events run immediately against the
 original origin; their lateness is never added to every subsequent note.
 Settings reports measured elapsed-window compliance at resolution.
 
+Each note also carries what an arrangement needs to read it: its accent, the
+rest that follows it, its position in the beat shape, its nesting depth, and the
+harmonic region it falls in. The region advances at every operator, so **the
+expression's own grammar is the harmonic rhythm**. Orchestration reads all of
+this and writes none of it.
+
 ```mermaid
 flowchart TD
     A[Validated answer and editor plan] --> B[Facet Score: offsets and semantics]
     B --> C[Absolute-deadline entry transport]
-    C --> D[Existing write and safety checks]
+    C -->|two-step approach to each deadline| D[Existing write and safety checks]
     D --> E[Accepted character + presentation cue in one callback]
-    E --> F[Local Web Audio arrangement]
+    E --> F[Arrangement, scheduled 8-60 ms later against a score anchor]
     E --> G[Panel score progress]
+    C -.->|template loads: hold the origin| C
+    C -.-> S[Structure cue: named, sounded, advances nothing]
     B --> H[Settings transport]
     H --> I[Equation reveal + rhythm strip + same arrangement]
 ```
@@ -39,11 +47,51 @@ that copy from returning. Multi-field plain answers consume successive segments
 of one score and one origin, rather than starting a new duration window in each
 box. Structured multi-field entry already used one clock and continues to do so.
 
-Template preparation, slot selection and settling retain their existing editor
-mechanics. They consume the same performance clock, without adding independent
-musical delays. The next character carries the template's musical context:
-there is no speculative note for a template the editor might refuse. Settings
-shows template/slot telemetry on that upcoming note's offset, as before.
+### Structure is a fermata, not a burst
+
+Loading a template is real editor work of a length only the editor knows:
+`press` waits for the editor's own guard, then `settle` waits for its boxes to
+stop appearing. The score never allotted time for that. Leaving the origin where
+it was made every remaining note overdue the instant the structure appeared, so
+the rest of the answer arrived in one burst and the music with it.
+
+The transport moves its origin instead. The phrase is *held* for exactly the
+overrun, the note after it is due at once, and every note after that keeps the
+spacing the score gave it. Wall-clock length is then the score's duration plus
+the measured hold, which is honest: the editor really did take that long. The
+writer reports `heldMs` alongside its per-note lateness, the panel names the
+structure while it is being built, and the instrument sounds a low, wide frame
+at the moment it lands. Multi-field plain answers hold the same way between
+fields. Nothing about this changes what is typed, only when the *next* thing is.
+
+There is still no speculative note for a template the editor might refuse: the
+frame is sounded after the boxes exist. Settings shows template/slot telemetry
+on the upcoming note's offset, as before.
+
+### Two clocks that cannot separate
+
+A long `setTimeout` is coalesced with whatever else its process has pending. A
+four-second gap between notes was measured waking 343 ms late in real Firefox —
+audible, and the largest single defect in the previous build. Both transports
+now approach each deadline in two steps: wait until roughly 200 ms remain, then
+re-arm. A nearly-due timer is fired promptly, and because every wait is still
+computed from the same absolute origin the approach cannot overshoot and no
+lateness is carried forward.
+
+The instrument then places each voice against an anchor derived from the same
+offsets. The first note of a performance anchors 30 ms ahead; each later note is
+placed at that anchor plus its own score offset, clamped to between 8 ms and
+60 ms after the write that caused it. A write that arrives a little early is held
+to the time the score gave it — which is what removes the browser's remaining
+jitter from the rhythm. A write that arrives genuinely late cannot be played in
+the past: it starts as soon as it may, and the anchor moves with it, so one late
+wake-up costs one late note rather than a correction the rest of the phrase has
+to fight. A fermata drops the anchor entirely, and the next note re-establishes
+it in tempo.
+
+This is not a second tempo system. There is one score; the anchor is derived
+from it, holds only within a window narrower than audio-visual simultaneity, and
+exists only because an accepted write called for it.
 
 After the writer's existing checks accept a character, that same callback emits
 its index and elapsed time. It does not start a separately timed soundtrack or
@@ -58,63 +106,106 @@ timing controls remain available for every genre. An upgraded profile is read
 with the active legacy preset's timing intact; Apply stores those independent
 values and a migration marker atomically. Settings remains a draft until Apply.
 
-| Arrangement | Sound |
-| --- | --- |
-| Classical | Triangle/sine chamber plucks, open fifths, major pentatonic melody, warm closing triad. |
-| Jazz | Electric-key partials, minor sevenths and ninths, a minor pentatonic melody. No extra swing clock. |
-| Lo-fi | Lower felt-key voicings, mellow moving low-pass filter, longer release, suspended harmony. |
-| Electronic | Bright glass harmonics, a slightly detuned upper partial, compact note releases and accented bass. |
-| Custom | Select chamber pluck, felt keys or glass harmonics over the Classical harmonic palette. Timing remains independently editable. |
+An arrangement is not a waveform. Each is a mode, a set of chord voicings, a
+register plan, an instrument, an envelope, a percussion pattern and a way of
+ending — five readings of one score, in the sense a lead sheet has readings.
 
-Numbers map to scale degrees; repeated variables keep a stable pitch identity.
-Operators turn the harmony, exponents move up an octave, fraction denominators
-move down, and radicals add a quiet upper harmonic. Parentheses use a framing
-fifth; separators have short low notes; whitespace is silent. Structural rests
-let existing voices decay. Accents can add a quiet bass foundation. The final
-character carries a resolving chord at its own timestamp, followed by a short
-release (up to 1.37 seconds), not an additional scheduled note.
+| Arrangement | Key and mode | Harmony | Instrument and envelope | Percussion | Ending |
+| --- | --- | --- | --- | --- | --- |
+| Classical | C, Ionian | Close triads, I–IV–V–I, rolled 16 ms | Triangle chamber pluck, 4 ms attack, quick upper partials | none; accents get a low pizzicato | Authentic cadence, V→I with the octave doubled |
+| Jazz | C, Dorian | Rootless 3–7–9 voicings, ii–V–I–vi, rolled 8 ms | Electric keys: sine under a bell-like 4.02 partial, 9 ms attack | Brushed ride between accents, rim shot on them | ii–V–I onto a major ninth |
+| Lo-fi | A, Aeolian | Wide minor ninths, i–♭VII–♭VI–i, rolled 26 ms | Felt keys: 30 ms attack, 1.3 s release, filter closed to 1450 Hz | Soft kick on the beat, closed hat off it | Plagal fall with a long tail |
+| Electronic | C, Aeolian | Stacked fifths and octaves, i–♭VI–♭III–♭VII, no roll | Resonant detuned saw lead; glass harmonics for variables; 2 ms attack | Sub kick on the beat, tight hats off it | Octave-and-fifth, compact |
+| Custom | Classical's | Classical's | Chamber pluck, felt keys or glass, as chosen | none | Classical's |
 
-`common/cadence-audio.js` contains a pure `arrangeNote()` mapping and the
-`CadenceInstrument` renderer. Its oscillators and gain/filter envelopes are a
-small procedural sound vocabulary. No samples, external assets, runtime,
-model, streaming service, native host, network request or new permission is
-needed for playback.
+Jazz and Lo-fi place their *accompaniment* 20 ms and 26 ms behind the beat. The
+character's own voice never moves: `layers[0]` always carries the exact score
+offset, and only chord, bass and percussion carry `feelMs`, which is bounded at
+30 ms. That is how a genre gets a feel without an answer getting a second clock.
+
+Mathematics chooses the notes. A digit takes the scale degree of its own value;
+a letter takes a stable identity, so `x` is the same pitch everywhere in one
+answer. An operator states the root of the chord it turns to. Exponents lift an
+octave and open the filter; a fraction denominator drops one and closes it;
+nesting depth narrows toward the middle. Parentheses are a framing fifth,
+spreading down when they open and resolving up when they close. Separators are
+short and low. Whitespace is silent. Radicals add an upper partial. A template
+landing is its own low, wide frame — an exponent's opens above the phrase, a
+fraction's below it. The final character carries the arrangement's own cadence
+chord at its own timestamp, followed by its natural release, not an extra note.
+
+`common/cadence-audio.js` contains the pure `arrangeNote()` and
+`arrangeStructure()` mappings and the `CadenceInstrument` renderer. Its
+oscillators, one shared half-second noise buffer, and gain/filter envelopes are
+the whole sound vocabulary. No samples, external assets, runtime, model,
+streaming service, native host, network request or new permission is needed for
+playback. `scripts/render_cadence_audio.py` renders all five through the shipped
+renderer to WAV, so they can be listened to and compared rather than described.
 
 ## Firefox lifecycle
 
-The Settings instrument lives in the Settings document. Preview calls
-`AudioContext.resume()` inside the real user click, with a bounded 200 ms device
-warm-up before establishing the score origin. A denied/pending resume cannot
-hang the preview. Stop/restart kills old voices; pagehide closes the context;
-normal completion suspends the device after the final envelope finishes.
-Volume and mute affect the current preview immediately; Apply saves them for
-insertion. Music during insertion is opt-in and defaults off.
+The two instruments have deliberately different idle policies, and the
+difference is the whole of what went wrong before.
 
-Insertion sound lives in Firefox's **event page**, not the toolbar popup.
-The panel obtains its background-window reference ahead of time and calls its
-narrow audio-unlock function synchronously in the actual Insert gesture,
-before asynchronous preparation. Firefox 155 measured the popup click as trusted
-and activated, but the background document itself was not activated. Its default
-extension-background autoplay exemption allowed playback. Pending device resume
-accepts the first event's voice without delaying insertion; denied playback is
-discarded on completion. Audio refusal never changes an insertion result.
+The Settings instrument lives in the Settings document, where Preview is a real
+click: it may suspend its device when a phrase finishes and resume it on the
+next Preview, because the activation to do that exists. One device serves the
+whole Settings session; Stop releases the voices and suspends, restart resumes,
+and only `pagehide` closes it. Repeated previews therefore open no new devices.
+
+The insertion instrument lives in Firefox's **event page**, which has no user
+activation of its own. Firefox admits a *newly created* `AudioContext` there
+under its extension-background autoplay exemption — but a `resume()` on a device
+that page suspended has nothing to draw on, and was measured staying suspended.
+The second answer of a session then played into a stopped device. So this
+instrument **closes when idle** and opens a fresh device for each performance,
+which is the path that is known to start. Opening one was measured at 0 ms to
+create and 2–9 ms to running, inside the observer's own 250 ms setup budget, and
+twenty open/close cycles grew resident memory by 2.3 MB.
+
+Two things ask for that device, and either is enough. The panel holds a
+background-page reference obtained ahead of time and calls a narrow unlock
+function synchronously inside the real Insert gesture. The event page also
+unlocks for itself at the start of a scored entry — which matters, because the
+panel's reference is best-effort: a popup that has not resolved it yet, or one
+destroyed mid-answer, would otherwise leave the answer silent. Audio refusal
+never changes an insertion result.
+
+Volume and mute affect the current preview immediately; Apply saves them for
+insertion. Music during insertion is opt-in and defaults off; the preference is
+`entryMusicEnabled`, stored like every other, and an upgraded profile that has
+never seen it reads the default rather than acquiring sound by surprise.
 
 A short-lived isolated-world observer opens a runtime port for the performance.
-An open port alone does **not** keep an MV3 event page alive. Firefox's ordinary
-idle timeout is 30 seconds, beyond this feature's 2–12 second score and short
-release; real presentation cues are activity, with no artificial keepalive
-traffic. Popup destruction does not destroy the background instrument. The
-sidebar is optional. Event-page suspension closes audio and presentations;
-contexts are recreated on a later Insert, never resumed mid-answer. This is a
-bounded default-policy lifetime, not a promise of playback through event-page
-termination or a browser with an aggressively shortened idle timeout.
+RC5 does not rely on how long the event page then lives, and the previous claim
+that an open port is not a keepalive did not survive measurement: with a silent
+port and a sixty-second oscillator scheduled, a default-policy Firefox 155 event
+page was still the same document a minute later. What it *had* done was announce
+the suspension it then did not carry out, and `runtime.onSuspend` releases every
+presentation and closes the device — so after that minute the feature was holding
+no output device and no voice, which is the property that actually matters.
+
+Real presentation cues are activity; nothing here sends keepalive traffic. Popup
+destruction does not destroy the background instrument, and the sidebar is
+optional. A device is opened per performance and never resumed mid-answer. This
+is a bounded, resource-releasing lifetime rather than a promise about Firefox's
+idle timeout, which is Firefox's to change.
 
 `common/cadence-session.js` accepts cues only for a registered run, the pinned
-tab/frame, the next expected index, and a bounded elapsed value. It forwards
-sound and panel telemetry immediately. There is no look-ahead audio queue:
-IPC and the output device add latency, but there is no second musical clock to
-drift. A successful write allows up to 250 ms for its already-emitted final cue
-to drain across Firefox's separate IPC channels. No insertion waits for this.
+tab/frame, the next expected index, and a bounded elapsed value. A four-part cue
+is a template landing: it is bounded the same way, must name a structure of at
+most 32 characters, and cannot advance the note counter or add a note the score
+does not contain. Sound and panel telemetry are forwarded immediately. A
+successful write allows up to 250 ms for its already-emitted final cue to drain
+across Firefox's separate IPC channels. No insertion waits for this.
+
+Navigating away, closing the tab, moving it between windows, closing its window
+and cancelling all end a performance. The observer's own `pagehide` closes its
+port, which releases the presentation, stops every voice and closes the device;
+the event page also cancels explicitly at each of those points rather than
+relying on the port alone. Each release records what it measured — per-note
+lateness, drift, structural hold, and the instrument's own scheduling — and the
+event page logs those numbers, and only those numbers, as `cadence-performed`.
 
 Observer setup is optional and bounded to 250 ms. Failure proceeds to the
 approved write with sound unavailable, after another ownership check. Completion,
@@ -191,24 +282,113 @@ library to classify. RC5 has none. Motif selection from this tiny vocabulary is
 cheaper as a deterministic mapping. No NPU integration is shipped merely to put
 an accelerator badge beside the feature.
 
+RC5's arrangements make that conclusion stronger rather than weaker. Harmony,
+voicing, register and cadence are now decided by the expression's own structure
+— which operators it has, where they fall, how deeply it nests — and a lookup
+table does that repeatably in 0.03 ms. A model would have to be prompted,
+validated, cached and audited to arrive at something a reader can no longer
+predict from the answer. The performance stays deterministic and
+model-independent, which is the property this feature is actually built on.
+
 Hardware/runtime sources: [AMD HX370](https://www.amd.com/en/products/processors/laptop/ryzen/ai-300-series/amd-ryzen-ai-9-hx-370.html),
 [FastFlowLM](https://github.com/FastFlowLM/FastFlowLM),
 [Linux support](https://fastflowlm.com/docs/install_lin/), plus
 `../facet-runtime/src/facet_runtime/models.py` and `remote.py` inspected locally.
 
+## What it costs, measured
+
+`scripts/run_cadence_audio_smoke.py --case performance` enters the same
+twelve-second answer six times in one browser, alternating `entryMusicEnabled`,
+and reads CPU and resident memory for the whole Firefox process tree from
+`/proc`. Everything except the music is in both arms and cancels.
+
+| | Measured |
+| --- | --- |
+| CPU, twelve-second answer, music on | 1.480 core-seconds (mean of three) |
+| CPU, same answer, music off | 1.487 core-seconds (mean of three) |
+| Difference | −0.007 s: inside the ±0.5 s spread of Firefox's own work |
+| Arranging and voicing one note | 0.031–0.038 ms, by arrangement |
+| Opening an output device | 0 ms to create, 2–9 ms to running |
+| Twenty open/close device cycles | +2.3 MB resident, after a forced collection |
+| Package | +11.1 KB in the built XPI (146.6 KB → 157.7 KB) |
+| Concurrent voices | 24, hard ceiling; one shared 88 KB noise buffer per device |
+
+The three source files total 47 KB unminified. There are no samples, no assets,
+and nothing to decode.
+
+Timing, measured in real Firefox against localhost fixtures, per accepted write:
+
+| | 2 s answer | 6 s answer | 12 s answer |
+| --- | --- | --- | --- |
+| Write lateness against its own score offset | 0–5 ms | 0–5 ms | 0–1 ms |
+| Drift, first note to last | 1–4 ms | 5 ms | 0–1 ms |
+| Voice scheduled after its character | 14–32 ms | 30–40 ms | 27–32 ms |
+| Cue delivery, write to event page | 0–3 ms | 0–3 ms | 0–5 ms |
+| Device output latency, constant | 31–35 ms | 31–35 ms | 31–35 ms |
+
+Before the two-step deadline approach, the same twelve-second answer produced
+single wake-ups 343 ms late. The device's own output latency is constant and
+therefore inaudible as rhythm; it is reported because it is real.
+
+### On the real editor
+
+Measured on 6 September 2026 in the owner's own Firefox, on their own account,
+against `learn.hawkeslearning.com` lesson 3.3, with insertion music on. Fifteen
+answers were entered: ten into one box through the editor's templates, four
+across two boxes, and one plain answer typed straight into a native field. These
+are the `cadence-performed` entries the event page logs for itself. Numbers only:
+no character, note or answer is recorded.
+
+| | Across fifteen real answers |
+| --- | --- |
+| Notes per answer | 2–10 |
+| Write lateness against its own score offset | 1–11 ms |
+| Drift, first note to last | −4 to +5 ms |
+| Voice scheduled after its character | 8–38 ms |
+| Re-anchors per phrase | 0 or 1 |
+| Structural hold | 0 ms, or 244–251 ms where a template loaded |
+| Device output latency | 20–61 ms, constant within a performance |
+
+The writer reports its own view separately, and it agrees: 0–5 ms of lateness,
+0–1 ms of drift, and the same 244 and 249 ms holds the audio side measured
+independently.
+
+Those ~250 ms holds are `settle` waiting out the editor's own boxes after a
+template: three quiet 60 ms polls plus the one that saw the change. The score
+had not allotted that time, so the phrase held for it and resumed in tempo, and
+drift across the hold stayed inside the same few milliseconds as without one.
+
+The contenteditable writer was not reached live — no answer in that lesson takes
+it — and is covered by the browser harness against localhost fixtures.
+
 ## Verification and demo
 
-`tests/test_cadence_score.py` executes the score and real MAIN writer under a
-virtual clock. It checks identical write/sound/view timestamps across all five
-genres and every 2–12 second duration, deterministic replay, mathematical roles,
-absolute timing under event-loop delay, refused writes, throwing/pending audio,
-and legacy profile migration. Existing Hawkes safety tests remain required.
+`tests/test_cadence_score.py` executes the score, the real MAIN writer and the
+real instrument under a virtual clock and a virtual audio device. It checks
+identical write/sound/view timestamps across all five genres and every 2–12
+second duration, deterministic replay, mathematical roles, harmonic movement
+following the expression's operators, a variable keeping one pitch, the four
+arrangements differing in harmony, percussion, envelope and feel while sharing
+every offset, absolute timing under event-loop delay, the structural fermata
+against a slow editor, the audio anchor absorbing jitter and re-anchoring once
+on a stall, the background instrument reopening rather than resuming its device,
+refused writes, forged structure cues, throwing/pending audio, and legacy profile
+migration. Existing Hawkes safety tests remain required.
 
 `scripts/run_settings_smoke.py` drives the actual Settings controls, draft/apply,
 score, restart, Stop and reduced-motion behavior in isolated Firefox.
 `scripts/run_cadence_audio_smoke.py` measures actual Web Audio PCM, all five
-arrangements, mute, cancellation and device suspension, then exercises the
-real panel Insert and entry routes against disposable localhost fixtures.
+arrangements, mute, cancellation, one device across repeated previews, and
+device teardown; then exercises the real panel Insert and entry routes against
+disposable localhost fixtures: four performances of 2, 6, 12 and 2 seconds
+across the native, contenteditable and structured writers, popup destruction
+taken at a point where the phrase has demonstrably begun, navigation mid-phrase,
+the docked sidebar with its host permission granted the way a user grants it,
+closing and reopening it, the add-on's own diagnostic log, and the idle
+event-page lifetime. Every close of the output device is traced to its caller,
+because a close nobody asked for would be the same call that silences an answer.
+`--case performance` measures the table above. `scripts/render_cadence_audio.py`
+renders the five arrangements to WAV through the shipped renderer.
 The fixture substitutes only its origin and a deterministic solver result;
 its evidence is not a claim of signed-addon verification in a coursework profile.
 

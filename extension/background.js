@@ -32,7 +32,8 @@ import {
 
 import "/common/cadence.js";
 import {
-  insertionInstrument, createCadencePresentation, attachCadencePort, observeCadence, finishIdleCadence, cancelCadence,
+  insertionInstrument, createCadencePresentation, attachCadencePort, observeCadence,
+  finishIdleCadence, cancelCadence, beginCadenceRun, cadenceMeasurements,
 } from "/common/cadence-session.js";
 
 const NATIVE_HOST = "ethnos_hawkes";
@@ -225,12 +226,23 @@ globalThis.facetCadenceUnlock = () => {
 
 /** Build one score, then hand its offsets to the approved writer as plain data. */
 async function runScoredEntry(target, steps, cadence, execute) {
+  beginCadenceRun();
   cadence.score = ethnosCadence.planSemanticPhrase(steps.flat(), cadence);
   const options = { enabled: settings.entryMusicEnabled, genre: settings.entryGenre,
     voice: settings.entryVoice };
   let presentation;
   let succeeded = false;
   try {
+    if (options.enabled) {
+      // The panel already asked for a device inside its own Insert click. Ask
+      // again here, because that call is best-effort: it needs a background-page
+      // reference the panel may not have resolved yet, and a popup destroyed
+      // mid-answer takes its copy with it. Firefox admits a newly created
+      // AudioContext in an extension background page under its own autoplay
+      // exemption, so this is the reliable half of the pair, not a second one.
+      insertionInstrument.setLevel(settings.entryMusicVolume / 100, settings.entryMusicMuted);
+      insertionInstrument.unlock();
+    }
     if (cadence.score.notes.length && (options.enabled || panels.size > 0)) {
       try {
         presentation = createCadencePresentation(target, cadence.score, options, (cue) => {
@@ -267,6 +279,11 @@ async function runScoredEntry(target, steps, cadence, execute) {
     return result;
   } finally {
     presentation?.close(succeeded);
+    // Numbers only: how late the browser woke each write against its own score
+    // offset, how long the editor held the phrase building structure, and how
+    // far ahead of the write the device scheduled its voice. No characters.
+    const measured = cadenceMeasurements();
+    if (measured) { log.info("cadence-performed", measured); }
   }
 }
 
@@ -1827,6 +1844,19 @@ async function insert() {
 
   if (target.graphPlan) {
     if (editor.kind !== "graph" || JSON.stringify(editor.snapshot) !== JSON.stringify(target.graphSnapshot)) {
+      // Which of the four parts of the snapshot moved, and nothing of what any
+      // of them says: a graph snapshot holds the question, its XML, the plotted
+      // points and the answer so far, all of it coursework. Without this the
+      // refusal was silent, and a live session hitting it a dozen times could
+      // not say whether the question, the plot or the answer had changed.
+      const was = target.graphSnapshot ?? {};
+      const now = editor.snapshot ?? {};
+      log.warn("graph-target-stale-before-insert", {
+        kind: editor.kind,
+        moved: ["question", "xml", "points", "answer"].filter(
+          (part) => JSON.stringify(was[part]) !== JSON.stringify(now[part])
+        ),
+      });
       fail("errorQuestionChanged", { detail: "graph-target-stale" });
       return;
     }
@@ -1901,12 +1931,24 @@ async function insert() {
     const liveEvidence = reports.find(
       (entry) => entry?.result?.multiFieldEvidence
     )?.result?.multiFieldEvidence;
+    const liveFieldIds = answerFieldIds(live, liveEvidence, editor);
     if (
       live.frameId !== target.frameId
       || live.fieldId !== target.fieldId
-      || !sameStringArray(answerFieldIds(live, liveEvidence, editor), target.fieldIds)
+      || !sameStringArray(liveFieldIds, target.fieldIds)
       || !ownsTarget(target)
     ) {
+      // Its sibling gate above says what changed; this one said nothing, so a
+      // refusal here was indistinguishable from the question genuinely moving
+      // on. Ids only -- never an answer, and never the question's text.
+      log.warn("answer-fields-changed-before-insert", {
+        wasFrame: target.frameId, nowFrame: live.frameId,
+        wasField: target.fieldId, nowField: live.fieldId,
+        wasFields: target.fieldIds, nowFields: liveFieldIds,
+        editorKind: editor?.kind, editors: editor?.editors?.length,
+        candidates: liveEvidence?.fieldIds?.length,
+        owned: ownsTarget(target),
+      });
       fail("errorQuestionChanged");
       return;
     }
@@ -1975,6 +2017,10 @@ async function insert() {
         via: "structured",
         answerLength: reviewed.length,
         elapsedMs: Date.now() - entryStartedAt,
+        // The writer's own view of the performance: how late the browser woke
+        // each write against its score offset, and how long the editor held the
+        // phrase building structure. Present even when nothing was listening.
+        timing: built.timing,
       });
       await finishInsertion(`entered: ${built.entered ?? ""}`, target);
     } else {
@@ -2365,6 +2411,10 @@ browser.tabs.onUpdated.addListener((tabId, info) => {
   if (tabId === state.tabId && info.status === "loading") {
     inFlight?.abort();
     inFlight = null;
+    // The observer's own pagehide normally closes the port first. This is the
+    // case where it cannot -- a navigation that discards the frame outright --
+    // and a presentation pinned to a tab that has left must not play on.
+    cancelCadence();
     state = blankState();
   }
 });
@@ -2386,6 +2436,7 @@ function forgetMovedTab(tabId) {
   log.info("answer-tab-moved", { tabId, windowId: state.windowId });
   inFlight?.abort();
   inFlight = null;
+  cancelCadence();
   // The window binding, not just the answer, is what went stale. Re-preparing
   // is the panel's own next step; this only makes sure nothing acts first.
   state = { ...blankState(), windowId: state.windowId };
@@ -2443,6 +2494,7 @@ browser.windows.onRemoved.addListener((windowId) => {
   log.info("owning-window-closed", { windowId, panelsLeft: panels.size });
   inFlight?.abort();
   inFlight = null;
+  cancelCadence();
   const survivor = [...panels.values()].find((entry) => Number.isInteger(entry.windowId));
   state = { ...blankState(), windowId: survivor ? survivor.windowId : null };
   update({ phase: "idle" });

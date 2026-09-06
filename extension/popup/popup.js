@@ -481,13 +481,27 @@ async function toggleSolve() {
 }
 
 let audioBackground = null;
-browser.runtime.getBackgroundPage().then((page) => { audioBackground = page; }).catch(() => {});
+/**
+ * A reference to the event page, obtained ahead of any click.
+ *
+ * It has to be in hand *before* Insert, because opening an audio device inside
+ * a real gesture means calling synchronously -- awaiting anything first spends
+ * the activation. It is deliberately best-effort: the event page opens its own
+ * device as well, so a panel that has not resolved this yet costs nothing.
+ */
+function findBackground() {
+  browser.runtime.getBackgroundPage()
+    .then((page) => { audioBackground = page; })
+    .catch(() => { audioBackground = null; });
+}
+findBackground();
 
 function requestInsert() {
   if (elements.insert.disabled) {
     return;
   }
   try { audioBackground?.facetCadenceUnlock?.(); } catch { /* audio only */ }
+  if (!audioBackground) { findBackground(); }
   if (!request("ethnos:insert")) {
     return;
   }
@@ -630,6 +644,12 @@ port.onMessage.addListener((incoming) => {
   if (incoming?.type === "ethnos:cadence") {
     const cue = incoming.cue;
     document.querySelector("#insertion-score").hidden = false;
+    // A template landing is not a note: it holds the phrase where it is and
+    // says which structure the editor is building.
+    if (typeof cue.structure === "string") {
+      document.querySelector("#insertion-score-status").textContent = cue.structure;
+      return;
+    }
     document.querySelector("#insertion-score-progress").value = cue.count === 1 ? 100
       : 100 * cue.offsetMs / Math.max(1, cue.durationMs);
     document.querySelector("#insertion-score-status").textContent = `${cue.index + 1}/${cue.count}`;

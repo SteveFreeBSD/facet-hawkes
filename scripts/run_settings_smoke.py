@@ -362,16 +362,25 @@ def check_presets_preserve_the_score(page: Settings) -> None:
     problems = []
     descriptions = set()
     before = page.snapshot()
-    offsets = page.evaluate('return [...document.querySelectorAll(".cadence-beat")].map(n=>n.style.left);')
+    offsets = page.evaluate(
+        'return [...document.querySelectorAll(".cadence-beat")].map(n=>n.style.left);'
+    )
     for genre, (_, label) in PRESETS.items():
         page.set_control("entryGenre", genre)
         state = page.snapshot()
         problems += expect(state["tempo"] == before["tempo"], f"{genre} moved tempo")
-        problems += expect(state["summary"] == f"{label} · {before['tempo']} BPM", f"{genre} summary is wrong")
-        after = page.evaluate('return [...document.querySelectorAll(".cadence-beat")].map(n=>n.style.left);')
+        problems += expect(
+            state["summary"] == f"{label} · {before['tempo']} BPM",
+            f"{genre} summary is wrong",
+        )
+        after = page.evaluate(
+            'return [...document.querySelectorAll(".cadence-beat")].map(n=>n.style.left);'
+        )
         problems += expect(after == offsets, f"{genre} moved score timestamps")
         descriptions.add(state["note"])
-    problems += expect(len(descriptions) == len(PRESETS), "arrangements share a description")
+    problems += expect(
+        len(descriptions) == len(PRESETS), "arrangements share a description"
+    )
     page.check("changes arrangement without changing the score", problems)
 
 
