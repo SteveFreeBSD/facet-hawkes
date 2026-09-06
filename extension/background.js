@@ -491,6 +491,53 @@ function multiAnswerFits(parts, editor) {
   return multiEntryPlans(parts, editor) !== null;
 }
 
+/**
+ * Why an answer's separate parts could not be placed, in shape only.
+ *
+ * `answer-parts` was the whole of the report: one word for a question Facet
+ * had answered correctly and for at least four different disagreements between
+ * the answer, the DOM's solution fields, and the editor model the page
+ * published. Live that was indistinguishable from a question with no editor at
+ * all.
+ *
+ * None of the answer's text appears here. Lengths, validity flags, and what
+ * the page says about its own controls -- which is page metadata and is
+ * already reported for the single-field case.
+ */
+function describePartsFailure(parts, editor, problemText) {
+  const editors = Array.isArray(editor?.editors) ? editor.editors : [];
+  const aligned = editors.length === parts.length;
+  return {
+    parts: parts.length,
+    partLengths: parts.map((part) => part.length),
+    partsValid: parts.map((part) => validateAnswer(part).ok),
+    editorKind: editor?.kind ?? "none",
+    editorOk: Boolean(editor?.ok),
+    editorCode: editor?.code ?? "",
+    editorCount: editors.length,
+    editorKinds: editors.map((one) => one?.kind ?? ""),
+    editorEnabled: editors.map((one) => one?.enabled === true),
+    editorMaxLength: editors.map((one) => one?.maxLength ?? null),
+    allowed: editors.map((one) => String(one?.allowedCharacters ?? "").slice(0, 48)),
+    templates: editors.map((one) =>
+      Object.entries(one?.templates ?? {})
+        .filter(([, on]) => on === true)
+        .map(([name]) => name)
+        .join("+")
+    ),
+    hasSlots: editors.map((one) => one?.slots !== null && one?.slots !== undefined),
+    // The two ways a part can be entered, per part: typed straight in, or
+    // built with keypad templates. Both failing is what `answer-parts` means.
+    directFit: aligned
+      ? parts.map((part, index) => answerFitsEditor(part, editors[index]).code ?? "ok")
+      : [],
+    plannedFit: aligned
+      ? parts.map((part, index) => planEntry(part, editors[index]).code ?? "ok")
+      : [],
+    commaPrompt: /separate multiple answers with a comma/i.test(problemText ?? ""),
+  };
+}
+
 function commaAnswerPlan(parts, editor, problemText) {
   if (
     editor?.kind === "multi"
@@ -1408,6 +1455,15 @@ async function acceptReply(reply) {
   const partsFit = hasParts
     && (multiAnswerFits(answerParts, state.editor)
       || commaAnswerPlan(answerParts, state.editor, reply.problem_text) !== null);
+  if (hasParts && !partsFit) {
+    // Everything needed to see why, in one line: the answer's shape, the
+    // shape the page published, and what each of the two entry routes said
+    // about each part.
+    log.info(
+      "answer-parts-unplaceable",
+      describePartsFailure(answerParts, state.editor, reply.problem_text)
+    );
+  }
   if (hasParts && state.editor?.kind !== "multi") {
     log.info("multi-answer-editor-described", {
       allowedCharacters: state.editor?.allowedCharacters ?? "",

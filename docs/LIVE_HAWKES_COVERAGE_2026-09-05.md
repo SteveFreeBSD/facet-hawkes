@@ -309,3 +309,57 @@ Reported live by the owner while reading an answer he had to type himself.
   plan nor the comma plan fits the editor the page published. Case 2's
   `errorEditorUnknown` is the same disagreement caught one gate earlier. What
   is missing is which of the four conditions fails, which is now logged.
+
+## Case 10 — the real `answer-parts` shape, captured live
+
+**L3.3 Q2/3 Step 3 of 3.** A factored quadratic is given and the step asks for
+*two points on the parabola other than the vertex and the x-intercepts*.
+
+Three of the four layers were captured from the live window and the log; the
+fourth needs the add-on reloaded.
+
+- **Answer surface, seen directly:** two large empty boxes labelled `A:` and
+  `B:`, beside a coordinate grid carrying the note *"Any lines or curves will
+  be drawn once all required points are plotted."* So the answer is typed into
+  boxes and the figure is drawn from it — a compound surface, not two plain
+  text inputs.
+- **Detected answer shape:** `multiFieldEvidence.fields: 2`, and on a sibling
+  step of the same family, `4`. The DOM's own count of solution fields is not
+  stable across steps of this shape.
+- **Answer payload:** `Facet Reasoning · GPU` (gpt-oss:20b), and the panel
+  displayed **three coordinate pairs for a page with two boxes**. Successive
+  runs reported answer lengths of 17, 18 and 20 characters — so the display is
+  carrying more values than the question has places for.
+- **Router:** *"Facet Exact declined (no exact operation matched the
+  instruction)"*.
+- **Refusal:** `errorEditorUnknown` — "The answer editor could not be read, so
+  nothing was inserted."
+
+### Working hypothesis, not yet confirmed
+
+`errorEditorUnknown` fires when the DOM's field count and the page's published
+editor model disagree. A coordinate box plausibly publishes *two* controls, one
+per ordinate, so a two-point question would publish four editors while the DOM
+reports two solution fields — and `editor.editors.length !== fieldIds.length`
+refuses. The alternating 2/4 field counts across sibling steps fit that.
+
+**This is a hypothesis and must not be built on.** The decisive numbers come
+from the two diagnostics now in the tree — `errorEditorUnknown` carries
+`fields=N editor=KIND editors=M ok=…`, and `answer-parts-unplaceable` reports
+the answer's part count and lengths, each editor's kind, enabled state,
+allowed character set, templates and slots, and what *both* entry routes said
+about *each* part. Neither has reached the live add-on yet.
+
+**Blocked on:** a reload of the temporary add-on. Nothing further can be
+established about this family without it.
+
+### A separate finding: this family is exactly solvable
+
+"Find two points on the graph other than the vertex and the x-intercepts" needs
+no model at all — expand, find the vertex and roots, then evaluate at two
+convenient inputs that avoid them. Facet Exact declined with *no exact
+operation matched the instruction*, so a 15-to-26-second GPU reasoning call is
+answering a question that is a handful of exact evaluations. This is the
+sweep's first `capability` gap, and it is worth more than it looks: the same
+route also produced *three* values for a two-box question, which an exact path
+would not do.
