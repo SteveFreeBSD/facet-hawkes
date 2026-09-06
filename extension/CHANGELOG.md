@@ -4,6 +4,28 @@ All notable changes to the Facet Hawkes Assistant add-on. Versions follow
 `major.minor.patch` as required by the Firefox manifest. Entries below 0.44.0
 name the add-on as it was called at the time.
 
+## 0.45.1
+
+### Fixed
+
+- **A two-box question labelled "A:" and "B:" can now be answered.** Lesson
+  3.3's "find two points on the parabola" step was solved correctly and then
+  refused at insertion with "the answer editor could not be read", every time.
+  The two readings of the page disagreed: its published editor model said two
+  enabled controls, so Facet was asked for two parts, while the field sweep
+  threw both boxes away. The sweep recognises several boxes as one answer only
+  when the word **or** sits between them -- the shape `x = ___ or x = ___` --
+  and this step writes "A:" and "B:" instead. With no field ids, no number of
+  correct parts could ever be placed.
+- The boxes are now carried to the event page as candidates, and adopted when
+  the page's own editor model publishes exactly as many enabled editors as the
+  DOM found visible, editable and uniquely identified. Agreement between two
+  independent readings decides it, rather than a guess about Hawkes' wording --
+  the same rule the data table already follows, where the plotted points must
+  agree with the table before either is trusted. Where the two disagree the
+  add-on falls back to the single focused box exactly as before, so a question
+  with one answer beside another visible field is unaffected.
+
 ## 0.45.0
 
 ### Added

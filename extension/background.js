@@ -721,6 +721,49 @@ function sameStringArray(left, right) {
   );
 }
 
+/**
+ * The answer's fields, when two independent readings agree on them.
+ *
+ * `solutionFields()` finds the visible, editable, uniquely-identified boxes and
+ * then requires the word "or" between them before it will call them one
+ * answer -- a rule written for `x = ___ or x = ___`. Lesson 3.3's "find two
+ * points" step labels its boxes "A:" and "B:", so those fields were discarded
+ * and `fieldIds` arrived empty. The page was meanwhile saying "multi, two" the
+ * other way, through its published editor model, which is what `answerShapeOf`
+ * reads to ask Facet for two parts. Two correct parts and no field ids to put
+ * them in is exactly the disagreement `errorEditorUnknown` reported, one gate
+ * later, with nothing to say about which reading was wrong.
+ *
+ * Wording is the weaker evidence. Since a disabled control stopped being
+ * counted, the editor model reports exactly the controls an answer can be
+ * typed into, so when the DOM's count and the model's count agree, that
+ * agreement is the stronger reading -- the discipline the data table already
+ * uses, where the plotted points must agree with the table before either is
+ * trusted.
+ *
+ * Disagreement is not an error here. It falls back to the single focused box,
+ * which is what every version before this one did, so a question that really
+ * does have one answer beside some other visible field keeps working.
+ */
+function answerFieldIds(choice, evidence, editor) {
+  if (Array.isArray(choice?.fieldIds) && choice.fieldIds.length > 0) {
+    return [...choice.fieldIds];
+  }
+  const candidates = evidence?.fieldIds;
+  if (
+    !Array.isArray(candidates)
+    || candidates.length < 2
+    || candidates.length > 4
+    || !candidates.every((id) => typeof id === "string" && id !== "")
+    || new Set(candidates).size !== candidates.length
+  ) {
+    return [];
+  }
+  return editor?.kind === "multi" && editor.editors?.length === candidates.length
+    ? [...candidates]
+    : [];
+}
+
 // --- the native companion --------------------------------------------------
 
 /**
@@ -1060,7 +1103,7 @@ async function prepare(windowId = state.windowId) {
       fail("errorEditorUnknown", { detail: editor?.code ?? "graph-missing" });
       return;
     }
-    const fieldIds = Array.isArray(choice.fieldIds) ? choice.fieldIds : [];
+    const fieldIds = answerFieldIds(choice, evidenceReport?.multiFieldEvidence, editor);
     if (
       fieldIds.length > 0
       && (fieldIds.length < 2
@@ -1789,10 +1832,16 @@ async function insert() {
       { tabId: target.tabId, frameIds: [target.frameId] }, INSPECT_SCRIPT
     );
     const live = selectAnswerFrame(reports);
+    // Adopted here the same way as at the earlier gate, against the editor
+    // model read a moment ago. Comparing a raw reading here against an adopted
+    // one there would refuse every question this agreement exists to place.
+    const liveEvidence = reports.find(
+      (entry) => entry?.result?.multiFieldEvidence
+    )?.result?.multiFieldEvidence;
     if (
       live.frameId !== target.frameId
       || live.fieldId !== target.fieldId
-      || !sameStringArray(live.fieldIds, target.fieldIds)
+      || !sameStringArray(answerFieldIds(live, liveEvidence, editor), target.fieldIds)
       || !ownsTarget(target)
     ) {
       fail("errorQuestionChanged");

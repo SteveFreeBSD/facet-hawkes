@@ -147,7 +147,12 @@ var ethnosHawkes = (function () {
    *
    * @returns {Element[]}
    */
-  let lastSolutionFieldEvidence = { fields: 0, separatorCandidates: 0, separators: 0 };
+  let lastSolutionFieldEvidence = {
+    fields: 0,
+    separatorCandidates: 0,
+    separators: 0,
+    fieldIds: [],
+  };
 
   function solutionFields() {
     const fields = [...document.querySelectorAll(HAWKES_FIELD_SELECTOR)]
@@ -173,6 +178,10 @@ var ethnosHawkes = (function () {
         fields: fields.length,
         separatorCandidates: 0,
         separators: 0,
+        // Not a shape this add-on can fill: too few boxes, too many, or ids it
+        // cannot tell apart. Offering these as candidates would invite the
+        // event page to adopt fields that were refused here for a reason.
+        fieldIds: [],
       };
       return [];
     }
@@ -219,6 +228,15 @@ var ethnosHawkes = (function () {
       fields: fields.length,
       separatorCandidates: separatorCandidates.length,
       separators: separators.length,
+      // Reported as candidates, not as a decision. These boxes are visible,
+      // editable and uniquely identified; the only thing missing is the
+      // wording that would prove they are one answer. Lesson 3.3's "find two
+      // points" step labels its two boxes "A:" and "B:" and never says "or",
+      // so the separator rule below discards them -- and while these ids went
+      // no further, no number of correct parts could ever be placed in them.
+      // The event page adopts them only when the page's own editor model
+      // publishes exactly this many enabled editors.
+      fieldIds: fields.map((field) => field.id),
     };
     // Hawkes may wrap one visible separator in nested elements whose boxes are
     // not identical. Those are duplicate evidence, not extra separators. The
