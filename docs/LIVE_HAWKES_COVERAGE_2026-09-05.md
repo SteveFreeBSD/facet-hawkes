@@ -572,3 +572,76 @@ previous change to the same file — first appeared at 00:25:15, so the last
 reload was before the coordinate fix existed. The fix is on disk and untested
 live. This is the third time the sweep has needed the reload distinction to
 avoid reading a stale run as a failed fix.
+
+## Case 13 — clean live verification after a fresh reload
+
+Watch-only run. The owner reloaded the add-on, stayed on the question, opened
+the panel and clicked Solve.
+
+```text
+00:39:14  solve-started
+00:39:34  solved   {source: "Facet Quadratic Regression · GPU", answeredBy: "facet",
+                    facetInvoked: true, insertable: true, answerLength: 10,
+                    elapsedMs: 19469}
+00:39:43  inserted {via: "structured", answerLength: 10, elapsedMs: 5888}
+```
+
+**There is no first failure. The pipeline completed and the answer went in.**
+
+| | |
+|---|---|
+| Evidence read | **yes** — SVG scatter points extracted |
+| Route | **Facet Quadratic Regression · GPU** (graph specialist) |
+| Facet invoked | **yes** |
+| Answer produced | **yes**, 10 characters, 19.5 s |
+| Insertion available | **yes** |
+| Insertion result | **succeeded**, structured, 5.9 s |
+| First refusal/error | **none** |
+
+A second question followed immediately on the same code: `Facet Reasoning ·
+GPU`, 8.8 s, inserted in 4.3 s.
+
+### Is the live browser running current code?
+
+Yes, on three independent markers:
+
+1. `via: "focused-field"` appears — a field only present after 00:12:57 UTC.
+2. The run **reached the regression route at all**. That route requires
+   `graph_points`, which requires the coordinate fix written at 00:27:15. Old
+   code could not have got there.
+3. `drawn-mismatch-1.43` has stopped appearing on exactly the question that
+   produced it every time before.
+
+(2) is the strongest: it is a positive marker rather than an absence.
+
+### Are RC3 and RC5 exercised by this question?
+
+- **RC5 — yes, and it is what unblocked this run.** The coordinate check now
+  measures the grid and its dots in one space, the figure reads, and the
+  question routes to the specialist instead of a screenshot.
+- **RC3 — no.** This question has a single answer field
+  (`multiFieldEvidence.fields: 1`, `code: focused-answer-field`). There is no
+  multi-editor collection and therefore no disabled control to drop. RC3
+  remains deployed but unexercised, and **must not be described as verified**.
+  It needs a question of the "find two points" shape to be confirmed.
+
+### The failure immediately before the reload, for the record
+
+```text
+00:36:26  markup-fallback {"why": "Regression refused: execution_failed:
+                            Ollama did not report the generated model as loaded"}
+00:36:26  capture-failed  {"message": "Missing activeTab permission"}
+00:36:26  failed          {"errorKey": "errorNoCapture"}
+```
+
+Note what this shows: the evidence was already being read then too — *Regression
+refused* is the specialist path, not an extraction failure. The first failure
+was `runtime`: a cold load of the 13 GB reasoning model that Ollama did not
+report as resident. `ollama ps` showed nothing loaded at the time and the
+machine had 16 GB free, so this reads as cold-start timing rather than
+exhaustion. It cleared on the next attempt without intervention. The
+`errorNoCapture` behind it is Case 11's sidebar limitation, reached only
+because the first route had already failed.
+
+One other refusal in the window, unrelated: `errorWrongSite`, phase `checking`
+— the panel was pointed at a non-Hawkes tab. Correct behaviour.
