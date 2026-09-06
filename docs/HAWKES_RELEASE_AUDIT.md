@@ -16,7 +16,7 @@ locally, external publication actions not yet authorized.**
 | Record | Value |
 |---|---|
 | Product name | Facet Hawkes Assistant |
-| Product baseline | `63588206cf0907c6d224b82fc092085c1cb69968` |
+| Packaged-source baseline | `fc3f5e4aa5dc2793136116887741eed8b0014ec2` |
 | Required Facet runtime | `f2e09071415907cbbe1b4b905af9af6473098e8b` |
 | Candidate artifact | `dist/facet-hawkes-0.46.0-unsigned.xpi` |
 | Candidate SHA-256 | `6bf24fb9744da4b375171530cee9d0c2069a0e7c4be3536161ad6bd983215d64` |
