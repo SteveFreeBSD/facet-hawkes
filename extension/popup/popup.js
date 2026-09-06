@@ -64,9 +64,10 @@ let copyText = "";
 /**
  * Whether this is the docked sidebar rather than the toolbar popup.
  *
- * A popup is torn down whenever anything else takes focus, which loses the
- * answer on screen mid-read. The sidebar stays put — and only the sidebar
- * keeps the event page's question watcher alive, so what the panel promises
+ * A popup is torn down whenever anything else takes focus. A completed answer
+ * is recovered after the event page verifies the same question. The sidebar
+ * stays put — and only the sidebar keeps the event page's question watcher
+ * alive, so what the panel promises
  * after an insertion differs between the two. Same page either way; the
  * controls that make no sense in each are hidden.
  *

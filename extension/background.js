@@ -16,6 +16,11 @@
  */
 
 import { ALLOWED_HOST_PATTERN, validateAnswer } from "/common/config.js";
+import {
+  ANSWER_SESSION_KEY,
+  restoreSolvedAnswer,
+  snapshotSolvedAnswer,
+} from "/common/answer-session.js";
 import { answerFitsEditor, insertErrorKey } from "/common/editor-rules.js";
 import { planAnswerParts, planEntry } from "/common/editor-plan.js";
 import { describeResults, selectAnswerFrame } from "/common/frames.js";
@@ -77,6 +82,19 @@ const QUESTION_WATCH_MS = 1500;
 
 /** Everything the panel needs to render itself, and nothing else. */
 let state = blankState();
+
+/**
+ * A completed answer survives an idle event-page unload in memory only.
+ *
+ * Writes are serialized so a quick Solve -> Reset cannot let an older `set`
+ * finish after the newer `remove`. The cache is only a candidate: `prepare()`
+ * consumes it and applies the normal live signature check before the panel is
+ * allowed to see the answer.
+ */
+let answerSessionPresent = false;
+let answerSessionWrite = Promise.resolve();
+const rememberedAnswerReady = readRememberedAnswer();
+let rememberedAnswerConsumed = false;
 
 /** @type {AbortController | null} */
 let inFlight = null;
@@ -198,8 +216,64 @@ function stateFor(windowId) {
   return { ...blankState(), windowId: Number.isInteger(windowId) ? windowId : null };
 }
 
+async function readRememberedAnswer() {
+  try {
+    const stored = await browser.storage.session.get(ANSWER_SESSION_KEY);
+    const answer = restoreSolvedAnswer(stored?.[ANSWER_SESSION_KEY]);
+    answerSessionPresent = answer !== null;
+    return answer;
+  } catch (error) {
+    log.debug("answer-session-unavailable", { message: String(error?.message ?? "") });
+    return null;
+  }
+}
+
+function syncRememberedAnswer(nextState) {
+  const snapshot = snapshotSolvedAnswer(nextState);
+  if (snapshot === null && !answerSessionPresent) {
+    return;
+  }
+  answerSessionPresent = snapshot !== null;
+  answerSessionWrite = answerSessionWrite
+    .catch(() => undefined)
+    .then(async () => {
+      try {
+        if (snapshot) {
+          await browser.storage.session.set({ [ANSWER_SESSION_KEY]: snapshot });
+        } else {
+          await browser.storage.session.remove(ANSWER_SESSION_KEY);
+        }
+      } catch (error) {
+        log.debug("answer-session-write-failed", {
+          message: String(error?.message ?? ""),
+        });
+      }
+    });
+}
+
+async function seedRememberedAnswer(windowId) {
+  const remembered = await rememberedAnswerReady;
+  if (!remembered || rememberedAnswerConsumed || state.phase !== "idle") {
+    return false;
+  }
+  rememberedAnswerConsumed = true;
+  if (remembered.windowId !== windowId) {
+    syncRememberedAnswer(blankState());
+    log.info("answer-session-discarded", { why: "window-changed" });
+    return false;
+  }
+  state = { ...blankState(), ...remembered };
+  log.info("answer-session-found", {
+    windowId: remembered.windowId,
+    tabId: remembered.tabId,
+    answerLength: String(remembered.displayText || remembered.answer || "").length,
+  });
+  return true;
+}
+
 function update(changes) {
   state = { ...state, ...changes };
+  syncRememberedAnswer(state);
   for (const [port, entry] of panels) {
     try {
       port.postMessage({ type: "ethnos:state", state: stateFor(entry.windowId) });
@@ -1140,13 +1214,22 @@ async function prepare(windowId = state.windowId) {
   // had most recently overwritten `startedAt`.
   inFlight?.abort();
   inFlight = null;
+  const restoringAnswer = await seedRememberedAnswer(windowId);
   const previous = {
     phase: state.phase,
+    tabId: state.tabId,
+    frameId: state.frameId,
+    fieldId: state.fieldId,
     signature: state.signature,
     answer: state.answer,
     displayText: state.displayText,
     entryText: state.entryText,
     answerParts: Array.isArray(state.answerParts) ? state.answerParts : [],
+    editor: state.editor,
+    graphPlan: state.graphPlan,
+    graphCoefficients: Array.isArray(state.graphCoefficients)
+      ? state.graphCoefficients
+      : [],
     placedText: state.placedText,
     promptSeen: state.promptSeen,
     problemText: state.problemText,
@@ -1221,7 +1304,10 @@ async function prepare(windowId = state.windowId) {
     const question = await readQuestion(tab.id, choice.frameId);
     const signature = questionSignature(choice.fieldId, question);
     // A question we could not read is never treated as the previous one.
-    const sameQuestion = signature !== null && signature === previous.signature;
+    const sameQuestion = signature !== null && signature === previous.signature
+      && tab.id === previous.tabId
+      && choice.frameId === previous.frameId
+      && (choice.fieldId ?? "") === previous.fieldId;
     const alreadyInserted = sameQuestion && previous.phase === "inserted";
     const hasAnswer = sameQuestion
       && (previous.answer !== "" || previous.answerParts?.length >= 2);
@@ -1255,6 +1341,14 @@ async function prepare(windowId = state.windowId) {
       detail: context ? previous.detail : "",
       stage: sameQuestion ? "done" : "",
     });
+    if (restoringAnswer) {
+      log.info(hasAnswer ? "answer-session-restored" : "answer-session-discarded", {
+        why: hasAnswer ? "question-matched" : "question-changed",
+        answerLength: hasAnswer
+          ? String(previous.displayText || previous.answer || "").length
+          : 0,
+      });
+    }
     // Insertion handles this question. Keep that state across a sidebar watch
     // tick and a close/reopen; solve again only when prompt/MathML changes.
     if (alreadyInserted || hasAnswer) {
@@ -2416,6 +2510,7 @@ browser.tabs.onUpdated.addListener((tabId, info) => {
     // and a presentation pinned to a tab that has left must not play on.
     cancelCadence();
     state = blankState();
+    syncRememberedAnswer(state);
   }
 });
 

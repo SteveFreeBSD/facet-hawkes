@@ -36,6 +36,7 @@ IMPORT_LINE = re.compile(r"^import\s[\s\S]*?;\s*$", re.MULTILINE)
 MODULES = (
     "common/config.js",
     "common/log.js",
+    "common/answer-session.js",
     "common/editor-rules.js",
     "common/editor-plan.js",
     "common/frames.js",
@@ -101,6 +102,15 @@ globalThis.browser = {
       get: () => Promise.resolve({}),
       set: () => Promise.resolve(),
       remove: () => Promise.resolve(),
+    },
+    session: {
+      get: (key) => Promise.resolve(
+        Object.prototype.hasOwnProperty.call(__H.sessionStored, key)
+          ? { [key]: __H.sessionStored[key] }
+          : {}
+      ),
+      set: (patch) => { Object.assign(__H.sessionStored, patch); return Promise.resolve(); },
+      remove: (key) => { delete __H.sessionStored[key]; return Promise.resolve(); },
     },
     onChanged: { addListener: () => {} },
   },
@@ -335,17 +345,32 @@ class Page:
         return [row for row in self.json("__H.logged") if row.get("event") == event]
 
 
-@pytest.fixture
-def page():
+def make_page(session_storage=None):
     source = "\n".join(
         IMPORT_LINE.sub("", (EXTENSION / name).read_text()).replace("export ", "")
         for name in MODULES
     )
     context = quickjs.Context()
     context.eval(HARNESS)
+    context.eval(f"__H.sessionStored = {json.dumps(session_storage or {})};")
     context.eval(source)
     context.eval(CAPTURE_LOG)
     return Page(context)
+
+
+@pytest.fixture
+def page():
+    return make_page()
+
+
+def remembered_session(page):
+    """Store the fixture's solved state through the shipped update path."""
+    page.own_window_a()
+    page.run("update({});")
+    page.pump()
+    stored = page.json("__H.sessionStored")
+    assert stored["answerSession"]["state"]["answer"] == "3y"
+    return stored
 
 
 def test_the_harness_actually_runs_the_event_page(page):
@@ -376,6 +401,57 @@ def test_an_undisturbed_insertion_writes_to_its_own_target(page):
     assert all(w["tabId"] == 11 and w["frameId"] == 0 for w in page.writes)
     assert page.json("state.phase") == "inserted"
     assert page.json("state.placedText") == "3y"
+
+
+def test_a_restarted_event_page_restores_only_after_the_live_question_matches(page):
+    restarted = make_page(remembered_session(page))
+
+    restarted.run("prepare(1);")
+    restarted.pump()
+    restarted.answer(INSPECT_OK)
+    restarted.answer(EDITOR_OK)
+    restarted.answer(QUESTION_A)
+
+    assert restarted.json("state.phase") == "solved"
+    assert restarted.json("state.answer") == "3y"
+    assert restarted.json("state.displayText") == "3y"
+    assert restarted.writes == [], "restoring an answer must never touch Hawkes"
+    assert restarted.said("answer-session-restored")
+
+
+def test_a_restarted_event_page_discards_an_answer_for_a_changed_question(page):
+    restarted = make_page(remembered_session(page))
+
+    restarted.run("prepare(1);")
+    restarted.pump()
+    restarted.answer(INSPECT_OK)
+    restarted.answer(EDITOR_OK)
+    restarted.answer(QUESTION_B)
+
+    assert restarted.json("state.phase") == "ready"
+    assert restarted.json("state.answer") == ""
+    assert restarted.json("state.displayText") == ""
+    assert restarted.json("__H.sessionStored") == {}
+    assert restarted.writes == []
+    discarded = restarted.said("answer-session-discarded")
+    assert discarded and discarded[-1]["data"]["why"] == "question-changed"
+
+
+def test_a_matching_question_in_another_tab_does_not_claim_the_answer(page):
+    restarted = make_page(remembered_session(page))
+    restarted.run("__H.windowTab[1] = 22;")
+
+    restarted.run("prepare(1);")
+    restarted.pump()
+    restarted.answer(INSPECT_OK)
+    restarted.answer(EDITOR_OK)
+    restarted.answer(QUESTION_A)
+
+    assert restarted.json("state.tabId") == 22
+    assert restarted.json("state.phase") == "ready"
+    assert restarted.json("state.answer") == ""
+    assert restarted.json("__H.sessionStored") == {}
+    assert restarted.writes == []
 
 
 def test_two_roots_reach_only_the_two_fields_pinned_with_the_question(page):

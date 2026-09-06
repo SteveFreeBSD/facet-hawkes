@@ -316,7 +316,7 @@ floor contradict the manifest's own disclosure on Android, which is what
 | `activeTab` | Allows a screenshot fallback after a toolbar click. A sidebar opened directly may read exact markup but cannot capture. |
 | `scripting` | Injects the scripts under `content/` into that tab so the answer field can be inspected and written. |
 | `nativeMessaging` | Starts and speaks to the one registered `ethnos_hawkes` host. Not network access, and not a listening port. |
-| `storage` | Holds preferences and the bounded redacted diagnostic log. Coursework answers are not stored. |
+| `storage` | Holds preferences and the bounded redacted diagnostic log in `storage.local`. One completed answer card may be kept in memory-only `storage.session` so closing the toolbar popup does not lose it; it is re-shown only after the question signature matches. |
 
 `host_permissions` is exactly `*://learn.hawkeslearning.com/*`. It is standing
 access to the one site the add-on exists to serve; it does not inject or run
@@ -401,6 +401,11 @@ and Firefox removes it on restart.
 5. If the answer is insertable, click **Insert answer** once.
 6. Check the answer box yourself. The add-on never submits; use the site's own
    controls only if and when you intend to.
+
+If the toolbar popup closes while you are copying an answer Hawkes cannot take
+automatically, reopen it on the same question. Firefox keeps that one finished
+card in session memory, and the add-on shows it again only after re-reading the
+active tab and matching the question, field, frame, and tab it answered.
 
 If the panel reports multiple fields or cannot identify the field, close the
 toolbar popup (if used), click the intended answer box, and reopen it. The

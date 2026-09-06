@@ -831,8 +831,8 @@ def test_inserting_is_never_automatic():
 def test_the_panel_is_available_as_a_docked_sidebar(manifest):
     """A popup is torn down whenever anything else takes focus.
 
-    That loses the answer mid-read and makes a minute-long solve impossible to
-    watch. Firefox's sidebar stays put, so the same panel is offered both ways.
+    Firefox's sidebar stays put, so a minute-long solve can be watched without
+    reopening the same panel, and the same panel is offered both ways.
     """
     sidebar = manifest["sidebar_action"]
     assert sidebar["default_panel"] == "popup/popup.html?sidebar=1"

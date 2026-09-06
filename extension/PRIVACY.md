@@ -46,7 +46,12 @@ category.
 
 ## Storage and retention
 
-- Coursework text, answers, and screenshots are not stored by the extension.
+- A completed answer card is held in Firefox's memory-only `storage.session`
+  so it can survive the non-persistent event page being unloaded while the
+  toolbar popup is closed. It is shown again only after the active tab's
+  question signature matches, and Firefox clears it when the browser session
+  ends. It is never written to `storage.local` or to diagnostics.
+- Screenshots are not stored by the extension.
 - Browser-originated screenshots and transcriptions use a temporary directory
   that is removed when the native-host request finishes.
 - `storage.local` contains preferences and a bounded diagnostic ring only.
