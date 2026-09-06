@@ -58,6 +58,20 @@ QUADRATIC_POINTS = (
     "<mrow><mo>(</mo><mi>x</mi><mo>+</mo><mn>1</mn><mo>)</mo></mrow></math>"
 )
 
+#: Lesson 3.2 states a line as two facts, each its own MathML element: a value
+#: of the function, and the slope. Nothing here is an expression to rewrite,
+#: which is why every solver that reads a verb and manipulates what follows it
+#: declined and a model answered instead.
+LINEAR_VALUE = (
+    "<math><mrow><mi>f</mi><mo>&#x2061;</mo><mo>(</mo><mn>0</mn><mo>)</mo>"
+    "<mo>=</mo><mo>&#x2212;</mo><mn>3</mn></mrow></math>"
+)
+LINEAR_SLOPE = (
+    "<math><mrow><mtext>slope</mtext><mo>=</mo><mo>&#x2212;</mo><mn>5</mn>"
+    "</mrow></math>"
+)
+LINEAR_INSTRUCTION = "Find the linear function with the given properties."
+
 RATIONAL_EXPONENT_INSTRUCTION = (
     "Simplify. Express your answer using rational exponents."
 )
@@ -203,6 +217,98 @@ def test_quadratic_points_are_exact_and_keep_the_two_box_contract(monkeypatch) -
     assert response.certainty.source == "Facet Exact"
     assert response.certainty.answered_by == "exact"
     assert response.certainty.router == "solved"
+
+
+def test_a_linear_function_stated_as_its_properties_is_exact(monkeypatch) -> None:
+    """The live lesson-3.2 question, in the shape the page actually sends it.
+
+    Live, this fell through to `gpt-oss:20b`, which answered `-2x-3`: the
+    intercept it was given, and a slope it invented. Two facts determine a
+    line, the arithmetic is exact, and no model is asked anything.
+    """
+    loopback = facet(monkeypatch, **reasoning("FINAL ANSWER: -2x-3"))
+
+    response = handle(
+        {
+            "protocol_version": 1,
+            "operation": "solve_hawkes_problem",
+            "request_id": "linear-properties",
+            "origin": "https://learn.hawkeslearning.com",
+            "solve_engine": "facet",
+            "problem": {
+                "prompt_text": LINEAR_INSTRUCTION,
+                "mathml": [LINEAR_VALUE, LINEAR_SLOPE],
+            },
+        }
+    )
+
+    assert loopback.prompts == [], "a derivable linear function reached a model"
+    assert loopback.problems == [
+        {
+            "instruction": LINEAR_INSTRUCTION,
+            "expressions": ["f(0)=-3", "slope=-5"],
+            "answer_parts": 1,
+        }
+    ]
+    assert response.status == "ready"
+    # One answer, in the box whose `f(x) =` label the page already drew.
+    assert response.answer.display_text == "-5x-3"
+    assert response.answer.keyboard_entry == "-5*x-3"
+    assert response.answer.parts == []
+    assert response.certainty.source == "Facet Exact"
+    assert response.certainty.answered_by == "exact"
+    assert response.certainty.router == "solved"
+    assert response.certainty.reading == "mathml"
+    assert response.certainty.method == "SymPy exact symbolic"
+    assert response.certainty.model is None
+    assert response.certainty.actual_backend is None
+
+
+def test_both_engines_derive_the_same_line_from_the_same_properties(
+    monkeypatch,
+) -> None:
+    """The local markup path and the routed path are one solver, as everywhere."""
+
+    def through(engine):
+        loopback = facet(monkeypatch, **reasoning("FINAL ANSWER: -2x-3"))
+        return handle(
+            {
+                "protocol_version": 1,
+                "operation": "solve_hawkes_problem",
+                "request_id": f"linear-{engine}",
+                "origin": "https://learn.hawkeslearning.com",
+                "solve_engine": engine,
+                "problem": {
+                    "prompt_text": LINEAR_INSTRUCTION,
+                    "mathml": [LINEAR_VALUE, LINEAR_SLOPE],
+                },
+            }
+        ), loopback
+
+    local, local_loopback = through("ethnos")
+    routed, routed_loopback = through("facet")
+
+    assert local_loopback.prompts == routed_loopback.prompts == []
+    assert local.answer == routed.answer
+    assert local.certainty.answered_by == routed.certainty.answered_by == "exact"
+
+
+def test_a_line_that_the_page_does_not_determine_declines(monkeypatch) -> None:
+    """A slope with no point is one fact about a line, and one is not enough."""
+    response, loopback = ask(
+        monkeypatch,
+        LINEAR_SLOPE,
+        LINEAR_INSTRUCTION,
+        engine="facet",
+        **reasoning("FINAL ANSWER: -5x"),
+    )
+
+    assert len(loopback.prompts) == 1
+    assert response.certainty.router == "declined"
+    assert response.certainty.router_detail == (
+        "a slope alone does not determine a linear function"
+    )
+    assert response.certainty.answered_by == "facet"
 
 
 def test_a_decline_names_which_gap_it_fell_through(monkeypatch) -> None:
