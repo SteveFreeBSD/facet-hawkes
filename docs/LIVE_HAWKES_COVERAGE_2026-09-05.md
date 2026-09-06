@@ -363,3 +363,28 @@ answering a question that is a handful of exact evaluations. This is the
 sweep's first `capability` gap, and it is worth more than it looks: the same
 route also produced *three* values for a two-box question, which an exact path
 would not do.
+
+### Narrowing it without a reload
+
+`multi-answer-editor-described` is logged whenever an answer has parts *and*
+the editor is not a `multi`. Across the whole log there are **7**
+`answer-parts` refusals and **0** of those lines. Since a refusal proves the
+answer had parts, the page published a `multi` editor every time.
+
+That eliminates one of the four conditions and leaves three, all inside
+`multiEntryPlans`:
+
+1. `editor.editors.length !== parts.length` — a count disagreement. The panel
+   displaying three coordinate pairs for a two-box page points here, and so do
+   the alternating 2/4 DOM field counts on sibling steps.
+2. a part failing `validateAnswer` — unlikely: the answer pattern already
+   admits `(`, `)` and `,`, so a coordinate pair passes it.
+3. `planEntry` failing per part — very plausible. A coordinate pair's
+   parentheses and comma have to be in the box's own character set, and there
+   is no keypad template for a pair. If Hawkes enters a point through separate
+   ordinate sub-controls, the pair can never be typed into one box.
+
+(1) and (3) are different fixes: one aligns counts, the other needs a new entry
+plan for a coordinate pair. Both are distinguished by `editorCount`,
+`allowed`, `directFit` and `plannedFit` in the new diagnostic. **No editor-plan
+work should start until that line is in hand.**
