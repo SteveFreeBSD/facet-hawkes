@@ -114,11 +114,32 @@
       candidates.push(offset);
     }
   }
-  if (candidates.length >= 2 && candidates.length <= 4) {
-    const editors = candidates.map(describe);
-    return editors.every(Boolean)
-      ? { ok: true, code: "described-multi", kind: "multi", editors }
+  // A control nobody can type into is not one of the question's answers.
+  //
+  // Live, lesson 3.3's "find two points on the parabola" step publishes three
+  // controls: the two coordinate boxes it shows, and a *disabled* option
+  // control it does not. Counting that third one made the answer three values
+  // long -- so the reasoning route was asked for three and produced a third
+  // coordinate the page had nowhere to put -- and then refused the insertion,
+  // because a disabled control accepts nothing. Both boxes had planned
+  // perfectly well. Dropping it is what makes the count the page's own.
+  //
+  // Enabled state is read from the same control the answer would be typed
+  // into, so this decides nothing that `answerFitsEditor` would not decide
+  // again later; it decides it before the count is taken.
+  const described = candidates.map(describe);
+  const usable = described.filter(
+    (editor) => editor !== null && editor.enabled !== false
+  );
+  if (usable.length >= 2 && usable.length <= 4) {
+    return described.every(Boolean)
+      ? { ok: true, code: "described-multi", kind: "multi", editors: usable }
       : { ok: false, code: "no-focused-control" };
+  }
+  if (usable.length === 1) {
+    // One control left once the unusable ones are out: unambiguous, and the
+    // same answer the single-control path below would give.
+    return usable[0];
   }
 
   let index = ui.focusedElementIndex;

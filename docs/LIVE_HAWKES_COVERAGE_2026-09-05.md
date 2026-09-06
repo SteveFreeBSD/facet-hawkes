@@ -388,3 +388,58 @@ That eliminates one of the four conditions and leaves three, all inside
 plan for a coordinate pair. Both are distinguished by `editorCount`,
 `allowed`, `directFit` and `plannedFit` in the new diagnostic. **No editor-plan
 work should start until that line is in hand.**
+
+## RC3 — a disabled control was counted as one of the question's answers
+
+The diagnostic answered it on its first firing, and the answer was none of the
+three guesses:
+
+```text
+answer-parts-unplaceable {
+  parts: 3, partLengths: [5,6,6], partsValid: [true,true,true],
+  editorKind: "multi", editorOk: true, editorCode: "described-multi",
+  editorCount: 3,
+  editorKinds:   ["dynamic", "dynamic", "option"],
+  editorEnabled: [true,      true,      false],
+  editorMaxLength: [16, 16, null],
+  allowed: ["0123456789-,", "0123456789-,", ""],
+  templates: ["fraction+exponent+parentheses", "…", ""],
+  directFit:  ["answer-needs-template", "answer-needs-template", "editor-disabled"],
+  plannedFit: ["ok",                    "ok",                    "editor-option-answer"],
+  commaPrompt: false
+}
+```
+
+The page publishes **three** controls for a two-box question: the two
+coordinate boxes it shows, and a **disabled `option` control it does not**.
+Everything followed from counting that third one:
+
+- `answerShapeOf` reported `multi` count **3**, so Facet was asked for three
+  separate answers — which is why the panel displayed *three* coordinate pairs
+  for a two-box page, and why answer lengths wandered between 17 and 20;
+- the insertion was then refused, because a disabled control accepts nothing;
+- and at the earlier gate the same disagreement surfaced as
+  `errorEditorUnknown`, three published editors against two DOM solution
+  fields.
+
+**Both real boxes had planned perfectly well** — `plannedFit: ["ok", "ok", …]`.
+Neither the count-alignment fix nor a new coordinate-pair entry plan was
+needed. The parentheses and comma are already in the boxes' own character set
+(`0123456789-,` plus a parentheses template), so nothing about coordinate entry
+was ever the problem. Both hypotheses from the previous section were wrong, and
+the diagnostic is why nothing was built on them.
+
+**Fix:** a control nobody can type into is not one of the question's answers.
+The editor probe now drops controls reporting `enabled: false` before the count
+is taken, so the count is the page's own. Enabled state is read from the very
+control an answer would be typed into, so this decides nothing
+`answerFitsEditor` would not decide again later — it decides it before the
+count is taken, which is the only place it can prevent a third answer being
+requested.
+
+Pinned under QuickJS with the exact live shape, plus the case where dropping
+the unusable controls leaves exactly one, which must fall through to the
+single-editor answer.
+
+**Expected live effect:** two parts requested, two returned, both planned, and
+the insertion proceeds. Awaiting a reload to retry the same question.

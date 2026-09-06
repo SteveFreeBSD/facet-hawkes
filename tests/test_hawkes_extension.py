@@ -974,6 +974,102 @@ def test_the_only_editor_control_is_described_after_sidebar_takes_focus() -> Non
     assert describe(5) == {"ok": False, "code": "no-focused-control"}
 
 
+def test_a_disabled_control_is_not_one_of_the_questions_answers() -> None:
+    """The exact shape lesson 3.3's "find two points" step publishes.
+
+    Three controls: the two coordinate boxes the page shows, and a *disabled*
+    option control it does not. Counting that third one made the answer three
+    values long, so the reasoning route was asked for three and produced a
+    third coordinate with nowhere to go -- and then the insertion was refused,
+    because a disabled control accepts nothing. The live diagnostic:
+
+        parts: 3, editorCount: 3,
+        editorKinds: [dynamic, dynamic, option],
+        editorEnabled: [true, true, false],
+        plannedFit: [ok, ok, editor-option-answer]
+
+    Both boxes planned. Only the control nobody can type into did not.
+    """
+    quickjs = pytest.importorskip("quickjs")
+    source = (EXTENSION_DIR / "content" / "hawkes-describe.js").read_text()
+    source = source.replace('"use strict";', "", 1)
+
+    def describe(controls: list[dict], data: list[dict]) -> dict:
+        context = quickjs.Context()
+        context.eval(
+            "globalThis.window = {quant_wp_UI: "
+            + json.dumps(
+                {
+                    "focusedElementIndex": -1,
+                    "controlsCollection": controls,
+                    "controlsCollectionData": data,
+                }
+            )
+            + "};"
+        )
+        return json.loads(context.eval(source).json())
+
+    box = {
+        "Type": "Base",
+        "enabled": True,
+        "qdyBase_AllowedChar": "0123456789-,",
+        "qdyBaseMaxChars": 16,
+    }
+    described = describe(
+        [box, box, {"enabled": False}],
+        [
+            {"isQDy": True, "Name": "A", "enableState": True, "boxValue": ""},
+            {"isQDy": True, "Name": "B", "enableState": True, "boxValue": ""},
+            {"Name": "no-solution", "enableState": False},
+        ],
+    )
+
+    assert described["kind"] == "multi"
+    # Two, not three: the count the page actually shows.
+    assert len(described["editors"]) == 2
+    assert [editor["kind"] for editor in described["editors"]] == [
+        "dynamic",
+        "dynamic",
+    ]
+    assert all(editor["enabled"] is True for editor in described["editors"])
+
+
+def test_one_control_left_after_the_disabled_ones_is_the_single_editor() -> None:
+    """Dropping the unusable ones can leave exactly one, which is unambiguous."""
+    quickjs = pytest.importorskip("quickjs")
+    source = (EXTENSION_DIR / "content" / "hawkes-describe.js").read_text()
+    source = source.replace('"use strict";', "", 1)
+
+    context = quickjs.Context()
+    context.eval(
+        "globalThis.window = {quant_wp_UI: "
+        + json.dumps(
+            {
+                "focusedElementIndex": -1,
+                "controlsCollection": [
+                    {
+                        "Type": "Base",
+                        "enabled": True,
+                        "qdyBase_AllowedChar": "0123456789",
+                        "qdyBaseMaxChars": 16,
+                    },
+                    {"enabled": False},
+                ],
+                "controlsCollectionData": [
+                    {"isQDy": True, "Name": "A", "enableState": True, "boxValue": ""},
+                    {"Name": "no-solution", "enableState": False},
+                ],
+            }
+        )
+        + "};"
+    )
+    described = json.loads(context.eval(source).json())
+
+    assert described["ok"] is True
+    assert described["kind"] == "dynamic"
+    assert "editors" not in described
+
+
 def test_the_question_signature_is_built_from_the_question_not_the_editor() -> None:
     """Two questions of the same kind publish identical editor rules.
 
