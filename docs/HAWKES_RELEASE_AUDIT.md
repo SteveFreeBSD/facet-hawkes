@@ -6,12 +6,12 @@ audit and rollback context. A hash or a gate count anywhere below the current
 section belongs to the version its heading names and must not be quoted as
 though it described today's build.
 
-## Current: 0.46.0 — locally validated, publication blocked
+## Current: 0.46.0 — prepared for publication approval
 
 **Audited:** 6 September 2026
 
-**Status:** **unsigned candidate complete; public runtime dependency not yet
-reproducible.**
+**Status:** **unsigned candidate complete; approved repository strategy staged
+locally, external publication actions not yet authorized.**
 
 | Record | Value |
 |---|---|
@@ -19,7 +19,7 @@ reproducible.**
 | Product baseline | `63588206cf0907c6d224b82fc092085c1cb69968` |
 | Required Facet runtime | `f2e09071415907cbbe1b4b905af9af6473098e8b` |
 | Candidate artifact | `dist/facet-hawkes-0.46.0-unsigned.xpi` |
-| Candidate SHA-256 | `d409796f5329ddf9708bcafe7c31f9be9e01485415270db4813c9ddf7988631c` |
+| Candidate SHA-256 | `6bf24fb9744da4b375171530cee9d0c2069a0e7c4be3536161ad6bd983215d64` |
 | Packaged members | 33 |
 | Add-on ID | `ethnos-hawkes@local`, deliberately unchanged |
 | Native host | `ethnos_hawkes`, deliberately unchanged |
@@ -30,7 +30,9 @@ reproducible.**
 | Mozilla validator | `web-ext` 10.6.0 under Node 22.23.2: 0 errors, 0 warnings, 0 notices |
 | Archive | integrity passed; exact packaged archive linted |
 | Browser gate | unsigned XPI installed active in a clean throwaway Firefox 155.0.1 profile; Settings and popup loaded without fatal error |
-| Remaining blockers | public `facet-runtime/main` is `b6ffa6b`, missing the required 11 commits through `f2e0907`; public Hawkes homepage and CI URLs return 404 |
+| Canonical public repository | `https://github.com/SteveFreeBSD/facet-hawkes` — to be created after explicit approval |
+| Companion topology | sibling `facet-hawkes` + `facet-runtime`; CI pins runtime `f2e0907` |
+| Remaining prerequisites | publish runtime `f2e0907`, create and populate canonical Hawkes repository, then pass a fresh public sibling clone |
 
 0.46.0 makes the answer a deterministic score shared by insertion timing,
 visuals, panel narration, and local music. The established Hawkes solve,
@@ -41,22 +43,18 @@ re-soaked here.
 
 The candidate itself is reproducible. A fresh sibling checkout using the local
 runtime checkpoint imports `facet_runtime.solve` and passes extension
-validation. The same Hawkes checkpoint paired with the public runtime installs
-successfully from the lock but then fails that required import because public
-`main` is still `b6ffa6b0acbb036cacbdcc8ceed879f7de1c6e78`. This is a public
-dependency-availability failure, not an XPI failure. The chosen sibling-repo
-topology also needs to be stated in the fresh-machine instructions once that
-history is public; changing to PyPI, a pinned Git source, a submodule, or
-vendoring is a strategic choice and was not guessed during release engineering.
+validation. The same Hawkes checkpoint paired with the currently public runtime
+installs successfully from the lock but fails that required import because
+public `main` is still `b6ffa6b0acbb036cacbdcc8ceed879f7de1c6e78`. Publication
+must therefore push the runtime first, then create and populate the canonical
+Hawkes repository, then repeat the fresh-clone proof entirely from public URLs.
 
-The manifest homepage and README CI links point at `SteveFreeBSD/ethnos`, which
-is reachable only with repository credentials and returns 404 as a public URL.
-No public `SteveFreeBSD/facet-hawkes` repository currently exists. Making the
-existing repository public or establishing a renamed canonical repository is a
-topology decision; no unrelated URL was substituted merely to make the check
-green. The selected location must expose the add-on guide and privacy notice
-before AMO submission, and the manifest, badge, migration instructions, and CI
-checkout path must then agree on it.
+The selected strategy retains the existing sibling path dependency. The public
+README, migration checklist, manifest homepage, CI badge, and CI checkout now
+consistently name `SteveFreeBSD/facet-hawkes`; CI fixes the sibling runtime at
+`f2e09071415907cbbe1b4b905af9af6473098e8b`. The old Ethnos repository is not a
+Facet Hawkes publication target. The private `ethnos-caspian` remote remains
+useful as legacy history and need not be removed.
 
 There is no permission, host, native-protocol, data-collection, or compatibility
 identifier change. Mozilla signing and signed-artifact physical acceptance

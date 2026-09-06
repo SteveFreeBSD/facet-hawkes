@@ -5,7 +5,7 @@
   "version": "0.46.0",
   "default_locale": "en",
   "author": "Steven Robinson",
-  "homepage_url": "https://github.com/SteveFreeBSD/ethnos/blob/main/extension/README.md",
+  "homepage_url": "https://github.com/SteveFreeBSD/facet-hawkes/blob/main/extension/README.md",
   "browser_specific_settings": {
     "gecko": {
       "id": "ethnos-hawkes@local",

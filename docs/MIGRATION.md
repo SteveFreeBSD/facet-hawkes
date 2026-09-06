@@ -4,14 +4,23 @@ Use this checklist to reproduce Ethnos on another machine. Git contains source,
 tests, prompts, fixtures, and documentation. The processed database, PDFs,
 reports, and Ollama model store are separate local state.
 
-## 1. Copy the tracked project
+## 1. Copy the tracked sibling repositories
 
 Requirements: Python 3.11+, `uv`, Git, SQLite with FTS5, and Ollama.
 
+Facet Hawkes Assistant 0.46.0 requires Facet runtime commit
+`f2e09071415907cbbe1b4b905af9af6473098e8b`. Keep both repositories under one
+parent directory because `pyproject.toml` deliberately resolves the runtime at
+`../facet-runtime`.
+
 ```bash
-git clone git@github.com:SteveFreeBSD/ethnos.git
-cd ethnos
-uv sync --extra dev
+mkdir facet-hawkes-0.46.0
+cd facet-hawkes-0.46.0
+git clone https://github.com/SteveFreeBSD/facet-hawkes.git
+git clone https://github.com/SteveFreeBSD/facet-runtime.git
+git -C facet-runtime checkout --detach f2e09071415907cbbe1b4b905af9af6473098e8b
+cd facet-hawkes
+uv sync --frozen --extra dev
 uv run pytest -q
 uv run ruff check .
 ```

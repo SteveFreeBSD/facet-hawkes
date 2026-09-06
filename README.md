@@ -1,4 +1,4 @@
-# Ethnos
+# Facet Hawkes Assistant
 
 <p align="center">
   <img src="extension/icons/icon-128.png" width="96" height="96" alt="Facet Hawkes Assistant icon">
@@ -6,10 +6,10 @@
 
 <p align="center"><strong>A local-first Firefox assistant built for Hawkes math.</strong></p>
 
-This repository is **Ethnos**: the Python package, the CLI, the study and quiz
-tooling, and the local companion behind the Firefox add-on. The add-on itself
-is **Facet Hawkes Assistant**, which is the name on the toolbar and the only
-one a user ever reads.
+This is the canonical repository for **Facet Hawkes Assistant**: the Firefox
+add-on, its local companion, and the supporting study and quiz tooling. The
+Python package and installed compatibility identifiers retain the name
+`ethnos`; the product shown in Firefox is Facet Hawkes Assistant.
 
 It turns a Hawkes question into a checked, ready-to-place answer without
 handing the page to a cloud service. Focus the answer box, open the add-on, and
@@ -17,7 +17,7 @@ review what it read alongside what it solved. One separate click places the
 answer using Hawkes' own math editor. **You stay in control: it never submits,
 checks, advances, or silently selects anything.**
 
-[![CI](https://github.com/SteveFreeBSD/ethnos/actions/workflows/ci.yml/badge.svg)](https://github.com/SteveFreeBSD/ethnos/actions/workflows/ci.yml)
+[![CI](https://github.com/SteveFreeBSD/facet-hawkes/actions/workflows/ci.yml/badge.svg)](https://github.com/SteveFreeBSD/facet-hawkes/actions/workflows/ci.yml)
 
 ## The Firefox add-on
 
@@ -129,10 +129,21 @@ answer needs an editor template Hawkes has not enabled.
 ### Install and verify
 
 Firefox 142 or newer, Python 3.11+, `uv`, and a local Ollama installation are
-required. Install the Python environment and register the native companion:
+required. The 0.46.0 source layout uses two sibling repositories, with
+`facet-runtime` fixed at companion commit
+`f2e09071415907cbbe1b4b905af9af6473098e8b`:
 
 ```bash
-uv sync --extra dev
+git clone https://github.com/SteveFreeBSD/facet-hawkes.git
+git clone https://github.com/SteveFreeBSD/facet-runtime.git
+git -C facet-runtime checkout --detach f2e09071415907cbbe1b4b905af9af6473098e8b
+cd facet-hawkes
+```
+
+Install the locked Python environment and register the native companion:
+
+```bash
+uv sync --frozen --extra dev
 python3 deploy/firefox/install_native_host.py --write
 python3 deploy/firefox/install_native_host.py --check
 ```

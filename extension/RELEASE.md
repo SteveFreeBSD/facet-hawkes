@@ -4,7 +4,7 @@ This runbook produces a Mozilla-signed add-on that installs permanently in a
 normal Firefox profile. A locally built XPI is unsigned and is only a release
 candidate; do not weaken Firefox signature enforcement to install it.
 
-## 0.46.0 candidate — locally validated, publication blocked
+## 0.46.0 candidate — prepared for publication approval
 
 0.46.0 is the RC5-Cadence source line. It includes the 0.45.0 data-table route,
 the 0.45.1 labelled-pair correction, and the complete Answer Cadence described
@@ -13,19 +13,25 @@ Mozilla-lint, reproducibility, and clean-profile unsigned-XPI gates:
 
 ```text
 dist/facet-hawkes-0.46.0-unsigned.xpi
-SHA-256 d409796f5329ddf9708bcafe7c31f9be9e01485415270db4813c9ddf7988631c
+SHA-256 6bf24fb9744da4b375171530cee9d0c2069a0e7c4be3536161ad6bd983215d64
 ```
 
 It contains 33 packaged files and was built twice from unchanged packaged
-sources with the same digest. Do not submit it yet. The Hawkes environment
-resolves `facet-runtime` from the sibling checkout, and public
-`SteveFreeBSD/facet-runtime` still lacks the required commits through
-`f2e09071415907cbbe1b4b905af9af6473098e8b`. Publish that runtime history (or
-make an explicit alternative dependency-topology decision) before treating a
-fresh public checkout as reproducible. The manifest homepage and README CI
-links under `SteveFreeBSD/ethnos` also return 404 without GitHub credentials;
-choose whether that repository becomes public or a new canonical
-`facet-hawkes` location replaces it before AMO submission. The full evidence is in the
+sources with the same digest. The 0.46.0 publication strategy keeps the
+existing sibling repositories, fixes `facet-runtime` at companion commit
+`f2e09071415907cbbe1b4b905af9af6473098e8b`, and establishes
+`SteveFreeBSD/facet-hawkes` as the canonical public Hawkes repository. The old
+Ethnos repository is not a publication target; `ethnos-caspian` may remain as a
+legacy/private remote. CI checks out the exact runtime commit rather than a
+moving branch.
+
+Do not submit yet. The runtime commit must be pushed to its existing public
+repository, the canonical Hawkes repository must be created and populated, and
+a fresh public sibling clone must pass before tagging or AMO submission. Each
+external action requires the owner's explicit approval. Once the repository is
+public, the add-on guide and privacy notice will be available at the canonical
+repository under `extension/README.md` and `extension/PRIVACY.md`. The full
+evidence and publication state are in the
 [release audit ledger](../docs/HAWKES_RELEASE_AUDIT.md).
 
 These identifiers deliberately do **not** change with the product name, and a
@@ -239,9 +245,10 @@ substitute the separate Marionette profile for signed-artifact acceptance.
    as part of the extension smoke test.
 
 Only after the signed XPI passes this physical-browser acceptance is a version
-**released**. 0.46.0 is a locally validated unsigned candidate, but its public
-runtime dependency must be made reproducible before submission. 0.43.0 reached
-**release candidate complete** and was superseded before signing.
+**released**. 0.46.0 is a locally validated unsigned candidate awaiting the
+approved runtime-first publication and fresh-clone verification described
+above. 0.43.0 reached **release candidate complete** and was superseded before
+signing.
 
 Firefox Release and Beta require Mozilla-signed extensions. Mozilla documents
 both listed and unlisted distribution in its
