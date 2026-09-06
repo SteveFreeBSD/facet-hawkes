@@ -1717,10 +1717,62 @@ function readableAnswer(answer) {
   return readable.replace(/\\/g, "").trim() || display;
 }
 
+/**
+ * The companion's refusals, as labels this file owns.
+ *
+ * Every entry matches one `error_response` in `ethnos/hawkes_host.py`, and a
+ * test asserts the correspondence in both directions -- so a new refusal there
+ * fails the suite here rather than arriving in the log as "unclassified".
+ */
+const REFUSAL_REASONS = Object.freeze([
+  ["no-question-content", /^No question content was supplied/i],
+  ["origin-not-allowed", /^The requesting origin is not allowed/i],
+  ["markup-not-solved-exactly", /^The question's markup was not solved exactly/i],
+  ["missing-answer-parts", /^Facet did not return the \d+ separate answers/i],
+  ["facet-did-not-answer", /^Facet did not answer/i],
+  ["facet-answer-unusable", /^Facet returned no usable answer/i],
+  ["no-mathematics-on-the-page", /^Facet needs mathematics read from the page/i],
+  ["no-final-answer", /^Ethnos produced no final answer/i],
+  ["table-question-refused", /^Table question refused/i],
+  ["regression-refused", /^Regression refused/i],
+  ["graph-plan-refused", /^Graph plan refused/i],
+  ["invalid-request", /^Invalid request/i],
+  ["malformed-message", /^Malformed message/i],
+  ["not-an-object", /^Message was not an object/i],
+  ["host-exception", /^[A-Za-z_][A-Za-z0-9_]*(?:Error|Exception|Interrupt):/],
+]);
+
+/** Which refusal this was, named from the list above and never from the text. */
+function refusalReason(message) {
+  const found = REFUSAL_REASONS.find(([, pattern]) => pattern.test(message));
+  return found ? found[0] : "unclassified";
+}
+
 async function acceptReply(reply) {
   if (reply.status !== "ready" || !reply.answer) {
+    // What the companion said, in the two parts that are safe to keep.
+    //
+    // `errorSolveRefused` was the whole of what the ring recorded, and it
+    // covers a question Facet's solvers declined, a transport that failed, and
+    // a reply that arrived shaped wrongly -- three faults fixed in three
+    // different places. The panel shows the full message; the log did not
+    // carry even the status.
+    //
+    // The message itself is never written. Keeping its first clause would be
+    // safe today only by accident: a decline reason can be `str(refusal)` from
+    // `facet_runtime.exact`, and a nested reason that interpolated before its
+    // own colon would put the question into a ring that promises never to hold
+    // it. So the message is classified against {@link REFUSAL_REASONS} and the
+    // label written is one this file authored. `status` is a closed set in
+    // `hawkes_protocol.py` and is safe as it stands.
+    const message = String(reply.message ?? "");
+    log.warn("solve-refused", {
+      status: String(reply.status ?? "none"),
+      hasAnswer: Boolean(reply.answer),
+      why: refusalReason(message),
+    });
     fail("errorSolveRefused", {
-      detail: String(reply.message || reply.status).slice(0, 400),
+      detail: message || String(reply.status).slice(0, 400),
     });
     return;
   }
@@ -2789,6 +2841,7 @@ function markedCode() {
     "background.js#readQuestion": readQuestion,
     "background.js#readableAnswer": readableAnswer,
     "background.js#readableQuestion": readableQuestion,
+    "background.js#refusalReason": refusalReason,
     "background.js#runScoredEntry": runScoredEntry,
       "background.js#solve": solve,
   };
