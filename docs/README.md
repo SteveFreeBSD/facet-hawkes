@@ -24,6 +24,7 @@ the active documentation; Git history remains the archive.
 | Send work to Facet for execution | [The Ethnos-Facet boundary](FACET_BRIDGE.md) |
 | Review what live Hawkes testing has exposed | [Hawkes live findings](HAWKES_LIVE_FINDINGS.md) |
 | Read the add-on's diagnostic log off a profile | `python3 scripts/read_extension_log.py` |
+| Correlate one live failure end to end | [Live Hawkes Observatory](LIVE_OBSERVATORY.md) |
 | Review the current Hawkes release status | [Hawkes release audit](HAWKES_RELEASE_AUDIT.md) |
 
 ## Workflows

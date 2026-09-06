@@ -57,6 +57,15 @@ category.
 - `storage.local` contains preferences and a bounded diagnostic ring only.
   Diagnostic payloads redact question text, answers, screenshots, and profile
   identifiers. The user can clear the ring in Settings.
+- Each diagnostic entry also carries two identifiers that exist so one failure
+  can be reconstructed: `gen`, naming the event page's current lifetime, and
+  `run`, naming one user operation. Both are locally generated values with no
+  meaning outside this profile's ring, and the same `run` is sent to the native
+  host as the request identifier so a browser gesture and a companion request
+  can be matched. Neither carries page content.
+- The add-on records a short digest of its own source text so a diagnosis can
+  tell which build is running. It is computed from code, never from the page,
+  and is only ever written to the ring.
 - The configured Ollama service may have its own logging or retention policy;
   that is controlled by the operator of that endpoint.
 

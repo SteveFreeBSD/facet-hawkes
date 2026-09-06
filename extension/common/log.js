@@ -53,6 +53,10 @@ const MAX_STRING = 160;
 let scope = "unknown";
 let threshold = LEVELS.indexOf("info");
 let sequence = 0;
+/** This load of this context, so entries from two of them never merge. */
+let generation = "";
+/** The user operation currently in flight, or "" between operations. */
+let run = "";
 
 /** Entries written but not yet flushed to storage. */
 let pending = [];
@@ -123,6 +127,35 @@ export function describeError(error) {
   return { name: error.name, message: error.message, stack };
 }
 
+/**
+ * Name the user operation everything logged from now on belongs to.
+ *
+ * The ring records what happened but not what it happened *to*: two panels,
+ * two windows, a re-prepare mid-solve and a retry all interleave, and
+ * reconstructing which `solved` belonged to which `solve-started` was done by
+ * reading timestamps and hoping. A run id is carried on the entries instead,
+ * and the same id is what the native host and Facet are asked under.
+ *
+ * @param {string} id an identifier, or "" to stop attributing entries
+ */
+export function setRun(id) {
+  run = typeof id === "string" ? id.slice(0, 32) : "";
+}
+
+/** The operation entries are currently attributed to, or "". */
+export function currentRun() {
+  return run;
+}
+
+/** A fresh operation id: sortable by time, unique enough within a session. */
+export function newRunId() {
+  const stamp = Date.now().toString(36);
+  const noise = Math.floor(Math.random() * 0xffff)
+    .toString(16)
+    .padStart(4, "0");
+  return `r${stamp}${noise}`;
+}
+
 /** Queue one entry and schedule a flush. */
 function write(level, event, data) {
   const rank = LEVELS.indexOf(level);
@@ -135,6 +168,12 @@ function write(level, event, data) {
     seq: sequence,
     level,
     scope,
+    // `seq` restarts whenever a non-persistent event page is unloaded, so on
+    // its own it interleaves two lifetimes into nonsense. The generation says
+    // which lifetime an entry came from, which is also the answer to "did the
+    // event page go away in the middle of this?".
+    ...(generation ? { gen: generation } : {}),
+    ...(run ? { run } : {}),
     event,
     ...(data === undefined ? {} : { data: redact(data) }),
   };
@@ -230,7 +269,8 @@ export async function clearLog() {
 export function formatEntry(entry) {
   const stamp = new Date(entry.t).toISOString().slice(11, 23);
   const payload = entry.data === undefined ? "" : ` ${JSON.stringify(entry.data)}`;
-  return `${stamp} ${entry.level.padEnd(5)} ${entry.scope.padEnd(10)} ${entry.event}${payload}`;
+  const operation = entry.run ? ` [${entry.run}]` : "";
+  return `${stamp} ${entry.level.padEnd(5)} ${entry.scope.padEnd(10)}${operation} ${entry.event}${payload}`;
 }
 
 /**
@@ -242,10 +282,12 @@ export function formatEntry(entry) {
  * anywhere; now it leaves a record and, through `onFatal`, a visible one.
  *
  * @param {string} name context tag, e.g. "panel" or "background"
- * @param {{level?: string, onFatal?: (info: object) => void}} [options]
+ * @param {{level?: string, onFatal?: (info: object) => void,
+ *   generation?: string}} [options]
  */
-export function initLog(name, { level = "info", onFatal } = {}) {
+export function initLog(name, { level = "info", onFatal, generation: mark = "" } = {}) {
   scope = name;
+  generation = typeof mark === "string" ? mark.slice(0, 32) : "";
   setLogLevel(level);
 
   const fatal = (event, info) => {

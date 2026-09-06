@@ -4,6 +4,37 @@ All notable changes to the Facet Hawkes Assistant add-on. Versions follow
 `major.minor.patch` as required by the Firefox manifest. Entries below 0.44.0
 name the add-on as it was called at the time.
 
+## Unreleased
+
+- **Every diagnostic entry now says which operation it belongs to.** One user
+  gesture mints a run id, and that id is also the native-host `request_id` as
+  `<run>.<n>`, which Ethnos passes on to Facet unchanged -- so one gesture, one
+  companion request and one Facet run share a name that can be grepped for.
+  Reconstructing which `solved` belonged to which `solve-started` was done by
+  reading timestamps and hoping, and with two windows open it was wrong.
+- **Entries also carry the event page's generation.** The page is
+  non-persistent, so `seq` restarts whenever Firefox unloads it and two
+  lifetimes interleaved into one stream. An operation that outlived its own
+  event page is now visible as exactly that.
+- **The add-on records a digest of the code it is running.** A temporary
+  add-on's version never moves between edits and Reload re-reads whichever
+  directory was first selected, so a fix that had never been loaded was twice
+  recorded as a fix that did not work. The marker is folded from the source
+  text the browser parsed, computed once per generation, deferred, and never
+  awaited by anything a user is waiting for.
+- A run that ends now reports the stages it passed through, so "failed at
+  solving" -- true of a capture that never happened and of a model that
+  answered nothing alike -- is no longer the whole story. `solved` reports the
+  runtime, model, backend and device that answered it, which the log previously
+  held only for a graph plan.
+- A lost insertion names the components that moved rather than reporting "the
+  target changed" for a moved tab, an advanced question, a re-solved answer and
+  a second window's claim alike. The pinned snapshot is logged when it is
+  taken, so before and after both exist.
+- None of the above records coursework: identifiers are locally generated, the
+  marker is folded from code, and the snapshot is shapes and counts. See
+  [PRIVACY.md](PRIVACY.md).
+
 ## 0.46.0 · RC5-Cadence
 
 - The answer becomes a deterministic score shared by typing, the visual preview

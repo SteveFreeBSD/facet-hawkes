@@ -26,7 +26,16 @@ import { planAnswerParts, planEntry } from "/common/editor-plan.js";
 import { describeResults, selectAnswerFrame } from "/common/frames.js";
 import { graphOperation } from "/common/graph-actions.js";
 import { enterPlan } from "/common/page-actions.js";
-import { describeError, initLog, log, setLogLevel } from "/common/log.js";
+import { collectSources, foldSources } from "/common/build-marker.js";
+import {
+  currentRun,
+  describeError,
+  initLog,
+  log,
+  newRunId,
+  setLogLevel,
+  setRun,
+} from "/common/log.js";
 import {
   defaultSettings,
   migrateSettings,
@@ -42,6 +51,48 @@ import {
 } from "/common/cadence-session.js";
 
 const NATIVE_HOST = "ethnos_hawkes";
+
+/**
+ * This load of this event page.
+ *
+ * The page is non-persistent: Firefox unloads it when idle and builds a fresh
+ * one on the next message, resetting every module-level variable and the log's
+ * own sequence counter with it. An operation that spans that boundary is a
+ * different class of failure from one that does not, and until the two
+ * lifetimes were labelled there was no way to tell them apart in the ring.
+ */
+const GENERATION = `g${Date.now().toString(36)}${Math.floor(Math.random() * 0xffff)
+  .toString(16)
+  .padStart(4, "0")}`;
+
+/**
+ * Stages this run has passed through, oldest first.
+ *
+ * Stage transitions are logged at `debug`, which is off by default, so the
+ * first failing stage was reconstructable only from a session that had been
+ * turned up in advance -- which a live failure never is. The trail is kept
+ * here instead and reported once, on the entry that ends the run.
+ */
+let runStages = [];
+
+/** Native-host calls made in this run, so each request id says which it was. */
+let runRequests = 0;
+
+/** Longest trail kept. A run with more stages than this has other problems. */
+const MAX_RUN_STAGES = 24;
+
+/**
+ * Start attributing everything that follows to one user operation.
+ *
+ * The id is carried on every log entry, and is what the native host and, in
+ * turn, Facet are asked under -- so one browser gesture, one host process and
+ * one Facet run share a name that can be grepped for.
+ */
+function startRun() {
+  runStages = [];
+  runRequests = 0;
+  setRun(newRunId());
+}
 
 /**
  * Which pipeline in the companion answers a question.
@@ -170,6 +221,12 @@ function blankState() {
     errorKey: "",
     errorArgs: [],
     startedAt: 0,
+    // Which run produced the answer now held. Solving and inserting are two
+    // gestures and therefore two runs, and "what changed between the solve and
+    // the insertion" is the question a lost insertion always raises. Carrying
+    // the solve's id into the insertion's pinned snapshot is what joins them.
+    // Not an ownership component: it names history, not the target.
+    solveRun: "",
   };
 }
 
@@ -272,6 +329,14 @@ async function seedRememberedAnswer(windowId) {
 }
 
 function update(changes) {
+  if (
+    typeof changes.stage === "string"
+    && changes.stage
+    && changes.stage !== state.stage
+    && runStages.length < MAX_RUN_STAGES
+  ) {
+    runStages.push(changes.stage);
+  }
   state = { ...state, ...changes };
   syncRememberedAnswer(state);
   for (const [port, entry] of panels) {
@@ -285,7 +350,15 @@ function update(changes) {
 }
 
 function fail(errorKey, { detail = "", args = [] } = {}) {
-  log.warn("failed", { errorKey, phase: state.phase, stage: state.stage });
+  log.warn("failed", {
+    errorKey,
+    phase: state.phase,
+    stage: state.stage,
+    // Where it got to, not just where it stopped. "failed at solving" is true
+    // of a capture that never happened and of a model that answered nothing,
+    // and the trail is what separates them.
+    stages: runStages.join(">"),
+  });
   update({ phase: "failed", errorKey, errorArgs: args, detail });
 }
 
@@ -928,10 +1001,17 @@ function answerFieldIds(choice, evidence, editor) {
  * rather than after a minute of waiting.
  */
 async function askEthnos(operation, extra = {}, timeoutMs, onProgress, signal) {
+  // Named after the run rather than at random. The companion passes this
+  // through `safe_request_id` to Facet unchanged, so `grep r<id>` finds the
+  // browser's log entries, the host's request and Facet's run in one search.
+  // A run makes several calls -- health, then a solve, then perhaps an image
+  // solve -- so the ordinal says which one, and each remains unique.
+  runRequests += 1;
+  const run = currentRun();
   const request = {
     protocol_version: PROTOCOL_VERSION,
     operation,
-    request_id: crypto.randomUUID(),
+    request_id: run ? `${run}.${runRequests}` : crypto.randomUUID(),
     ...extra,
   };
 
@@ -1248,6 +1328,15 @@ async function prepare(windowId = state.windowId) {
     log.info("answer-target-inspected", {
       code: chosenReport?.code ?? choice.code ?? "",
       fields: Array.isArray(choice.fieldIds) ? choice.fieldIds.length : 0,
+      // Which window, tab and frame this run is about. Everything downstream
+      // is scoped by the three of them -- a solve reads that frame, an
+      // insertion writes to it, and a panel in another window is shown a blank
+      // -- and until now the only entry that named them was one raised after
+      // an insertion had already gone wrong.
+      windowId,
+      tabId: tab.id,
+      frameId: Number.isInteger(choice.frameId) ? choice.frameId : null,
+      frames: results.length,
       // Which branch of the field probe claimed this target. A question that
       // reports one field while two solution fields exist can be solved and
       // never inserted, because insertion wants one field id per answer part.
@@ -1613,7 +1702,8 @@ async function acceptReply(reply) {
       fail("errorAnswerInvalid");
       return;
     }
-    update({ phase: "solved", stage: "done", answer: reply.answer.display_text,
+    update({ phase: "solved", stage: "done", solveRun: currentRun(),
+      answer: reply.answer.display_text,
       displayText: reply.answer.display_text, entryText: "", answerParts: [],
       graphPlan: reply.answer.graph_plan, graphCoefficients: reply.answer.graph_coefficients,
       problemText: reply.problem_text, source: [answeredByBadge(certainty), certainty.model, certainty.device].filter(Boolean).join(" · "), detail: notes.join("\n"), errorKey: "" });
@@ -1667,6 +1757,26 @@ async function acceptReply(reply) {
     insertable: Boolean(certainty.insertable),
     answerLength: answer.length,
     elapsedMs: state.startedAt ? Date.now() - state.startedAt : 0,
+    // Which machinery answered. The panel has shown this in its provenance
+    // block from the beginning; the log had it only for a graph plan, so
+    // "which model and which device handled it" was unanswerable afterwards
+    // for every ordinary question -- the common case.
+    //
+    // Prefixed names, exactly as `rememberFacetRun` prefixes them and for the
+    // same reason: an unprefixed execution-config key in this file is
+    // indistinguishable from the browser naming one to the host, which it must
+    // never do and which a test asserts by reading the file. These are what
+    // the host reported back.
+    facetReading: certainty.reading ?? "",
+    facetRouter: certainty.router ?? "",
+    facetMethod: certainty.method ?? "",
+    facetRuntime: certainty.runtime ?? "",
+    facetModel: certainty.model ?? "",
+    facetRequestedBackend: certainty.requested_backend ?? "",
+    facetBackend: certainty.actual_backend ?? "",
+    facetDevice: certainty.device ?? "",
+    facetFallback: Boolean(certainty.fallback),
+    stages: runStages.join(">"),
   });
   // An answer the editor will take neither as text nor as keypad steps leaves
   // Insert disabled, and nothing sends `ethnos:insert` -- so the diagnostic log
@@ -1712,6 +1822,7 @@ async function acceptReply(reply) {
   update({
     phase: "solved",
     stage: "done",
+    solveRun: currentRun(),
     answer,
     displayText,
     entryText,
@@ -1795,6 +1906,7 @@ function pinInsertionTarget() {
     graphPlan: state.graphPlan,
     graphCoefficients: state.graphCoefficients,
     graphSnapshot: state.editor?.snapshot,
+    solveRun: state.solveRun,
     reviewed: state.answer,
     machineEntry: state.entryText || state.answer,
     answerParts: Object.freeze([...(state.answerParts ?? [])]),
@@ -1816,18 +1928,61 @@ function pinInsertionTarget() {
  * re-prepare of this very question aborts rather than writing on.
  */
 function ownsTarget(target) {
-  return (
-    state.phase === "inserting"
-    && state.windowId === target.windowId
-    && state.tabId === target.tabId
-    && state.frameId === target.frameId
-    && state.fieldId === target.fieldId
-    && sameStringArray(state.fieldIds ?? [], target.fieldIds)
-    && sameStringArray(state.answerParts ?? [], target.answerParts)
-    && state.signature === target.signature
-    && state.graphPlan === target.graphPlan
-    && state.answer === target.reviewed
-  );
+  return ownershipDelta(target).length === 0;
+}
+
+/**
+ * The components {@link ownsTarget} compares, one predicate each.
+ *
+ * Written out rather than folded into one boolean so that a lost insertion can
+ * say *which* thing moved. "The target changed" was true of a tab that moved
+ * windows, a question that advanced, an answer that was re-solved and a panel
+ * in a second window claiming the state -- four different faults reported in
+ * one sentence, and the log gave nothing to tell them apart.
+ */
+const OWNERSHIP_COMPONENTS = Object.freeze({
+  phase: (target) => state.phase === "inserting",
+  windowId: (target) => state.windowId === target.windowId,
+  tabId: (target) => state.tabId === target.tabId,
+  frameId: (target) => state.frameId === target.frameId,
+  fieldId: (target) => state.fieldId === target.fieldId,
+  fieldIds: (target) => sameStringArray(state.fieldIds ?? [], target.fieldIds),
+  answerParts: (target) => sameStringArray(state.answerParts ?? [], target.answerParts),
+  signature: (target) => state.signature === target.signature,
+  graphPlan: (target) => state.graphPlan === target.graphPlan,
+  answer: (target) => state.answer === target.reviewed,
+});
+
+/** Which pinned components no longer match the live state, in fixed order. */
+function ownershipDelta(target) {
+  return Object.entries(OWNERSHIP_COMPONENTS)
+    .filter(([, matches]) => !matches(target))
+    .map(([name]) => name);
+}
+
+/**
+ * The pinned snapshot as shapes, never as content.
+ *
+ * Identity and counts only: the answer and the question are the coursework,
+ * and `common/log.js` would redact them anyway. What is worth keeping is
+ * enough to recognise the same target again in a later entry.
+ */
+function ownershipSnapshot(target) {
+  return {
+    windowId: target.windowId,
+    tabId: target.tabId,
+    frameId: target.frameId,
+    fieldId: target.fieldId,
+    fieldIds: target.fieldIds.length,
+    answerParts: target.answerParts.length,
+    signature: target.signature,
+    graphPlan: target.graphPlan ?? "",
+    graphSnapshot: target.graphSnapshot ? Object.keys(target.graphSnapshot).length : 0,
+    // The run that produced what is about to be written. An insertion is its
+    // own gesture and its own run; this is the join back to the solve.
+    solvedIn: target.solveRun ?? "",
+    answerLength: String(target.reviewed ?? "").length,
+  };
 }
 
 /**
@@ -1840,6 +1995,11 @@ function ownsTarget(target) {
 function abandonInsertion(target, why) {
   log.warn("insertion-target-changed", {
     why,
+    // The step that noticed, and the components that actually moved. One of
+    // these says when, the other says what.
+    changed: ownershipDelta(target).join(","),
+    pinned: ownershipSnapshot(target),
+    nowPhase: state.phase,
     wasWindow: target.windowId,
     nowWindow: state.windowId,
     wasTab: target.tabId,
@@ -1858,6 +2018,7 @@ async function insert() {
   // Pinned before anything can yield. Everything below reads this and never
   // the live state, so no concurrent `prepare` can move where the write lands.
   const target = pinInsertionTarget();
+  log.info("insertion-pinned", ownershipSnapshot(target));
   const reviewed = target.reviewed;
   // Claim the insertion synchronously. Two panel messages can enter this
   // function in the same turn; publishing the busy phase after yielding lets
@@ -2268,6 +2429,7 @@ function cancel() {
 
 /** Start an operation without letting its failure escape as unhandled. */
 function begin(operation) {
+  startRun();
   operation().catch((error) => fail(errorKeyOf(error)));
 }
 
@@ -2280,6 +2442,9 @@ function begin(operation) {
  */
 async function reportHealth(port) {
   const startedAt = Date.now();
+  // Not a panel operation, so `begin` never named it. Without a run of its own
+  // its host call would borrow whichever solve happened to be last.
+  startRun();
   try {
     const reply = await askEthnos("health", {}, HEALTH_TIMEOUT_MS);
     const ok = reply?.status === "ok";
@@ -2487,6 +2652,7 @@ browser.runtime.onConnect.addListener((port) => {
 initLog("background", {
   level: defaultSettings().logLevel,
   onFatal: () => fail("errorNoBridge"),
+  generation: GENERATION,
 });
 // The version goes in the log because working out which build is running is
 // otherwise guesswork: a temporary add-on reports nothing about itself, and
@@ -2496,9 +2662,116 @@ initLog("background", {
 settingsReady.then(() =>
   log.info("event-page-loaded", {
     version: browser.runtime.getManifest().version,
+    generation: GENERATION,
     ...settings,
   })
 );
+
+/**
+ * What the marker covers: every binding the event page imports, and its own
+ * decision-making.
+ *
+ * A function rather than a constant, so that naming something that is not
+ * there is a caught rejection and one `build-marker-unavailable` line. As a
+ * top-level object literal it would be evaluated during module load, and a
+ * stale entry in a diagnostic would stop the event page from starting at all.
+ *
+ * Named imports rather than module namespaces, for two reasons. It is the
+ * sharper question -- this is the code the event page actually runs, not every
+ * export a module happens to publish for the panel or the settings page. And
+ * the offline harnesses evaluate these modules by concatenating them with the
+ * import statements stripped, where a namespace object does not exist and a
+ * marker built from one would take the whole event page down with it.
+ *
+ * A test asserts that every name this file imports appears below, so the list
+ * cannot fall behind the imports it mirrors.
+ */
+function markedCode() {
+  return {
+    "common/answer-session.js#ANSWER_SESSION_KEY": ANSWER_SESSION_KEY,
+    "common/answer-session.js#restoreSolvedAnswer": restoreSolvedAnswer,
+    "common/answer-session.js#snapshotSolvedAnswer": snapshotSolvedAnswer,
+    "common/build-marker.js#collectSources": collectSources,
+    "common/build-marker.js#foldSources": foldSources,
+    "common/cadence-session.js#attachCadencePort": attachCadencePort,
+    "common/cadence-session.js#beginCadenceRun": beginCadenceRun,
+    "common/cadence-session.js#cadenceMeasurements": cadenceMeasurements,
+    "common/cadence-session.js#cancelCadence": cancelCadence,
+    "common/cadence-session.js#createCadencePresentation": createCadencePresentation,
+    "common/cadence-session.js#finishIdleCadence": finishIdleCadence,
+    "common/cadence-session.js#insertionInstrument": insertionInstrument,
+    "common/cadence-session.js#observeCadence": observeCadence,
+    "common/cadence.js": globalThis.ethnosCadence,
+    "common/config.js#ALLOWED_HOST_PATTERN": ALLOWED_HOST_PATTERN,
+    "common/config.js#validateAnswer": validateAnswer,
+    "common/editor-plan.js#planAnswerParts": planAnswerParts,
+    "common/editor-plan.js#planEntry": planEntry,
+    "common/editor-rules.js#answerFitsEditor": answerFitsEditor,
+    "common/editor-rules.js#insertErrorKey": insertErrorKey,
+    "common/frames.js#describeResults": describeResults,
+    "common/frames.js#selectAnswerFrame": selectAnswerFrame,
+    "common/graph-actions.js#graphOperation": graphOperation,
+    "common/log.js#currentRun": currentRun,
+    "common/log.js#describeError": describeError,
+    "common/log.js#initLog": initLog,
+    "common/log.js#log": log,
+    "common/log.js#newRunId": newRunId,
+    "common/log.js#setLogLevel": setLogLevel,
+    "common/log.js#setRun": setRun,
+    "common/page-actions.js#enterPlan": enterPlan,
+    "common/settings.js#defaultSettings": defaultSettings,
+    "common/settings.js#migrateSettings": migrateSettings,
+    "common/settings.js#onSettingsChanged": onSettingsChanged,
+    "common/settings.js#readSettings": readSettings,
+    "common/settings.js#resolveEntryCadence": resolveEntryCadence,
+    "background.js#acceptReply": acceptReply,
+    "background.js#answerFieldIds": answerFieldIds,
+    "background.js#answerShapeOf": answerShapeOf,
+    "background.js#askEthnos": askEthnos,
+    "background.js#buildStructured": buildStructured,
+    "background.js#captureQuestion": captureQuestion,
+    "background.js#commaAnswerPlan": commaAnswerPlan,
+    "background.js#describeEditor": describeEditor,
+    "background.js#finishInsertion": finishInsertion,
+    "background.js#insert": insert,
+    "background.js#multiAnswerFits": multiAnswerFits,
+    "background.js#multiEntryPlans": multiEntryPlans,
+    "background.js#ownershipDelta": ownershipDelta,
+    "background.js#pinInsertionTarget": pinInsertionTarget,
+    "background.js#prepare": prepare,
+    "background.js#questionSignature": questionSignature,
+    "background.js#readQuestion": readQuestion,
+    "background.js#readableAnswer": readableAnswer,
+    "background.js#readableQuestion": readableQuestion,
+    "background.js#runScoredEntry": runScoredEntry,
+      "background.js#solve": solve,
+  };
+}
+
+/**
+ * Say which code this is, once, after everything else has settled.
+ *
+ * The manifest version above is not an answer: a temporary add-on keeps it
+ * across every edit. The marker is a digest of the files Firefox actually
+ * loaded, so an observer hashing the source tree can say whether the running
+ * add-on is that tree or something older.
+ *
+ * Deliberately not awaited by anything and deliberately last. It reads a few
+ * hundred kilobytes of the add-on's own package, which is quick, but a solve
+ * must never wait on a diagnostic -- and an event page must not be kept alive
+ * by one either, which is why this is a single bounded pass rather than
+ * anything periodic.
+ */
+settingsReady.then(() => {
+  setTimeout(() => {
+    Promise.resolve()
+      .then(() => foldSources(collectSources(markedCode())))
+      .then(
+        (build) => log.info("build-marker", { ...build, generation: GENERATION }),
+        (error) => log.debug("build-marker-unavailable", { error: describeError(error) })
+      );
+  }, 0);
+});
 
 // A new page means the old answer field is gone.
 browser.tabs.onUpdated.addListener((tabId, info) => {

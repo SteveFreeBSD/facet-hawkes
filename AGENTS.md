@@ -13,7 +13,30 @@ applies, say so rather than working around it silently.
 
 ## Looking at the live session
 
-Start here. `scripts/inspect_live_firefox.py` reads the owner's running
+**Start here, before forming a theory.**
+
+```console
+$ python3 scripts/observe_live_hawkes.py --bundle
+```
+
+One command, one clock. It reports which build Firefox is actually running,
+both repositories' state, the window/tab/frame each operation targeted, what
+the add-on thought the question and editor were, the stages it passed through,
+which runtime and device answered, what changed between solve and insertion,
+and which of eight kinds of failure this was -- as a human summary beside a
+machine-readable `observation.jsonl`. It reads only; it never drives the
+browser, and it cannot wake a suspended event page.
+
+Add `--screenshot` when a picture would settle something. That needs `--bundle`,
+writes 0600, and prints the command that deletes it -- a Hawkes page is
+coursework. Add `--match` with part of a window title when several Firefox
+windows are open, and `--run <id>` to isolate one operation.
+
+Read [Live Hawkes Observatory](docs/LIVE_OBSERVATORY.md) once; it explains the
+run id, the build marker and the failure classes. The two tools below remain
+worth reaching for directly when you already know what you are looking at.
+
+`scripts/inspect_live_firefox.py` reads the owner's running
 Firefox: it enumerates windows through KWin, can briefly focus one, captures it
 with Spectacle, and restores whatever was active before. It never launches
 Firefox, opens a URL, or sends input to the page.
@@ -69,13 +92,18 @@ needing mode A.
 - **Do not infer an authentication route from browser history.** The owner logs
   in to Hawkes directly — not through Canvas, a school portal, CAS/SSO, or an
   LMS redirect. Do not open Canvas URLs to start a test.
-- **Delete Hawkes screenshots after reading them.**
+- **Delete Hawkes screenshots after reading them.** An observatory bundle
+  prints its own `rm -rf`; run it.
 
 ## Working notes
 
 - While a panel says Solving, the work is in flight: look at the native-host
   process and wait. Clicking again cancels it — that control is Cancel while a
   solve is running.
+- A fix that "did not work" is a stale build until the observatory says
+  otherwise. `about:debugging`'s Reload re-reads whichever directory was first
+  selected, and a temporary add-on's version never moves; the marker is what
+  tells the two apart. Two afternoons went into this before it existed.
 - Prefer the offline gates before reaching for a browser. `tests/` runs the
   panel decision under QuickJS, the coverage sweep answers "would this question
   have gone to a model?" in about a second, and both catch more than a

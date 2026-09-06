@@ -36,6 +36,7 @@ IMPORT_LINE = re.compile(r"^import\s[\s\S]*?;\s*$", re.MULTILINE)
 MODULES = (
     "common/config.js",
     "common/log.js",
+    "common/build-marker.js",
     "common/answer-session.js",
     "common/editor-rules.js",
     "common/editor-plan.js",
@@ -44,6 +45,7 @@ MODULES = (
     "common/cadence-audio.js",
     "common/cadence-session.js",
     "common/page-actions.js",
+    "common/graph-actions.js",
     "common/settings.js",
     "background.js",
 )
