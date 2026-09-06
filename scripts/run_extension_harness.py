@@ -812,19 +812,27 @@ def judge_graph(marionette, site):
         "vertex": {"x": "3", "y": "-1"},
         "points": [{"x": "4", "y": "0"}, {"x": "2", "y": "0"}],
     }
-    for mode in ["success", "stale", "replaced", "during", "invalid"]:
+    for mode in ["success", "normalizes", "stale", "replaced", "during", "invalid"]:
         marionette.set_context("content")
         marionette.navigate(f"{site}/graph.html")
         result = marionette.execute(
             source
             + """
+          const mode = """
+            + json.dumps(mode)
+            + """;
+          if(mode === 'normalizes') {
+            const model = Object.values(window.quant_wp_UI.controlsCollection)[0];
+            const graphXML = model.graphXML;
+            const userAnswer = model.userAnswer;
+            let normalized = false;
+            model.graphXML = () => graphXML().replace('<parabola>', `<parabola><equation><a>${normalized ? '0' : 'undefined'}</a><b>${normalized ? '0' : 'undefined'}</b><c>${normalized ? '0' : 'undefined'}</c></equation>`);
+            model.userAnswer = () => { normalized = true; return userAnswer(); };
+          }
           const probe = graphOperation();
           const offered = {snapshot: probe.snapshot, plan: """
             + json.dumps(plan)
             + """, coefficients: ["1","-6","8"]};
-          const mode = """
-            + json.dumps(mode)
-            + """;
           if(mode === 'stale') document.getElementById('partInformation').textContent = 'new question';
           if(mode === 'replaced') document.getElementById('a1').id = 'replacement';
           if(mode === 'during') window.replaceDuringMove = true;
@@ -834,7 +842,7 @@ def judge_graph(marionette, site):
         """
         )["value"]
         ok = result["probe"] and not result["forbidden"]
-        if mode == "success":
+        if mode in {"success", "normalizes"}:
             ok = (
                 ok
                 and result["result"].get("code") == "graph-verified"

@@ -45,7 +45,13 @@ export function graphOperation(offered = null) {
     const pointState = () => points.map((p, i) => ({ id: p.ID, anchor: anchors[i].id, x: p.x, y: p.y,
       cx: circles[i].getAttribute("cx"), cy: circles[i].getAttribute("cy"),
       transform: circles[i].getAttribute("transform"), description: descriptions[i].textContent }));
-    const snapshot = () => ({ question: question(), xml: model.graphXML(), points: pointState(), answer: model.userAnswer() });
+    const snapshot = () => {
+      // Hawkes normalizes missing parabola coefficients as a side effect of
+      // userAnswer().  Normalize before graphXML() so one observation cannot
+      // make the next otherwise-identical ownership snapshot look stale.
+      const answer = model.userAnswer();
+      return { question: question(), xml: model.graphXML(), points: pointState(), answer };
+    };
     const context = { family: "parabola", orientation: "vertical", bounds, snap, controls: "vertex-and-symmetric-points" };
     const initial = snapshot();
     const structure = () => model.graphXML().replace(/<(x|y)>[^<]*<\/\1>/g, "<$1/>");
