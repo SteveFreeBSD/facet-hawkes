@@ -63,6 +63,28 @@ export function planEntry(answer, editor) {
     return { ok: false, code: "editor-rules-unknown" };
   }
 
+  // A pair the page has already bracketed.
+  //
+  // Lesson 3.3 step 1 asks for a vertex and draws `( [box] )` around a single
+  // dynamic box whose published character set is `1234567890-+,` and whose
+  // templates are `fraction+radical+exponent`. `(1,-4)` therefore cannot be
+  // entered by any route -- parentheses are structural, so they can only come
+  // from a template, and this question offers none -- while `1,-4` fits the
+  // set exactly. The comma in that set is the page saying the box holds a
+  // pair; the parentheses around it are the page's own furniture.
+  //
+  // The discriminator is the template, and it is the page's own: a question
+  // that *means* its parentheses offers the template to build them, which is
+  // how interval notation is asked and is the path `planRun` already takes.
+  // A question that offers no template did not mean them as notation. So this
+  // fires only where the bracketed form is unenterable and the interior is
+  // exactly enterable, which is the one reading under which the question is
+  // answerable at all.
+  const shelled = pageBracketedPair(answer, editor);
+  if (shelled !== null) {
+    return planAnswerParts(shelled, editor);
+  }
+
   const fraction = splitFraction(answer);
   if (fraction !== null) {
     if (editor?.templates?.fraction !== true) {
@@ -120,6 +142,54 @@ export function planAnswerParts(parts, editor, separator = ",") {
       ...planned[1].steps,
     ],
   };
+}
+
+/**
+ * The two halves of a pair whose brackets the page supplies, or null.
+ *
+ * Deliberately narrow. Dynamic boxes only, because "parentheses can only come
+ * from a template" is that editor's rule; a plain textbox states its own
+ * pattern and may simply accept the characters. Exactly two parts, because a
+ * drawn `( , )` shell is a coordinate pair. And only where the question
+ * publishes no parentheses template, so an answer that genuinely means its
+ * brackets still goes the template route.
+ */
+function pageBracketedPair(answer, editor) {
+  if (editor?.kind !== "dynamic" || editor?.templates?.parentheses === true) {
+    return null;
+  }
+  const interior = unwrap(answer);
+  if (interior === answer || interior.length === 0) {
+    return null;
+  }
+  if (!accepts(editor?.allowedCharacters ?? "", ",", "dynamic")) {
+    return null;
+  }
+  const parts = splitTopLevel(interior, ",");
+  if (parts.length !== 2 || parts.some((part) => part.length === 0)) {
+    return null;
+  }
+  return parts;
+}
+
+/** Split on a delimiter that is not inside brackets. */
+function splitTopLevel(value, delimiter) {
+  const parts = [];
+  let depth = 0;
+  let start = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    const character = value[index];
+    if (character === "(") {
+      depth += 1;
+    } else if (character === ")") {
+      depth -= 1;
+    } else if (character === delimiter && depth === 0) {
+      parts.push(value.slice(start, index));
+      start = index + 1;
+    }
+  }
+  parts.push(value.slice(start));
+  return parts;
 }
 
 /**
