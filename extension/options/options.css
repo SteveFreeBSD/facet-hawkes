@@ -595,3 +595,10 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* Sound belongs to the same instrument card and draft as the score. */
+.cadence-audio-controls { display: grid; gap: 12px; margin: 18px 0; }
+.cadence-audio-toggle { display: flex; align-items: center; gap: 9px; font-size: 13px; }
+.cadence-audio-toggle input { accent-color: var(--accent, #78bba7); }
+.cadence-audio-status { min-height: 1.5em; margin-bottom: 0; }
+.cadence-audio-status[data-audio="ready"] { color: var(--accent, #78bba7); }

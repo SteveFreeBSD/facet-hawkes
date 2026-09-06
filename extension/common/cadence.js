@@ -58,10 +58,17 @@ var ethnosCadence = (function () {
     };
   }
 
-  function secureRandom() {
-    const sample = new Uint32Array(1);
-    crypto.getRandomValues(sample);
-    return sample[0] / 0x100000000;
+  // A score is repeatable, including its timing variation. Genre is deliberately
+  // absent from this seed: changing the orchestra cannot move a character.
+  function scoreRandom(characters) {
+    let seed = 2166136261;
+    for (const character of characters.join("")) {
+      seed = Math.imul(seed ^ character.codePointAt(0), 16777619) >>> 0;
+    }
+    return () => {
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+      return seed / 0x100000000;
+    };
   }
 
   /**
@@ -82,7 +89,7 @@ var ethnosCadence = (function () {
     return /\s/u.test(character) || OPERATOR_PATTERN.test(character);
   }
 
-  function rhythmicWeight(character, index, cadence, random = secureRandom) {
+  function rhythmicWeight(character, index, cadence, random) {
     let weight = cadence.rhythmWeights[index % cadence.rhythmWeights.length];
     if (index % 2 === 0) {
       weight *= 1 + cadence.swingRatio;
@@ -100,7 +107,7 @@ var ethnosCadence = (function () {
   }
 
   /** Build the real, hard-window-bounded note score used by insertion. */
-  function planCharacters(characters, offered = {}, random = secureRandom) {
+  function planCharacters(characters, offered = {}, random = scoreRandom(characters)) {
     const cadence = normalize(offered);
     if (characters.length === 0) {
       return {
@@ -188,10 +195,12 @@ var ethnosCadence = (function () {
 
   /** Run one callback per scheduled note, with cancellation between notes. */
   async function playCharacters(
-    characters, write, offered = {}, { signal, random = secureRandom } = {}
+    characters, write, offered = {}, { signal, random, visit } = {}
   ) {
-    const phrase = planCharacters(characters, offered, random);
-    const startedAt = performance.now();
+    const phrase = offered.score ?? planSemanticPhrase(
+      [{ op: "type", text: characters.join("") }], offered, random
+    );
+    const startedAt = offered.startedAt ?? performance.now();
     for (let index = 0; index < characters.length; index += 1) {
       const wait = phrase.offsets[index] - (performance.now() - startedAt);
       if (wait > 0) {
@@ -203,6 +212,9 @@ var ethnosCadence = (function () {
       if (failure) {
         return { failure, phrase };
       }
+      // The write is authoritative. Presentation is an optional observer of
+      // this very callback and never a gate, promise, or second transport.
+      try { visit?.(phrase.notes[index], index, phrase); } catch { /* silent */ }
     }
     return { failure: null, phrase };
   }
@@ -212,7 +224,7 @@ var ethnosCadence = (function () {
    * Template and slot actions share the next note's clock, just as structured
    * insertion does; they never manufacture a second performance.
    */
-  function planSemanticPhrase(steps, offered = {}, random = secureRandom) {
+  function planSemanticPhrase(steps, offered = {}, random) {
     const notes = [];
     for (let planIndex = 0; planIndex < steps.length; planIndex += 1) {
       const step = steps[planIndex];
@@ -254,6 +266,7 @@ var ethnosCadence = (function () {
       }
       if (step.op === "slot") {
         const structure = openStructures[openStructures.length - 1];
+        if (structure) { structure.slot = step.name; }
         timeline.push({
           offsetMs: at, kind: "structure-enter", label: step.name,
           structure: structure?.name ?? "",
@@ -275,6 +288,14 @@ var ethnosCadence = (function () {
         const offsetMs = score.offsets[noteIndex] ?? score.durationMs;
         const nextOffset = score.offsets[noteIndex + 1];
         const kind = OPERATOR_PATTERN.test(character) ? "operator" : "character";
+        notes[noteIndex].role = /\s/u.test(character) ? "rest"
+          : /[,;:]/u.test(character) ? "separator"
+          : /[()\[\]{}]/u.test(character) ? "parenthesis"
+          : /[0-9]/u.test(character) ? "number"
+          : OPERATOR_PATTERN.test(character) ? "operator" : "variable";
+        notes[noteIndex].structures = openStructures.map((structure) => structure.name);
+        notes[noteIndex].slot = openStructures[openStructures.length - 1]?.slot ?? "";
+        notes[noteIndex].resolution = noteIndex === notes.length - 1;
         timeline.push({
           offsetMs, kind, label: character, noteIndex,
           accent: accented(noteIndex, score.cadence),
@@ -303,8 +324,7 @@ var ethnosCadence = (function () {
   }
 
   /** Transport a semantic phrase without touching any website or editor. */
-  async function playSemanticPhrase(phrase, visit, { signal } = {}) {
-    const startedAt = performance.now();
+  async function playSemanticPhrase(phrase, visit, { signal, startedAt = performance.now() } = {}) {
     for (let index = 0; index < phrase.timeline.length; index += 1) {
       const step = phrase.timeline[index];
       const wait = step.offsetMs - (performance.now() - startedAt);
@@ -327,3 +347,6 @@ var ethnosCadence = (function () {
     playSemanticPhrase,
   });
 })();
+
+// Classic in isolated worlds and Settings; side-effect import in the event page.
+globalThis.ethnosCadence = ethnosCadence;

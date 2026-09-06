@@ -449,3 +449,7 @@ body {
 }
 
 .link { font-size: 11px; }
+
+.insertion-score { display: flex; gap: 8px; align-items: center; font-size: 11px; }
+.insertion-score[hidden] { display: none; }
+.insertion-score progress { flex: 1; min-width: 30px; height: 4px; accent-color: #83baa7; }

@@ -39,101 +39,16 @@ export async function enterPlan(steps, cadence = {}, targetFieldIds = []) {
     return { ok: false, code: "answer-invalid" };
   }
 
-  /**
-   * Presentation cadence for structured entry.
-   *
-   * The plain-text path in `content/hawkes-editor.js` has the same rules, but
-   * this function is serialized into the page's own world by `executeScript`,
-   * so it can close over nothing and must carry its own copy. Keep the two in
-   * step; the shapes are deliberately identical.
-   *
-   * One performance covers every character of every `type` step. Templates sit
-   * on the same clock rather than adding to it: a slow `settle` simply eats
-   * into the notes that follow, so the editor's own pace can stretch the
-   * performance but never doubles its length.
-   */
-  const NOTE_FALLBACK = {
-    tempoBpm: 82,
-    durationMinMs: 5000,
-    durationMaxMs: 10000,
-    rhythmWeights: [1, 0.68, 1.18, 0.78],
-    swingRatio: 0.12,
-    variationRatio: 0.18,
-    symbolRestRatio: 0.42,
-  };
-
-  const randomUnit = () => {
-    const sample = new Uint32Array(1);
-    crypto.getRandomValues(sample);
-    return sample[0] / 0x100000000;
-  };
-
-  const bounded = (value, minimum, maximum, fallback) =>
-    typeof value === "number" && Number.isFinite(value)
-      ? Math.min(maximum, Math.max(minimum, value))
-      : fallback;
-
-  const beat = (() => {
-    const weights = Array.isArray(cadence.rhythmWeights)
-      ? cadence.rhythmWeights.slice(0, 8).map((w) => bounded(w, 0.25, 2.5, 1))
-      : [];
-    const first = bounded(cadence.durationMinMs, 2000, 12000, NOTE_FALLBACK.durationMinMs);
-    const second = bounded(cadence.durationMaxMs, 2000, 12000, NOTE_FALLBACK.durationMaxMs);
-    return {
-      tempoBpm: bounded(cadence.tempoBpm, 30, 300, NOTE_FALLBACK.tempoBpm),
-      durationMinMs: Math.min(first, second),
-      durationMaxMs: Math.max(first, second),
-      rhythmWeights: weights.length > 1 ? weights : [...NOTE_FALLBACK.rhythmWeights],
-      swingRatio: bounded(cadence.swingRatio, 0, 0.6, NOTE_FALLBACK.swingRatio),
-      variationRatio: bounded(cadence.variationRatio, 0, 0.35, NOTE_FALLBACK.variationRatio),
-      symbolRestRatio: bounded(cadence.symbolRestRatio, 0, 1, NOTE_FALLBACK.symbolRestRatio),
-    };
-  })();
-
-  const noteWeight = (character, index) => {
-    let weight = beat.rhythmWeights[index % beat.rhythmWeights.length];
-    weight *= index % 2 === 0 ? 1 + beat.swingRatio : 1 - beat.swingRatio * 0.5;
-    if (/\s/u.test(character)) {
-      weight *= 1 + beat.symbolRestRatio * 1.35;
-    } else if (/[-=+*/^,;:]/u.test(character)) {
-      weight *= 1 + beat.symbolRestRatio;
-    } else if (/[)\]}]/u.test(character)) {
-      weight *= 1 + beat.symbolRestRatio * 0.5;
-    }
-    return weight * (1 + ((randomUnit() * 2) - 1) * beat.variationRatio);
-  };
-
-  // Every character the plan will type, scheduled up front as one performance.
-  const score = plans.flat()
-    .filter((step) => step.op === "type")
-    .map((step) => step.text ?? "")
-    .join("");
-  const noteOffsets = (() => {
-    if (score.length < 2) {
-      // A single note is struck at once. Holding the field empty for the whole
-      // window, then filling it in the last instant, reads as a hang.
-      return score.length === 1 ? [0] : [];
-    }
-    const weights = [...score].slice(0, -1).map((c, i) => noteWeight(c, i));
-    const total = weights.reduce((sum, w) => sum + w, 0);
-    const beatMs = 60000 / beat.tempoBpm;
-    const musical = Math.max(1, total) * beatMs;
-    const window =
-      beat.durationMinMs
-      + Math.floor(randomUnit() * (beat.durationMaxMs - beat.durationMinMs + 1));
-    const duration = Math.min(
-      beat.durationMaxMs,
-      Math.max(beat.durationMinMs, Math.round((musical * 0.72) + (window * 0.28)))
-    );
-    const offsets = [0];
-    let elapsed = 0;
-    for (const weight of weights) {
-      elapsed += weight;
-      offsets.push(Math.round(duration * elapsed / total));
-    }
-    offsets[offsets.length - 1] = duration;
-    return offsets;
-  })();
+  // The extension passes the shared, already-built score as data. MAIN owns
+  // editor mechanics only; it no longer carries a second rhythm algorithm.
+  const characters = [...plans.flat().filter((step) => step.op === "type")
+    .map((step) => step.text ?? "").join("")];
+  const noteOffsets = cadence.score?.offsets;
+  if (!Array.isArray(noteOffsets) || noteOffsets.length !== characters.length
+      || noteOffsets.some((at, index) => !Number.isFinite(at) || at < 0 || at > 12000
+        || (index > 0 && at < noteOffsets[index - 1]))) {
+    return { ok: false, code: "answer-invalid" };
+  }
 
   const performanceStartedAt = performance.now();
   let notesStruck = 0;
@@ -229,6 +144,16 @@ export async function enterPlan(steps, cadence = {}, targetFieldIds = []) {
           detail: character,
         };
       }
+      // Emitted in the accepted write's callback. An optional, one-way
+      // presentation observer hears only the index and elapsed time. A page
+      // can observe/spoof this DOM cue; it confers no insertion capability.
+      try {
+        if (cadence.channel) {
+          document.dispatchEvent(new CustomEvent(cadence.channel, {
+            detail: JSON.stringify([notesStruck - 1, performance.now() - performanceStartedAt]),
+          }));
+        }
+      } catch { /* audio failure cannot change entry */ }
     }
     return { ok: true };
   };

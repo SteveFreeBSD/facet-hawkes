@@ -77,24 +77,21 @@ upgraded profile is removed rather than honoured. A question the page draws as
 a picture rather than stating as mathematics is still read from an image by the
 companion.
 
-### New in 0.43.0: Answer Cadence
+### New in 0.46.0: the answer becomes a score
 
-Answers now arrive as a short, controlled presentation rather than a sudden
-burst. Inside Settings, choose **Classical, Jazz, Lo-fi, Electronic, or
-Custom**, adjust the 30–300 BPM tempo, and bound the complete performance to
-**2–12 seconds**. Changes remain a draft until **Apply cadence**. A structured
-equation preview uses the real planner and shared cadence scheduler; its rhythm
-strip and transport expose accents, structural rests, semantic actions, timing,
-and resolution without touching Hawkes. Structured keypad answers share the
-same clock after their editor plan has been validated. The default Lo-fi
-arrangement varies inside a 5–10 second window. Read the
-[Answer Cadence design note](docs/ANSWER_CADENCE.md) for the model, invariants,
-and terminology.
+**Answer Cadence** now turns one deterministic timeline into typing, a visual
+score and local music. Settings previews a structured equation with Classical,
+Jazz, Lo-fi, Electronic or Custom orchestration. Genre changes sound without
+moving a character's timestamp. Tempo and the 2–12 second score window remain
+independent controls, and changes remain a draft until **Apply cadence**.
 
-Answer Cadence is presentation timing, not human-like trusted input. Synthetic
-events and MAIN-world editor calls remain observable to page code. The add-on
-rechecks ownership on every beat and stops if the field, caret, tab, frame,
-window, or question changes while an answer is being placed.
+Volume, mute and optional insertion music are included. The local Web Audio
+instrument lives in the event page and receives finite, one-way insertion cues.
+There are no new permissions, samples, models or network dependencies. Existing
+Hawkes safety checks and graph actions remain in their established paths;
+synthetic input and transient presentation cues are observable to page code.
+Read the [Answer Cadence design note](docs/ANSWER_CADENCE.md) for architecture,
+Firefox lifecycle, sound design and the NPU assessment.
 
 ### The workflow
 

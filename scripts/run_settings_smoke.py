@@ -112,6 +112,10 @@ return {
 
 CADENCE_KEYS = (
     "entryGenre",
+    "entryMusicEnabled",
+    "entryMusicMuted",
+    "entryMusicVolume",
+    "entryVoice",
     "entryTempoBpm",
     "entryDurationMinSeconds",
     "entryDurationMaxSeconds",
@@ -354,21 +358,21 @@ PRESETS = {
 }
 
 
-def check_presets_carry_their_tempo(page: Settings) -> None:
+def check_presets_preserve_the_score(page: Settings) -> None:
     problems = []
     descriptions = set()
-    for genre, (tempo, label) in PRESETS.items():
+    before = page.snapshot()
+    offsets = page.evaluate('return [...document.querySelectorAll(".cadence-beat")].map(n=>n.style.left);')
+    for genre, (_, label) in PRESETS.items():
         page.set_control("entryGenre", genre)
         state = page.snapshot()
-        if state["tempo"] != tempo:
-            problems.append(f"{genre} loaded {state['tempo']} BPM, expected {tempo}")
-        if state["summary"] != f"{label} · {tempo} BPM":
-            problems.append(f"{genre} summary reads {state['summary']!r}")
+        problems += expect(state["tempo"] == before["tempo"], f"{genre} moved tempo")
+        problems += expect(state["summary"] == f"{label} · {before['tempo']} BPM", f"{genre} summary is wrong")
+        after = page.evaluate('return [...document.querySelectorAll(".cadence-beat")].map(n=>n.style.left);')
+        problems += expect(after == offsets, f"{genre} moved score timestamps")
         descriptions.add(state["note"])
-    problems += expect(
-        len(descriptions) == len(PRESETS), "two presets share one description"
-    )
-    page.check("loads each preset's suggested tempo and description", problems)
+    problems += expect(len(descriptions) == len(PRESETS), "arrangements share a description")
+    page.check("changes arrangement without changing the score", problems)
 
 
 def check_custom_opens_its_panel(page: Settings) -> None:
@@ -640,7 +644,7 @@ MAIN_CHECKS = (
     check_draft_does_not_write,
     check_apply_is_atomic,
     check_apply_confirmation_cannot_contradict,
-    check_presets_carry_their_tempo,
+    check_presets_preserve_the_score,
     check_custom_opens_its_panel,
     check_tempo_extremes_explain_themselves,
     check_preview_performs_and_resolves,

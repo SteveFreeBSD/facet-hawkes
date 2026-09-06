@@ -341,7 +341,7 @@ def test_the_timeout_the_solver_uses_is_the_one_that_was_set():
     assert "onSettingsChanged" in background
 
 
-def test_cadence_presets_resolve_to_distinct_serializable_arrangements(context):
+def test_genre_never_changes_the_resolved_timing(context):
     defaults = evaluate(context, "defaultSettings()")
     resolved = {}
     for genre in ("classical", "jazz", "lofi", "electronic"):
@@ -350,9 +350,9 @@ def test_cadence_presets_resolve_to_distinct_serializable_arrangements(context):
             context, f"resolveEntryCadence({json.dumps(offered)})"
         )
 
-    assert resolved["classical"]["rhythmWeights"] != resolved["jazz"]["rhythmWeights"]
+    assert all(value == resolved["lofi"] for value in resolved.values())
     assert resolved["lofi"]["swingRatio"] == 0.12
-    assert resolved["electronic"]["variationRatio"] == 0.06
+    assert resolved["electronic"]["variationRatio"] == 0.18
     for cadence in resolved.values():
         assert cadence["durationMinMs"] == 5000
         assert cadence["durationMaxMs"] == 10000

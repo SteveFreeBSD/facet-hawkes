@@ -158,10 +158,10 @@
 
         <p id="cadence-note" class="note cadence-note"></p>
 
-        <details id="cadence-custom" class="cadence-advanced" hidden>
-          <summary data-i18n="optionsCadenceCustomHeading">Custom arrangement</summary>
+        <details id="cadence-timing" class="cadence-advanced">
+          <summary data-i18n="optionsCadenceTimingHeading">Score timing</summary>
           <fieldset class="custom-panel">
-            <legend class="visually-hidden" data-i18n="optionsCadenceCustomHeading">Custom arrangement</legend>
+            <legend class="visually-hidden" data-i18n="optionsCadenceTimingHeading">Score timing</legend>
 
             <div class="field">
               <label class="field__label" for="entryPattern"
@@ -209,6 +209,30 @@
           </fieldset>
         </details>
 
+        <details id="cadence-custom" class="cadence-advanced" hidden>
+          <summary data-i18n="optionsCadenceCustomHeading">Custom arrangement</summary>
+          <div class="field custom-panel">
+            <label class="field__label" for="entryVoice" data-i18n="optionsCadenceVoice">Instrument</label>
+            <select id="entryVoice" class="input input--select" data-setting="entryVoice">
+              <option value="pluck" data-i18n="optionsCadenceVoicePluck">Chamber pluck</option>
+              <option value="keys" data-i18n="optionsCadenceVoiceKeys">Felt keys</option>
+              <option value="glass" data-i18n="optionsCadenceVoiceGlass">Glass harmonics</option>
+            </select>
+          </div>
+        </details>
+
+        <div class="cadence-audio-controls">
+          <div class="field">
+            <label class="field__label" for="entryMusicVolume" data-i18n="optionsCadenceVolume">Volume</label>
+            <div class="field__control field__control--range">
+              <input id="entryMusicVolume" class="range" type="range" data-setting="entryMusicVolume" step="1">
+              <output id="entryMusicVolume-value" class="field__unit" for="entryMusicVolume"></output>
+            </div>
+          </div>
+          <label class="cadence-audio-toggle"><input id="entryMusicMuted" type="checkbox" data-setting="entryMusicMuted"><span data-i18n="optionsCadenceMute">Mute music</span></label>
+          <label class="cadence-audio-toggle"><input id="entryMusicEnabled" type="checkbox" data-setting="entryMusicEnabled"><span data-i18n="optionsCadenceInsertionMusic">Play music during answer insertion</span></label>
+        </div>
+
         <section class="cadence-instrument" aria-labelledby="cadence-preview-heading">
           <div class="cadence-instrument__heading">
             <div>
@@ -251,6 +275,7 @@
             <div><dt data-i18n="optionsCadencePlannedSteps">Notes / actions</dt><dd id="cadence-planned-steps">—</dd></div>
             <div><dt data-i18n="optionsCadenceWindowState">Hard window</dt><dd id="cadence-window-state">—</dd></div>
           </dl>
+          <p id="cadence-audio-status" class="note cadence-audio-status" role="status" data-i18n="optionsCadenceAudioIdle">Press Preview to hear this score. Sound stays on this device.</p>
           <p id="cadence-preview-status" class="visually-hidden" role="status" aria-live="polite"></p>
         </section>
 

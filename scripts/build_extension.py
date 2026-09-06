@@ -409,62 +409,14 @@ def _check_injected_paths(problems: list[str]) -> None:
                 problems.append(f"{path}: injected path {reference!r} does not exist")
 
 
-# The cadence tuning that `common/cadence.js` and the MAIN-world copy inside
-# `common/page-actions.js` must agree on, note for note. The copy exists because
-# `executeScript` serialises `enterPlan` into the page's own world, where it can
-# close over no extension code -- so the only thing standing between the two is
-# a check. Each pattern is written to match both spellings of the same value;
-# the capture groups are compared, not the surrounding text.
-CADENCE_TUNING = (
-    ("fallback tempo", r"tempoBpm: (\d+)"),
-    ("fallback window", r"durationMinMs: (\d+),\s*\n\s*durationMaxMs: (\d+)"),
-    ("fallback beat shape", r"rhythmWeights: (?:Object\.freeze\()?\[([^\]]+)\]"),
-    (
-        "fallback feel",
-        r"swingRatio: ([\d.]+),\s*\n\s*variationRatio: ([\d.]+),"
-        r"\s*\n\s*symbolRestRatio: ([\d.]+)",
-    ),
-    ("beat-shape weight bounds", r"bounded\(w(?:eight)?, ([\d.]+), ([\d.]+), (\d+)\)"),
-    ("tempo bounds", r"\.tempoBpm, (\d+), (\d+)"),
-    ("duration bounds", r"\.duration(?:Min|Max)Ms, (\d+), (\d+)"),
-    ("swing bounds", r"\.swingRatio, (\d+), ([\d.]+)"),
-    ("variation bounds", r"\.variationRatio, (\d+), ([\d.]+)"),
-    ("structural-rest bounds", r"\.symbolRestRatio, (\d+), (\d+)"),
-    ("swing lift and drop", r"1 - \w+\.swingRatio \* ([\d.]+)"),
-    ("structural-rest multipliers", r"symbolRestRatio(?: \* ([\d.]+))?;"),
-    ("variation spread", r"\* (\d+)\) - (\d+)\) \* \w+\.variationRatio"),
-    ("beat length", r"(\d+) / \w+\.tempoBpm"),
-    ("weight floor", r"Math\.max\((\d+), (?:totalWeight|total)\)"),
-    ("tempo/window blend", r"\* (0\.\d+)\) \+ \(\w+ \* (0\.\d+)\)"),
-)
-
-
-def _check_cadence_copies(problems: list[str]) -> None:
-    """The MAIN-world score must stay note-for-note identical to the shared one.
-
-    `enterPlan` is serialised into the page's own world, so it carries its own
-    copy of the bounded score builder and can import nothing. That copy is
-    deliberate and documented; a copy nobody compares is how a retuned tempo
-    range reaches plain entry and silently misses structured entry.
-    """
-    shared = (EXTENSION_DIR / "common" / "cadence.js").read_text(encoding="utf-8")
-    injected = (EXTENSION_DIR / "common" / "page-actions.js").read_text(
-        encoding="utf-8"
-    )
-    for label, pattern in CADENCE_TUNING:
-        here = re.findall(pattern, shared)
-        there = re.findall(pattern, injected)
-        if not here or not there:
-            problems.append(
-                f"cadence {label} could not be read from both common/cadence.js "
-                f"and the MAIN-world copy in common/page-actions.js"
-            )
-        elif here != there:
-            problems.append(
-                f"the MAIN-world cadence copy in common/page-actions.js has "
-                f"drifted from common/cadence.js: {label} is {there} there and "
-                f"{here} in the shared score"
-            )
+def _check_cadence_score(problems: list[str]) -> None:
+    """MAIN consumes shared offsets as data and must not acquire a planner."""
+    writer = (EXTENSION_DIR / "common" / "page-actions.js").read_text()
+    if "const noteOffsets = cadence.score?.offsets" not in writer:
+        problems.append("MAIN must consume the shared Cadence score")
+    for forbidden in ("getRandomValues", "rhythmWeights", "tempoBpm"):
+        if forbidden in writer:
+            problems.append(f"MAIN duplicates score planning: {forbidden}")
 
 
 def _check_shared_constants(problems: list[str]) -> None:
@@ -739,7 +691,7 @@ def validate() -> list[str]:
     _check_undefined_constants(problems)
     _check_element_ids(problems)
     _check_shared_constants(problems)
-    _check_cadence_copies(problems)
+    _check_cadence_score(problems)
     _check_injected_paths(problems)
     _check_main_world(problems)
     return problems

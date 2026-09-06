@@ -480,10 +480,14 @@ async function toggleSolve() {
            source: "", stage: "checking-host" });
 }
 
+let audioBackground = null;
+browser.runtime.getBackgroundPage().then((page) => { audioBackground = page; }).catch(() => {});
+
 function requestInsert() {
   if (elements.insert.disabled) {
     return;
   }
+  try { audioBackground?.facetCadenceUnlock?.(); } catch { /* audio only */ }
   if (!request("ethnos:insert")) {
     return;
   }
@@ -623,8 +627,19 @@ document.addEventListener("keydown", (event) => {
 });
 
 port.onMessage.addListener((incoming) => {
+  if (incoming?.type === "ethnos:cadence") {
+    const cue = incoming.cue;
+    document.querySelector("#insertion-score").hidden = false;
+    document.querySelector("#insertion-score-progress").value = cue.count === 1 ? 100
+      : 100 * cue.offsetMs / Math.max(1, cue.durationMs);
+    document.querySelector("#insertion-score-status").textContent = `${cue.index + 1}/${cue.count}`;
+    return;
+  }
   if (incoming?.type !== "ethnos:state") {
     return;
+  }
+  if (!["inserting", "inserted"].includes(incoming.state?.phase)) {
+    document.querySelector("#insertion-score").hidden = true;
   }
   const first = current === null;
   render(incoming.state);

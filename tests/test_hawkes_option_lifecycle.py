@@ -88,6 +88,7 @@ def option_page():
           },
           getElementById(id) { return id === answer.id ? answer : null; },
         };
+        globalThis.performance = { now: () => 0 };
         globalThis.ethnosCadence = {
           normalize(value) { return value; },
           planCharacters() { return {offsets: []}; },

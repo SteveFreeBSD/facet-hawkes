@@ -1586,7 +1586,7 @@ def test_the_paced_insertion_is_awaited_by_its_caller():
     assert "await ethnosHawkes.insertAnswer(answer, cadence)" in background
 
 
-def test_entry_pacing_is_random_rhythmic_and_time_bounded():
+def test_entry_pacing_is_repeatable_rhythmic_and_time_bounded():
     """Demonstrations get a varied musical cadence inside a hard window.
 
     Weight normalisation makes the random beat lengths add up to the one chosen
@@ -1595,14 +1595,14 @@ def test_entry_pacing_is_random_rhythmic_and_time_bounded():
     editor = (EXTENSION_DIR / "content" / "hawkes-editor.js").read_text()
     cadence = (EXTENSION_DIR / "common" / "cadence.js").read_text()
 
-    assert "crypto.getRandomValues(sample)" in cadence
+    assert "function scoreRandom(characters)" in cadence
     assert "function normalizedCadence(offered = {})" in editor
     assert "function rhythmicWeight(character, index, cadence" in cadence
     assert "function entryBeatOffsets(characters, cadence)" in editor
     assert "60000 / cadence.tempoBpm" in cadence
     assert "durationMs * elapsedWeight / totalWeight" in cadence
     assert "offsets[offsets.length - 1] = durationMs" in cadence
-    assert "ethnosCadence.playCharacters(characters, write, cadence)" in editor
+    assert "ethnosCadence.playCharacters(characters, write, segment," in editor
 
 
 def test_cadence_settings_reach_the_isolated_insertion_path():
@@ -1627,7 +1627,7 @@ def test_cadence_settings_reach_the_isolated_insertion_path():
     assert 'id="cadence-custom"' in options and "hidden" in options
     option_script = (EXTENSION_DIR / "options" / "options.js").read_text()
     assert 'cadenceCustom.hidden = genre !== "custom"' in option_script
-    assert "ENTRY_GENRE_PRESETS[settled.value].tempoBpm" in option_script
+    assert "ENTRY_GENRE_PRESETS[settled.value].tempoBpm" not in option_script
     assert "function alignDurationWindow" in option_script
     assert "function cadenceIsDirty" in option_script
     assert "await writeSettings(patch)" in option_script
@@ -1822,9 +1822,9 @@ def test_the_main_world_cadence_copy_is_checked_against_the_shared_one():
     retuned tempo range reaches plain entry and misses structured entry."""
     build = BUILD_SCRIPT.read_text()
 
-    assert "def _check_cadence_copies(" in build
-    assert "CADENCE_TUNING" in build
-    assert "_check_cadence_copies(problems)" in build
+    assert "def _check_cadence_score(" in build
+    assert "MAIN must consume the shared Cadence score" in build
+    assert "_check_cadence_score(problems)" in build
 
 
 def test_contenteditable_entry_uses_the_same_character_cadence():
@@ -1861,7 +1861,7 @@ def test_structured_keypad_entry_performs_on_the_same_cadence():
     # One performance over every typed character of the whole plan, not one
     # window per step.
     assert 'filter((step) => step.op === "type")' in actions
-    assert "60000 / beat.tempoBpm" in actions
+    assert "const noteOffsets = cadence.score?.offsets" in actions
     assert "args: [plan.steps, cadence]" in background
     assert (
         "await buildStructured(target.machineEntry, cadence, target, editor)"

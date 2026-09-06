@@ -61,7 +61,12 @@ Reading and solving add no persistent node, attribute, style, listener, page
 global, or extension resource to Hawkes. Insertion occurs only after the user
 presses **Insert** and necessarily changes Hawkes' answer editor. Synthetic
 input and the structured editor calls can be observed by page code while the
-insertion occurs; Answer Cadence changes timing only and does not claim or seek
+insertion occurs. Answer Cadence additionally emits a transient, one-way DOM
+presentation cue containing a note index and elapsed time. Page code can observe
+or forge that cue; it cannot command insertion or any other action. Its listener
+is removed after the performance. Local music runs in Web Audio inside the
+extension, with no network, native host or model, and scores are not retained.
+Answer Cadence does not claim or seek
 human-like trusted input, anti-detection, fingerprint avoidance, or
 undetectability. Zero footprint means no persistent extension-created page UI
 or state after the operation, not invisible activity during insertion. The

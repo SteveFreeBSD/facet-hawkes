@@ -30,9 +30,8 @@ export const ENTRY_PATTERNS = Object.freeze({
 });
 
 /**
- * Musical starting points. Tempo is copied into its independent control when
- * a genre is chosen; every other value remains owned by the preset until the
- * user selects Custom.
+ * Legacy timing presets, used only to preserve an upgraded profile's active
+ * feel. RC5 genre choices orchestrate a score without changing these values.
  */
 export const ENTRY_GENRE_PRESETS = Object.freeze({
   classical: Object.freeze({
@@ -95,17 +94,17 @@ export const SETTINGS = {
      reasonable; it costs panel height, so wanting it folded is too. */
   problemOpen: { kind: "boolean", fallback: false },
 
-  /* Theatrical, audible-in-spirit pacing for demonstrations. Presets own the
-     beat shape and feel; tempo and the hard duration window stay independent
-     so any preset can be sped up without losing its character. */
+  /* Answer Cadence: arrangement and timing are independent dimensions. */
   entryGenre: { kind: "enum", fallback: "lofi", values: ENTRY_GENRES },
+  entryMusicEnabled: { kind: "boolean", fallback: false },
+  entryMusicMuted: { kind: "boolean", fallback: false },
+  entryMusicVolume: { kind: "integer", fallback: 35, min: 0, max: 100 },
+  entryVoice: { kind: "enum", fallback: "glass", values: ["pluck", "keys", "glass"] },
   entryTempoBpm: { kind: "integer", fallback: 82, min: 30, max: 300 },
   entryDurationMinSeconds: { kind: "integer", fallback: 5, min: 2, max: 12 },
   entryDurationMaxSeconds: { kind: "integer", fallback: 10, min: 2, max: 12 },
 
-  /* These values are retained while a preset is active and become live when
-     Custom is selected, so experimentation never destroys a saved custom
-     arrangement. */
+  /* Timing is independent of orchestration, for every genre. */
   entryPattern: {
     kind: "enum", fallback: "backbeat", values: Object.freeze(Object.keys(ENTRY_PATTERNS)),
   },
@@ -159,15 +158,12 @@ export function resolveEntryCadence(settings = {}) {
   const genre = ENTRY_GENRES.includes(settings.entryGenre)
     ? settings.entryGenre
     : SETTINGS.entryGenre.fallback;
-  const custom = genre === "custom";
-  const feel = custom
-    ? {
-        pattern: settings.entryPattern,
-        swingPercent: settings.entrySwingPercent,
-        variationPercent: settings.entryVariationPercent,
-        symbolRestPercent: settings.entrySymbolRestPercent,
-      }
-    : ENTRY_GENRE_PRESETS[genre];
+  const feel = {
+    pattern: settings.entryPattern,
+    swingPercent: settings.entrySwingPercent,
+    variationPercent: settings.entryVariationPercent,
+    symbolRestPercent: settings.entrySymbolRestPercent,
+  };
   const pattern = ENTRY_PATTERNS[feel.pattern] ?? ENTRY_PATTERNS.backbeat;
   const firstSeconds = coerce(
     "entryDurationMinSeconds", settings.entryDurationMinSeconds
@@ -255,13 +251,23 @@ export function clamp(key, value) {
 export async function readSettings() {
   let stored = {};
   try {
-    stored = (await browser.storage.local.get(SETTING_KEYS)) ?? {};
+    stored = (await browser.storage.local.get([...SETTING_KEYS, "cadenceScoreVersion"])) ?? {};
   } catch {
     return defaultSettings();
   }
   const out = {};
   for (const key of SETTING_KEYS) {
     out[key] = coerce(key, stored[key]).value;
+  }
+  // Preserve the timing that older preset-based releases actually performed.
+  // Reading an old profile does not write it. Apply atomically records the new
+  // independent timing values and version; reopening an unapplied draft is safe.
+  if (stored.cadenceScoreVersion !== 1 && out.entryGenre !== "custom") {
+    const legacy = ENTRY_GENRE_PRESETS[out.entryGenre];
+    out.entryPattern = legacy.pattern;
+    out.entrySwingPercent = legacy.swingPercent;
+    out.entryVariationPercent = legacy.variationPercent;
+    out.entrySymbolRestPercent = legacy.symbolRestPercent;
   }
   return out;
 }
@@ -295,13 +301,16 @@ export async function writeSettings(values) {
     }
     patch[key] = checked.value;
   }
+  if ("entryGenre" in patch && "entryPattern" in patch) {
+    patch.cadenceScoreVersion = 1;
+  }
   await browser.storage.local.set(patch);
   return true;
 }
 
 /** Put every preference back to its default. */
 export async function resetSettings() {
-  await browser.storage.local.remove([...SETTING_KEYS, ...OBSOLETE_SETTING_KEYS]);
+  await browser.storage.local.remove([...SETTING_KEYS, ...OBSOLETE_SETTING_KEYS, "cadenceScoreVersion"]);
 }
 
 /**

@@ -4,6 +4,22 @@ All notable changes to the Facet Hawkes Assistant add-on. Versions follow
 `major.minor.patch` as required by the Firefox manifest. Entries below 0.44.0
 name the add-on as it was called at the time.
 
+## 0.46.0 · RC5-Cadence
+
+- The answer becomes a deterministic score shared by typing, the visual preview
+  and local music. Structured entry consumes shared offsets instead of keeping
+  another copy of the timing algorithm; plain multi-field entry shares one clock.
+- Classical, Jazz, Lo-fi, Electronic and Custom now orchestrate the same score.
+  Genre changes never alter timestamps. Existing profiles retain their active
+  timing, and explicit timing controls remain available for every arrangement.
+- Settings audibly previews its structured equation, with volume, mute and
+  opt-in music for actual insertion. An event-page instrument survives toolbar
+  popup teardown; sound failure never gates insertion. No new permissions,
+  samples, models, runtime or network dependency.
+- The transient, one-way presentation cue is documented as page-observable.
+  Hawkes safety, structured editor mechanics, graph actuation and never-submit
+  behavior retain their existing boundaries.
+
 ## 0.45.1
 
 ### Fixed

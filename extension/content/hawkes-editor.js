@@ -425,7 +425,11 @@ var ethnosHawkes = (function () {
    */
   /** Treat the event page's snapshot as data, even though it is trusted. */
   function normalizedCadence(offered = {}) {
-    return ethnosCadence.normalize(offered);
+    return {
+      ...ethnosCadence.normalize(offered),
+      ...(offered.score ? { score: offered.score } : {}),
+      channel: offered.channel,
+    };
   }
 
   /** Return the elapsed-time cue for every character in one performance. */
@@ -438,7 +442,23 @@ var ethnosHawkes = (function () {
    * stop the performance without writing any remaining characters.
    */
   async function playEntryCadence(characters, write, cadence) {
-    const played = await ethnosCadence.playCharacters(characters, write, cadence);
+    cadence.startedAt ??= performance.now();
+    const cursor = cadence.cursor ?? 0;
+    const segment = cadence.score ? { ...cadence, score: {
+      ...cadence.score,
+      offsets: cadence.score.offsets.slice(cursor, cursor + characters.length),
+      notes: cadence.score.notes.slice(cursor, cursor + characters.length),
+    } } : cadence;
+    const played = await ethnosCadence.playCharacters(characters, write, segment, {
+      visit: (_note, index) => {
+        if (cadence.channel) {
+          document.dispatchEvent(new CustomEvent(cadence.channel, {
+            detail: JSON.stringify([cursor + index, performance.now() - cadence.startedAt]),
+          }));
+        }
+      },
+    });
+    cadence.cursor = cursor + characters.length;
     return played.failure;
   }
 

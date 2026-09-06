@@ -30,6 +30,11 @@ import {
   resolveEntryCadence,
 } from "/common/settings.js";
 
+import "/common/cadence.js";
+import {
+  insertionInstrument, createCadencePresentation, attachCadencePort, observeCadence, finishIdleCadence, cancelCadence,
+} from "/common/cadence-session.js";
+
 const NATIVE_HOST = "ethnos_hawkes";
 
 /**
@@ -108,6 +113,8 @@ onSettingsChanged((changed) => {
   if ("logLevel" in changed) {
     setLogLevel(changed.logLevel);
   }
+  insertionInstrument.setLevel(settings.entryMusicVolume / 100, settings.entryMusicMuted);
+  if (!settings.entryMusicEnabled) { insertionInstrument.close(); }
   log.info("settings-changed", changed);
 });
 
@@ -205,6 +212,62 @@ function update(changes) {
 function fail(errorKey, { detail = "", args = [] } = {}) {
   log.warn("failed", { errorKey, phase: state.phase, stage: state.stage });
   update({ phase: "failed", errorKey, errorArgs: args, detail });
+}
+
+// Called synchronously through a pre-obtained background window reference in
+// the panel's real Insert gesture. No async message pretends to carry activation.
+globalThis.facetCadenceUnlock = () => {
+  if (settings.entryMusicEnabled) {
+    insertionInstrument.setLevel(settings.entryMusicVolume / 100, settings.entryMusicMuted);
+    insertionInstrument.unlock();
+  }
+};
+
+/** Build one score, then hand its offsets to the approved writer as plain data. */
+async function runScoredEntry(target, steps, cadence, execute) {
+  cadence.score = ethnosCadence.planSemanticPhrase(steps.flat(), cadence);
+  const options = { enabled: settings.entryMusicEnabled, genre: settings.entryGenre,
+    voice: settings.entryVoice };
+  let presentation;
+  let succeeded = false;
+  try {
+    if (cadence.score.notes.length && (options.enabled || panels.size > 0)) {
+      try {
+        presentation = createCadencePresentation(target, cadence.score, options, (cue) => {
+          for (const [port, entry] of panels) {
+            if (entry.windowId === target.windowId) {
+              try { port.postMessage({ type: "ethnos:cadence", cue }); } catch { /* closed popup */ }
+            }
+          }
+        }, () => ownsTarget(target));
+        cadence.channel = presentation.channel;
+        // Setup only; neither resume() nor an audio acknowledgement is awaited.
+        // Failure costs the observer, never the approved insertion.
+        let setupDeadline;
+        try {
+          await Promise.race([
+            browser.scripting.executeScript({
+              target: { tabId: target.tabId, frameIds: [target.frameId] },
+              func: observeCadence,
+              args: [presentation.channel, cadence.score.notes.length],
+            }),
+            new Promise((_, reject) => {
+              setupDeadline = setTimeout(() => reject(new Error("audio-observer-unavailable")), 250);
+            }),
+          ]);
+        } finally { clearTimeout(setupDeadline); }
+      } catch { cadence.channel = undefined; presentation?.close(); }
+    }
+    // The observer's setup is an await: recheck ownership before any write.
+    if (!ownsTarget(target)) {
+      return [{ result: { ok: false, code: "answer-fields-changed" } }];
+    }
+    const result = await execute();
+    succeeded = result?.[0]?.result?.ok === true;
+    return result;
+  } finally {
+    presentation?.close(succeeded);
+  }
 }
 
 // --- page access -----------------------------------------------------------
@@ -1569,13 +1632,13 @@ async function buildStructured(answer, cadence, target, editor) {
   }
   let results;
   try {
-    results = await browser.scripting.executeScript({
+    results = await runScoredEntry(target, plan.steps, cadence, () => browser.scripting.executeScript({
       // The pinned frame, never the live one: this call is the write.
       target: { tabId: target.tabId, frameIds: [target.frameId] },
       world: "MAIN",
       func: enterPlan,
       args: [plan.steps, cadence],
-    });
+    }));
   } catch (error) {
     return { ok: false, code: errorKeyOf(error) };
   }
@@ -1794,12 +1857,12 @@ async function insert() {
       }
       let built;
       try {
-        const results = await browser.scripting.executeScript({
+        const results = await runScoredEntry(target, commaPlan.steps, cadence, () => browser.scripting.executeScript({
           target: { tabId: target.tabId, frameIds: [target.frameId] },
           world: "MAIN",
           func: enterPlan,
           args: [commaPlan.steps, cadence],
-        });
+        }));
         built = results?.[0]?.result;
       } catch (error) {
         fail(errorKeyOf(error));
@@ -1850,11 +1913,11 @@ async function insert() {
     const plain = multiEntry.plain;
     let outcome;
     if (plain) {
-      const [entry] = await runInjection({
+      const [entry] = await runScoredEntry(target, target.answerParts.map((text) => ({ op: "type", text })), cadence, () => runInjection({
         target: { tabId: target.tabId, frameIds: [target.frameId] },
         func: enterPlainAnswerParts,
         args: [target.answerParts, target.fieldIds, cadence],
-      });
+      }));
       outcome = entry?.result;
       if (
         !outcome?.ok
@@ -1866,12 +1929,12 @@ async function insert() {
       }
     } else {
       try {
-        const results = await browser.scripting.executeScript({
+        const results = await runScoredEntry(target, multiEntry.plans.map((plan) => plan.steps), cadence, () => browser.scripting.executeScript({
           target: { tabId: target.tabId, frameIds: [target.frameId] },
           world: "MAIN",
           func: enterPlan,
           args: [multiEntry.plans.map((plan) => plan.steps), cadence, target.fieldIds],
-        });
+        }));
         outcome = results?.[0]?.result;
       } catch (error) {
         fail(errorKeyOf(error));
@@ -1930,11 +1993,11 @@ async function insert() {
       abandonInsertion(target, "before-plain-write");
       return;
     }
-    const [entry] = await runInjection({
+    const [entry] = await runScoredEntry(target, [{ op: "type", text: reviewed }], cadence, () => runInjection({
       target: frame,
       func: enterPlainAnswer,
       args: [reviewed, cadence],
-    });
+    }));
     const outcome = entry?.result;
     if (!outcome || typeof outcome !== "object") {
       fail("errorNoBridge");
@@ -2050,6 +2113,7 @@ async function claim(windowId) {
 }
 
 function cancel() {
+  cancelCadence();
   inFlight?.abort();
   inFlight = null;
   update({
@@ -2204,7 +2268,13 @@ function stopWatchingQuestion() {
   }
 }
 
+browser.runtime.onSuspend?.addListener(cancelCadence);
+
 browser.runtime.onConnect.addListener((port) => {
+  if (port.name.startsWith("facet-score:")) {
+    attachCadencePort(port);
+    return;
+  }
   if (port.name === "ethnos:options") {
     attachSettingsPage(port);
     return;
@@ -2250,7 +2320,7 @@ browser.runtime.onConnect.addListener((port) => {
       case "ethnos:insert":
         begin(async () => {
           await claim(asking);
-          await insert();
+          try { await insert(); } finally { finishIdleCadence(); }
         });
         break;
       case "ethnos:cancel":

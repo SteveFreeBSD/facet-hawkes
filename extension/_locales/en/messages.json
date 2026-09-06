@@ -372,8 +372,8 @@
     "description": "Heading for the musical answer-entry preferences."
   },
   "optionsCadenceHelp": {
-    "message": "Shape the semantic cadence of a validated answer: its pulse, accents, structural rests, and resolution.",
-    "description": "Introduction to the musical answer-entry preferences."
+    "message": "One score becomes typing, a visual phrase and local music. Genre changes its sound; tempo and score timing change its pace. Apply saves the complete draft.",
+    "description": "Answer Cadence local music: Help."
   },
   "optionsCadenceGenreLabel": {
     "message": "Genre",
@@ -400,24 +400,24 @@
     "description": "Name of the user-defined answer-cadence preset."
   },
   "optionsCadenceGenreClassicalHelp": {
-    "message": "A measured three-beat phrase with restrained variation and clean rests.",
-    "description": "Description shown when the classical cadence is selected."
+    "message": "Chamber plucks, open fifths and a warm final chord. The score keeps its timing.",
+    "description": "Answer Cadence local music: GenreClassicalHelp."
   },
   "optionsCadenceGenreJazzHelp": {
-    "message": "A syncopated phrase with pronounced swing, loose timing and generous symbol rests.",
-    "description": "Description shown when the jazz cadence is selected."
+    "message": "Electric keys, minor sevenths and ninths. Operators turn the harmony; the score keeps its timing.",
+    "description": "Answer Cadence local music: GenreJazzHelp."
   },
   "optionsCadenceGenreLofiHelp": {
-    "message": "A relaxed backbeat with soft swing and warm, uneven spacing.",
-    "description": "Description shown when the lo-fi cadence is selected."
+    "message": "Soft felt keys, low voicings and a mellow filter. The score keeps its timing.",
+    "description": "Answer Cadence local music: GenreLofiHelp."
   },
   "optionsCadenceGenreElectronicHelp": {
-    "message": "A fast, even four-beat pulse with tight timing and shorter symbol rests.",
-    "description": "Description shown when the electronic cadence is selected."
+    "message": "Bright glass harmonics, compact releases and a clear bass pulse. The score keeps its timing.",
+    "description": "Answer Cadence local music: GenreElectronicHelp."
   },
   "optionsCadenceGenreCustomHelp": {
-    "message": "Your arrangement uses the beat shape, swing, variation and symbol rests below.",
-    "description": "Description shown when the custom cadence is selected."
+    "message": "Choose the instrument for your score. Timing controls remain independent of every arrangement.",
+    "description": "Answer Cadence local music: GenreCustomHelp."
   },
   "optionsCadenceTempoLabel": {
     "message": "Tempo",
@@ -518,12 +518,12 @@
     }
   },
   "optionsCadencePreviewEyebrow": {
-    "message": "Phrase preview",
-    "description": "Small category label above the cadence equation preview."
+    "message": "Facet Score",
+    "description": "Answer Cadence local music: PreviewEyebrow."
   },
   "optionsCadencePreviewHeading": {
-    "message": "Equation entry",
-    "description": "Heading for the live structured cadence preview."
+    "message": "Hear the equation",
+    "description": "Answer Cadence local music: PreviewHeading."
   },
   "optionsCadencePreviewPlay": {
     "message": "Preview",
@@ -906,5 +906,61 @@
   "optionsPipelineHelp": {
     "message": "Facet routes every question: exact mathematics first, a reasoning model only for what those decline, and the graph specialists for a parabola or a regression. It runs on the Facet host the companion is configured for, which is this computer unless you have pointed it elsewhere. A question the page does not state as mathematics is read from a picture instead.",
     "description": "Describes the solve path, which is no longer a choice."
+  },
+  "optionsCadenceTimingHeading": {
+    "message": "Score timing · independent of genre",
+    "description": "Answer Cadence local music: TimingHeading."
+  },
+  "optionsCadenceVoice": {
+    "message": "Instrument",
+    "description": "Answer Cadence local music: Voice."
+  },
+  "optionsCadenceVoicePluck": {
+    "message": "Chamber pluck",
+    "description": "Answer Cadence local music: VoicePluck."
+  },
+  "optionsCadenceVoiceKeys": {
+    "message": "Felt keys",
+    "description": "Answer Cadence local music: VoiceKeys."
+  },
+  "optionsCadenceVoiceGlass": {
+    "message": "Glass harmonics",
+    "description": "Answer Cadence local music: VoiceGlass."
+  },
+  "optionsCadenceVolume": {
+    "message": "Volume",
+    "description": "Answer Cadence local music: Volume."
+  },
+  "optionsCadenceMute": {
+    "message": "Mute music",
+    "description": "Answer Cadence local music: Mute."
+  },
+  "optionsCadenceInsertionMusic": {
+    "message": "Play music during answer insertion",
+    "description": "Answer Cadence local music: InsertionMusic."
+  },
+  "optionsCadenceAudioIdle": {
+    "message": "Press Preview to hear this score. Sound stays on this device.",
+    "description": "Answer Cadence local music: AudioIdle."
+  },
+  "optionsCadenceAudioReady": {
+    "message": "Local sound · notes follow the score",
+    "description": "Answer Cadence local music: AudioReady."
+  },
+  "optionsCadenceAudioMuted": {
+    "message": "Music muted · the score continues",
+    "description": "Answer Cadence local music: AudioMuted."
+  },
+  "optionsCadenceAudioBlocked": {
+    "message": "Sound is paused by Firefox. Press Preview to try again; the score continues.",
+    "description": "Answer Cadence local music: AudioBlocked."
+  },
+  "optionsCadenceAudioUnavailable": {
+    "message": "Sound is unavailable. The score continues.",
+    "description": "Answer Cadence local music: AudioUnavailable."
+  },
+  "popupCadenceScore": {
+    "message": "Answer Cadence",
+    "description": "Answer Cadence local music: popupCadenceScore."
   }
 }

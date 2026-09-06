@@ -15,9 +15,9 @@
  */
 
 import { localizeDocument, message } from "../common/i18n.js";
+import { CadenceInstrument } from "../common/cadence-audio.js";
 import { planEntry } from "../common/editor-plan.js";
 import {
-  ENTRY_GENRE_PRESETS,
   SETTINGS,
   clamp,
   readSettings,
@@ -63,8 +63,25 @@ const cadenceEffectiveTempo = document.querySelector("#cadence-effective-tempo")
 const cadencePlannedSteps = document.querySelector("#cadence-planned-steps");
 const cadenceWindowState = document.querySelector("#cadence-window-state");
 
+const previewInstrument = new CadenceInstrument();
+const cadenceAudioStatus = document.querySelector("#cadence-audio-status");
+
+function showAudioStatus() {
+  const status = previewInstrument.status();
+  cadenceAudioStatus.dataset.audio = status;
+  cadenceAudioStatus.textContent = message({
+    ready: "optionsCadenceAudioReady", muted: "optionsCadenceAudioMuted",
+    idle: "optionsCadenceAudioIdle",
+    blocked: "optionsCadenceAudioBlocked", unavailable: "optionsCadenceAudioUnavailable",
+  }[status]);
+}
+
 const CADENCE_KEYS = Object.freeze([
   "entryGenre",
+  "entryMusicEnabled",
+  "entryMusicMuted",
+  "entryMusicVolume",
+  "entryVoice",
   "entryTempoBpm",
   "entryDurationMinSeconds",
   "entryDurationMaxSeconds",
@@ -109,6 +126,7 @@ const motionQuery = matchMedia("(prefers-reduced-motion: reduce)");
 const SETTING_OUTPUT_KEYS = Object.freeze({
   panelWidth: "optionsWidthValue",
   entryTempoBpm: "optionsCadenceTempoValue",
+  entryMusicVolume: "optionsCadencePercentValue",
   entrySwingPercent: "optionsCadencePercentValue",
   entryVariationPercent: "optionsCadencePercentValue",
   entrySymbolRestPercent: "optionsCadencePercentValue",
@@ -223,6 +241,8 @@ function showCadence() {
   const resolved = resolveEntryCadence(values);
   const genreName = message(GENRE_LABEL_KEYS[genre]);
   cadenceCustom.hidden = genre !== "custom";
+  previewInstrument.setLevel(values.entryMusicVolume / 100, values.entryMusicMuted);
+  if (previewInstrument.context) { showAudioStatus(); }
   cadenceNote.textContent = message(GENRE_HELP_KEYS[genre]);
   cadenceSummary.textContent = message(
     "optionsCadenceSummary", [genreName, String(resolved.tempoBpm)]
@@ -286,11 +306,6 @@ async function bindSettings() {
     control.addEventListener("change", () => {
       const settled = clamp(key, controlValue(control));
       showValue(control, settled.value);
-      if (key === "entryGenre" && settled.value !== "custom") {
-        const recommendedTempo = ENTRY_GENRE_PRESETS[settled.value].tempoBpm;
-        const tempo = document.querySelector("#entryTempoBpm");
-        showValue(tempo, recommendedTempo);
-      }
       if (key === "entryGenre" && settled.value === "custom") {
         // Choosing Custom and being shown a closed disclosure reads as though
         // the choice did nothing. Open it once, on the choice itself, so a
@@ -466,9 +481,8 @@ function showPhrase(phrase) {
 /**
  * Show the draft's arrangement without playing it.
  *
- * A fixed midpoint sample keeps the idle strip steady while a slider moves, so
- * what changes on screen is the change the control made and not a fresh roll
- * of the timing variation. Play uses secure randomness, exactly like insertion.
+ * The deterministic score staged here is exactly the score Play will perform.
+ * Genre changes orchestration; it cannot reroll variation or move the strip.
  */
 function stagePreview(cadence = resolveEntryCadence(cadenceDraft())) {
   if (previewBroken) {
@@ -476,7 +490,7 @@ function stagePreview(cadence = resolveEntryCadence(cadenceDraft())) {
   }
   try {
     return showPhrase(
-      ethnosCadence.planSemanticPhrase(demoPlan(), cadence, () => 0.5)
+      ethnosCadence.planSemanticPhrase(demoPlan(), cadence)
     );
   } catch (error) {
     previewUnavailable(error);
@@ -560,6 +574,7 @@ function stopPreview({ announce = false, restage = false } = {}) {
   const run = previewRun;
   previewRun = null;
   run.controller.abort();
+  previewInstrument.close();
   stopClock(run);
   clearCurrentPreviewMarks();
   clearStructureMarks();
@@ -627,7 +642,12 @@ function showSemanticStep(step, timelineIndex, phrase, elapsedMs) {
 
 async function startPreview() {
   stopPreview();
-  const cadence = resolveEntryCadence(cadenceDraft());
+  const draft = cadenceDraft();
+  previewInstrument.setLevel(draft.entryMusicVolume / 100, draft.entryMusicMuted);
+  previewInstrument.unlock();
+  showAudioStatus();
+  const orchestration = { genre: draft.entryGenre, voice: draft.entryVoice };
+  const cadence = resolveEntryCadence(draft);
   let phrase;
   try {
     phrase = ethnosCadence.planSemanticPhrase(demoPlan(), cadence);
@@ -654,6 +674,18 @@ async function startPreview() {
     stale: false,
   };
   previewRun = run;
+  // Give a newly opened output device a bounded warm-up before the score's
+  // origin. Autoplay denial may leave resume pending forever; it costs at most
+  // this setup grace, and never changes a note offset or insertion behavior.
+  let warmup;
+  try {
+    await Promise.race([
+      previewInstrument.context?.resume().catch(() => {}),
+      new Promise((resolve) => { warmup = setTimeout(resolve, 200); }),
+    ]);
+  } finally { clearTimeout(warmup); }
+  if (previewRun !== run) { return; }
+  run.startedAt = performance.now();
   runClock(run, phrase);
   cadenceStop.hidden = false;
   cadencePreviewStatus.textContent = message("optionsCadencePreviewPlaying");
@@ -663,9 +695,13 @@ async function startPreview() {
       (step, index, playedPhrase, elapsed) => {
         if (previewRun === run) {
           showSemanticStep(step, index, playedPhrase, elapsed);
+          if (step.kind === "character" || step.kind === "operator") {
+            previewInstrument.strike(playedPhrase.notes[step.noteIndex], step.noteIndex, orchestration);
+            showAudioStatus();
+          }
         }
       },
-      { signal: run.controller.signal }
+      { signal: run.controller.signal, startedAt: run.startedAt }
     );
     if (previewRun === run) {
       cadencePreviewStatus.textContent = message("optionsCadencePreviewComplete");
@@ -678,6 +714,7 @@ async function startPreview() {
   } finally {
     if (previewRun === run) {
       previewRun = null;
+      previewInstrument.finish();
       stopClock(run);
       showClock(phrase, phrase.durationMs);
       clearCurrentPreviewMarks();
@@ -857,7 +894,7 @@ on(document.querySelector("#reset-all"), "click", async () => {
   log.info("settings-reset", {});
 });
 
-self.addEventListener("pagehide", () => stopPreview());
+self.addEventListener("pagehide", () => { stopPreview(); previewInstrument.close(); });
 
 /** Reflect the motion preference in one place the stylesheet can read. */
 function showMotionPreference() {

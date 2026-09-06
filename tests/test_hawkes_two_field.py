@@ -83,6 +83,7 @@ def two_field_page():
             return [];
           },
         };
+        globalThis.performance = { now: () => 0 };
         globalThis.ethnosCadence = {
           normalize(value) { return value; },
           planCharacters() { return {offsets: []}; },
