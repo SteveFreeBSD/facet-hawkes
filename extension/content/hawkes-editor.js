@@ -325,7 +325,20 @@ var ethnosHawkes = (function () {
     // that relation is exact and does not weaken the one-target rule.
     const revealed = revealedOptionField();
     if (revealed) {
-      return { ready: true, code: "focused-answer-field", fieldId: revealed.id || "" };
+      // Which branch claimed a single field, when the page has several.
+      // Insertion additionally requires one field id per answer part, so a
+      // question reporting one field while two solution fields exist can be
+      // solved and never inserted -- and until now the report said only
+      // "focused-answer-field" either way.
+      // No `multiFieldEvidence` here: the solution-field sweep has not run at
+      // this point, and reporting its stale zero would be a measurement that
+      // was never taken.
+      return {
+        ready: true,
+        code: "focused-answer-field",
+        via: "revealed-option",
+        fieldId: revealed.id || "",
+      };
     }
     const fields = solutionFields();
     if (fields.length >= 2) {
@@ -361,6 +374,7 @@ var ethnosHawkes = (function () {
     return {
       ready: true,
       code: "focused-answer-field",
+      via: "focused-field",
       fieldId: target.id || "",
       multiFieldEvidence: lastSolutionFieldEvidence,
     };

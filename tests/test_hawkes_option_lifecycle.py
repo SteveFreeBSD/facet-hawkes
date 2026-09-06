@@ -126,6 +126,10 @@ def test_selected_one_solution_hands_off_to_its_controlled_textbox(option_page):
     assert inspect(option_page) == {
         "ready": True,
         "code": "focused-answer-field",
+        # Which branch claimed the field. Insertion wants one field id per
+        # answer part, so a single-field claim on a page with several is worth
+        # telling apart from a genuinely single-field question.
+        "via": "revealed-option",
         "fieldId": "txt1_num",
     }
 

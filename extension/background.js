@@ -1042,6 +1042,10 @@ async function prepare(windowId = state.windowId) {
     log.info("answer-target-inspected", {
       code: chosenReport?.code ?? choice.code ?? "",
       fields: Array.isArray(choice.fieldIds) ? choice.fieldIds.length : 0,
+      // Which branch of the field probe claimed this target. A question that
+      // reports one field while two solution fields exist can be solved and
+      // never inserted, because insertion wants one field id per answer part.
+      via: evidenceReport?.via ?? "",
       multiFieldEvidence: evidenceReport?.multiFieldEvidence ?? null,
     });
     if (!Number.isInteger(choice.frameId)) {

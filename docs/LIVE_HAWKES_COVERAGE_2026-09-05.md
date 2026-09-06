@@ -443,3 +443,57 @@ single-editor answer.
 
 **Expected live effect:** two parts requested, two returned, both planned, and
 the insertion proceeds. Awaiting a reload to retry the same question.
+
+## RC4 — the multi-answer shape is only recognised when the fields say "or"
+
+RC3 is necessary and **not sufficient**, and the same diagnostic run showed why.
+Insertion additionally requires one field id per answer part:
+
+```js
+if (multiEntry === null || target.fieldIds.length !== target.answerParts.length)
+```
+
+and on this question `target.fieldIds` is empty. The reason is in
+`solutionFields()`:
+
+```js
+return separators.length >= fields.length - 1 ? fields : [];
+```
+
+with live evidence `{fields: 2, separatorCandidates: 0, separators: 0}` — and
+`{fields: 4, …}` on a sibling inspect. The whole multi-field recogniser was
+built for the shape *`x = ___ or x = ___`*: it finds the visible boxes, then
+requires the word **"or"** between them before it will call them one answer.
+Lesson 3.3's step labels its boxes **A:** and **B:**. There is no "or" on the
+page, so the fields are discarded, `fieldIds` is empty, and no number of
+correct parts can ever be placed.
+
+A second deduction confirmed which branch reported: the live
+`focused-answer-field` lines carry `multiFieldEvidence`, and only the final
+branch attached it — so the sweep had already run and returned nothing, rather
+than an earlier branch short-circuiting. The branch is now named outright
+(`via`), and the revealed-option branch deliberately reports *no* evidence,
+because at that point the sweep has not run and a zero there would be a
+measurement never taken.
+
+### Two ways to fix it, and the one to prefer
+
+1. **Recognise a labelled pair.** Accept fields whose adjacent label is a short
+   enumerator (`A:`, `B:`). Cheap, but it is another guess about Hawkes'
+   wording, and the "or" rule is already exactly that kind of guess.
+2. **Require two independent readings to agree.** The page publishes its own
+   editor model, and after RC3 that model reports exactly the *enabled*
+   controls. If the DOM finds N visible, editable, uniquely-identified fields
+   and the model publishes N enabled editors, that agreement is stronger
+   evidence than any wording, and it is the discipline already used elsewhere
+   in this add-on — the data table is trusted because the plotted points agree
+   with it.
+
+(2) is preferable and cannot be done inside `solutionFields()`, which is an
+isolated content script and cannot see `quant_wp_UI`. It belongs in the event
+page, which already holds both readings side by side and already compares them
+one gate later.
+
+**Deliberately not implemented yet.** RC3 changes where the add-on may type and
+has not been verified live; stacking a second unverified change to the same
+decision would make neither attributable. RC3 first, live, then RC4.
