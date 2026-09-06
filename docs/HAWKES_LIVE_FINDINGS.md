@@ -381,3 +381,83 @@ control data, the reader now describes that unambiguous control. Two or more
 controls still fail closed. Q12's final keyboard form is
 `34+12*i*sqrt(2)`, and its plan types `34+12i` before loading one Radical
 template containing `2`.
+
+## Session Record, 6 September 2026 — Lesson 3.3 Quadratic Functions
+
+The first session run under the [Live Hawkes Observatory](LIVE_OBSERVATORY.md).
+Every conclusion below came from a bundle and a run id rather than from
+correlating a screenshot against a ring by eye, and one of them could not have
+been reached at all before the instrument reported what the page publishes.
+
+**Every vertex and point step in the lesson solved exactly and was refused.**
+Facet Exact answered `(1,-4)` for `k(x) = (x-1)^2 - 4` in about 790 ms, and the
+panel said "This question does not offer the parentheses template, so the
+answer cannot be entered here." That was true and it was not the whole truth.
+The page's own model, which the ring now carries at `info`:
+
+```
+answer-not-insertable {"editor":"answer-needs-template",
+  "plan":"template-refused-by-question","answerLength":6,
+  "editorKind":"dynamic","editorMaxLength":16,
+  "allowed":"1234567890-+,","templates":"fraction+radical+exponent",
+  "editorNeeds":"parentheses","planNeeds":"parentheses","rejectedCount":0}
+```
+
+The box publishes a comma and no parentheses template. Parentheses are
+structural — they can only come from a template — so the bracketed form could
+not be entered by *any* route, while `1,-4` fits the published set exactly.
+Hawkes draws `( [box] )` and the student types the interior.
+
+This is the resolved half of finding 7. The keypad path for parentheses is
+still unproven; what is now settled is the case where the question offers no
+such template, and the discriminator turned out to be the page's own: a
+question that means its brackets offers the template to build them, which is
+how interval notation is asked. A question that offers none drew them instead.
+`planEntry` strips a shell of that kind and plans the halves through
+`planAnswerParts`, so a fractional coordinate still builds its fraction and
+returns to the base line before the comma. Planning the interior as one run
+would have read the top-level slash of `(1/2,-3)` as the whole answer's
+fraction and typed a denominator of `2,-3`.
+
+Verified on the same question signature before and after, in one bundle:
+`QBase13_input|1ot0f93|5483` refused at 12:16:44 and 12:16:47, inserted at
+12:19:02 as run `rmtq2t8qm2853` with ownership unchanged. A second bracketed
+pair went in as `rmtq2wvuoef11`, three characters typed for a five-character
+answer.
+
+**The option refusals are correct and are the lesson's dominant shape.** Steps
+that publish a single `option` control — "which of these is the vertex", "does
+it open up or down" — are solved and handed over, as designed: the answer is
+shown, the note says to select it, and the add-on clicks nothing. Seen on runs
+`rmtq2q94n4668`, `rmtq2tg0ce933`, `rmtq2tx9h6f5e`, `rmtq2wiks88df`,
+`rmtq2wszg65a9` and `rmtq2xe2g7a76`. Nothing to fix; recorded so a later
+session does not read them as failures.
+
+**Open: a mixed multi editor refuses the half it could enter.** Run
+`rmtq2ae8hb5e3` met a step publishing two enabled controls, one dynamic box and
+one option:
+
+```
+answer-parts-unplaceable {"parts":2,"partLengths":[9,9],"partsValid":[true,true],
+  "editorKind":"multi","editorCount":2,"editorKinds":["dynamic","option"],
+  "editorEnabled":[true,true],"allowed":["0123456789-",""],
+  "directFit":["answer-has-rejected-characters","editor-option-answer"]}
+```
+
+`answerShapeOf` counts both controls, so Facet is asked for two parts, and one
+of them can never be written by design. The whole answer is then refused rather
+than the typable half being entered and the choice handed over.
+`hawkes-describe.js` already drops *disabled* option controls for the adjacent
+reason, so the shape of the answer is arguably not the page's control count but
+the count of controls this add-on will write to. Not changed here: it did not
+recur in the session, and partial insertion of a graded answer is a product
+decision rather than a defect to be fixed silently.
+
+**What the instrument still could not say.** `editor-described` carries only
+`{kind, ok, templates}`, so the published character set reached the ring only
+once `answer-not-insertable` was widened to carry it — until then the diagnosis
+needed a screenshot of the owner's coursework to get as far as a guess. The
+single-field path had reported two reason codes and a length while the
+multi-part path had reported the page's own rules since
+`answer-parts-unplaceable`; closing that asymmetry is what made the root cause
+provable from the log alone.
