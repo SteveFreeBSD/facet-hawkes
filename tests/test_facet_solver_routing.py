@@ -52,6 +52,11 @@ VERTEX = (
     "<mrow><mo>(</mo><mi>x</mi><mo>+</mo><mn>2</mn><mo>)</mo></mrow>"
     "<mo>+</mo><mn>16</mn></math>"
 )
+QUADRATIC_POINTS = (
+    "<math><mi>f</mi><mo>(</mo><mi>x</mi><mo>)</mo><mo>=</mo>"
+    "<mrow><mo>(</mo><mi>x</mi><mo>-</mo><mn>3</mn><mo>)</mo></mrow>"
+    "<mrow><mo>(</mo><mi>x</mi><mo>+</mo><mn>1</mn><mo>)</mo></mrow></math>"
+)
 
 RATIONAL_EXPONENT_INSTRUCTION = (
     "Simplify. Express your answer using rational exponents."
@@ -160,6 +165,44 @@ def test_an_exact_answer_survives_an_accelerator_being_unavailable(
     assert response.answer.display_text == "y^(27/20)"
     # And it claims no processor, rather than one it did not use.
     assert response.certainty.actual_backend is None
+
+
+def test_quadratic_points_are_exact_and_keep_the_two_box_contract(monkeypatch) -> None:
+    instruction = (
+        "Find two points on the parabola other than the vertex and the x-intercepts."
+    )
+    loopback = facet(monkeypatch)
+
+    response = handle(
+        {
+            "protocol_version": 1,
+            "operation": "solve_hawkes_problem",
+            "request_id": "quadratic-points",
+            "origin": "https://learn.hawkeslearning.com",
+            "solve_engine": "facet",
+            "problem": {
+                "prompt_text": instruction,
+                "mathml": [QUADRATIC_POINTS],
+                "answer_shape": {"kind": "multi", "count": 2},
+            },
+        }
+    )
+
+    assert loopback.prompts == [], "an exact point evaluation reached a model"
+    assert loopback.problems == [
+        {
+            "instruction": instruction,
+            "expressions": ["f(x)=(x-3)(x+1)"],
+            "answer_parts": 2,
+        }
+    ]
+    assert response.status == "ready"
+    assert response.answer.display_text == "(0,-3), (2,-3)"
+    assert response.answer.keyboard_entry == ""
+    assert response.answer.parts == ["(0,-3)", "(2,-3)"]
+    assert response.certainty.source == "Facet Exact"
+    assert response.certainty.answered_by == "exact"
+    assert response.certainty.router == "solved"
 
 
 def test_a_decline_names_which_gap_it_fell_through(monkeypatch) -> None:
