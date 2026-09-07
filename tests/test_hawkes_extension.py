@@ -1120,9 +1120,9 @@ def test_an_unidentified_question_is_never_treated_as_the_previous_one() -> None
     """Carrying an answer over is only safe when the question is known to match."""
     source = (EXTENSION_DIR / "background.js").read_text(encoding="utf-8")
     body = source.split("async function prepare(", 1)[1].split("\nasync function", 1)[0]
-    assert "signature !== null && signature === previous.signature" in body, (
-        "a null signature must not match, or an unreadable question reuses an answer"
-    )
+    assert "signature !== null" in body and (
+        "sameQuestionSignature(signature, previous.signature)" in body
+    ), "a null signature must not match, or an unreadable question reuses an answer"
 
 
 def test_the_question_is_verified_before_the_answer_is_inserted() -> None:

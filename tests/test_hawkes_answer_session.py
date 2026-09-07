@@ -131,6 +131,6 @@ def test_session_storage_is_the_only_answer_cache_and_prepare_rechecks_it():
     )
     assert "browser.storage.local.set({ [ANSWER_SESSION_KEY]" not in background
     assert "await seedRememberedAnswer(windowId)" in prepare
-    assert "signature === previous.signature" in prepare
+    assert "sameQuestionSignature(signature, previous.signature)" in prepare
     assert "tab.id === previous.tabId" in prepare
     assert "choice.frameId === previous.frameId" in prepare

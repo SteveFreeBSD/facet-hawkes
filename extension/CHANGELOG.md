@@ -6,6 +6,24 @@ name the add-on as it was called at the time.
 
 ## Unreleased
 
+- **A solved answer now survives the owner touching their own answer boxes.**
+  Clicking into a completion cell threw away a correct four-part answer and
+  solved the question again -- once through a reasoning model, for
+  twenty-five seconds -- while the question on screen never moved. Question
+  identity and editor insertability had been conflated: the signature carried
+  the focused box's id and the answer table read *through* the answer controls,
+  and clicking a cell makes Hawkes reveal that cell's second control, at which
+  point the table reader refuses and the identity it fed changed with it. The
+  sidebar watcher re-prepared the panel on every caret move for the same
+  reason. Identity is now the question's own content; the table's givens are
+  kept beside it and compared only when both readings state them, so a reading
+  the controls prevented is not evidence the question changed. A mapping
+  already validated for this same question is revalidated against the boxes the
+  page is showing instead of being discarded, in prepare and again before a
+  write, so Insert stays offered while the owner works in the grid -- and a
+  renumbered grid still fails that check, and the next randomization of the
+  table is still a new question.
+
 - **A completion table's answers are now written through the editor the page
   owns, so each one settles in its own cell.** Five correct values, five
   distinct cells, and two live runs that reported success over a table holding

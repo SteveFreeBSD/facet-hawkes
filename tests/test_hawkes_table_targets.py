@@ -330,7 +330,7 @@ def solved_table_state(page, question, targets=None, parts=None):
           entryText: "",
           answerParts: {json.dumps(parts or PARTS)},
           signature: questionSignature(
-            {json.dumps(SWEPT_IDS[0])}, {json.dumps(question)}
+            {json.dumps(question)}
           ),
         }};
         """
@@ -466,6 +466,9 @@ def test_a_grid_that_stopped_mapping_at_all_refuses() -> None:
     page.pump()
     page.answer(TABLE_EDITOR)
     page.answer(unmapped)
+    # The read states no mapping, so the pinned one is offered for
+    # revalidation; a page showing none of its cells revalidates nothing.
+    page.answer({"ready": False, "code": "no-focused-answer-field"})
 
     assert entries(page, "enterTableCells") == []
     assert page.json("state.errorKey") == "errorQuestionChanged"
@@ -516,3 +519,150 @@ def test_the_mapping_is_never_named_in_a_host_request() -> None:
     assert "answerTargets" not in shaped
     assert "tableTargets" not in shaped
 
+
+
+# --- the answer's lifecycle against the owner's own clicking -----------------
+#
+# Live, on 2026-09-07, a correct four-part table answer was discarded and
+# solved again -- once through a reasoning model, for twenty-five seconds --
+# because the owner clicked into a cell. Hawkes reveals that cell's second
+# control (a fraction's denominator box), the answer-table reader refuses a
+# cell showing two controls, and identity was being taken partly from that
+# reading. The question on screen never moved.
+
+#: The sweep once a cell has been clicked into: the same boxes, plus the one
+#: Hawkes just revealed.
+CLICKED_INSPECT = {
+    **TABLE_INSPECT,
+    "multiFieldEvidence": {
+        **TABLE_INSPECT["multiFieldEvidence"],
+        "fields": 6,
+        "fieldIds": [*SWEPT_IDS, "MatrixTextBoxes8_den"],
+    },
+}
+
+
+def clicked_read(question, ids=None):
+    """The same question, read while a cell shows two controls.
+
+    Everything the question states is unchanged. The answer surface is not
+    readable, so the reader states no table and no mapping -- which is a fact
+    about the controls, not about the question.
+    """
+    read = json.loads(json.dumps(question))
+    read.pop("answerTargets", None)
+    read["answerTable"] = ""
+    read.setdefault("evidence", {})["answerTable"] = "cell-has-two-controls"
+    if ids is not None:
+        read["swept"] = ids
+    return read
+
+
+def other_table(question):
+    """The next randomization: same prompt, different givens."""
+    read = json.loads(json.dumps(question))
+    read["answerTable"] = f"{read['answerTable']} 41"
+    return read
+
+
+def test_clicking_into_a_cell_keeps_the_answer_and_solves_nothing_again() -> None:
+    """The whole complaint, as one prepare."""
+    page = make_page()
+    question = table_question()
+    solved_table_state(page, question)
+
+    page.run("prepare(1);")
+    page.pump()
+    page.answer(CLICKED_INSPECT)
+    page.answer(TABLE_EDITOR)
+    page.answer(clicked_read(question))
+
+    assert page.json("state.phase") == "solved"
+    assert page.json("state.answerParts") == PARTS
+    assert page.json("state.displayText") == "0, 8, 8, 5, 3"
+    assert page.said("solve-started") == [], "a click must not start a solve"
+
+
+def test_a_clicked_cell_keeps_the_validated_targets_so_insert_stays_offered() -> None:
+    """The mapping is revalidated against the boxes the page is showing."""
+    page = make_page()
+    question = table_question()
+    solved_table_state(page, question)
+
+    page.run("prepare(1);")
+    page.pump()
+    page.answer(CLICKED_INSPECT)
+    page.answer(TABLE_EDITOR)
+    page.answer(clicked_read(question))
+
+    assert [one["id"] for one in page.json("state.tableTargets")] == [
+        one["id"] for one in mapping_of(question)
+    ]
+    mapped = page.said("table-targets-mapped")
+    assert mapped and mapped[-1]["data"]["via"] == "revalidated"
+
+
+def test_a_renumbered_grid_is_never_revalidated() -> None:
+    """The case the second reading exists to catch, through the new path."""
+    page = make_page()
+    question = table_question()
+    solved_table_state(page, question)
+    renumbered = {
+        **CLICKED_INSPECT,
+        "multiFieldEvidence": {
+            **CLICKED_INSPECT["multiFieldEvidence"],
+            "fieldIds": [f"{one}_v2" for one in SWEPT_IDS],
+        },
+    }
+
+    page.run("prepare(1);")
+    page.pump()
+    page.answer(renumbered)
+    page.answer(TABLE_EDITOR)
+    page.answer(clicked_read(question))
+
+    assert page.json("state.tableTargets") == []
+    # The answer is still the answer; only its targets are gone.
+    assert page.json("state.answerParts") == PARTS
+
+
+def test_the_next_randomization_is_still_a_new_question() -> None:
+    """Identity did not get looser: different givens, different question."""
+    page = make_page()
+    question = table_question()
+    solved_table_state(page, question)
+
+    page.run("prepare(1);")
+    page.pump()
+    page.answer(TABLE_INSPECT)
+    page.answer(TABLE_EDITOR)
+    page.answer(other_table(question))
+    page.pump()
+
+    assert page.json("state.answerParts") == []
+    assert page.json("state.answer") == ""
+    assert page.json("state.displayText") == ""
+    # Not "solved": the panel offers nothing for a question it has not answered.
+    assert page.json("state.phase") != "solved"
+
+
+def test_the_writer_is_reached_after_a_clicked_cell_is_revalidated() -> None:
+    """ae22bb0's writer, finally reachable while the table is the same question."""
+    page = make_page()
+    question = table_question()
+    solved_table_state(page, question)
+    cells = [one["id"] for one in mapping_of(question)]
+
+    page.run("insert();")
+    page.pump()
+    page.answer(TABLE_EDITOR)  # the editor, re-read
+    page.answer(clicked_read(question))  # the live read: no mapping to state
+    page.answer(CLICKED_INSPECT)  # the boxes the page is showing
+    page.answer({"ok": True, "code": "entered-table-cells", "settled": 5,
+                 "models": 5, "cells": cells})
+    page.answer(clicked_read(question))  # finishInsertion's rebase read
+
+    [write] = entries(page, "enterTableCells")
+    assert write["args"][1] == cells
+    assert page.said("table-targets-revalidated")
+    assert page.json("state.phase") == "inserted"

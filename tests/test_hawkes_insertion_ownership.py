@@ -337,7 +337,7 @@ class Page:
               answer: {json.dumps(answer)},
               displayText: {json.dumps(answer)},
               entryText: {json.dumps(answer)},
-              signature: questionSignature("txtAns1", {json.dumps(QUESTION_A)}),
+              signature: questionSignature({json.dumps(QUESTION_A)}),
             }};
             """
         )
@@ -476,7 +476,7 @@ def test_two_roots_reach_only_the_two_fields_pinned_with_the_question(page):
           answer: "y = -1 or y = 5", displayText: "y = -1 or y = 5",
           answerParts: ["-1", "5"],
           signature: questionSignature(
-            "QBase1_input\\u001fQBase2_input", {json.dumps(QUESTION_A)}
+            {json.dumps(QUESTION_A)}
           ),
         }};
         insert();
@@ -508,7 +508,7 @@ def test_facet_parts_use_the_same_pinned_two_field_transaction(page):
           fieldIds: ["QBase1_input", "QBase2_input"],
           editor: {json.dumps(PAIR_EDITOR)},
           signature: questionSignature(
-            "QBase1_input\u001fQBase2_input", {json.dumps(QUESTION_A)}
+            {json.dumps(QUESTION_A)}
           ),
         }};
         acceptReply({{
@@ -555,7 +555,7 @@ def test_four_facet_parts_use_the_same_pinned_multi_field_transaction(page):
           fieldId: {json.dumps(field_id)}, fieldIds: {json.dumps(FOUR_FIELD_IDS)},
           editor: {json.dumps(FOUR_EDITOR)},
           signature: questionSignature(
-            {json.dumps(field_id)}, {json.dumps(QUESTION_A)}
+            {json.dumps(QUESTION_A)}
           ),
         }};
         acceptReply({{
@@ -605,7 +605,7 @@ def test_two_fraction_roots_run_two_preflighted_plans_on_the_pinned_editors(page
           answer: {json.dumps(display)}, displayText: {json.dumps(display)},
           answerParts: {json.dumps(parts)},
           signature: questionSignature(
-            "QBase1_input\u001fQBase2_input", {json.dumps(QUESTION_A)}
+            {json.dumps(QUESTION_A)}
           ),
         }};
         insert();
@@ -662,7 +662,7 @@ def test_two_roots_use_one_pinned_editor_when_the_question_requests_a_comma(page
           problemText: {json.dumps(prompt)},
           answer: {json.dumps(display)}, displayText: {json.dumps(display)},
           answerParts: {json.dumps(parts)},
-          signature: questionSignature("txtAns1", {json.dumps(QUESTION_A)}),
+          signature: questionSignature({json.dumps(QUESTION_A)}),
         }};
         insert();
         """
@@ -718,7 +718,7 @@ def test_comma_editor_surfaces_the_exact_character_hawkes_rejects(page):
           problemText: {json.dumps(prompt)},
           answer: {json.dumps(display)}, displayText: {json.dumps(display)},
           answerParts: ["(-3+sqrt(17))/2", "(-sqrt(17)-3)/2"],
-          signature: questionSignature("txtAns1", {json.dumps(QUESTION_A)}),
+          signature: questionSignature({json.dumps(QUESTION_A)}),
         }};
         insert();
         """

@@ -160,7 +160,13 @@ def test_multiple_visible_option_groups_still_fail_closed(option_page):
     }
 
 
-def test_question_watcher_reprepares_when_the_answer_target_changes():
+def test_question_watcher_reprepares_on_a_frame_handoff_and_not_on_a_click():
+    """A different frame is a handoff. A different box is the owner typing.
+
+    Watching the focused box re-prepared the panel every 1.5 seconds while the
+    owner clicked into their own answer -- discarding a correct answer and
+    solving the question again, live, on 2026-09-07.
+    """
     source = (PROJECT_ROOT / "extension" / "background.js").read_text(encoding="utf-8")
     watcher = source.split("function watchQuestion()", 1)[1].split(
         "\nfunction stopWatchingQuestion", 1
@@ -168,7 +174,8 @@ def test_question_watcher_reprepares_when_the_answer_target_changes():
 
     assert "allFrames: true" in watcher
     assert "selectAnswerFrame(reports)" in watcher
-    assert "target.fieldId" in watcher
+    assert "target.frameId !== state.frameId" in watcher
+    assert "target.fieldId" not in watcher
     assert "targetChanged" in watcher
     assert "prepare(state.windowId)" in watcher
 
@@ -180,4 +187,4 @@ def test_question_watcher_does_not_treat_inserted_templates_as_a_new_question():
     )[0]
 
     assert 'const targetChanged = state.phase !== "inserted"' in watcher
-    assert "now !== null && now !== state.signature" in watcher
+    assert "!sameQuestionSignature(now, state.signature)" in watcher

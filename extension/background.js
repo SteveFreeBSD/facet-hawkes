@@ -765,7 +765,7 @@ function digest(value) {
  * question returns null, and a null signature must never match another, so a
  * question we cannot identify is always re-solved rather than assumed stale.
  */
-function questionSignature(fieldId, question) {
+function questionSignature(question) {
   if (!readableQuestion(question)) {
     return null;
   }
@@ -775,11 +775,83 @@ function questionSignature(fieldId, question) {
     // is exactly what a table of measurements is. Left out, the second would
     // be the first question to the panel, and the first answer would still be
     // on the card, insertable, against the second one's boxes.
-    + (question.dataTable ? JSON.stringify(question.dataTable) : "")
-    // The same, for a table the answer is typed into: two rows of a completion
-    // question differ only in their givens, and the blanks are identical.
-    + (question.answerTable ? JSON.stringify(question.answerTable) : "");
-  return `${fieldId ?? ""}|${digest(content)}|${content.length}`;
+    + (question.dataTable ? JSON.stringify(question.dataTable) : "");
+  // The answer table's givens are the same kind of discriminator -- two rows
+  // of a completion question differ only in those -- but the table is read
+  // through the answer controls, and those are editor state. Clicking a cell
+  // reveals a fraction's denominator box, at which point the reader refuses
+  // the table and this component is simply absent. So it is kept beside the
+  // question's own content rather than mixed into it, and compared only when
+  // both readings have one; see `sameQuestionSignature`.
+  const table = question.answerTable ? digest(JSON.stringify(question.answerTable)) : "";
+  return `${digest(content)}|${content.length}|${table}`;
+}
+
+/**
+ * Whether two signatures name the same question.
+ *
+ * The question's own content has to match exactly. The answer table's givens
+ * have to match *when both readings state them*, and a reading that has none
+ * is not evidence that the question changed -- it is evidence that the answer
+ * controls were in a state the table reader would not read, which is what
+ * happens the moment anyone clicks into a cell.
+ *
+ * Live, on 2026-09-07, that distinction was the whole defect: a correct
+ * four-part answer was discarded and re-solved -- once through a reasoning
+ * model, for twenty-five seconds -- because a revealed denominator box changed
+ * the answer surface while the question on screen never moved.
+ */
+function sameQuestionSignature(left, right) {
+  if (typeof left !== "string" || typeof right !== "string") {
+    return false;
+  }
+  const [leftDigest, leftLength, leftTable = ""] = left.split("|");
+  const [rightDigest, rightLength, rightTable = ""] = right.split("|");
+  if (leftDigest !== rightDigest || leftLength !== rightLength) {
+    return false;
+  }
+  return leftTable === "" || rightTable === "" || leftTable === rightTable;
+}
+
+/**
+ * The answer boxes the page is showing, by id, from the field probe.
+ *
+ * One bounded read, used only to revalidate a mapping this question was
+ * already reviewed against. It states no order and decides no target: the
+ * mapping does both, and this says whether its cells are still there.
+ */
+async function sweptAnswerFields(tabId, frameId) {
+  try {
+    const reports = await runOperation({ tabId, frameIds: [frameId] }, INSPECT_SCRIPT);
+    const found = reports.find((entry) => entry?.result?.multiFieldEvidence)?.result;
+    const ids = found?.multiFieldEvidence?.fieldIds;
+    return Array.isArray(ids) ? ids : [];
+  } catch {
+    return [];   // an unreadable page revalidates nothing
+  }
+}
+
+/**
+ * The mapping a question was reviewed against, still describing the page.
+ *
+ * A completion table's blanks are the page's own controls, and they are
+ * re-found on every prepare -- but the reader that finds them refuses the
+ * whole table for reasons that are about the editor and not about the
+ * question: a cell showing two controls because someone clicked into it, for
+ * one. Refusing to carry the mapping in that state cost the answer its Insert
+ * button while the question, the mapping and the answer were all still right.
+ *
+ * So a mapping already validated for this same question is revalidated
+ * instead of rediscovered: every cell it names must still be one of the answer
+ * boxes the page is showing. A grid that was renumbered under us fails that,
+ * which is the case the second reading existed to catch.
+ */
+function revalidatedTableTargets(retained, swept) {
+  if (!isTableMapping(retained) || retained.length < 2) {
+    return [];
+  }
+  const showing = new Set(Array.isArray(swept) ? swept : []);
+  return retained.every((one) => showing.has(one.id)) ? retained : [];
 }
 
 /**
@@ -1625,6 +1697,11 @@ async function prepare(windowId = state.windowId) {
     displayText: state.displayText,
     entryText: state.entryText,
     answerParts: Array.isArray(state.answerParts) ? state.answerParts : [],
+    // Carried so it can be *revalidated*, never so it can be adopted: the
+    // reader refuses a table for reasons about the controls rather than about
+    // the question, and re-reading is not the only honest way to keep a
+    // mapping this same question was already reviewed against.
+    tableTargets: Array.isArray(state.tableTargets) ? state.tableTargets : [],
     editor: state.editor,
     graphPlan: state.graphPlan,
     graphCoefficients: Array.isArray(state.graphCoefficients)
@@ -1727,12 +1804,29 @@ async function prepare(windowId = state.windowId) {
       });
     }
     const question = await readQuestion(tab.id, choice.frameId);
-    // The table's own mapping, re-acquired from this read. It is deliberately
-    // not carried over from the previous state: an answer survives a prepare
-    // only while the question is unchanged, but the controls under it are the
-    // page's and are re-found every time, so a re-render that keeps the grid
-    // and renumbers its boxes is followed rather than written into blindly.
-    const tableTargets = tableTargetsOf(question);
+    const signature = questionSignature(question);
+    // A question we could not read is never treated as the previous one.
+    // Identity is the question's own content and nothing about the editor:
+    // which box has the caret and what state the answer controls are in both
+    // change while the question on screen does not, and treating either as a
+    // new question threw away a correct answer and solved it again.
+    const sameQuestion = signature !== null
+      && sameQuestionSignature(signature, previous.signature)
+      && tab.id === previous.tabId
+      && choice.frameId === previous.frameId;
+    // The table's own mapping, re-acquired from this read. The controls under
+    // it are the page's and are re-found every time, so a re-render that keeps
+    // the grid and renumbers its boxes is followed rather than written into
+    // blindly -- and where this read cannot state the mapping at all, the one
+    // this same question was already reviewed against is revalidated against
+    // the boxes the page is showing rather than discarded.
+    const readTargets = tableTargetsOf(question);
+    const tableTargets = readTargets.length >= 2
+      ? readTargets
+      : revalidatedTableTargets(
+        sameQuestion ? previous.tableTargets ?? [] : [],
+        evidenceReport?.multiFieldEvidence?.fieldIds ?? []
+      );
     // Two readings can both claim to have found the answer's fields, and only
     // one of them knows which cell is which. The geometric sweep sorts boxes
     // top-to-bottom and left-to-right; the live completion grid's records run
@@ -1746,13 +1840,10 @@ async function prepare(windowId = state.windowId) {
     noteTableTargets(tableTargets, question, {
       swept: evidenceReport?.multiFieldEvidence?.fieldIds ?? [],
       adopted: fieldIds,
+      // Whether this read stated the mapping, or whether the one already
+      // reviewed against this question was revalidated against the page.
+      via: readTargets.length >= 2 ? "read" : "revalidated",
     });
-    const signature = questionSignature(choice.fieldId, question);
-    // A question we could not read is never treated as the previous one.
-    const sameQuestion = signature !== null && signature === previous.signature
-      && tab.id === previous.tabId
-      && choice.frameId === previous.frameId
-      && (choice.fieldId ?? "") === previous.fieldId;
     const alreadyInserted = sameQuestion && previous.phase === "inserted";
     const hasAnswer = sameQuestion
       && (previous.answer !== "" || previous.answerParts?.length >= 2);
@@ -1928,7 +2019,7 @@ async function solve(windowId = state.windowId) {
     // across two reads is the mistake that puts part 1 in part 3's box.
     const tableTargets = tableTargetsOf(question);
     update({
-      signature: questionSignature(state.fieldId, question) ?? state.signature,
+      signature: questionSignature(question) ?? state.signature,
       tableTargets,
     });
     noteTableTargets(tableTargets, question, { adopted: state.fieldIds ?? [] });
@@ -2609,12 +2700,12 @@ async function insert() {
   // answers go. Two reads could disagree with each other while each agreed
   // with itself, which is the whole shape of a wrong-box insertion.
   const liveQuestion = await readQuestion(target.tabId, target.frameId);
-  const onScreen = questionSignature(target.fieldId, liveQuestion);
+  const onScreen = questionSignature(liveQuestion);
   if (onScreen === null || target.signature === null) {
     fail("errorQuestionUnverified");
     return;
   }
-  if (onScreen !== target.signature) {
+  if (!sameQuestionSignature(onScreen, target.signature)) {
     log.warn("question-changed-before-insert", { was: target.signature, now: onScreen });
     fail("errorQuestionChanged");
     prepare(target.windowId);
@@ -2666,14 +2757,38 @@ async function insert() {
     // because the only two readings that exist have stopped agreeing about
     // which control holds which blank.
     const liveTargets = tableTargetsOf(liveQuestion);
+    // Where this read states the mapping, it must agree cell for cell. Where
+    // it states none -- a cell showing two controls because the owner clicked
+    // into it is enough -- the mapping is revalidated against the boxes the
+    // page is actually showing instead. That is the same standard the check
+    // above exists for: a grid renumbered under us fails it, because the ids
+    // the answer was reviewed against are no longer on the page.
+    let revalidated = false;
     if (!sameTableMapping(liveTargets, target.tableTargets)) {
-      log.warn("table-targets-changed-before-insert", {
-        was: tableTargetShapes(target.tableTargets),
-        now: tableTargetShapes(liveTargets),
-        blanks: liveTargets.length,
+      const showing = liveTargets.length === 0
+        ? await sweptAnswerFields(target.tabId, target.frameId)
+        : [];
+      revalidated =
+        revalidatedTableTargets(target.tableTargets, showing).length
+        === target.tableTargets.length;
+      if (!revalidated) {
+        log.warn("table-targets-changed-before-insert", {
+          was: tableTargetShapes(target.tableTargets),
+          now: tableTargetShapes(liveTargets),
+          blanks: liveTargets.length,
+          showing: showing.length,
+        });
+        fail("errorQuestionChanged", { detail: "table-targets-changed" });
+        return;
+      }
+      log.info("table-targets-revalidated", {
+        blanks: target.tableTargets.length,
+        showing: showing.length,
       });
-      fail("errorQuestionChanged", { detail: "table-targets-changed" });
-      return;
+      if (!ownsTarget(target)) {
+        abandonInsertion(target, "table-target-revalidation");
+        return;
+      }
     }
     if (!tableAnswerFits(target.answerParts, target.tableTargets, editor)) {
       // The editor was re-read a moment ago, so this is the question's own
@@ -2983,7 +3098,7 @@ async function finishInsertion(detail, target) {
   let handledSignature = target.signature;
   try {
     const afterInsertion = await readQuestion(target.tabId, target.frameId, 2);
-    handledSignature = questionSignature(target.fieldId, afterInsertion) ?? handledSignature;
+    handledSignature = questionSignature(afterInsertion) ?? handledSignature;
   } catch (error) {
     log.debug("post-insert-question-read-failed", { error: describeError(error) });
   }
@@ -3160,13 +3275,17 @@ function watchQuestion() {
       // Successful structured entry replaces the editor's base input with its
       // template slots. That is our own mutation, not a question transition.
       // The prompt/MathML comparison below still notices the real Next event.
+      // A different frame is a handoff. A different *box* in the same frame is
+      // the owner clicking into their own answer, which used to re-prepare
+      // this panel every 1.5 seconds -- discarding a correct answer and
+      // solving the question again while they typed it in by hand.
       const targetChanged = state.phase !== "inserted"
         && Number.isInteger(target.frameId)
-        && (target.frameId !== state.frameId || (target.fieldId ?? "") !== state.fieldId);
+        && target.frameId !== state.frameId;
       const question = await readQuestion(state.tabId, state.frameId, 1);
-      const now = questionSignature(state.fieldId, question);
+      const now = questionSignature(question);
       watchFailures = 0;
-      if (targetChanged || (now !== null && now !== state.signature)) {
+      if (targetChanged || (now !== null && !sameQuestionSignature(now, state.signature))) {
         log.debug("question-changed-while-open", {
           was: state.signature,
           now,
@@ -3376,6 +3495,9 @@ function markedCode() {
     "background.js#pinInsertionTarget": pinInsertionTarget,
     "background.js#prepare": prepare,
     "background.js#questionSignature": questionSignature,
+    "background.js#sameQuestionSignature": sameQuestionSignature,
+    "background.js#revalidatedTableTargets": revalidatedTableTargets,
+    "background.js#sweptAnswerFields": sweptAnswerFields,
     "background.js#retain": retain,
     "background.js#readQuestion": readQuestion,
     "background.js#readableAnswer": readableAnswer,
