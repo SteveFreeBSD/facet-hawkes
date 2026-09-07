@@ -23,6 +23,9 @@ What it decodes, and why by hand:
 * An object that appears more than once in the same value is written once and
   referred back to by position afterwards, so the reader keeps the table of
   objects it has opened and resolves those references through it.
+* A row's key is stored in IndexedDB's own order-preserving encoding rather
+  than as itself, so it is decoded too -- without it there is no way to say
+  which `storage.local` key a row holds.
 
 Usage::
 
@@ -64,6 +67,13 @@ TAG_END_OF_KEYS = 0xFFFF0013
 TAG_NULL = 0xFFFF0000
 TAG_UNDEFINED = 0xFFFF0001
 TAG_FLOOR = 0xFFF00000  # anything below this is a NaN-boxed double
+
+# dom/indexedDB/Key.cpp. IndexedDB does not store a row's key as itself; it
+# stores an encoding that sorts the way the spec requires -- a type byte, then
+# the key. Every `storage.local` key is a string, whose characters up to 0x7E
+# are each stored one greater than they are.
+KEY_TYPE_STRING = 0x30
+KEY_ONE_BYTE_ADJUST = 1
 
 
 class Unreadable(Exception):
@@ -257,8 +267,32 @@ def find_store(profile: Path) -> Path:
     return max(found, key=lambda path: path.stat().st_size)
 
 
-def decode_values(store: Path) -> list:
-    """Every value in the store, decoded.
+def decode_key(raw: bytes) -> str:
+    """The `storage.local` name a row was stored under.
+
+    The add-on writes ASCII identifiers -- `diagnostics`, `failures`,
+    `facetLastSeen` -- so only the one-byte form is decoded here. A key using
+    the multi-byte forms, or one that is not a string at all, is refused
+    rather than approximated: a name that comes out nearly right would attach
+    the wrong value to it, and a caller asking for the ledger would be handed
+    something else without ever being told.
+    """
+    if not raw or raw[0] != KEY_TYPE_STRING:
+        raise Unreadable(
+            f"storage key {raw.hex()} is not an IndexedDB string key; "
+            "this is not the add-on's storage"
+        )
+    body = raw[1:]
+    if any(byte == 0 or byte & 0x80 for byte in body):
+        raise Unreadable(
+            f"storage key {raw.hex()} is not a plain ASCII name; "
+            "refusing to guess at which key it is"
+        )
+    return bytes(byte - KEY_ONE_BYTE_ADJUST for byte in body).decode("ascii")
+
+
+def decode_rows(store: Path) -> list[tuple[str, object]]:
+    """Every row in the store as the key it was stored under and its value.
 
     Copies the database first: Firefox may be running and holding it. Reading
     a live profile through a copy is what makes every tool built on this one
@@ -267,28 +301,33 @@ def decode_values(store: Path) -> list:
     with tempfile.TemporaryDirectory(prefix="ethnos-log-") as work:
         copy = Path(work) / "store.sqlite"
         shutil.copy(store, copy)
-        rows = sqlite3.connect(copy).execute("select data from object_data").fetchall()
+        rows = (
+            sqlite3.connect(copy).execute("select key, data from object_data").fetchall()
+        )
 
-    values = []
-    for (blob,) in rows:
+    decoded: list[tuple[str, object]] = []
+    for key, blob in rows:
         if not blob:
             continue
-        values.append(Clone(snappy_decompress(bytes(blob))).read())
-    return values
+        decoded.append((decode_key(bytes(key)), Clone(snappy_decompress(bytes(blob))).read()))
+    return decoded
+
+
+def decode_values(store: Path) -> list:
+    """Every value in the store, decoded, for callers that search rather than
+    ask by name."""
+    return [value for _, value in decode_rows(store)]
 
 
 def read_storage(store: Path) -> dict:
-    """`storage.local` as one dictionary, merged across however many rows hold it.
+    """`storage.local` under the names the add-on stored it under.
 
-    The log is one key in there; preferences and the retained failure ledger
-    are others. Callers that want a specific key should come through here
-    rather than re-deriving which row it landed in.
+    The ring is one key in there; preferences and the retained failure ledger
+    are others. Each is its own row, so this reads the row keys rather than
+    merging the values together -- merging loses exactly the thing a caller
+    comes here for, which is which key a value was stored under.
     """
-    merged: dict = {}
-    for value in decode_values(store):
-        if isinstance(value, dict):
-            merged.update(value)
-    return merged
+    return dict(decode_rows(store))
 
 
 def read_entries(store: Path) -> list[dict]:

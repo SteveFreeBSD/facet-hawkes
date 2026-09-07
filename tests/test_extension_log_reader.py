@@ -224,6 +224,121 @@ def test_an_unknown_tag_is_reported_rather_than_guessed_at():
         reader.Clone(clone).read()
 
 
+def _key(name: str) -> bytes:
+    """A row key as IndexedDB encodes it: the string type byte, then every
+    character shifted up by one."""
+    return bytes([reader.KEY_TYPE_STRING]) + bytes(ord(c) + 1 for c in name)
+
+
+def test_the_failure_ledgers_row_key_decodes_to_its_name():
+    """`0gbjmvsft` on disk is `failures`. Without this the ledger is read,
+    decoded, and then dropped for want of a name to file it under."""
+    assert reader.decode_key(b"\x30gbjmvsft") == "failures"
+
+
+def test_the_rings_row_key_decodes_to_its_name():
+    """`common/log.js` stores the ring under `diagnostics`."""
+    assert reader.decode_key(b"\x30ejbhoptujdt") == "diagnostics"
+
+
+def test_a_key_with_capitals_survives_the_shift():
+    """`background.js` writes `facetLastSeen`, so the encoding has to be
+    undone character by character rather than case-folded."""
+    assert reader.decode_key(_key("facetLastSeen")) == "facetLastSeen"
+
+
+def test_a_key_that_is_not_a_string_is_refused():
+    """`storage.local` keys are always strings. Another type byte means this
+    is not the store it was taken for."""
+    with pytest.raises(reader.Unreadable, match="not an IndexedDB string key"):
+        reader.decode_key(b"\x10\x40\x50\x00\x00\x00\x00\x00")
+
+
+def test_an_empty_key_is_refused():
+    with pytest.raises(reader.Unreadable, match="not an IndexedDB string key"):
+        reader.decode_key(b"")
+
+
+def test_a_key_this_reader_cannot_decode_is_refused_rather_than_mangled():
+    """Characters above 0x7E are written as multi-byte sequences this does not
+    decode. Returning the one-byte reading of those bytes would produce a name
+    that looks plausible and belongs to nothing."""
+    with pytest.raises(reader.Unreadable, match="refusing to guess"):
+        reader.decode_key(bytes([reader.KEY_TYPE_STRING, 0xC3, 0xA9]))
+
+
+def _store_with(tmp_path, rows: list[tuple[bytes, bytes]]) -> Path:
+    """A database shaped like the one Firefox keeps `storage.local` in."""
+    import sqlite3
+
+    path = tmp_path / "store.sqlite"
+    db = sqlite3.connect(path)
+    db.execute("create table object_data (object_store_id, key, data)")
+    db.executemany("insert into object_data values (1, ?, ?)", rows)
+    db.commit()
+    db.close()
+    return path
+
+
+def _stored(mapping: dict) -> bytes:
+    """One row's value: an object, Snappy-compressed as Firefox stores it."""
+    clone = _pair(3, 0xFFF10000) + _pair(0, reader.TAG_OBJECT)
+    for key, value in mapping.items():
+        clone += _string(key) + _int(value)
+    clone += _pair(0, reader.TAG_END_OF_KEYS)
+    assert len(clone) < 60  # one literal is enough at this size
+    return bytes([len(clone), (len(clone) - 1) << 2]) + clone
+
+
+def test_each_row_is_returned_under_the_key_it_was_stored_under(tmp_path):
+    """The ledger and the ring are separate rows. Merging their contents
+    together -- which is what dropping the keys amounts to -- leaves a caller
+    asking for `failures` with nothing, while the records sit right there."""
+    store = _store_with(
+        tmp_path,
+        [
+            (_key("diagnostics"), _stored({"seq": 4})),
+            (_key("failures"), _stored({"version": 1})),
+            (_key("facetLastSeen"), _stored({"at": 7})),
+        ],
+    )
+
+    assert reader.read_storage(store) == {
+        "diagnostics": {"seq": 4},
+        "failures": {"version": 1},
+        "facetLastSeen": {"at": 7},
+    }
+
+
+def test_values_are_still_available_without_their_keys(tmp_path):
+    """`read_entries` searches the values for the ring rather than asking for
+    it by name, so it keeps working the way it did."""
+    store = _store_with(
+        tmp_path,
+        [
+            (_key("diagnostics"), _stored({"seq": 4})),
+            (_key("failures"), _stored({"version": 1})),
+        ],
+    )
+
+    assert reader.decode_values(store) == [{"seq": 4}, {"version": 1}]
+
+
+def test_a_row_whose_key_cannot_be_read_stops_the_read(tmp_path):
+    """Fail closed. Returning the rows that did decode would answer "no
+    ledger" for a profile whose ledger is one of the rows just skipped."""
+    store = _store_with(
+        tmp_path,
+        [
+            (_key("failures"), _stored({"version": 1})),
+            (bytes([0x50, 0x41]), _stored({"seq": 4})),
+        ],
+    )
+
+    with pytest.raises(reader.Unreadable, match="not an IndexedDB string key"):
+        reader.read_storage(store)
+
+
 def test_entries_are_ordered_by_time_not_by_sequence():
     """`seq` restarts whenever the non-persistent event page is unloaded, so
     ordering by it interleaves separate sessions into nonsense."""
