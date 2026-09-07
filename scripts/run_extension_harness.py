@@ -519,7 +519,12 @@ def run(selected: str | None, headless: bool = True) -> int:
         "scatter-translated.html",
     ):
         shutil.copyfile(PROJECT_ROOT / "tests/fixtures" / scatter, Path(web, scatter))
-    for table in ("table.html", "table-thead.html", "table-mathjax.html"):
+    for table in (
+        "table.html",
+        "table-thead.html",
+        "table-mathjax.html",
+        "table-completion.html",
+    ):
         shutil.copyfile(PROJECT_ROOT / "tests/fixtures" / table, Path(web, table))
     # The foreign origin serves the same directory on a different host name.
     build_test_extension(extension, site, report_origin)
@@ -583,6 +588,7 @@ def run(selected: str | None, headless: bool = True) -> int:
             failures += judge_on_axis_scatter(marionette, site)
             failures += judge_translated_scatter(marionette, site)
             failures += judge_table(marionette, site)
+            failures += judge_table_completion(marionette, site)
     except ActionButtonMissing as error:
         # A harness fault, not a verdict on the add-on. Reported as such and
         # scored as nothing, because nothing was measured.
@@ -767,6 +773,69 @@ def judge_one_table(marionette, site, page):
     say(
         f"ok   {page}: columns and rows read from the page's own table, kept "
         "out of the prompt, and the same numbers read again off the plot"
+    )
+    return 0
+
+
+def judge_table_completion(marionette, site):
+    """The table a question is answered *in*, read in a real browser.
+
+    `tests/test_hawkes_answer_table.py` reads the same fixture through a DOM
+    assembled in Python, which is exact about structure and synthetic about
+    layout. This is the other half: Firefox lays the table out, MathJax's
+    assistive copy sits where MathJax puts it, and the blanks are numbered from
+    where the boxes actually are.
+
+    A value is typed into every box before the second reading. Nothing a
+    student has entered may come back as part of the question, and the only
+    way to be sure of that is to have entered something.
+    """
+    marionette.set_context("content")
+    marionette.navigate(f"{site}/table-completion.html")
+    source = (PROJECT_ROOT / "extension/content/hawkes-question.js").read_text()
+    probe = "return " + source[source.index("(() => {") :]
+    result = marionette.execute(probe)["value"]
+    problems = []
+    table = result.get("answerTable")
+    if table is None:
+        problems.append(f"refused as {result.get('evidence', {}).get('answerTable')}")
+    else:
+        if table.get("columns") != ["x", "y"]:
+            problems.append(f"columns read as {table.get('columns')}")
+        blanks = [
+            cell["blank"] for row in table["rows"] for cell in row if "blank" in cell
+        ]
+        if blanks != [1, 2, 3, 4, 5]:
+            problems.append(f"blanks numbered {blanks}")
+        given = [
+            cell.get("text") or cell.get("mathml", "")
+            for row in table["rows"]
+            for cell in row
+            if "blank" not in cell
+        ]
+        if [value for value in given if value.startswith("<math")] and not all(
+            "msqrt" in value for value in given if value.startswith("<math")
+        ):
+            problems.append("a radical cell lost its root")
+        if [value for value in given if not value.startswith("<math")] != [
+            "0",
+            "64",
+            "25",
+        ]:
+            problems.append(f"stated values read as {given}")
+    marionette.execute(
+        "for (const box of document.querySelectorAll('input.qbaseCSS'))"
+        " box.value = '999';"
+    )
+    entered = marionette.execute(probe)["value"]
+    if "999" in json.dumps(entered):
+        problems.append("what was typed into a box was read back as the question")
+    if problems:
+        say(f"FAIL table-completion.html: {'; '.join(problems)}")
+        return 1
+    say(
+        "ok   table-completion.html: five blanks numbered in reading order, the "
+        "stated cells read exactly, and nothing read out of an answer box"
     )
     return 0
 

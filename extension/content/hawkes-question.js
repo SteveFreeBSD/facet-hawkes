@@ -22,6 +22,10 @@
     'input.qbaseCSS, input[id^="txtAns"], input.boxStyle, input[id$="_optchk"], '
     + 'input[type="radio"].opt, #QGraph[role="application"]';
 
+  // Kept in step with `common/config.js` by the build's shared-constant
+  // check; this file is injected as a classic script and imports nothing.
+  const MAX_ANSWER_PARTS = 5;
+
   const visible = (element) => {
     const rect = element.getBoundingClientRect();
     return rect.width > 0 && rect.height > 0;
@@ -160,44 +164,50 @@
    * Values are taken verbatim, currency and all: what "$56" means as a number
    * is the host's reading, not the page's.
    */
+  /**
+   * One cell's text, with MathJax counted once.
+   *
+   * MathJax leaves two copies of every expression in the document: the
+   * glyphs a reader sees, and a visually hidden MathML copy for assistive
+   * technology. `textContent` returns both, so a live cell holding $80 came
+   * back as "$\u206280$\u206280" and was refused as not a number. The
+   * assistive copy is dropped -- unless dropping it leaves nothing, which is
+   * what an SVG-output MathJax cell looks like, and then it is all there is.
+   * Invisible operators go either way: they are markup, not digits.
+   *
+   * A control's current contents are not text nodes, so nothing typed into an
+   * answer box can arrive through here. That is what makes a blank cell read
+   * as empty rather than as whatever the student last entered.
+   */
+  const clean = (node) => {
+    const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+    const seen = [];
+    const hidden = [];
+    for (let text = walker.nextNode(); text !== null; text = walker.nextNode()) {
+      const target = text.parentElement?.closest("mjx-assistive-mml") ?? null;
+      (target === null ? seen : hidden).push(text.textContent);
+    }
+    const text = seen.join("").trim().length > 0 ? seen.join("") : hidden.join("");
+    return text.replace(/[\u2061-\u2064\u200b\ufeff]/g, "").replace(/\s+/g, " ").trim();
+  };
+
+  // The row that names the columns, or null. Two unambiguous declarations of
+  // one are accepted -- a `thead`, or a first row made entirely of `th` --
+  // and nothing else, because "the first row" of a table used for layout is
+  // not a heading and reading it as one would rename the question's data.
+  const headerRow = (table) => {
+    const head = table.tHead;
+    if (head !== null && head.rows.length > 0) {
+      return head.rows[head.rows.length - 1];
+    }
+    const first = table.rows[0] ?? null;
+    return first !== null
+      && [...first.cells].every((cell) => cell.tagName === "TH")
+      ? first
+      : null;
+  };
+
   const dataTable = (() => {
-    /**
-     * One cell's text, with MathJax counted once.
-     *
-     * MathJax leaves two copies of every expression in the document: the
-     * glyphs a reader sees, and a visually hidden MathML copy for assistive
-     * technology. `textContent` returns both, so a live cell holding $80 came
-     * back as "$\u206280$\u206280" and was refused as not a number. The
-     * assistive copy is dropped -- unless dropping it leaves nothing, which is
-     * what an SVG-output MathJax cell looks like, and then it is all there is.
-     * Invisible operators go either way: they are markup, not digits.
-     */
-    const clean = (node) => {
-      const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
-      const seen = [];
-      const hidden = [];
-      for (let text = walker.nextNode(); text !== null; text = walker.nextNode()) {
-        const target = text.parentElement?.closest("mjx-assistive-mml") ?? null;
-        (target === null ? seen : hidden).push(text.textContent);
-      }
-      const text = seen.join("").trim().length > 0 ? seen.join("") : hidden.join("");
-      return text.replace(/[\u2061-\u2064\u200b\ufeff]/g, "").replace(/\s+/g, " ").trim();
-    };
-    // The row that names the columns, or null. Two unambiguous declarations of
-    // one are accepted -- a `thead`, or a first row made entirely of `th` --
-    // and nothing else, because "the first row" of a table used for layout is
-    // not a heading and reading it as one would rename the question's data.
-    const headerRow = (table) => {
-      const head = table.tHead;
-      if (head !== null && head.rows.length > 0) {
-        return head.rows[head.rows.length - 1];
-      }
-      const first = table.rows[0] ?? null;
-      return first !== null
-        && [...first.cells].every((cell) => cell.tagName === "TH")
-        ? first
-        : null;
-    };
     const candidates = [...document.querySelectorAll("table")].filter(
       (table) =>
         visible(table)
@@ -222,6 +232,112 @@
       return null;
     }
     return { node: table, columns, rows: body };
+  })();
+
+  /**
+   * The table a question is answered *in*, read as a table.
+   *
+   * A completion question draws the table and leaves a cell blank in each row;
+   * the answer boxes are those cells. Nothing above the answer area states the
+   * numbers, so the exact readings all came back empty and the question
+   * crossed as its equation and a sentence -- `x = y²` and "Complete the table
+   * of values below", with no table and no values. Live, on lesson 2.1, that
+   * is a question nobody can answer: the givens are the question.
+   *
+   * This is the mirror of `dataTable` and shares its discipline. The table is
+   * identified by *containing* answer controls rather than by being free of
+   * them, the column headings survive, and every refusal is named. What is
+   * carried is the grid: each cell is either a value the page states or a
+   * blank, numbered in the order the page draws them, so a reply's part N and
+   * the page's Nth box mean the same cell.
+   *
+   * Nothing is read out of an answer control. A blank is a *position*; a cell
+   * holding a box and anything else is refused rather than guessed at.
+   */
+  const answerTable = (() => {
+    const refuse = (tableReason) => ({ table: null, tableReason });
+    const controls = [...document.querySelectorAll(ANSWER_CONTROLS)].filter(visible);
+    if (controls.length === 0) return refuse("no-answer-controls");
+    const candidates = [...document.querySelectorAll("table")].filter(
+      (table) =>
+        visible(table)
+        && table.querySelector("table") === null
+        && table.querySelector(ANSWER_CONTROLS) !== null
+        && table.rows.length <= 33
+        && headerRow(table) !== null
+    );
+    if (candidates.length !== 1) return refuse(`candidates-${candidates.length}`);
+    const table = candidates[0];
+    const header = headerRow(table);
+    const columns = [...header.cells].map(clean);
+    if (columns.length < 2 || columns.length > 8) {
+      return refuse(`columns-${columns.length}`);
+    }
+    if (columns.some((name) => name.length === 0 || name.length > 80)) {
+      return refuse("column-unnamed");
+    }
+    const body = [...table.rows].filter(
+      (row) => row !== header && !(table.tHead?.contains(row) ?? false)
+    );
+    if (body.length < 2 || body.length > 32) return refuse(`rows-${body.length}`);
+    if (body.some((row) => row.cells.length !== columns.length)) {
+      return refuse("row-not-rectangular");
+    }
+
+    const blanks = [];
+    const rows = [];
+    for (const row of body) {
+      const cells = [];
+      for (const cell of row.cells) {
+        const inside = [...cell.querySelectorAll(ANSWER_CONTROLS)].filter(visible);
+        if (inside.length > 1) return refuse("cell-has-two-controls");
+        if (inside.length === 1) {
+          // A blank holds the box and nothing a reader would see beside it.
+          // `clean` walks text nodes, and what is typed into a control is not
+          // one, so this is the page's own emptiness rather than the answer
+          // box being read back as the question.
+          if (clean(cell).length > 0) return refuse("blank-not-empty");
+          blanks.push(inside[0]);
+          cells.push({ blank: blanks.length });
+          continue;
+        }
+        // MathJax draws a radical sign; it does not write one. The visible
+        // glyphs of `2√2` are the two digits and nothing between them, so a
+        // cell it rendered is read from the MathML it left beside them or not
+        // at all -- reading it as text would state a different number
+        // confidently.
+        const math = cell.querySelector("math");
+        if (math !== null) {
+          cells.push({
+            mathml: new XMLSerializer().serializeToString(math).slice(0, 4000),
+          });
+          continue;
+        }
+        if (cell.querySelector("mjx-container, .MathJax, svg") !== null) {
+          return refuse("drawn-without-mathml");
+        }
+        const text = clean(cell);
+        if (text.length === 0 || text.length > 40) return refuse("cell-unreadable");
+        cells.push({ text });
+      }
+      rows.push(cells);
+    }
+    if (blanks.length === 0) return refuse("no-blank-cells");
+    if (blanks.length > MAX_ANSWER_PARTS) return refuse(`blanks-${blanks.length}`);
+    // Every box on the page is one of these cells. The answer's parts are
+    // placed by a separate sweep that sorts the page's boxes by position, so a
+    // sixth box outside the table would shift every part by one; refusing is
+    // the only reading that keeps part N and blank N the same cell.
+    if (blanks.length !== controls.length) return refuse("controls-outside-table");
+    const placed = [...blanks].sort((left, right) => {
+      const a = left.getBoundingClientRect();
+      const b = right.getBoundingClientRect();
+      return a.top - b.top || a.left - b.left;
+    });
+    if (placed.some((field, index) => field !== blanks[index])) {
+      return refuse("blank-order-disagrees");
+    }
+    return { table: { node: table, columns, rows }, tableReason: "" };
   })();
 
   const expressions = [];
@@ -269,10 +385,13 @@
       if (!visible(element) || element.getBoundingClientRect().top >= limit) {
         return false;
       }
-      // A cell of the data table is a quantity, not a sentence. It is read
-      // exactly, as a table, and letting it back in here would put it up for
+      // A cell of either table is a quantity, not a sentence. Both are read
+      // exactly, as tables, and letting one back in here would put it up for
       // selection as the question's instruction as well.
-      return !(dataTable !== null && dataTable.node.contains(element));
+      return !(
+        (dataTable !== null && dataTable.node.contains(element))
+        || (answerTable.table !== null && answerTable.table.node.contains(element))
+      );
     })
     .map((element) =>
       // A container contributes only its own words, so the figure, the table
@@ -375,12 +494,26 @@
     evidence: {
       graph: graph.graphReason,
       table: dataTable === null ? "no-data-table" : "",
+      // Which condition stopped a completion table being read, when one did.
+      // A count, a selector name or a named disagreement -- never a cell.
+      answerTable: answerTable.tableReason,
       promptChars: promptText.length,
     },
     ...(graphPoints ? { graphPoints } : {}),
     // The node stays here. What crosses is the reading of the table.
     ...(dataTable
       ? { dataTable: { columns: dataTable.columns, rows: dataTable.rows } }
+      : {}),
+    // The same, for the table the answer is typed into: the grid, with each
+    // cell either a value the page states or a numbered blank. No element, no
+    // selector, no geometry, and nothing read out of an answer control.
+    ...(answerTable.table
+      ? {
+          answerTable: {
+            columns: answerTable.table.columns,
+            rows: answerTable.table.rows,
+          },
+        }
       : {}),
   };
 })();

@@ -100,6 +100,28 @@ A graph question asks for a plan instead of a value, and says so:
 }
 ```
 
+A question answered by *completing a table* sends the grid it is completed in.
+The blanks are numbered as the answer's parts are numbered, so neither side has
+to infer which cell a part belongs to, and a cell MathJax rendered is converted
+by the same converter the expressions use -- a radical is drawn rather than
+written, and its visible glyphs are not the number.
+
+```text
+Complete the table of values below for the given equation.
+The question states this table, and is answered by completing it. Each blank is
+written below as the numbered answer part that belongs in it.
+x | y
+0 | (part 1)
+(part 2) | 2\sqrt{2}
+64 | (part 3)
+25 | (part 4)
+(part 5) | -\sqrt{3}
+```
+
+The answer boxes themselves stay in the browser. Which *cell* a part belongs to
+is a fact about the question; which box it is typed into is not, and no field
+id, character set or control rule crosses with it.
+
 A question about *data* sends the same coordinates in place of an expression.
 Some questions have no expression to send: nobody wrote the function down, and
 it exists only as the fit to the measurements the page states.
@@ -341,6 +363,13 @@ roots behind it, until lesson 2.1's table of values for `x = y²` published five
 blank cells: every gate between the page and Facet refused the fifth, fell back
 to "one box", and the question was answered -- exactly, and once. A question
 with more parts than the bound is refused whole rather than half-answered.
+
+**Facet's own protocol still bounds a reply at four.** `facet-runtime` is a
+separate repository, and until its bound moves a five-part question is refused
+there as `invalid_request` before any solver runs -- with the question, and its
+table, correctly stated in the request. Four parts of the same question are
+answered normally. `test_facet_itself_still_bounds_a_reply_at_four_parts` fails
+when that stops being true, and this paragraph goes with it.
 
 What crosses is the resulting count, as `answer_parts`. Character sets,
 templates, slot rules, field ids and the shape word itself stay in the browser,

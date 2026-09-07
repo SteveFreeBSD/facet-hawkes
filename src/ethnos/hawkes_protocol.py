@@ -140,6 +140,76 @@ class DataTable(BaseModel):
         return self
 
 
+class AnswerTableCell(BaseModel):
+    """One cell of a table the question is answered in.
+
+    Either a value the page states or a blank the answer goes in, never both
+    and never neither. A blank carries its position and nothing else: what is
+    currently typed into an answer box is not part of the question, has no
+    field on this wire, and is never read.
+
+    A stated value arrives as the page wrote it -- `mathml` when MathJax
+    rendered the cell, `text` when it did not. Both are kept rather than
+    flattened to one, because a radical sign is drawn and not written: the
+    visible glyphs of `2√2` are two digits with nothing between them, and
+    reading that cell as text would state a different number confidently.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: 1-based position among the table's blanks, in the order the page draws
+    #: them, so a reply's part N and the page's Nth box mean the same cell.
+    blank: int | None = Field(default=None, ge=1, le=MAX_ANSWER_PARTS)
+    mathml: str = Field(default="", max_length=4000)
+    text: str = Field(default="", max_length=40)
+
+    @model_validator(mode="after")
+    def one_kind_of_cell(self) -> AnswerTableCell:
+        stated = bool(self.mathml.strip()) or bool(self.text.strip())
+        if (self.blank is None) == (not stated):
+            raise ValueError("a cell is a stated value or a blank, never both")
+        if self.mathml.strip() and self.text.strip():
+            raise ValueError("a stated value is written one way, not two")
+        return self
+
+
+class AnswerTable(BaseModel):
+    """The table a completion question is answered in.
+
+    The same reading as `DataTable`, of the table on the other side of the
+    answer line: a completion question draws its grid, states a value in some
+    cells and leaves an answer box in the rest. Both halves are the question --
+    without the givens there is nothing to complete -- and the relationship
+    between them is the grid, so it is carried as one rather than as a list of
+    numbers and a count of boxes.
+
+    No element, no selector, no geometry, and no field ids. Which box a part is
+    typed into stays in the browser; what crosses is which *cell* it is.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    columns: list[str] = Field(min_length=2, max_length=8)
+    rows: list[list[AnswerTableCell]] = Field(min_length=2, max_length=32)
+
+    @model_validator(mode="after")
+    def rectangular_and_numbered(self) -> AnswerTable:
+        if any(len(row) != len(self.columns) for row in self.rows):
+            raise ValueError("every row must have one cell per column")
+        if any(not name.strip() for name in self.columns):
+            raise ValueError("every column must be named")
+        if any(len(name) > 80 for name in self.columns):
+            raise ValueError("a column name exceeds the size limit")
+        blanks = [cell.blank for row in self.rows for cell in row if cell.blank]
+        if not blanks:
+            raise ValueError("a table answered by completing it has a blank in it")
+        # Numbered from one, in order, with none missing and none repeated. A
+        # gap here would mean a part with no cell to belong to.
+        if blanks != list(range(1, len(blanks) + 1)):
+            raise ValueError("blanks must be numbered from one, in reading order")
+        return self
+
+
 class ProblemPayload(BaseModel):
     """What the add-on saw. Every field is optional except the screenshot."""
 
@@ -156,6 +226,10 @@ class ProblemPayload(BaseModel):
     #: `mathml`, this is the page saying what the question is rather than the
     #: host reading it back off a picture.
     data_table: DataTable | None = None
+    #: The table the question is answered *in*, when it is answered by
+    #: completing one. Disjoint from `data_table` by construction: one is the
+    #: table that holds no answer control and the other is the table that does.
+    answer_table: AnswerTable | None = None
     #: How the page will take the answer. Absent when the add-on did not say,
     #: which is read as the single-box shape every earlier version implied.
     answer_shape: AnswerShape | None = None

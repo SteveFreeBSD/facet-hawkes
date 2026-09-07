@@ -86,8 +86,8 @@ const MAX_FIELD = 48;
 /** Longest stage trail kept, matching the event page's own bound. */
 const MAX_STAGES = 24;
 
-/** Editors described per record. The page publishes at most four answers. */
-const MAX_EDITORS = 4;
+/** Editors described per record, matching the add-on's own answer bound. */
+const MAX_EDITORS = 5;
 
 /** Native-host request ids listed per record. A run makes a handful of calls. */
 const MAX_HOST_IDS = 6;
@@ -238,6 +238,10 @@ export function questionEvidence(evidence) {
     expressions: integer(evidence.expressions),
     graph: bounded(evidence.graph, 16),
     table: bounded(evidence.table, 16),
+    // Why a completion table was not read, when one was not. A count or a
+    // named disagreement, bounded like every other code here; a cell of one
+    // has no path into this record and no name to arrive under.
+    answerTable: bounded(evidence.answerTable, 24),
     promptChars: integer(evidence.promptChars),
     // A digest of the question, never the question. The ring already carries
     // this as `signature`; it is here so two records can be recognized as the

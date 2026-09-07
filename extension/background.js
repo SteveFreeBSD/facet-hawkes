@@ -762,7 +762,10 @@ function questionSignature(fieldId, question) {
     // is exactly what a table of measurements is. Left out, the second would
     // be the first question to the panel, and the first answer would still be
     // on the card, insertable, against the second one's boxes.
-    + (question.dataTable ? JSON.stringify(question.dataTable) : "");
+    + (question.dataTable ? JSON.stringify(question.dataTable) : "")
+    // The same, for a table the answer is typed into: two rows of a completion
+    // question differ only in their givens, and the blanks are identical.
+    + (question.answerTable ? JSON.stringify(question.answerTable) : "");
   return `${fieldId ?? ""}|${digest(content)}|${content.length}`;
 }
 
@@ -1758,12 +1761,14 @@ async function solve(windowId = state.windowId) {
       expressions: question.expressions.length,
       graph: question.evidence?.graph ?? "unknown",
       table: question.evidence?.table ?? "unknown",
+      answerTable: question.evidence?.answerTable ?? "unknown",
       promptChars: question.evidence?.promptChars ?? 0,
     };
     log.info("question-read", {
       expressions: runFacts.evidence.expressions,
       graph: runFacts.evidence.graph,
       table: runFacts.evidence.table,
+      answerTable: runFacts.evidence.answerTable,
       promptChars: runFacts.evidence.promptChars,
     });
     // The answer about to be solved belongs to the question just read, not to
@@ -1787,6 +1792,7 @@ async function solve(windowId = state.windowId) {
         expressions: question.expressions?.length ?? 0,
         graph: question.evidence?.graph ?? "unknown",
         table: question.evidence?.table ?? "unknown",
+        answerTable: question.evidence?.answerTable ?? "unknown",
         promptChars: question.evidence?.promptChars ?? 0,
       };
       noteRunEvent("evidence-refused");
@@ -1794,6 +1800,7 @@ async function solve(windowId = state.windowId) {
         expressions: runFacts.evidence.expressions,
         graph: runFacts.evidence.graph,
         table: runFacts.evidence.table,
+        answerTable: runFacts.evidence.answerTable,
         promptChars: runFacts.evidence.promptChars,
       });
       screenshot = await captureQuestion(state.tabId, state.frameId);
@@ -1819,6 +1826,11 @@ async function solve(windowId = state.windowId) {
             // The table's own reading of itself: headings and cells, exactly
             // as the page wrote them. No element, no selector, no geometry.
             ...(question.dataTable ? { data_table: question.dataTable } : {}),
+            // The table the answer is typed into, when the question is
+            // answered by completing one: the same headings and cells, with a
+            // numbered blank where each answer goes. The boxes themselves,
+            // their ids and their rules stay here.
+            ...(question.answerTable ? { answer_table: question.answerTable } : {}),
             screenshot_png_base64: image,
             answer_shape: answerShapeOf(state.editor),
           },

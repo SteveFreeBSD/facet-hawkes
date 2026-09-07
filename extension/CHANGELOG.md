@@ -6,6 +6,22 @@ name the add-on as it was called at the time.
 
 ## Unreleased
 
+- **A completion question now sends the table it is completed in.** Lesson
+  2.1's table of values for `x = y²` states a value in one cell of each row and
+  leaves an answer box in the other; the givens are the question, and none of
+  them crossed. The existing data-table reader could not carry them -- it reads
+  the table a question states its numbers in, and refuses any table holding an
+  answer control, which is exactly what this one is. A second reader takes the
+  mirror image: the grid, with each cell either a value the page states or a
+  blank numbered in the order the page draws them, so a reply's part N and the
+  page's Nth box mean the same cell. A cell MathJax rendered is carried as the
+  MathML it left rather than as its glyphs, because a radical sign is drawn and
+  not written and `2√2` reads as `22`; a cell it drew and left no MathML in is
+  refused rather than guessed at, and so is a blank with anything beside it, a
+  second candidate table, an answer box outside the table, a ragged row, and
+  more blanks than one answer can have. Nothing is read out of an answer
+  control: a blank is a position. The ordinary data table is untouched, and
+  every existing fixture reads exactly as it did.
 - **A question with five blank cells is no longer answered as one box.**
   Lesson 2.1 completes a table of values for `x = y²` and draws five blanks;
   the page publishes one enabled control for each of them. Every gate between

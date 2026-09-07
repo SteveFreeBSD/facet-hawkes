@@ -324,6 +324,52 @@ def instruction_with_answer_representation(instruction: str, shape) -> str:
     )
 
 
+def instruction_with_answer_table(instruction: str, table) -> str:
+    """State the table a completion question is answered in, in the question.
+
+    A completion question's givens are the question. `x = y²` and "Complete the
+    table of values below" is not a question anybody can answer; the same words
+    beside the five cells the page states are. The browser reads that grid
+    exactly and this is where it becomes something Facet can be asked about.
+
+    The blanks are numbered as Facet numbers the parts of a reply, so part N
+    and the Nth blank are the same cell and neither side has to infer the
+    correspondence from order alone.
+
+    Written as the page wrote it. A cell MathJax rendered arrives as MathML and
+    is converted by the same converter the expressions use; anything that
+    converter will not translate means the table cannot be stated faithfully,
+    and then it is not stated at all. A partial table would be a different
+    question, so the choice is the whole grid or the instruction untouched --
+    which is the question exactly as it was before any of this was read.
+    """
+    from .hawkes_mathml import UnsupportedMathML, mathml_to_latex
+
+    if table is None:
+        return instruction
+    lines = [" | ".join(table.columns)]
+    for row in table.rows:
+        rendered = []
+        for cell in row:
+            if cell.blank is not None:
+                rendered.append(f"(part {cell.blank})")
+                continue
+            if cell.mathml:
+                try:
+                    rendered.append(mathml_to_latex(cell.mathml))
+                except UnsupportedMathML:
+                    return instruction
+            else:
+                rendered.append(cell.text)
+        lines.append(" | ".join(rendered))
+    stated = "\n".join(lines)
+    return (
+        f"{instruction}\nThe question states this table, and is answered by "
+        "completing it. Each blank is written below as the numbered answer part "
+        f"that belongs in it.\n{stated}"
+    )
+
+
 def optimum_direction(instruction: str) -> str | None:
     """Which end of a fitted curve this question asks for, or None.
 
@@ -780,8 +826,11 @@ def _solve_with_facet(
     # An exactly solved question satisfies it by needing no processor at all.
     try:
         solution = solve_math(
+            # The question first -- the table it states is part of what is
+            # being asked -- and then the requirement on the form of the reply.
             instruction=instruction_with_answer_representation(
-                instruction, problem.answer_shape
+                instruction_with_answer_table(instruction, problem.answer_table),
+                problem.answer_shape,
             ),
             expressions=expressions,
             request_id=safe_request_id(request.request_id),

@@ -430,6 +430,7 @@ SELF_CONTAINED_COPIES: dict[str, tuple[str, ...]] = {
     "MAX_ANSWER_PARTS": (
         "content/hawkes-editor.js",
         "content/hawkes-describe.js",
+        "content/hawkes-question.js",
         "common/page-actions.js",
     ),
 }
