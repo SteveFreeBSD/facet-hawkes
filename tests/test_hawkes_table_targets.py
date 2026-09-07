@@ -140,6 +140,62 @@ def test_blanks_in_one_row_agree_with_reading_order_and_are_still_mapped() -> No
     assert read["answerTargets"]["domOrderMatches"] is True
 
 
+def test_a_cell_showing_a_fraction_is_still_one_blank() -> None:
+    """Facet answered 16/9, -8/3, 1/3, 34/9 and every one was right by hand.
+
+    Hawkes draws one box per blank; typing `/` turns that box into a numerator
+    and a denominator. A four-blank table with all four fractions entered shows
+    eight physical inputs and still asks for four values. Read as eight it
+    renumbers every answer after the first fraction; refused as a cell with two
+    controls -- which is what happened -- the whole table became unreadable and
+    Insert went with it.
+    """
+    markup = row_headed_page(
+        [[1, 4, 9], [None, None, None]],
+        ["boxA_num", "boxB_num", "boxC_num"],
+        expanded=["boxB_num"],
+    )
+
+    read = read_question(markup)
+    mapping = read["answerTargets"]
+
+    assert read["evidence"]["answerTable"] == ""
+    assert mapping["count"] == 3
+    assert [blank["id"] for blank in mapping["blanks"]] == [
+        "boxA_num", "boxB_num", "boxC_num"
+    ]
+    # The cell is named by its numerator, which is the id every earlier reading
+    # of this table already used, and it says where its other half is.
+    assert [blank["denominator"] for blank in mapping["blanks"]] == [
+        None, "boxB_den", None
+    ]
+
+
+def test_a_table_with_every_cell_expanded_still_has_its_own_blank_count() -> None:
+    """The finished fraction table: four blanks, eight inputs."""
+    ids = ["boxA_num", "boxB_num", "boxC_num", "boxD_num"]
+    markup = row_headed_page([[1, 4, 9, 16], [None, None, None, None]], ids,
+                             expanded=ids)
+
+    read = read_question(markup)
+
+    assert read["answerTargets"]["count"] == 4
+    assert [blank["id"] for blank in read["answerTargets"]["blanks"]] == ids
+    assert markup.count('class="qbaseCSS"') == 8
+
+
+def test_two_controls_that_are_not_one_cells_halves_are_still_refused() -> None:
+    """Unexpected topology fails closed, as it did before."""
+    markup = row_headed_page(
+        [[1, 4], [None, None]], ["boxA_num", "boxB_num"], expanded=["boxB_num"]
+    ).replace('id="boxB_den"', 'id="boxZ_den"')
+
+    read = read_question(markup)
+
+    assert read["evidence"]["answerTable"] == "cell-has-two-controls"
+    assert "answerTargets" not in read
+
+
 def test_a_column_headed_table_is_mapped_the_same_way() -> None:
     """The other shape Hawkes draws: records down the page, one blank each."""
     markup = column_headed_page(
@@ -665,4 +721,54 @@ def test_the_writer_is_reached_after_a_clicked_cell_is_revalidated() -> None:
     [write] = entries(page, "enterTableCells")
     assert write["args"][1] == cells
     assert page.said("table-targets-revalidated")
+    assert page.json("state.phase") == "inserted"
+
+
+def expanded_read(question):
+    """The same question, read once its cells are showing both halves."""
+    read = json.loads(json.dumps(question))
+    for blank in read["answerTargets"]["blanks"]:
+        blank["denominator"] = f"{blank['id'][: -len('_num')]}_den"
+    return read
+
+
+def test_an_expanded_table_prepares_as_the_same_validated_cells() -> None:
+    """A fraction in every cell is the same four -- or five -- blanks."""
+    page = make_page()
+    question = table_question()
+    solved_table_state(page, question)
+
+    page.run("prepare(1);")
+    page.pump()
+    page.answer(TABLE_INSPECT)
+    page.answer(TABLE_EDITOR)
+    page.answer(expanded_read(question))
+
+    assert page.json("state.phase") == "solved"
+    assert page.json("state.answerParts") == PARTS
+    assert [one["id"] for one in page.json("state.tableTargets")] == [
+        one["id"] for one in mapping_of(question)
+    ]
+    assert page.said("solve-started") == []
+    mapped = page.said("table-targets-mapped")
+    assert mapped and mapped[-1]["data"]["via"] == "read"
+
+
+def test_a_cell_that_expanded_after_the_review_still_takes_its_answer() -> None:
+    """The pinned mapping names no denominator; the live read does. Same cell."""
+    page = make_page()
+    question = table_question()
+    solved_table_state(page, question)
+    cells = [one["id"] for one in mapping_of(question)]
+
+    page.run("insert();")
+    page.pump()
+    page.answer(TABLE_EDITOR)
+    page.answer(expanded_read(question))
+    page.answer({"ok": True, "code": "entered-table-cells", "settled": 5,
+                 "models": 5, "expanded": 5, "cells": cells})
+    page.answer(expanded_read(question))
+
+    [write] = entries(page, "enterTableCells")
+    assert write["args"][1] == cells
     assert page.json("state.phase") == "inserted"

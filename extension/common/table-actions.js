@@ -109,6 +109,31 @@ export async function enterTableCells(parts, cells, cadence = {}) {
     && value.length > 0
     && value.length <= MAX_ANSWER_LENGTH
     && ANSWER_PATTERN.test(value);
+
+  /**
+   * One answer part, as the halves the cell will hold it in.
+   *
+   * A Hawkes answer cell owns a numerator control and a denominator control.
+   * Only the numerator's box is drawn until a `/` is typed into it, at which
+   * point the cell shows both and the editor moves to the second -- so `16/9`
+   * is one answer in one cell, entered the way a student enters it, and not
+   * two answers in two blanks.
+   */
+  const halvesOf = (part) => {
+    const at = part.indexOf("/");
+    if (at < 0) {
+      return { numerator: part, denominator: null };
+    }
+    const numerator = part.slice(0, at);
+    const denominator = part.slice(at + 1);
+    return numerator.length > 0 && denominator.length > 0 && !denominator.includes("/")
+      ? { numerator, denominator }
+      : null;
+  };
+
+  /** The other half's box, by the name Hawkes gives it. */
+  const denominatorId = (id) =>
+    id.endsWith("_num") ? `${id.slice(0, -"_num".length)}_den` : null;
   if (
     !Array.isArray(parts)
     || parts.length < 2
@@ -120,6 +145,19 @@ export async function enterTableCells(parts, cells, cadence = {}) {
     || new Set(cells).size !== cells.length
   ) {
     return { ok: false, code: "answer-invalid" };
+  }
+  const halves = parts.map(halvesOf);
+  if (halves.some((half) => half === null)) {
+    return { ok: false, code: "answer-invalid" };
+  }
+  // A fraction needs the cell's second box, which Hawkes names for it. A part
+  // this writer could not route to a box of its own is refused here.
+  if (
+    halves.some(
+      (half, index) => half.denominator !== null && denominatorId(cells[index]) === null
+    )
+  ) {
+    return { ok: false, code: "table-cell-not-expandable" };
   }
 
   // The extension passes the shared, already-built score as data. MAIN owns
@@ -246,7 +284,13 @@ export async function enterTableCells(parts, cells, cadence = {}) {
         return { ok: false, code: "table-target-repeated", blank: index + 1 };
       }
       const bound = field.maxLength;
-      if (Number.isInteger(bound) && bound > 0 && parts[index].length > bound) {
+      // Each half is typed into a box of its own, so each half is what the
+      // box's own bound has to hold -- `100/9` fits two four-character boxes
+      // and would never fit one.
+      const longest = Math.max(
+        halves[index].numerator.length, halves[index].denominator?.length ?? 0
+      );
+      if (Number.isInteger(bound) && bound > 0 && longest > bound) {
         return { ok: false, code: "answer-invalid", blank: index + 1 };
       }
       found.push(field);
@@ -527,11 +571,19 @@ export async function enterTableCells(parts, cells, cadence = {}) {
         continue;   // a getter that throws says nothing
       }
       const element = asElement(value);
-      if (element && fields.includes(element)) {
+      // Any answer box, not only a mapped one: a cell showing a fraction is
+      // edited through its denominator, which is not a cell of its own.
+      if (element && element.matches?.(HAWKES_FIELD_SELECTOR)) {
         found.push(element);
       }
     }
     return found;
+  };
+
+  /** Whether the page is provably editing this exact box. */
+  const focusedOnBox = (box) => {
+    const routed = routedAt();
+    return routed.length > 0 && routed.every((element) => element === box);
   };
 
   /** Whether the page is provably editing this cell, router included. */
@@ -540,6 +592,34 @@ export async function enterTableCells(parts, cells, cadence = {}) {
       return false;
     }
     return routedAt().every((element) => element === fields[at]);
+  };
+
+  /**
+   * Make Hawkes select one box that is not a cell of its own.
+   *
+   * The denominator a `/` just created has no mapping entry and no ownership
+   * claim -- it is the other half of a cell that already has both. What can
+   * be proven about it is the same thing that matters for a cell: that the
+   * page's own router is on it before anything is typed. Hawkes moves there
+   * itself when the fraction opens, exactly as it focuses a template's first
+   * slot; this confirms that, and runs the page's own focus handling when it
+   * has not.
+   */
+  const selectBox = (box) => {
+    if (focusedOnBox(box)) {
+      return "page";
+    }
+    try {
+      box.focus();
+    } catch { /* the page's own path, tried first */ }
+    if (focusedOnBox(box)) {
+      return "page";
+    }
+    try {
+      box.dispatchEvent(new FocusEvent("focus", { relatedTarget: null }));
+      box.dispatchEvent(new FocusEvent("focusin", { bubbles: true, relatedTarget: null }));
+    } catch { /* an event the page will not take is not a selection */ }
+    return focusedOnBox(box) ? "focus" : null;
   };
 
   /**
@@ -637,12 +717,46 @@ export async function enterTableCells(parts, cells, cadence = {}) {
   };
 
   /**
-   * What the mapped cells hold, as one string each.
+   * The box holding the other half of one cell, when the cell is showing it.
+   *
+   * Looked up live rather than resolved once: the box does not exist until a
+   * `/` is typed, and this writer is what types it.
+   */
+  const halfBox = (at) => {
+    const id = denominatorId(cells[at]);
+    if (id === null) {
+      return null;
+    }
+    const box = document.getElementById(id);
+    if (
+      !box
+      || box.isConnected === false
+      || !(box instanceof HTMLInputElement)
+      || !box.matches?.(HAWKES_FIELD_SELECTOR)
+    ) {
+      return null;
+    }
+    const rect = box.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0 ? box : null;
+  };
+
+  /**
+   * What the mapped cells hold, one *logical* value each.
+   *
+   * A cell showing a fraction holds `16/9` across two boxes, and that is the
+   * value the mapping's fourth blank was reviewed against. Reading the boxes
+   * separately would make the same table four answers or eight depending on
+   * what had been typed into it, and would report a cell as having lost its
+   * part the moment the part arrived.
    *
    * Compared, never reported and never decided from: see the note at the top
    * of this file about what a cell's contents are and are not for.
    */
-  const snapshot = () => fields.map((field) => field.value);
+  const snapshot = () =>
+    fields.map((field, at) => {
+      const other = halfBox(at);
+      return other === null ? field.value : `${field.value}/${other.value}`;
+    });
 
   /** Wait for the editor to stop rerendering, or for the deadline. */
   const settle = async () => {
@@ -693,15 +807,22 @@ export async function enterTableCells(parts, cells, cadence = {}) {
     if (!mutated) {
       return false;
     }
+    const was = original.map(halvesOf);
     for (let at = 0; at < fields.length; at += 1) {
       try {
-        if (!fields[at].isConnected || fields[at].value === original[at]) {
+        if (!fields[at].isConnected) {
           continue;
+        }
+        // The other half first: a cell showing a fraction has to be emptied
+        // from the box the page is editing back to the one it opened from.
+        const other = halfBox(at);
+        if (other !== null && selectBox(other) !== null) {
+          writeCell(other, was[at]?.denominator ?? "", "");
         }
         if (selectFor(at) === null) {
           continue;   // reported as left behind rather than written blind
         }
-        writeCell(fields[at], original[at], "");
+        writeCell(fields[at], was[at]?.numerator ?? original[at], "");
       } catch { /* an undo that cannot run is reported, not thrown */ }
     }
     await settle();
@@ -713,6 +834,7 @@ export async function enterTableCells(parts, cells, cadence = {}) {
 
   const selected = [];
   let modelsRead = 0;
+  let expanded = 0;
 
   for (let at = 0; at < fields.length; at += 1) {
     // The mapping, re-resolved between cells. Paced entry runs for seconds and
@@ -736,24 +858,77 @@ export async function enterTableCells(parts, cells, cadence = {}) {
 
     const field = fields[at];
     mutated = true;
+    // A cell already showing both halves -- someone typed a fraction in by
+    // hand, or a previous run left one -- is emptied from its second box back
+    // to its first, so nothing it was carrying survives this write.
+    const carried = halfBox(at);
+    if (carried !== null) {
+      if (selectBox(carried) === null) {
+        return await refuse({
+          ok: false, code: "table-cell-not-selected", blank: at + 1, written: at,
+        });
+      }
+      writeCell(carried, "", "");
+      if (selectFor(at) === null) {
+        return await refuse({
+          ok: false, code: "table-cell-not-selected", blank: at + 1, written: at,
+        });
+      }
+    }
     // Emptied first, through the control that now owns the cell, so the part
     // lands in a cleared model rather than behind whatever it was carrying.
     writeCell(field, "", "");
+    // The box being typed into, which for a fraction changes once: the `/`
+    // opens the cell's second box and the editor moves to it, so the rest of
+    // the part is typed there. It is still this one cell and this one blank.
+    let box = field;
     let placed = "";
     for (const character of parts[at]) {
       await waitForNote();
-      if (!field.isConnected) {
+      if (!box.isConnected) {
         return await refuse({
           ok: false, code: "table-target-missing", blank: at + 1, written: at,
         });
       }
-      if (field.disabled || field.readOnly) {
+      if (box.disabled || box.readOnly) {
         return await refuse({
           ok: false, code: "table-target-not-editable", blank: at + 1, written: at,
         });
       }
+      if (character === "/" && halves[at].denominator !== null && box === field) {
+        // Typed, not built: a plain Hawkes answer box turns `/` into its own
+        // fraction, which is how a student enters one and the only route this
+        // add-on has -- there is no keypad template here to press. A cell
+        // already showing its second box needs no `/`; it needs to be
+        // continued in the box it already has.
+        if (halfBox(at) === null) {
+          writeCell(box, `${placed}/`, "/");
+          await settle();
+          holdForSettling();
+        }
+        const other = halfBox(at);
+        if (other === null) {
+          return await refuse({
+            ok: false, code: "table-cell-not-expandable", blank: at + 1, written: at,
+          });
+        }
+        // Hawkes moves to the new box itself, as it does for a template's
+        // first slot. Confirmed rather than assumed, and its own focus
+        // handling is run when it has not.
+        const reached = selectBox(other);
+        if (reached === null) {
+          return await refuse({
+            ok: false, code: "table-cell-not-selected", blank: at + 1, written: at,
+          });
+        }
+        expanded += 1;
+        box = other;
+        placed = "";
+        emit([notesStruck - 1, performance.now() - origin]);
+        continue;
+      }
       placed = `${placed}${character}`;
-      writeCell(field, placed, character);
+      writeCell(box, placed, character);
       emit([notesStruck - 1, performance.now() - origin]);
     }
     written = at + 1;
@@ -781,10 +956,13 @@ export async function enterTableCells(parts, cells, cadence = {}) {
         ok: false, code: "table-cell-crossed", blank: at + 1, moved: moved + 1, written,
       });
     }
+    // The control this cell is mapped to holds the numerator. A fraction's
+    // other half belongs to the cell's second control, which has no mapping
+    // entry of its own; the logical value checked above is what covers it.
     const text = modelText(candidates[owners[at]]);
     if (text !== null) {
       modelsRead += 1;
-      if (text !== parts[at]) {
+      if (text !== halves[at].numerator) {
         return await refuse({
           ok: false, code: "table-cell-not-settled", where: "model", blank: at + 1, written,
         });
@@ -811,6 +989,9 @@ export async function enterTableCells(parts, cells, cadence = {}) {
     // own control buffers could be read and agreed as well.
     settled: fields.length,
     models: modelsRead,
+    // How many cells were opened into a numerator/denominator pair by this
+    // write. The table still has one blank per cell either way.
+    expanded,
     // How each cell was tied to a control, and how each control was selected.
     // Names, not values: this is what a live refusal would otherwise cost a
     // screenshot of the owner's coursework to guess at.

@@ -6,6 +6,31 @@ name the add-on as it was called at the time.
 
 ## Unreleased
 
+- **A table cell that holds a fraction is one blank, and its answer is entered
+  into it.** Facet answered a four-blank table exactly -- `16/9`, `-8/3`,
+  `1/3`, `34/9`, all four right by hand -- and could not enter any of them.
+  Hawkes draws one box per blank; typing `/` turns that box into a numerator
+  and a denominator, so the finished table shows four semantic blanks across
+  eight physical inputs. The reader refused a cell showing two controls, which
+  made the whole table unreadable the moment a fraction appeared in it, by hand
+  or otherwise, and took Insert with it. A cell may now own either one ordinary
+  box or one numerator/denominator pair, it is still named by its numerator --
+  the id every earlier reading already used -- and its second half is counted
+  as part of it rather than as a box somewhere else. The writer enters a
+  fraction the way a student does: it types the numerator into the cell's own
+  control, types the `/` that opens the pair, confirms through the page's own
+  router that Hawkes has moved to the second box, types the denominator there,
+  and verifies the cell's whole logical value settled without disturbing any
+  other cell. A cell already showing a fraction is emptied from its second box
+  back to its first. Plain integer entry is unchanged, and a pair that is not
+  one cell's two halves is still refused.
+- **One question stopped reading as a new question on every glance.** MathJax
+  labels each expression it typesets with ids carrying a per-typeset counter
+  and renumbers them whenever it re-renders, which it does whenever an answer
+  control changes -- so the same question hashed differently on every read, and
+  a correct answer was discarded each time. The identity digest normalizes
+  those away; what crosses to Facet is still the page's own MathML.
+
 - **A solved answer now survives the owner touching their own answer boxes.**
   Clicking into a completion cell threw away a correct four-part answer and
   solved the question again -- once through a reasoning model, for

@@ -769,7 +769,19 @@ function questionSignature(question) {
   if (!readableQuestion(question)) {
     return null;
   }
-  const content = `${question.promptText}\u0000${question.expressions.join("\u0000")}`
+  // MathJax labels every expression it typesets with ids carrying a
+  // per-typeset counter, and gives the same question new ones each time it
+  // re-renders -- which it does whenever an answer control changes. Live, on
+  // 2026-09-07, that alone made one unchanged question a different question on
+  // every read: same content length, different digest, `sameQuestion` false,
+  // and a correct answer discarded. Identity is the mathematics, not the
+  // render. Only the digest is normalized; what crosses to the host is still
+  // the page's own MathML.
+  const render = (text) => text
+    .replace(/\s[-\w:]+="[^"]*MJX-[^"]*"/g, "")
+    .replace(/\sid="[^"]*"/g, "")
+    .replace(/\sdata-semantic-(?:id|parent|owns|children)="[^"]*"/g, "");
+  const content = `${question.promptText}\u0000${question.expressions.map(render).join("\u0000")}`
     + (question.graphPoints ? JSON.stringify(question.graphPoints) : "")
     // Two questions can share a prompt and differ only in their numbers, which
     // is exactly what a table of measurements is. Left out, the second would

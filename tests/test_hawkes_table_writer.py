@@ -123,7 +123,7 @@ class Element {
   }
   focus() { globalThis.document.activeElement = this; }
   matches(selector) {
-    return this.tagName === "INPUT" && this.kind === "box"
+    return this.tagName === "INPUT" && this.kind !== "opt"
       && String(selector).includes("input.qbaseCSS");
   }
   dispatchEvent(event) {
@@ -197,10 +197,14 @@ globalThis.buildTable = (ids, {focused = 0, link = "cell", names = "id"} = {}) =
   for (const id of ids) {
     const cell = new Element({id: id + "_cell"});
     const box = new HTMLInputElement({id});
-    const opt = new HTMLInputElement({id: id.replace(/_num$/, "") + "_opt", kind: "opt"});
+    // The other half of this one cell. Hawkes' control collection carries it
+    // from the start -- eight controls for a four-blank table -- and its box
+    // is not drawn until a `/` is typed into the numerator.
+    const den = new HTMLInputElement({id: id.replace(/_num$/, "") + "_den", kind: "den"});
+    den.visible = false;
     cell.appendChild(box);
-    cell.appendChild(opt);
-    globalThis.fields.push(box, opt);
+    cell.appendChild(den);
+    globalThis.fields.push(box, den);
 
     const control = {enabled: true, buffer: "",
                      boxValue: function () { return this.buffer; }};
@@ -217,13 +221,16 @@ globalThis.buildTable = (ids, {focused = 0, link = "cell", names = "id"} = {}) =
       validString: "[0-9-]", maxLength: 4,
       Name: names === "base" ? id.replace(/_num$/, "") : (names === "none" ? "" : id),
     });
-    // The option control beside it: enabled, published, and never an answer.
-    const option = {enabled: true, objMyDiv: cell};
-    Object.defineProperty(option, "field",
-      {value: opt, enumerable: false, configurable: true});
-    controls.push(option);
-    rows.push({isQDy: false, boxValue: undefined, enableState: true,
-               Name: opt.id});
+    // The denominator's own control, published beside the numerator's.
+    const half = {enabled: true, buffer: "",
+                  boxValue: function () { return this.buffer; }};
+    Object.defineProperty(half, "field",
+      {value: den, enumerable: false, configurable: true});
+    Object.defineProperty(control, "half",
+      {value: half, enumerable: false, configurable: true});
+    controls.push(half);
+    rows.push({isQDy: false, boxValue: "", enableState: true,
+               validString: "[0-9/-]", maxLength: 4, Name: den.id});
   }
   globalThis.window.quant_wp_UI = {
     // The authoritative router: the element Hawkes edits through. The index
@@ -255,7 +262,22 @@ globalThis.__hawkesInput = (event) => {
     (one) => one.field === ui.focusedElement && one.buffer !== undefined
   );
   if (!control) return;
-  control.buffer = event.target.value;
+  const written = event.target.value;
+  // A plain answer box turns `/` into its own fraction: the numerator keeps
+  // what came before it, the cell's second box is drawn, and the editor moves
+  // there. One logical cell showing two inputs, not a second blank.
+  const cut = written.indexOf("/");
+  if (cut >= 0 && control.half && !control.half.field.visible) {
+    control.buffer = written.slice(0, cut);
+    control.field.render(control.buffer);
+    control.half.buffer = written.slice(cut + 1);
+    control.half.field.visible = true;
+    control.half.field.render(control.half.buffer);
+    ui.focusedElement = control.half.field;
+    ui.focusedElementIndex = ui.controlsCollection.indexOf(control.half);
+    return;
+  }
+  control.buffer = written;
   control.field.render(control.buffer);
   // A page that crosses two cells even when the right control is selected.
   if (control.alsoRenders) { control.alsoRenders.render(control.buffer); }
@@ -355,13 +377,29 @@ def write(context, parts=None, cells=None, writer="enterTableCells"):
 
 
 def cellsNow(context):
-    """What every visible box holds, by id -- the settled page, not a caret."""
+    """Each mapped cell's *logical* value, by numerator id.
+
+    A cell showing a fraction holds `16/9` across two inputs and is still one
+    blank; reading its boxes separately would make the same four-blank table
+    four answers or eight depending on what had been typed into it.
+    """
     return dict(
         json.loads(
             context.eval(
-                "JSON.stringify(fields.filter(f => f.kind === 'box')"
-                ".map(f => [f.id, f._value]))"
+                "JSON.stringify(fields.filter(f => f.kind === 'box').map(f => {"
+                " const den = fields.find(o => o.kind === 'den'"
+                "   && o.id === f.id.replace(/_num$/, '') + '_den' && o.visible);"
+                " return [f.id, den ? f._value + '/' + den._value : f._value]; }))"
             )
+        )
+    )
+
+
+def inputsNow(context):
+    """Every physical text input the page is showing, in document order."""
+    return json.loads(
+        context.eval(
+            "JSON.stringify(fields.filter(f => f.visible).map(f => f.id))"
         )
     )
 
@@ -371,7 +409,8 @@ def buffers(context):
     return json.loads(
         context.eval(
             "JSON.stringify(window.quant_wp_UI.controlsCollection"
-            ".filter(c => c.buffer !== undefined).map(c => [c.field.id, c.buffer]))"
+            ".filter(c => c.buffer !== undefined && c.field.kind === 'box')"
+            ".map(c => [c.field.id, c.buffer]))"
         )
     )
 
@@ -845,7 +884,181 @@ def test_the_writer_reports_how_it_reached_the_page() -> None:
     reported = write(live)
 
     assert set(reported) == {
-        "ok", "code", "cells", "settled", "models", "ownership", "selected", "timing",
+        "ok", "code", "cells", "settled", "models", "expanded", "ownership",
+        "selected", "timing",
     }
     assert reported["selected"] == ["focus"] * 5
     assert reported["timing"]["notes"] == 5
+
+
+# --- one logical cell, two physical inputs ----------------------------------
+#
+# Facet solved a four-blank table exactly -- 16/9, -8/3, 1/3, 34/9 -- and every
+# answer was proved right by hand. Hawkes draws one box per blank; typing `/`
+# turns that one box into a numerator and a denominator, so the finished table
+# has four semantic blanks and eight physical inputs. Read as eight answers it
+# renumbers everything after the first fraction; refused as "two controls in a
+# cell" it made the whole table unreadable and took Insert with it.
+
+#: The four cells of the live fraction table, in semantic blank order.
+FRACTION_CELLS = [
+    "MatrixTextBoxes2_num",
+    "MatrixTextBoxes8_num",
+    "MatrixTextBoxes9_num",
+    "MatrixTextBoxes5_num",
+]
+#: Its exact answers.
+FRACTION_PARTS = ["16/9", "-8/3", "1/3", "34/9"]
+#: Markup order, which is what Hawkes numbers its controls by.
+FRACTION_DOM = [
+    "MatrixTextBoxes2_num",
+    "MatrixTextBoxes5_num",
+    "MatrixTextBoxes8_num",
+    "MatrixTextBoxes9_num",
+]
+
+
+def fraction_page(**options):
+    context = quickjs.Context()
+    context.eval(PAGE)
+    context.eval(WRITER)
+    context.eval(f"buildTable({json.dumps(FRACTION_DOM)}, {json.dumps(options)});")
+    return context
+
+
+def test_a_four_blank_table_starts_as_four_inputs() -> None:
+    """The cells' second boxes exist in the model and are not drawn."""
+    live = fraction_page()
+
+    assert inputsNow(live) == FRACTION_DOM
+    assert live.eval("window.quant_wp_UI.controlsCollection.length") == 8
+
+
+def test_every_fraction_settles_in_the_cell_it_belongs_to() -> None:
+    """Four blanks in, four blanks out, eight inputs on the page."""
+    live = fraction_page()
+
+    reported = write(live, parts=FRACTION_PARTS, cells=FRACTION_CELLS)
+
+    assert reported["ok"] is True
+    assert reported["settled"] == 4
+    assert reported["expanded"] == 4
+    assert cellsNow(live) == dict(zip(FRACTION_CELLS, FRACTION_PARTS))
+    assert len(inputsNow(live)) == 8, "four cells, showing both halves each"
+
+
+def test_the_slash_opens_the_cell_and_the_rest_is_typed_in_the_other_half() -> None:
+    """The transition, box by box: `16` then `/` then `9`."""
+    live = fraction_page()
+
+    write(live, parts=FRACTION_PARTS, cells=FRACTION_CELLS)
+
+    assert live.eval("document.getElementById('MatrixTextBoxes2_num')._value") == "16"
+    assert live.eval("document.getElementById('MatrixTextBoxes2_den')._value") == "9"
+    assert live.eval("document.getElementById('MatrixTextBoxes2_den').visible") is True
+
+
+def test_the_pages_own_models_hold_both_halves() -> None:
+    """Each half is its own control's buffer, and each cell is still one blank."""
+    live = fraction_page()
+
+    reported = write(live, parts=FRACTION_PARTS, cells=FRACTION_CELLS)
+
+    assert reported["models"] == 4, "the mapped control holds the numerator"
+    assert dict(buffers(live)) == {
+        "MatrixTextBoxes2_num": "16",
+        "MatrixTextBoxes8_num": "-8",
+        "MatrixTextBoxes9_num": "1",
+        "MatrixTextBoxes5_num": "34",
+    }
+    halves = json.loads(
+        live.eval(
+            "JSON.stringify(window.quant_wp_UI.controlsCollection"
+            ".filter(c => c.buffer !== undefined && c.field.kind === 'den')"
+            ".map(c => [c.field.id, c.buffer]))"
+        )
+    )
+    assert dict(halves) == {
+        "MatrixTextBoxes2_den": "9",
+        "MatrixTextBoxes8_den": "3",
+        "MatrixTextBoxes9_den": "3",
+        "MatrixTextBoxes5_den": "9",
+    }
+
+
+def test_a_later_fraction_never_disturbs_an_earlier_cell() -> None:
+    """Semantic order is not markup order, and the last cell is the second box."""
+    live = fraction_page()
+
+    write(live, parts=FRACTION_PARTS, cells=FRACTION_CELLS)
+    settled = cellsNow(live)
+
+    assert FRACTION_CELLS != FRACTION_DOM
+    for cell, part in zip(FRACTION_CELLS, FRACTION_PARTS):
+        assert settled[cell] == part
+
+
+def test_a_cell_already_showing_a_fraction_is_written_whole() -> None:
+    """Someone typed one in by hand, or a previous run left one there."""
+    live = fraction_page()
+    live.eval(
+        "const box = document.getElementById('MatrixTextBoxes8_num');"
+        "const den = document.getElementById('MatrixTextBoxes8_den');"
+        "den.visible = true; box._value = '7'; den._value = '2';"
+        "const controls = window.quant_wp_UI.controlsCollection;"
+        "controls[controlFor('MatrixTextBoxes8_num')].buffer = '7';"
+        "controls[controlFor('MatrixTextBoxes8_num')].half.buffer = '2';"
+    )
+
+    reported = write(live, parts=FRACTION_PARTS, cells=FRACTION_CELLS)
+
+    assert reported["ok"] is True
+    assert cellsNow(live) == dict(zip(FRACTION_CELLS, FRACTION_PARTS))
+
+
+def test_a_plain_integer_table_is_written_exactly_as_before() -> None:
+    """The path that works must not have changed."""
+    live = page()
+
+    reported = write(live)
+
+    assert reported["ok"] is True
+    assert reported["expanded"] == 0
+    assert cellsNow(live) == dict(zip(LIVE_CELLS, LIVE_PARTS))
+    assert len(inputsNow(live)) == 5, "no cell was opened"
+
+
+def test_a_cell_that_will_not_open_its_other_half_refuses() -> None:
+    """Unexpected topology is still a refusal, with the table put back."""
+    live = fraction_page()
+    live.eval("globalThis.__hawkesInput = (event) => { event.target.render(''); };")
+
+    reported = write(live, parts=FRACTION_PARTS, cells=FRACTION_CELLS)
+
+    assert reported["ok"] is False
+    assert reported["code"] in {
+        "table-cell-not-expandable", "table-cell-not-selected", "table-cell-not-settled",
+    }
+    assert set(cellsNow(live).values()) == {""}
+
+
+def test_a_part_whose_halves_cannot_fit_their_boxes_refuses() -> None:
+    """Each half is bounded by its own box, not the part by one of them."""
+    live = fraction_page()
+    live.eval("document.getElementById('MatrixTextBoxes9_num').maxLength = 2;")
+
+    reported = write(live, parts=["16/9", "-8/3", "100/3", "34/9"],
+                     cells=FRACTION_CELLS)
+
+    assert reported == {"ok": False, "code": "answer-invalid", "blank": 3}
+    assert set(cellsNow(live).values()) == {""}
+
+
+def test_a_five_character_fraction_fits_two_four_character_boxes() -> None:
+    """`100/9` never fits one box and fits these two exactly."""
+    live = fraction_page()
+
+    reported = write(live, parts=["100/9", "-8/3", "1/3", "34/9"], cells=FRACTION_CELLS)
+
+    assert reported["ok"] is True
+    assert cellsNow(live)["MatrixTextBoxes2_num"] == "100/9"

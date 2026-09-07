@@ -24,6 +24,18 @@ VALUE = (
     "<mn>{value}</mn></math></mjx-assistive-mml></mjx-container></td>"
 )
 
+#: A blank cell someone has already typed a fraction into: the same box, now
+#: showing the cell's other half. One logical blank, two physical inputs.
+FRACTION = (
+    '<td><span class="GridTable__Div_NoPad"><span class="FractionCell">'
+    '<span class="FractionBoxStyle"><span class="QFractionBox">'
+    '<label class="sr-only" for="{name}">answer baseline</label>'
+    '<span><label class="sr-only" for="{den}">answer denominator</label></span>'
+    '<input class="qbaseCSS" id="{name}"{extra} maxlength="4">'
+    '<input class="qbaseCSS" id="{den}" maxlength="4">'
+    "</span></span></span></span></td>"
+)
+
 #: A blank cell: the visible box, and the hidden control Hawkes puts beside it.
 BLANK = (
     '<td><span class="GridTable__Div_NoPad"><span class="FractionCell">'
@@ -53,12 +65,18 @@ HEAD = (
 )
 
 
-def _cell(name, extras, bare) -> str:
+def _cell(name, extras, bare, expanded=()) -> str:
+    if name in expanded:
+        return FRACTION.format(
+            name=name,
+            den=f"{name[: -len('_num')] if name.endswith('_num') else name}_den",
+            extra=extras.get(name, ""),
+        )
     template = BARE if name in bare else BLANK
     return template.format(name=name, extra=extras.get(name, ""))
 
 
-def row_headed_page(cells, ids, extras=None, bare=()) -> str:
+def row_headed_page(cells, ids, extras=None, bare=(), expanded=()) -> str:
     """A live-shaped row-headed grid.
 
     `cells` is one list per row -- the `x` row then the `y` row -- holding
@@ -74,7 +92,7 @@ def row_headed_page(cells, ids, extras=None, bare=()) -> str:
         drawn = [f"<td>{heading}</td>"]
         for value in row:
             if value is None:
-                drawn.append(_cell(remaining.pop(0), extras, bare))
+                drawn.append(_cell(remaining.pop(0), extras, bare, expanded))
             else:
                 drawn.append(VALUE.format(value=value))
         rows.append(f"<tr>{''.join(drawn)}</tr>")

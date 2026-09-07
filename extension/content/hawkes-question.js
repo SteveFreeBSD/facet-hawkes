@@ -23,7 +23,7 @@
   // every decision, and the observatory applies the same normalization to the
   // tree. Unlike the event-page marker, this proves which Hawkes reader was
   // injected into the authoritative page DOM.
-  const HAWKES_READER_BUILD = "e5df6f8ef8b4";
+  const HAWKES_READER_BUILD = "0508af773f05";
 
   const ANSWER_CONTROLS =
     'input.qbaseCSS, input[id^="txtAns"], input.boxStyle, input[id$="_optchk"], '
@@ -325,6 +325,35 @@
    * containing mathematics or another answer control, and every other text
    * node remain data and make the cell nonempty.
    */
+  /**
+   * The two boxes of one expanded answer cell, numerator first.
+   *
+   * A Hawkes answer cell owns a numerator control and a denominator control.
+   * Only the numerator's box is drawn until someone types `/`, at which point
+   * the cell shows both -- and that is still one answer, `16/9`, not two. So
+   * a four-blank table with one fraction in it shows five boxes, and with all
+   * four filled in shows eight, while the mathematics never stops asking for
+   * four values. Reading those as separate blanks would renumber every answer
+   * after the first fraction; refusing them made the whole table unreadable
+   * the moment a fraction was entered in it, by hand or by this add-on.
+   *
+   * The cell is still named by its numerator, which is the id every earlier
+   * reading of this table already used.
+   */
+  const fractionPair = (controls) => {
+    if (controls.length !== 2) {
+      return null;
+    }
+    const named = controls.map((one) => String(attribute(one, "id") ?? ""));
+    const bases = named.map((id) => id.replace(/_(?:num|den)$/, ""));
+    if (bases[0].length === 0 || bases[0] !== bases[1]) {
+      return null;
+    }
+    const numerator = controls[named.findIndex((id) => id.endsWith("_num"))];
+    const denominator = controls[named.findIndex((id) => id.endsWith("_den"))];
+    return numerator && denominator ? { numerator, denominator } : null;
+  };
+
   const hawkesAnswerLabel = (text, cell, control) => {
     const label = text.parentElement?.closest("label.sr-only") ?? null;
     const fractionBox = control.closest("span.QFractionBox");
@@ -540,8 +569,11 @@
     for (const [rowIndex, row] of body.entries()) {
       const cells = [];
       for (const [columnIndex, cell] of row.entries()) {
-        const inside = [...cell.querySelectorAll(ANSWER_CONTROLS)].filter(visible);
-        if (inside.length > 1) return refuse("cell-has-two-controls");
+        const found = [...cell.querySelectorAll(ANSWER_CONTROLS)].filter(visible);
+        // One logical blank can be showing two boxes; see `fractionPair`.
+        const pair = fractionPair(found);
+        if (found.length > 1 && pair === null) return refuse("cell-has-two-controls");
+        const inside = pair ? [pair.numerator] : found;
         if (inside.length === 1) {
           // A blank holds the box and nothing a reader would see beside it.
           // `clean` walks text nodes, and what is typed into a control is not
@@ -588,6 +620,10 @@
             row: rowIndex + 1,
             column: columnIndex + 1,
             maxLength: Number.isInteger(declared) && declared > 0 ? declared : null,
+            // The other half of this one cell, when it is already showing it.
+            // Named so a writer can place a fraction into the cell it belongs
+            // to rather than discovering a second blank where there is none.
+            denominator: pair ? String(attribute(pair.denominator, "id") ?? "") : null,
           });
           cells.push({ blank: blanks.length });
           continue;
@@ -616,8 +652,17 @@
     if (blanks.length === 0) return refuse("no-blank-cells");
     if (blanks.length > MAX_ANSWER_PARTS) return refuse(`blanks-${blanks.length}`);
     // Every box on the page is one of these cells. A box elsewhere would mean
-    // this grid is not the page's complete answer surface, so refuse it.
-    if (blanks.length !== controls.length) return refuse("controls-outside-table");
+    // this grid is not the page's complete answer surface, so refuse it -- but
+    // a cell showing a fraction is showing two boxes for one blank, and its
+    // second half is not a box elsewhere. Counting those made a table that had
+    // been read a moment earlier unreadable as soon as a fraction was in it.
+    const halves = new Set(
+      targets.map((one) => one.denominator).filter((id) => typeof id === "string")
+    );
+    const surface = controls.filter(
+      (one) => !halves.has(String(attribute(one, "id") ?? ""))
+    );
+    if (blanks.length !== surface.length) return refuse("controls-outside-table");
     // Whether the page happens to draw these blanks in the order the
     // mathematics numbers them.
     //

@@ -304,6 +304,9 @@ export function insertErrorKey(code) {
     "table-cell-model-shared": "errorEditorUnknown",
     "table-cell-model-disagrees": "errorEditorUnknown",
     "table-cell-not-selected": "errorEditorUnknown",
+    // A fraction part with nowhere to put its other half: the cell's second
+    // box did not open, or the mapping names a control that has none.
+    "table-cell-not-expandable": "errorEditorUnknown",
     // The cell did not settle holding its own part, or a write moved another
     // cell of the same table. Its own sentence: this is the editor placing an
     // answer somewhere nobody asked for, not the editor refusing one.
