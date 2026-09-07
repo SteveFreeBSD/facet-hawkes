@@ -186,7 +186,8 @@ globalThis.window = {location: {origin: "https://learn.hawkeslearning.com"}};
 // is why the live collection held ten entries for five blanks. Only the text
 // controls carry a buffer; the option ones publish no `boxValue`, which is the
 // same thing the read-only probe classifies them by.
-globalThis.buildTable = (ids, {focused = 0, link = "cell", names = "id"} = {}) => {
+globalThis.buildTable = (  ids, {focused = 0, link = "cell", names = "id", showing = []} = {}
+) => {
   // `ids` is markup order, because that is the order Hawkes numbers its own
   // controls in. The answers arrive in the order the mathematics numbers the
   // cells, and the two are not the same list.
@@ -240,7 +241,24 @@ globalThis.buildTable = (ids, {focused = 0, link = "cell", names = "id"} = {}) =
     focusedElementIndex: focused,
     controlsCollection: controls,
     controlsCollectionData: rows,
+    // The halves of whichever cell is showing a fraction. Hawkes keeps these
+    // for as long as the fraction is drawn -- they are not a selection, and
+    // they do not move when one cell is left for another. Reading every
+    // element-valued property here as though it named the cell being edited
+    // is what made a table with one fraction in it unwritable.
+    fractionNumerator: null,
+    fractionDenominator: null,
   };
+  // A cell the owner already typed a fraction into before the add-on ran.
+  // Live, on 2026-09-07, this was the state on screen: one semantic cell
+  // expanded into two boxes, the other three still single boxes, and every
+  // one of the four still asking for exactly one value.
+  for (const id of showing) {
+    const control = controls[globalThis.controlFor(id)];
+    control.half.field.visible = true;
+    globalThis.window.quant_wp_UI.fractionNumerator = control.field;
+    globalThis.window.quant_wp_UI.fractionDenominator = control.half.field;
+  }
   return globalThis.window.quant_wp_UI;
 };
 
@@ -275,6 +293,10 @@ globalThis.__hawkesInput = (event) => {
     control.half.field.render(control.half.buffer);
     ui.focusedElement = control.half.field;
     ui.focusedElementIndex = ui.controlsCollection.indexOf(control.half);
+    // Kept for as long as the fraction is on screen, and left behind when the
+    // editor moves on to the next cell.
+    ui.fractionNumerator = control.field;
+    ui.fractionDenominator = control.half.field;
     return;
   }
   control.buffer = written;
@@ -1062,3 +1084,97 @@ def test_a_five_character_fraction_fits_two_four_character_boxes() -> None:
 
     assert reported["ok"] is True
     assert cellsNow(live)["MatrixTextBoxes2_num"] == "100/9"
+
+
+# --- the mixed table, which is what the page actually shows ------------------
+#
+# Live, on 2026-09-07, with the answers `8/5, -2, 7/4, 12/5` on screen: one
+# semantic cell already expanded into a numerator and a denominator by hand,
+# the other three still single boxes, and four values to place. Three runs
+# refused with nothing written at all --
+#
+#     table-answer-not-placed {"code":"table-cell-not-selected","blank":1,
+#                              "written":0,"leftBehind":true,"cells":4}
+#
+# -- and a fourth got two cells in before refusing at blank 3, which is the
+# same failure arriving one fraction later. Hawkes keeps element references to
+# a drawn fraction's two halves; the selection proof required *every* element
+# the model published to name the cell it was about, so one fraction anywhere
+# in the table made every cell of it unselectable.
+
+
+def test_a_cell_expanded_before_the_run_does_not_block_the_first_blank() -> None:
+    """The exact live state: written=0, blank 1, three runs running."""
+    live = fraction_page(showing=["MatrixTextBoxes5_num"])
+
+    reported = write(live, parts=FRACTION_PARTS, cells=FRACTION_CELLS)
+
+    assert reported["ok"] is True
+    assert reported["settled"] == 4
+    assert cellsNow(live) == dict(zip(FRACTION_CELLS, FRACTION_PARTS))
+
+
+def test_the_page_still_holds_the_expanded_cells_halves_throughout() -> None:
+    """The references are furniture. They are not a selection and never were."""
+    live = fraction_page(showing=["MatrixTextBoxes5_num"])
+
+    assert live.eval("window.quant_wp_UI.fractionNumerator.id") == "MatrixTextBoxes5_num"
+    reported = write(live, parts=FRACTION_PARTS, cells=FRACTION_CELLS)
+
+    assert reported["ok"] is True
+    # Left behind by the page, pointing at a cell that is not the last one
+    # written -- which is precisely the state that used to refuse everything.
+    assert live.eval("window.quant_wp_UI.fractionDenominator.id").endswith("_den")
+
+
+def test_a_mixed_table_of_fractions_and_whole_numbers_is_placed() -> None:
+    """`8/5, -2, 7/4, 12/5`: the answers that were on screen."""
+    live = fraction_page(showing=["MatrixTextBoxes5_num"])
+    parts = ["8/5", "-2", "7/4", "12/5"]
+
+    reported = write(live, parts=parts, cells=FRACTION_CELLS)
+
+    assert reported["ok"] is True
+    assert cellsNow(live) == dict(zip(FRACTION_CELLS, parts))
+    # One of the four is a whole number and must not have opened a pair.
+    assert live.eval(
+        "document.getElementById('MatrixTextBoxes8_den').visible"
+    ) is False
+
+
+def test_every_cell_expanded_before_the_run_is_still_four_blanks() -> None:
+    """The finished table, re-answered: eight inputs, four values."""
+    live = fraction_page(showing=FRACTION_DOM)
+
+    reported = write(live, parts=FRACTION_PARTS, cells=FRACTION_CELLS)
+
+    assert reported["ok"] is True
+    assert cellsNow(live) == dict(zip(FRACTION_CELLS, FRACTION_PARTS))
+
+
+def test_a_stale_reference_still_never_excuses_writing_the_wrong_cell() -> None:
+    """Presence is weaker than unanimity, and must not be weaker than this.
+
+    The failure the selection proof exists to catch: the page is editing some
+    other cell, and this writer must not accept that as editing the one it
+    means. A leftover fraction reference does not change that -- the page
+    never names the intended cell at all.
+    """
+    live = fraction_page(showing=["MatrixTextBoxes5_num"])
+    # The page is editing blank 2's cell, holds an expanded cell's halves
+    # elsewhere, and nothing this writer does will move it: Hawkes' own focus
+    # handling never runs, which is the live condition the panel creates.
+    live.eval(
+        "const ui = window.quant_wp_UI;"
+        "globalThis.__hawkesFocus = () => {};"
+        "ui.focusedElement = document.getElementById('MatrixTextBoxes8_num');"
+        "ui.focusedElementIndex = controlFor('MatrixTextBoxes8_num');"
+    )
+
+    reported = write(live, parts=FRACTION_PARTS, cells=FRACTION_CELLS)
+
+    assert reported["ok"] is False
+    assert reported["code"] == "table-cell-not-selected"
+    # And it says which half of the proof failed, rather than only that one did.
+    assert reported["why"] in {"mirror", "router"}
+    assert reported["routed"]

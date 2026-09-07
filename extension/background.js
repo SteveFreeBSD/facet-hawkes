@@ -2852,6 +2852,14 @@ async function insert() {
           written: outcome?.written ?? 0,
           leftBehind: outcome?.leftBehind === true,
           cells: cells.length,
+          // Which half of the selection proof failed, and what the page's own
+          // router held when it did. Page-minted control and box names, the
+          // same ones the mapping is already logged under; no cell contents.
+          why: outcome?.why ?? "",
+          mirrorIndex: Number.isInteger(outcome?.mirrorIndex) ? outcome.mirrorIndex : -1,
+          wantedIndex: Number.isInteger(outcome?.wantedIndex) ? outcome.wantedIndex : -1,
+          routed: Array.isArray(outcome?.routed) ? outcome.routed.slice(0, 8) : [],
+          expanded: outcome?.expanded === true,
         });
         fail(insertErrorKey(outcome?.code ?? "table-answer-incomplete"));
         return;

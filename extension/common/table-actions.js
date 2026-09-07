@@ -580,18 +580,52 @@ export async function enterTableCells(parts, cells, cadence = {}) {
     return found;
   };
 
-  /** Whether the page is provably editing this exact box. */
-  const focusedOnBox = (box) => {
-    const routed = routedAt();
-    return routed.length > 0 && routed.every((element) => element === box);
+  /**
+   * Every box one mapped cell is edited through: its own, and its other half.
+   *
+   * A cell showing a fraction is edited through two inputs and is still one
+   * blank, so the page holding a reference to either of them is the page
+   * referring to this cell.
+   */
+  const boxesOf = (at) => {
+    const other = halfBox(at);
+    return other === null ? [fields[at]] : [fields[at], other];
   };
 
-  /** Whether the page is provably editing this cell, router included. */
+  /**
+   * Whether the page's own router names this cell.
+   *
+   * Presence, not unanimity, and that distinction is the whole of this fix.
+   *
+   * The router was read as "every element-valued property the model
+   * publishes", and every one of them was required to name the one cell. That
+   * held only while a table had one box per blank. Hawkes keeps element
+   * references to a fraction's numerator and denominator for as long as the
+   * fraction is drawn -- they are furniture, not a selection, and they do not
+   * move when the editor leaves that cell for the next one. So the moment any
+   * cell of the table showed a fraction, no cell of that table could ever be
+   * proven selected again.
+   *
+   * Live, on 2026-09-07, both halves of that: `table-cell-not-selected` at
+   * blank 1 with nothing written, three runs running, on a table the owner
+   * had already typed one fraction into by hand -- and the same refusal at
+   * blank 3 on a run where this writer had expanded blank 1 itself a moment
+   * before. The mirror agreed in both; the leftover references did not.
+   *
+   * What proves selection is the page naming *this* cell, alongside the
+   * mirror naming this cell's control. What a stale reference to some other
+   * cell cannot do is make that evidence disappear. The crossing this proof
+   * exists to catch still fails it -- there the page names the other cell and
+   * never this one -- and every write is still read back afterwards against
+   * the cell it was meant for and every other cell of the table.
+   */
   const focusedOn = (at) => {
     if (ui.focusedElementIndex !== candidates[owners[at]].index) {
       return false;
     }
-    return routedAt().every((element) => element === fields[at]);
+    const routed = routedAt();
+    const mine = boxesOf(at);
+    return routed.length === 0 || routed.some((element) => mine.includes(element));
   };
 
   /**
@@ -605,21 +639,34 @@ export async function enterTableCells(parts, cells, cadence = {}) {
    * slot; this confirms that, and runs the page's own focus handling when it
    * has not.
    */
-  const selectBox = (box) => {
-    if (focusedOnBox(box)) {
+  /**
+   * Whether the page is provably editing this exact box.
+   *
+   * A denominator is nobody's blank, so there is no control of its own to
+   * check the mirror against. What can be checked is that the page names this
+   * box, and that its mirror has left the cell's own control -- which is how
+   * Hawkes says the editor moved into the half rather than staying in front
+   * of it.
+   */
+  const focusedOnBox = (box, at) =>
+    routedAt().includes(box)
+    && ui.focusedElementIndex !== candidates[owners[at]].index;
+
+  const selectBox = (box, at) => {
+    if (focusedOnBox(box, at)) {
       return "page";
     }
     try {
       box.focus();
     } catch { /* the page's own path, tried first */ }
-    if (focusedOnBox(box)) {
+    if (focusedOnBox(box, at)) {
       return "page";
     }
     try {
       box.dispatchEvent(new FocusEvent("focus", { relatedTarget: null }));
       box.dispatchEvent(new FocusEvent("focusin", { bubbles: true, relatedTarget: null }));
     } catch { /* an event the page will not take is not a selection */ }
-    return focusedOnBox(box) ? "focus" : null;
+    return focusedOnBox(box, at) ? "focus" : null;
   };
 
   /**
@@ -741,6 +788,40 @@ export async function enterTableCells(parts, cells, cadence = {}) {
   };
 
   /**
+   * Why a cell could not be proven selected, in names and flags only.
+   *
+   * `table-cell-not-selected` was the whole of the report, and the two halves
+   * of the proof fail for entirely different reasons: the page's mirror
+   * naming a different control, or its element router naming a different box.
+   * Live that cost a round trip to the owner's own screen to tell apart.
+   *
+   * Control ids and box ids only -- the same page-minted names the mapping
+   * itself is logged under. No cell's contents appear here; see the note at
+   * the top of this file about what a cell's text is and is not for.
+   */
+  const selectionEvidence = (at) => {
+    let mirror = null;
+    try {
+      mirror = ui.focusedElementIndex;
+    } catch { /* a getter that throws says nothing */ }
+    const wanted = candidates[owners[at]].index;
+    const routed = routedAt().map((element) => {
+      try {
+        return String(element.id ?? "");
+      } catch {
+        return "";
+      }
+    });
+    return {
+      why: mirror === wanted ? "router" : "mirror",
+      mirrorIndex: Number.isInteger(mirror) ? mirror : -1,
+      wantedIndex: Number.isInteger(wanted) ? wanted : -1,
+      routed: routed.slice(0, 8),
+      expanded: halfBox(at) !== null,
+    };
+  };
+
+  /**
    * What the mapped cells hold, one *logical* value each.
    *
    * A cell showing a fraction holds `16/9` across two boxes, and that is the
@@ -816,7 +897,7 @@ export async function enterTableCells(parts, cells, cadence = {}) {
         // The other half first: a cell showing a fraction has to be emptied
         // from the box the page is editing back to the one it opened from.
         const other = halfBox(at);
-        if (other !== null && selectBox(other) !== null) {
+        if (other !== null && selectBox(other, at) !== null) {
           writeCell(other, was[at]?.denominator ?? "", "");
         }
         if (selectFor(at) === null) {
@@ -852,6 +933,7 @@ export async function enterTableCells(parts, cells, cadence = {}) {
     if (how === null) {
       return await refuse({
         ok: false, code: "table-cell-not-selected", blank: at + 1, written: at,
+        ...selectionEvidence(at),
       });
     }
     selected.push(how);
@@ -863,15 +945,17 @@ export async function enterTableCells(parts, cells, cadence = {}) {
     // to its first, so nothing it was carrying survives this write.
     const carried = halfBox(at);
     if (carried !== null) {
-      if (selectBox(carried) === null) {
+      if (selectBox(carried, at) === null) {
         return await refuse({
           ok: false, code: "table-cell-not-selected", blank: at + 1, written: at,
+          ...selectionEvidence(at),
         });
       }
       writeCell(carried, "", "");
       if (selectFor(at) === null) {
         return await refuse({
           ok: false, code: "table-cell-not-selected", blank: at + 1, written: at,
+          ...selectionEvidence(at),
         });
       }
     }
@@ -915,10 +999,11 @@ export async function enterTableCells(parts, cells, cadence = {}) {
         // Hawkes moves to the new box itself, as it does for a template's
         // first slot. Confirmed rather than assumed, and its own focus
         // handling is run when it has not.
-        const reached = selectBox(other);
+        const reached = selectBox(other, at);
         if (reached === null) {
           return await refuse({
             ok: false, code: "table-cell-not-selected", blank: at + 1, written: at,
+            ...selectionEvidence(at),
           });
         }
         expanded += 1;

@@ -6,6 +6,25 @@ name the add-on as it was called at the time.
 
 ## Unreleased
 
+- **One fraction in a table no longer makes every cell of it unwritable.** With
+  Insert finally reachable, the writer refused with nothing written at all --
+  `table-cell-not-selected`, blank 1, three runs running -- on a table that
+  already had one cell expanded into a numerator and a denominator by hand, and
+  refused at blank 3 on a run where it had expanded blank 1 itself a moment
+  earlier. The proof that Hawkes has selected a cell read the page's router as
+  "every element-valued property the editor model publishes", and required all
+  of them to name that one cell. That held only while a table had one box per
+  blank. Hawkes keeps references to a drawn fraction's two halves for as long
+  as it is on screen; they are furniture rather than a selection, and they do
+  not move when the editor leaves that cell. So one fraction anywhere in the
+  grid made every cell in it unselectable. Selection is now proven by the page
+  naming *this* cell -- either of its halves -- alongside its own mirror naming
+  this cell's control. The crossing this proof exists to catch still fails it,
+  because there the page names the other cell and never this one, and every
+  write is still read back against its own cell and every other cell of the
+  table. A refusal now also says which half of the proof failed and what the
+  router held, so the next one does not cost a look at the owner's screen.
+
 - **Insert is offered for a table of fractions, not just written for one.** The
   writer had already learned that a Hawkes answer cell owns a numerator control
   and a denominator control, and that typing `/` opens the pair -- but the rule
