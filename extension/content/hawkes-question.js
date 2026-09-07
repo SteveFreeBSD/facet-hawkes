@@ -179,16 +179,108 @@
    * answer box can arrive through here. That is what makes a blank cell read
    * as empty rather than as whatever the student last entered.
    */
-  const clean = (node) => {
+  const clean = (node, excluded = () => false) => {
+    const skip = typeof excluded === "function" ? excluded : () => false;
     const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
     const seen = [];
     const hidden = [];
     for (let text = walker.nextNode(); text !== null; text = walker.nextNode()) {
+      if (skip(text)) continue;
       const target = text.parentElement?.closest("mjx-assistive-mml") ?? null;
       (target === null ? seen : hidden).push(text.textContent);
     }
     const text = seen.join("").trim().length > 0 ? seen.join("") : hidden.join("");
     return text.replace(/[\u2061-\u2064\u200b\ufeff]/g, "").replace(/\s+/g, " ").trim();
+  };
+
+  /**
+   * Structure-only names for text nodes that make an answer cell nonempty.
+   *
+   * This is the content script's live diagnostic path: it reports element
+   * names, bounded class names and fixed relationships to the answer control.
+   * It never includes a text node, an input value or an element id. The text
+   * walk is the same one `clean` already performs; its only extra result is
+   * which page-owned element contains the non-whitespace node.
+   */
+  const nonemptyCellStructure = (cell, control, excluded) => {
+    const attribute = (element, name) => typeof element.getAttribute === "function"
+      ? element.getAttribute(name)
+      : element.attributes?.[name] ?? null;
+    const token = (element) => {
+      const classes = String(attribute(element, "class") ?? "").split(/\s+/)
+        .filter((name) => /^[A-Za-z][A-Za-z0-9_-]{0,31}$/.test(name))
+        .slice(0, 2)
+        .map((name) => `.${name}`)
+        .join("");
+      const relation = element.tagName === "LABEL"
+        && attribute(element, "for") === control.id
+          ? "[for=control]"
+          : attribute(element, "name") === "NotAnObject"
+            ? "[name=NotAnObject]"
+            : /(?:^|;)\s*visibility\s*:\s*hidden(?:\s*!important)?\s*(?:;|$)/i.test(
+              attribute(element, "style") ?? ""
+            )
+              ? "[visibility=hidden]"
+              : "";
+      return `${element.tagName.toLowerCase()}${classes}${relation}`;
+    };
+    const walker = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT);
+    const paths = [];
+    for (let text = walker.nextNode(); text !== null; text = walker.nextNode()) {
+      if (
+        excluded(text)
+        ||
+        text.parentElement?.closest("mjx-assistive-mml")
+        || text.textContent.replace(/[\u2061-\u2064\u200b\ufeff]/g, "").trim().length === 0
+      ) {
+        continue;
+      }
+      const path = [];
+      for (
+        let element = text.parentElement;
+        element !== null && element !== cell;
+        element = element.parentElement
+      ) {
+        path.push(token(element));
+      }
+      const named = path.join(">");
+      if (named && !paths.includes(named)) paths.push(named);
+      if (paths.length >= 4) break;
+    }
+    return paths.join("+").slice(0, 180) || "direct-text";
+  };
+
+  /**
+   * The page-owned accessibility prose inside Hawkes' live answer widget.
+   *
+   * The real blank cell puts two `label.sr-only` elements inside this exact
+   * wrapper chain. Their text names the control for a screen reader; it is not
+   * a value in the table. A label outside this chain, one targeting another
+   * control, one containing mathematics or another answer control, and every
+   * other text node remain data and make the cell nonempty.
+   */
+  const hawkesAnswerLabel = (text, cell, control) => {
+    const label = text.parentElement?.closest("label.sr-only") ?? null;
+    const fractionBox = control.closest("span.QFractionBox");
+    const boxStyle = fractionBox?.parentElement ?? null;
+    const fractionCell = boxStyle?.parentElement ?? null;
+    const gridCell = fractionCell?.parentElement ?? null;
+    if (
+      label === null
+      || fractionBox === null
+      || boxStyle?.matches("span.FractionBoxStyle") !== true
+      || fractionCell?.matches("span.FractionCell") !== true
+      || gridCell?.matches("span.GridTable__Div_NoPad") !== true
+      || !cell.contains(gridCell)
+      || !gridCell.contains(label)
+      || label.querySelector(`math, ${ANSWER_CONTROLS}`) !== null
+    ) {
+      return false;
+    }
+    const target = typeof label.getAttribute === "function"
+      ? label.getAttribute("for")
+      : label.attributes?.for ?? null;
+    return target === null || target === "" || target === control.id;
   };
 
   // The row that names the columns, or null. Two unambiguous declarations of
@@ -346,7 +438,12 @@
           // `clean` walks text nodes, and what is typed into a control is not
           // one, so this is the page's own emptiness rather than the answer
           // box being read back as the question.
-          if (clean(cell).length > 0) return refuse("blank-not-empty");
+          const decoration = (text) => hawkesAnswerLabel(text, cell, inside[0]);
+          if (clean(cell, decoration).length > 0) {
+            return refuse(
+              `blank-not-empty:${nonemptyCellStructure(cell, inside[0], decoration)}`
+            );
+          }
           blanks.push(inside[0]);
           cells.push({ blank: blanks.length });
           continue;

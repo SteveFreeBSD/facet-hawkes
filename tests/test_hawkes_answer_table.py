@@ -147,6 +147,66 @@ def test_what_is_typed_in_a_box_is_never_read() -> None:
     assert "999" not in json.dumps(read)
 
 
+def test_the_observed_hawkes_accessibility_labels_are_not_table_values(
+    completion,
+) -> None:
+    """The two live text owners belong to the exact Hawkes answer wrapper."""
+    markup = FIXTURE.read_text(encoding="utf-8")
+
+    assert "label class=\"sr-only\"" in markup
+    assert "span class=\"QFractionBox\"" in markup
+    assert completion["evidence"]["answerTable"] == ""
+
+
+def test_a_student_text_mirror_is_not_ignored_or_transmitted() -> None:
+    """Only accessibility labels are decoration, not arbitrary hidden mirrors."""
+    read = variant(**{
+        '<input__class="qbaseCSS"__id="MatrixTextBoxes3_num"__maxlength="4">':
+        '<span name="NotAnObject" style="visibility:hidden">SECRET</span>'
+        '<input class="qbaseCSS" id="MatrixTextBoxes3_num" maxlength="4">'
+    })
+
+    assert "span[name=NotAnObject]" in read["evidence"]["answerTable"]
+    assert "answerTable" not in read
+    assert "SECRET" not in json.dumps(read)
+
+
+def test_an_accessibility_label_targeting_another_control_is_refused() -> None:
+    """A nearby screen-reader label is not automatically part of this editor."""
+    read = variant(**{
+        'for="MatrixTextBoxes3_num"': 'for="AnotherControl"'
+    })
+
+    assert read["evidence"]["answerTable"].startswith(
+        "blank-not-empty:label.sr-only"
+    )
+    assert "answerTable" not in read
+
+
+def test_the_accessibility_label_wrapper_must_match_exactly() -> None:
+    """A similarly named label outside the observed chain remains cell text."""
+    read = variant(**{
+        '<span__class="FractionBoxStyle">': '<span class="OtherBoxStyle">'
+    })
+
+    assert read["evidence"]["answerTable"].startswith(
+        "blank-not-empty:label.sr-only"
+    )
+    assert "answerTable" not in read
+
+
+def test_math_beside_the_control_is_still_refused() -> None:
+    """A Hawkes label does not license an actual mathematical value beside it."""
+    read = variant(**{
+        '<input__class="qbaseCSS"__id="MatrixTextBoxes3_num"__maxlength="4">':
+        '<input class="qbaseCSS" id="MatrixTextBoxes3_num" maxlength="4">'
+        '<math><mn>7</mn></math>'
+    })
+
+    assert read["evidence"]["answerTable"].startswith("blank-not-empty:")
+    assert "answerTable" not in read
+
+
 def test_a_box_with_words_beside_it_is_refused() -> None:
     """A cell is a blank or a value. One that is both is not read as either."""
     read = variant(**{
@@ -154,7 +214,7 @@ def test_a_box_with_words_beside_it_is_refused() -> None:
         '<input class="qbaseCSS" id="MatrixTextBoxes3_num" maxlength="4">or 0'
     })
 
-    assert read["evidence"]["answerTable"] == "blank-not-empty"
+    assert read["evidence"]["answerTable"].startswith("blank-not-empty:")
     assert "answerTable" not in read
 
 
@@ -225,8 +285,10 @@ def test_more_blanks_than_the_answer_bound_are_refused() -> None:
     """Six blanks is more parts than the add-on can place, so none are read."""
     markup = FIXTURE.read_text(encoding="utf-8")
     markup = markup.replace(
-        '<input class="qbaseCSS" id="MatrixTextBoxes6_num" maxlength="4"></td></tr>',
-        '<input class="qbaseCSS" id="MatrixTextBoxes6_num" maxlength="4"></td>'
+        '<input class="qbaseCSS" id="MatrixTextBoxes6_num" maxlength="4">'
+        '</span></span></span></span></td></tr>',
+        '<input class="qbaseCSS" id="MatrixTextBoxes6_num" maxlength="4">'
+        '</span></span></span></span></td>'
         '<td>9</td></tr>',
     ).replace(
         '</mjx-assistive-mml></mjx-container></td></tr>\n</tbody></table>',
@@ -243,8 +305,10 @@ def test_more_blanks_than_the_answer_bound_are_refused() -> None:
 def test_a_ragged_row_headed_table_is_refused() -> None:
     """Unequal x/y rows are not recognized as the live answer-table shape."""
     read = variant(**{
-        '<td><input__class="qbaseCSS"__id="MatrixTextBoxes6_num"__maxlength="4"></td></tr>':
-        '<td><input class="qbaseCSS" id="MatrixTextBoxes6_num" maxlength="4"></td>'
+        '<input__class="qbaseCSS"__id="MatrixTextBoxes6_num"__maxlength="4">'
+        '</span></span></span></span></td></tr>':
+        '<input class="qbaseCSS" id="MatrixTextBoxes6_num" maxlength="4">'
+        '</span></span></span></span></td>'
         '<td>spare</td></tr>'
     })
 
