@@ -19,7 +19,7 @@
  */
 
 import { MAX_ANSWER_PARTS } from "/common/config.js";
-import { answerFitsEditor } from "/common/editor-rules.js";
+import { answerFitsEditor, tableAnswerFits } from "/common/editor-rules.js";
 import { planAnswerParts, planEntry } from "/common/editor-plan.js";
 
 /** The stages a solve goes through, in order. */
@@ -149,6 +149,14 @@ function reviewOffer(state) {
     && state.answerParts.length >= 2
     && state.answerParts.length <= MAX_ANSWER_PARTS
   ) {
+    // A completion table publishes one control per blank, found by the reader
+    // that accepted the table. That mapping is what places these values, so it
+    // is what decides whether they can be placed -- the page's editor
+    // collection holds a control for every cell of the grid, given and blank
+    // alike, and cannot say which is which.
+    const tableInsertable = tableAnswerFits(
+      state.answerParts, state.tableTargets ?? [], state.editor
+    );
     const editors = state.editor?.kind === "multi" ? state.editor.editors : [];
     const multiInsertable = Array.isArray(editors)
       && editors.length === state.answerParts.length
@@ -161,7 +169,7 @@ function reviewOffer(state) {
       && state.editor?.kind !== "multi"
       && /separate multiple answers with a comma/i.test(state.problemText ?? "")
       && planAnswerParts(state.answerParts, state.editor).ok;
-    const insertable = multiInsertable || commaInsertable;
+    const insertable = tableInsertable || multiInsertable || commaInsertable;
     return insertable
       ? {
           insertable: true,
@@ -216,8 +224,47 @@ function reviewOffer(state) {
 }
 
 /**
+ * A multi-part answer, part by part, each named by where it goes.
+ *
+ * One line reading `0, 8, 8, 5, 3` is the reviewed answer and is also five
+ * numbers in a row, which anybody would read as "the first box, then the
+ * next". For a completion table that reading is wrong: the page's blanks are
+ * numbered by the mathematics -- down the ordered pairs of a row-headed grid
+ * -- and the boxes are laid out across two rows, so the two orders name
+ * different cells. The panel must not imply an order it does not mean.
+ *
+ * So a table answer is shown against the table's own words: which column, and
+ * which record. Anything else multi-part is genuinely one box per part in
+ * visual order, and is numbered as such.
+ *
+ * @returns {{kind: string, items: {label: string, text: string}[]}}
+ */
+function answerBreakdown(state) {
+  const parts = Array.isArray(state.answerParts) ? state.answerParts : [];
+  const none = { kind: "none", items: [] };
+  if (parts.length < 2 || parts.length > MAX_ANSWER_PARTS) {
+    return none;
+  }
+  const targets = Array.isArray(state.tableTargets) ? state.tableTargets : [];
+  if (targets.length === parts.length) {
+    return {
+      kind: "cells",
+      items: parts.map((text, index) => ({
+        label: String(targets[index]?.label ?? `#${index + 1}`).slice(0, 48),
+        text,
+      })),
+    };
+  }
+  return {
+    kind: "fields",
+    items: parts.map((text, index) => ({ label: `#${index + 1}`, text })),
+  };
+}
+
+/**
  * @typedef {object} PanelView
  * @property {{text: string, empty: boolean, placed: boolean}} answer
+ * @property {{kind: string, items: {label: string, text: string}[]}} parts
  * @property {{text: string, idle: boolean}} problem
  * @property {{key: string, args: string[]} | null} badge
  * @property {{text: string, available: boolean}} detail
@@ -283,6 +330,10 @@ export function describeView(state, now = 0, { docked = false } = {}) {
   /** @type {PanelView} */
   const view = {
     answer: { text: shown, empty: shown.length === 0, placed: placed.length > 0 },
+    // Only beside a settled answer. While a solve is running the card is
+    // deliberately blank, and a breakdown of the previous answer beneath it
+    // would be the one thing on screen still describing the question before.
+    parts: running || shown.length === 0 ? { kind: "none", items: [] } : answerBreakdown(state),
     problem: { text: state.problemText || "", idle: !state.problemText },
     badge: state.source ? { key: "popupSourceBadge", args: [state.source] } : null,
     detail: { text: state.detail || "", available: Boolean(state.detail) },
@@ -352,6 +403,7 @@ export function describeView(state, now = 0, { docked = false } = {}) {
 function offline() {
   return {
     answer: { text: "", empty: true, placed: false },
+    parts: { kind: "none", items: [] },
     problem: { text: "", idle: true },
     badge: null,
     detail: { text: "", available: false },

@@ -608,3 +608,125 @@ def test_the_caution_needs_an_explicit_denial_not_a_missing_field(view):
     )
 
     assert described["status"]["key"] == "statusSolved"
+
+
+# --- a multi-part answer, said against where its parts go ------------------
+
+#: The live completion table's own editor: one plain box, digits and a minus.
+TABLE_EDITOR = {
+    "ok": True,
+    "code": "described",
+    "kind": "textbox",
+    "enabled": True,
+    "maxLength": 4,
+    "allowedCharacters": "[0-9-]",
+    "slots": None,
+    "templates": {
+        "fraction": False,
+        "radical": False,
+        "exponent": False,
+        "parentheses": False,
+        "absoluteValue": False,
+    },
+}
+
+#: What Facet proves for that grid, in semantic blank order.
+PARTS = ["0", "8", "8", "5", "3"]
+
+
+def table_mapping():
+    """The mapping the page reader states, read from the live fixture."""
+    from hawkes_dom import read_fixture
+
+    return read_fixture("table-completion.html")["answerTargets"]["blanks"]
+
+
+def panel_state(**changes):
+    state = {
+        "phase": "solved",
+        "editor": TABLE_EDITOR,
+        "answer": "0, 8, 8, 5, 3",
+        "displayText": "0, 8, 8, 5, 3",
+        "answerParts": PARTS,
+        "tableTargets": table_mapping(),
+        "problemText": "Complete the table of values below.",
+    }
+    state.update(changes)
+    return state
+
+
+def test_the_panel_offers_a_table_answer_the_collection_could_not_place(view) -> None:
+    """The live refusal: five correct values, Insert disabled, `answer-parts`."""
+    shown = view(panel_state())
+
+    assert shown["insert"]["enabled"] is True
+    assert shown["status"]["key"] == "statusSolved"
+
+
+def test_the_panel_names_the_cell_each_value_belongs_to(view) -> None:
+    """Five numbers in a row would read as five boxes in a row. They are not."""
+    shown = view(panel_state())
+
+    assert shown["parts"]["kind"] == "cells"
+    assert shown["parts"]["items"] == [
+        {"label": "y #1", "text": "0"},
+        {"label": "x #2", "text": "8"},
+        {"label": "y #3", "text": "8"},
+        {"label": "y #4", "text": "5"},
+        {"label": "x #5", "text": "3"},
+    ]
+    assert not any(
+        "MatrixTextBoxes" in item["label"] for item in shown["parts"]["items"]
+    )
+
+
+def test_a_multi_field_answer_is_numbered_rather_than_run_together(view) -> None:
+    """Not a table: these boxes really are in visual order, and say so."""
+    shown = view(
+        panel_state(
+            tableTargets=[],
+            answerParts=["-1", "5"],
+            answer="-1 or 5",
+            displayText="-1 or 5",
+            editor={"ok": True, "code": "described-multi", "kind": "multi",
+                    "editors": [TABLE_EDITOR, TABLE_EDITOR]},
+        )
+    )
+
+    assert shown["parts"] == {
+        "kind": "fields",
+        "items": [{"label": "#1", "text": "-1"}, {"label": "#2", "text": "5"}],
+    }
+
+
+def test_a_running_solve_shows_no_breakdown_of_the_previous_answer(view) -> None:
+    shown = view(panel_state(phase="solving"))
+
+    assert shown["answer"]["text"] == ""
+    assert shown["parts"] == {"kind": "none", "items": []}
+
+
+def test_a_single_answer_has_no_breakdown_at_all(view) -> None:
+    shown = view(
+        panel_state(tableTargets=[], answerParts=[], answer="3y", displayText="3y")
+    )
+
+    assert shown["parts"] == {"kind": "none", "items": []}
+
+
+def test_a_table_answer_with_no_mapping_is_not_offered(view) -> None:
+    """Nothing places it, so nothing may claim it is ready to be placed."""
+    shown = view(panel_state(tableTargets=[]))
+
+    assert shown["insert"]["enabled"] is False
+    assert shown["status"]["key"] == "errorEditorUnknown"
+
+
+def test_a_value_too_long_for_its_own_cell_is_not_offered(view) -> None:
+    """The box states its own bound in the markup; the panel applies it per cell."""
+    targets = table_mapping()
+    targets[2] = {**targets[2], "maxLength": 1}
+
+    shown = view(panel_state(tableTargets=targets, answerParts=["0", "8", "88", "5", "3"]))
+
+    assert shown["insert"]["enabled"] is False

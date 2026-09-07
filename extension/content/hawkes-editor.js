@@ -678,11 +678,232 @@ var ethnosHawkes = (function () {
     return { ok: true, code: "native-input-fields", entered: [...parts] };
   }
 
+  /**
+   * How many characters a control already holds, without reading any of them.
+   *
+   * `setSelectionRange` clamps to the field's own length, so the caret it
+   * leaves behind reports that length and nothing else. The table path must
+   * never read a student's `.value`: the whole point of the completion reader
+   * is that a blank is a *position the page states*, and going to the control
+   * for its contents would undo that -- both here and in the writer below,
+   * which composes each write from what it has placed itself.
+   *
+   * This is recorded, never acted on. A Hawkes answer control keeps a text
+   * model of its own, and live it reported characters for boxes the page was
+   * drawing as empty cells -- so what the control holds is not the page's
+   * statement about the cell, and refusing on it stopped five correct values
+   * reaching five blanks the reader had already proved blank. What a cell is
+   * remains the reader's finding; this is a number in the log beside it.
+   *
+   * Returns -1 when the control cannot answer at all.
+   */
+  function placedLength(target) {
+    try {
+      const start = target.selectionStart;
+      const end = target.selectionEnd;
+      const direction = target.selectionDirection;
+      target.setSelectionRange(0, MAX_ANSWER_LENGTH * 4);
+      const length = target.selectionEnd;
+      if (!Number.isInteger(length)) {
+        return -1;
+      }
+      if (Number.isInteger(start) && Number.isInteger(end)) {
+        target.setSelectionRange(start, end, direction);
+      }
+      return length;
+    } catch {
+      return -1;
+    }
+  }
+
+  /**
+   * Resolve one table mapping against the live page.
+   *
+   * The mapping is `blank N -> control id`, decided by the one reader that
+   * accepted the table and re-derived by that same reader immediately before
+   * this runs. What is left to check here is the elements themselves: that
+   * each id still names a Hawkes answer box, that it is visible and editable,
+   * and that no two blanks resolved to the same control.
+   *
+   * Every failure is named and nothing has been written when one is returned.
+   */
+  function resolveTableTargets(parts, ids) {
+    const fields = [];
+    const held = [];
+    for (const [index, id] of ids.entries()) {
+      const field = document.getElementById(id);
+      if (!field || !field.isConnected) {
+        return { ok: false, code: "table-target-missing", blank: index + 1 };
+      }
+      if (!isNativeField(field) || !field.matches?.(HAWKES_FIELD_SELECTOR)) {
+        return { ok: false, code: "table-target-missing", blank: index + 1 };
+      }
+      const rect = field.getBoundingClientRect();
+      if (
+        !(rect.width > 0 && rect.height > 0)
+        || field.disabled
+        || field.readOnly
+      ) {
+        return { ok: false, code: "table-target-not-editable", blank: index + 1 };
+      }
+      if (fields.includes(field)) {
+        return { ok: false, code: "table-target-repeated", blank: index + 1 };
+      }
+      const bound = field.maxLength;
+      if (Number.isInteger(bound) && bound > 0 && parts[index].length > bound) {
+        return { ok: false, code: "answer-invalid", blank: index + 1 };
+      }
+      held.push(placedLength(field));
+      fields.push(field);
+    }
+    return { ok: true, fields, held };
+  }
+
+  /**
+   * Put one exact string in a cell, composed from what this writer placed.
+   *
+   * `writeCharacter` reads `target.value` to rebuild the field around the
+   * caret, which is right for an editor whose contents belong to whoever was
+   * typing. A table cell is a blank the reader proved blank, and the table
+   * path never reads one, so the next value is a string this function has
+   * authored in full -- `placed + character`, starting from nothing.
+   *
+   * That also means the cell ends holding exactly the reviewed part, whatever
+   * the control was carrying before. Appending to a buffer nobody can see
+   * would put a value in the table that no one reviewed.
+   */
+  function writeCell(target, placed, character) {
+    const next = `${placed}${character}`;
+    const descriptor = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype, "value"
+    );
+    if (descriptor?.set) {
+      descriptor.set.call(target, next);
+    } else {
+      target.value = next;
+    }
+    target.setSelectionRange?.(next.length, next.length);
+    target.dispatchEvent(
+      new InputEvent("input", {
+        bubbles: true,
+        data: character,
+        inputType: character === "" ? "deleteContentBackward" : "insertText",
+      })
+    );
+    return next;
+  }
+
+  /**
+   * Place one completion table's answers in the cells they belong to.
+   *
+   * `ids` is the browser's authoritative mapping in semantic blank order:
+   * `ids[N]` is the control the reader found in the cell that blank `N + 1`
+   * occupies. It is deliberately not a geometric sweep -- the live grid's
+   * records run down its columns, so reading order and blank order name
+   * different cells, and every one of five values would land in the wrong box
+   * if the two were treated as the same list.
+   *
+   * Nothing is written until every cell has been resolved, bounded and
+   * preflighted, so a mapping that has stopped describing the page refuses
+   * whole rather than leaving part of an answer behind.
+   */
+  async function insertTableParts(parts, ids, cadenceOptions = {}) {
+    if (!originAllowed()) {
+      return { ok: false, code: "wrong-site" };
+    }
+    if (hawkesDialogOpen()) {
+      return { ok: false, code: "editor-dialog-open" };
+    }
+    if (
+      !Array.isArray(parts)
+      || parts.length < 2
+      || parts.length > MAX_ANSWER_PARTS
+      || !parts.every(answerIsSupported)
+      || !Array.isArray(ids)
+      || ids.length !== parts.length
+      || !ids.every((id) => typeof id === "string" && id.length > 0)
+      || new Set(ids).size !== ids.length
+    ) {
+      return { ok: false, code: "answer-invalid" };
+    }
+    const resolved = resolveTableTargets(parts, ids);
+    if (!resolved.ok) {
+      return resolved;
+    }
+    const fields = resolved.fields;
+    // Ask every cell before changing any of them. Hawkes uses this event to
+    // reject characters its published model does not accept, and a question
+    // that would refuse the fourth value must not be given the first three.
+    if (!fields.every((field, index) => beforeInputAccepted(field, parts[index]))) {
+      return { ok: false, code: "input-cancelled" };
+    }
+
+    const cadence = normalizedCadence(cadenceOptions);
+    for (let index = 0; index < fields.length; index += 1) {
+      // The mapping, re-resolved between cells. Paced entry runs for seconds,
+      // and Hawkes swaps a question in place: the cell this is about to write
+      // can have been replaced while the previous one was being typed. A
+      // refusal keeps its own reason -- "the targets changed" was one word for
+      // a cell that had gone, one that had closed, and one the page had
+      // renamed.
+      const current = resolveTableTargets(parts, ids);
+      if (!current.ok) {
+        return { ...current, written: index };
+      }
+      if (current.fields.some((field, offset) => field !== fields[offset])) {
+        return { ok: false, code: "table-targets-changed", written: index };
+      }
+      const target = fields[index];
+      target.focus();
+      // Emptied first, so the cell ends holding the reviewed part and nothing
+      // the control was carrying behind it. One write, not a read.
+      let placed = writeCell(target, "", "");
+      const failure = await playEntryCadence([...parts[index]], (character) => {
+        if (!target.isConnected) {
+          return { ok: false, code: "table-target-missing" };
+        }
+        if (target.disabled || target.readOnly) {
+          return { ok: false, code: "table-target-not-editable" };
+        }
+        placed = writeCell(target, placed, character);
+        return null;
+      }, cadence);
+      if (failure) {
+        return { ...failure, written: index };
+      }
+      if (placed !== parts[index]) {
+        return { ok: false, code: "table-answer-incomplete", written: index };
+      }
+    }
+    // The cells this wrote to are still the cells the mapping named. Their
+    // contents are not read back: what went in is what this function composed,
+    // character by character, and it has just been compared against the part.
+    const settled = resolveTableTargets(parts, ids);
+    if (
+      !settled.ok
+      || settled.fields.some((field, index) => field !== fields[index])
+    ) {
+      return { ok: false, code: "table-targets-changed", written: parts.length };
+    }
+    return {
+      ok: true,
+      code: "native-input-cells",
+      cells: [...ids],
+      // How many characters each control was carrying before this ran, and
+      // how many it carries now. Lengths, never characters: this is the one
+      // fact about a Hawkes answer control's own text model that a live run
+      // could not otherwise state, and both readings come from the caret.
+      held: resolved.held,
+      placed: settled.held,
+    };
+  }
+
   return {
     answerIsSupported,
     inspectField,
     insertAnswer,
     insertAnswerParts,
+    insertTableParts,
     originAllowed,
   };
 })();

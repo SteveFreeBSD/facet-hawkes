@@ -90,6 +90,10 @@ def test_the_whole_grid_crosses(completion) -> None:
             "math": 5,
             "mathJax": 10,
             "blanks": 5,
+            # The live grid's records are its columns, so blank numbering and
+            # geometric reading order name different cells. Recorded, never
+            # required: what places these values is the mapping below.
+            "domOrderMatches": False,
         },
         "cell": None,
     }

@@ -34,7 +34,7 @@ IMPORT_LINE = re.compile(r"^import\s[\s\S]*?;\s*$", re.MULTILINE)
 def plan():
     quickjs = pytest.importorskip("quickjs", reason="pip install quickjs")
     context = quickjs.Context()
-    for name in ("editor-rules.js", "editor-plan.js"):
+    for name in ("config.js", "editor-rules.js", "editor-plan.js"):
         source = (COMMON / name).read_text(encoding="utf-8")
         context.eval(IMPORT_LINE.sub("", source).replace("export ", ""))
 
@@ -179,7 +179,7 @@ def view():
     """`describeView(state, now)`, running as the panel runs it."""
     quickjs = pytest.importorskip("quickjs", reason="pip install quickjs")
     context = quickjs.Context()
-    for name in ("editor-rules.js", "editor-plan.js", "panel-view.js"):
+    for name in ("config.js", "editor-rules.js", "editor-plan.js", "panel-view.js"):
         source = (COMMON / name).read_text(encoding="utf-8")
         context.eval(IMPORT_LINE.sub("", source).replace("export ", ""))
 

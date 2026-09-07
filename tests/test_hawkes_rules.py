@@ -16,15 +16,23 @@ import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 RULES_JS = PROJECT_ROOT / "extension" / "common" / "editor-rules.js"
+CONFIG_JS = PROJECT_ROOT / "extension" / "common" / "config.js"
 
 quickjs = pytest.importorskip("quickjs", reason="pip install quickjs")
 
 
+def rules_context():
+    """The shipped rules module, beside the one bound it imports."""
+    context = quickjs.Context()
+    context.eval(re.sub(r"^export ", "", CONFIG_JS.read_text(), flags=re.MULTILINE))
+    source = re.sub(r"^export ", "", RULES_JS.read_text(), flags=re.MULTILINE)
+    context.eval(re.sub(r"^import .*\n", "", source, flags=re.MULTILINE))
+    return context
+
+
 @pytest.fixture(scope="module")
 def fits():
-    source = re.sub(r"^export ", "", RULES_JS.read_text(), flags=re.MULTILINE)
-    context = quickjs.Context()
-    context.eval(source)
+    context = rules_context()
 
     def call(answer, editor):
         return json.loads(
@@ -38,9 +46,7 @@ def fits():
 
 @pytest.fixture(scope="module")
 def insertion_error_key():
-    source = re.sub(r"^export ", "", RULES_JS.read_text(), flags=re.MULTILINE)
-    context = quickjs.Context()
-    context.eval(source)
+    context = rules_context()
 
     def call(code):
         return context.eval(f"insertErrorKey({json.dumps(code)})")
@@ -175,20 +181,11 @@ def test_an_option_question_is_never_typed_into():
     import json as _json
     import re as _re
 
-    import quickjs as _quickjs
-
-    rules = _re.sub(
-        r"^export ",
-        "",
-        (PROJECT_ROOT / "extension" / "common" / "editor-rules.js").read_text(),
-        flags=_re.M,
-    )
     plan = (PROJECT_ROOT / "extension" / "common" / "editor-plan.js").read_text()
     plan = _re.sub(
         r"^import .*\n", "", _re.sub(r"^export ", "", plan, flags=_re.M), flags=_re.M
     )
-    context = _quickjs.Context()
-    context.eval(rules)
+    context = rules_context()
     context.eval(plan)
 
     option = {

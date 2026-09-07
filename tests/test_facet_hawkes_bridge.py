@@ -19,6 +19,7 @@ Facet failure is reported rather than quietly answered locally.
 
 from __future__ import annotations
 
+import re
 import json
 from pathlib import Path
 
@@ -772,6 +773,16 @@ def _normaliser():
         .read_text(encoding="utf-8")
         .replace("export ", "")
     )
+    # And the rules module it now reads the table mapping's shape from, for the
+    # same reason: one definition of "this is a placeable mapping", checked
+    # here against the file the event page actually imports.
+    rules = re.sub(
+        r"^export ",
+        "",
+        (EXTENSION / "common" / "editor-rules.js").read_text(encoding="utf-8"),
+        flags=re.MULTILINE,
+    )
+    context.eval(re.sub(r"^import .*\n", "", rules, flags=re.MULTILINE))
     source = (EXTENSION / "background.js").read_text(encoding="utf-8")
     context.eval(_lift(source, "answerShapeOf"))
     return context

@@ -23,7 +23,7 @@
   // every decision, and the observatory applies the same normalization to the
   // tree. Unlike the event-page marker, this proves which Hawkes reader was
   // injected into the authoritative page DOM.
-  const HAWKES_READER_BUILD = "d458e714e51a";
+  const HAWKES_READER_BUILD = "e5df6f8ef8b4";
 
   const ANSWER_CONTROLS =
     'input.qbaseCSS, input[id^="txtAns"], input.boxStyle, input[id$="_optchk"], '
@@ -535,6 +535,7 @@
     }
 
     const blanks = [];
+    const targets = [];
     const rows = [];
     for (const [rowIndex, row] of body.entries()) {
       const cells = [];
@@ -554,8 +555,40 @@
               ),
             });
           }
-          blanks.push(inside[0]);
+          // A blank is a control an answer can actually be typed into, and one
+          // this browser can name again at insertion time. Anything else is
+          // refused here rather than carried as a cell nobody can write to:
+          // the numbering below is the only thing that will ever say which
+          // value belongs in which box.
+          const control = inside[0];
+          if (
+            control.disabled === true
+            || control.readOnly === true
+            || attribute(control, "disabled") !== null
+            || attribute(control, "readonly") !== null
+          ) {
+            return refuse("blank-not-editable");
+          }
+          const controlId = String(attribute(control, "id") ?? "");
+          if (controlId.length === 0 || controlId.length > 120) {
+            return refuse("blank-without-an-id");
+          }
+          if (targets.some((entry) => entry.id === controlId)) {
+            return refuse("blank-id-repeated");
+          }
+          blanks.push(control);
           detail.table.blanks = blanks.length;
+          // Hawkes states the box's own bound in the markup; it is the one
+          // per-cell entry rule the DOM publishes, and the collection model
+          // cannot be asked for it per blank.
+          const declared = Number(attribute(control, "maxlength"));
+          targets.push({
+            blank: blanks.length,
+            id: controlId,
+            row: rowIndex + 1,
+            column: columnIndex + 1,
+            maxLength: Number.isInteger(declared) && declared > 0 ? declared : null,
+          });
           cells.push({ blank: blanks.length });
           continue;
         }
@@ -585,26 +618,59 @@
     // Every box on the page is one of these cells. A box elsewhere would mean
     // this grid is not the page's complete answer surface, so refuse it.
     if (blanks.length !== controls.length) return refuse("controls-outside-table");
-    // A conventional record-per-row table numbers boxes in geometric reading
-    // order, which is also the field sweep's order. The live row-headed table
-    // is different by design: its mathematical records are columns, so blank
-    // numbers run left-to-right by ordered pair while the DOM sweep encounters
-    // the x-row controls before the y-row controls. No field ids cross in the
-    // answer table, and cardinality does not pretend that those orders agree.
-    if (header !== null) {
-      const placed = [...blanks].sort((left, right) => {
-        const a = left.getBoundingClientRect();
-        const b = right.getBoundingClientRect();
-        return a.top - b.top || a.left - b.left;
-      });
-      if (placed.some((field, index) => field !== blanks[index])) {
-        return refuse("blank-order-disagrees");
-      }
-    }
+    // Whether the page happens to draw these blanks in the order the
+    // mathematics numbers them.
+    //
+    // Recorded, never required. A record-per-row table numbers boxes in
+    // geometric reading order; the live row-headed grid does not, because its
+    // records are columns -- blank numbers run left to right by ordered pair
+    // while a geometric sweep meets every x-row control before any y-row one.
+    // This used to refuse the disagreement, which was the right answer only
+    // while a geometric sweep was the thing that found the boxes. The blank
+    // numbering below now carries its own control per cell, so the two orders
+    // are free to differ and the fact is kept for the log rather than acted on.
+    const placed = [...blanks].sort((left, right) => {
+      const a = left.getBoundingClientRect();
+      const b = right.getBoundingClientRect();
+      return a.top - b.top || a.left - b.left;
+    });
+    detail.table.domOrderMatches = placed.every(
+      (field, index) => field === blanks[index]
+    );
+    // What each blank is, said in the table's own vocabulary: the heading over
+    // its column, and either the record's own stated key or the record's
+    // position. Built here because this is where the table's words are, and
+    // used only to label the panel's own review -- it names a cell, never a
+    // control, and it never leaves this browser.
+    const labelled = targets.map((entry) => {
+      const name = String(columns[entry.column - 1] ?? "").slice(0, 24);
+      const record = rows[entry.row - 1]
+        .map((cell) => (typeof cell.text === "string" ? cell.text : ""))
+        .find((text) => text.length > 0) ?? "";
+      return {
+        ...entry,
+        label: record.length > 0
+          ? `${name} \u00b7 ${record.slice(0, 16)}`
+          : `${name} #${entry.row}`,
+      };
+    });
     return {
       table: { node: table, columns, rows },
       tableReason: "",
       tableDetail: { ...detail, decision: "accepted", reason: "" },
+      // One authoritative mapping: semantic blank N, and the exact visible,
+      // editable control occupying that cell. It stays in the browser -- the
+      // host is told the grid and nothing about the boxes -- and it is what
+      // both the panel's review and the insertion are keyed to, so nothing
+      // downstream ever has to rediscover a target and guess at its order.
+      targets: {
+        schema: 1,
+        build: HAWKES_READER_BUILD,
+        branch: detail.branch,
+        count: labelled.length,
+        domOrderMatches: detail.table.domOrderMatches,
+        blanks: labelled,
+      },
     };
   })();
 
@@ -782,6 +848,12 @@
             columns: answerTable.table.columns,
             rows: answerTable.table.rows,
           },
+          // The browser's half of the same reading, kept beside it and never
+          // sent anywhere: which control holds each numbered blank. The event
+          // page pins this, re-reads it before it writes, and refuses on any
+          // disagreement -- `answerTable` is what the question is, this is
+          // where its answers go.
+          answerTargets: answerTable.targets,
         }
       : {}),
   };

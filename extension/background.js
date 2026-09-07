@@ -25,7 +25,14 @@ import {
   restoreSolvedAnswer,
   snapshotSolvedAnswer,
 } from "/common/answer-session.js";
-import { answerFitsEditor, insertErrorKey } from "/common/editor-rules.js";
+import {
+  answerFitsEditor,
+  insertErrorKey,
+  isTableMapping,
+  sameTableMapping,
+  tableAnswerFits,
+  tableAnswerVerdicts,
+} from "/common/editor-rules.js";
 import { planAnswerParts, planEntry } from "/common/editor-plan.js";
 import { describeResults, selectAnswerFrame } from "/common/frames.js";
 import { graphOperation } from "/common/graph-actions.js";
@@ -253,6 +260,11 @@ function blankState() {
     frameId: null,
     fieldId: "",
     fieldIds: [],
+    // The browser's own mapping for a completion table: semantic blank N, and
+    // the control occupying that cell. Read by the question reader, held here
+    // across the solve, and re-read and compared before anything is written.
+    // Never sent to the host, which is told the grid and nothing about boxes.
+    tableTargets: [],
     editor: null,
     problemText: "",
     answer: "",
@@ -643,6 +655,24 @@ async function enterPlainAnswerParts(parts, fieldIds, cadence) {
 }
 
 /**
+ * One-shot insertion into the cells of one completion table.
+ *
+ * `cells` is the browser's authoritative mapping in semantic blank order, so
+ * `cells[N]` is the control that holds blank `N + 1`. It is passed as an
+ * argument rather than rediscovered in the page: the order is the table's, not
+ * the layout's, and no sweep of the DOM can recover it.
+ */
+async function enterTableParts(parts, cells, cadence) {
+  if (typeof ethnosHawkes === "undefined") {
+    return { ok: false, code: "prelude-missing" };
+  }
+  if (!ethnosHawkes.originAllowed()) {
+    return { ok: false, code: "wrong-site" };
+  }
+  return ethnosHawkes.insertTableParts(parts, cells, cadence);
+}
+
+/**
  * The Hawkes tab of one specific window.
  *
  * `currentWindow` used to choose this, which in a background event page means
@@ -823,6 +853,68 @@ async function describeEditor(tabId, frameId, attempts = 5, isGraph = false) {
   return { ok: false, code: "editor-model-missing" };
 }
 
+/**
+ * The table mapping one question read produced, when it produced a usable one.
+ *
+ * Taken from the same read that produced the grid, never from a second one.
+ * Blank N of that grid and entry N of this list are the same cell by
+ * construction, and pairing them across two reads is exactly the mistake this
+ * exists to make impossible.
+ *
+ * @returns {import("/common/editor-rules.js").TableTarget[]}
+ */
+function tableTargetsOf(question) {
+  const blanks = question?.answerTargets?.blanks;
+  if (!isTableMapping(blanks)) {
+    return [];
+  }
+  // The grid and the mapping are two halves of one reading and must agree
+  // about how many blanks there are before either is used.
+  const numbered = Array.isArray(question?.answerTable?.rows)
+    ? question.answerTable.rows
+      .flatMap((row) => (Array.isArray(row) ? row : []))
+      .filter((cell) => Number.isInteger(cell?.blank)).length
+    : 0;
+  return numbered === blanks.length ? blanks.map((blank) => ({ ...blank })) : [];
+}
+
+/**
+ * The mapping in the shapes a log may hold.
+ *
+ * Control ids and cell coordinates; never a label, which is built from the
+ * table's own stated values and is therefore coursework.
+ */
+function tableTargetShapes(targets) {
+  return (targets ?? []).map((target) => ({
+    blank: target.blank,
+    id: target.id,
+    row: target.row,
+    column: target.column,
+  }));
+}
+
+/**
+ * Record one accepted mapping, in shapes.
+ *
+ * Ids and cell coordinates only. A blank's label is built from the table's own
+ * stated values, so it stays on the panel and out of here.
+ */
+function noteTableTargets(targets, question, extra = {}) {
+  if (targets.length < 2) {
+    return;
+  }
+  log.info("table-targets-mapped", {
+    blanks: targets.length,
+    branch: question?.answerTargets?.branch ?? "",
+    // Whether the page draws these blanks in the order the mathematics
+    // numbers them. False is the live grid, and is why a geometric sweep
+    // cannot be the thing that finds them.
+    domOrderMatches: question?.answerTargets?.domOrderMatches === true,
+    cells: tableTargetShapes(targets),
+    ...extra,
+  });
+}
+
 /** Preflight every answer part against this question's published editors. */
 function multiEntryPlans(parts, editor) {
   if (!(
@@ -866,11 +958,20 @@ function multiAnswerFits(parts, editor) {
  * the page says about its own controls -- which is page metadata and is
  * already reported for the single-field case.
  */
-function describePartsFailure(parts, editor, problemText) {
+function describePartsFailure(parts, editor, problemText, tableTargets = []) {
   const editors = Array.isArray(editor?.editors) ? editor.editors : [];
   const aligned = editors.length === parts.length;
+  // The other way a page publishes several answers: one control per blank of
+  // a completion table, found by the reader that accepted the table rather
+  // than by the editor collection. Reported here in the same shape, because a
+  // table answer that will not go in is now one of the things `answer-parts`
+  // can mean.
+  const cellFit = tableAnswerVerdicts(parts, tableTargets, editor);
   return {
     parts: parts.length,
+    tableTargets: tableTargets.length,
+    cellFit: (cellFit ?? []).map((verdict) => verdict.code ?? "ok"),
+    cellMaxLength: tableTargets.map((target) => target.maxLength ?? null),
     partLengths: parts.map((part) => part.length),
     partsValid: parts.map((part) => validateAnswer(part).ok),
     editorKind: editor?.kind ?? "none",
@@ -973,15 +1074,18 @@ function commaAnswerPlan(parts, editor, problemText) {
  * version before this one implied and what the host still assumes when the
  * field is absent.
  */
-function answerShapeOf(editor, answerTable = null) {
+function answerShapeOf(editor, answerTable = null, tableTargets = []) {
   // A validated completion table numbers its blanks in the order the
   // mathematics is read. Hawkes' live row-headed table publishes ten control
   // models (one for every value cell) even though the DOM has five answer
   // boxes, so that collection cannot define answer cardinality. The table can:
-  // only the closed, sequential blank numbering emitted by our reader is used.
+  // only the closed, sequential blank numbering emitted by our reader is used,
+  // and only when the same reading also produced one control per blank -- a
+  // count nothing can place is not a count worth asking the host for.
   const tableParts = (() => {
     if (
       editor?.kind !== "textbox"
+      || !isTableMapping(tableTargets)
       || !Array.isArray(answerTable?.columns)
       || !Array.isArray(answerTable?.rows)
       || answerTable.columns.length < 2
@@ -1002,6 +1106,7 @@ function answerShapeOf(editor, answerTable = null) {
     if (
       blanks.length < 2
       || blanks.length > MAX_ANSWER_PARTS
+      || blanks.length !== tableTargets.length
       || blanks.some((blank, index) => blank !== index + 1)
     ) {
       return 0;
@@ -1587,13 +1692,13 @@ async function prepare(windowId = state.windowId) {
       fail("errorEditorUnknown", { detail: editor?.code ?? "graph-missing" });
       return;
     }
-    const fieldIds = answerFieldIds(choice, evidenceReport?.multiFieldEvidence, editor);
+    const swept = answerFieldIds(choice, evidenceReport?.multiFieldEvidence, editor);
     if (
-      fieldIds.length > 0
-      && (fieldIds.length < 2
-        || fieldIds.length > MAX_ANSWER_PARTS
+      swept.length > 0
+      && (swept.length < 2
+        || swept.length > MAX_ANSWER_PARTS
         || editor?.kind !== "multi"
-        || editor.editors?.length !== fieldIds.length)
+        || editor.editors?.length !== swept.length)
     ) {
       // Which of the four disagreements it was. This refusal fired live on a
       // two-field question that Facet had already answered exactly, and the
@@ -1603,7 +1708,7 @@ async function prepare(windowId = state.windowId) {
       // of them. Those are three different faults and one message.
       fail("errorEditorUnknown", {
         detail:
-          `fields=${fieldIds.length} editor=${editor?.kind ?? "none"}`
+          `fields=${swept.length} editor=${editor?.kind ?? "none"}`
           + ` editors=${editor?.editors?.length ?? 0} ok=${Boolean(editor?.ok)}`
           + `${editor?.code ? ` code=${editor.code}` : ""}`,
       });
@@ -1630,15 +1735,35 @@ async function prepare(windowId = state.windowId) {
       // different faults and one description without this.
       collection: editor?.collection ?? null,
     });
-    if (fieldIds.length >= 2) {
+    if (swept.length >= 2) {
       log.info("multi-editor-described", {
-        fieldIds,
+        fieldIds: swept,
         editorNames: editor.editors.map((item) => item.name),
         allowedCharacters: editor.editors.map((item) => item.allowedCharacters),
         templates: editor.editors.map((item) => item.templates),
       });
     }
     const question = await readQuestion(tab.id, choice.frameId);
+    // The table's own mapping, re-acquired from this read. It is deliberately
+    // not carried over from the previous state: an answer survives a prepare
+    // only while the question is unchanged, but the controls under it are the
+    // page's and are re-found every time, so a re-render that keeps the grid
+    // and renumbers its boxes is followed rather than written into blindly.
+    const tableTargets = tableTargetsOf(question);
+    // Two readings can both claim to have found the answer's fields, and only
+    // one of them knows which cell is which. The geometric sweep sorts boxes
+    // top-to-bottom and left-to-right; the live completion grid's records run
+    // down its columns, so that order names a different cell for every blank.
+    // Where a table has been accepted, its mapping is the answer surface and
+    // the sweep is dropped rather than reconciled.
+    const fieldIds = tableTargets.length >= 2 ? [] : swept;
+    // What the other reading saw at the same moment, so a disagreement between
+    // the two is visible without another run: the boxes the geometric sweep
+    // found, and whichever of them it was willing to adopt.
+    noteTableTargets(tableTargets, question, {
+      swept: evidenceReport?.multiFieldEvidence?.fieldIds ?? [],
+      adopted: fieldIds,
+    });
     const signature = questionSignature(choice.fieldId, question);
     // A question we could not read is never treated as the previous one.
     const sameQuestion = signature !== null && signature === previous.signature
@@ -1661,6 +1786,7 @@ async function prepare(windowId = state.windowId) {
       frameId: choice.frameId,
       fieldId: choice.fieldId ?? "",
       fieldIds,
+      tableTargets,
       editor: hasAnswer && previous.graphPlan ? previous.editor : editor,
       signature,
       // Carried over only while the question is unchanged, so a previous
@@ -1813,8 +1939,16 @@ async function solve(windowId = state.windowId) {
       promptChars: runFacts.evidence.promptChars,
     });
     // The answer about to be solved belongs to the question just read, not to
-    // whatever was on screen when the panel opened.
-    update({ signature: questionSignature(state.fieldId, question) ?? state.signature });
+    // whatever was on screen when the panel opened. The same is true of the
+    // table mapping: the grid crossing to the host and the controls its blanks
+    // will come back to are two halves of this one read, and pairing them
+    // across two reads is the mistake that puts part 1 in part 3's box.
+    const tableTargets = tableTargetsOf(question);
+    update({
+      signature: questionSignature(state.fieldId, question) ?? state.signature,
+      tableTargets,
+    });
+    noteTableTargets(tableTargets, question, { adopted: state.fieldIds ?? [] });
     runFacts.evidence.signature = state.signature ?? "";
     if (controller.signal.aborted) {
       return;
@@ -1856,7 +1990,7 @@ async function solve(windowId = state.windowId) {
     }
 
     const solveDeadline = Date.now() + settings.solveTimeoutSeconds * 1000;
-    const shape = answerShapeOf(state.editor, question.answerTable);
+    const shape = answerShapeOf(state.editor, question.answerTable, tableTargets);
     const askToSolve = (image, pipeline) => {
       log.info("host-request-shaped", {
         pipeline,
@@ -1867,6 +2001,10 @@ async function solve(windowId = state.windowId) {
           .filter((cell) => Number.isInteger(cell?.blank)).length ?? 0,
         answerShape: shape.kind,
         answerParts: shape.count ?? 0,
+        // How many cells this browser can place an answer in. Asking for five
+        // values while holding no mapping is a solve that could never be
+        // inserted, and the two counts belong in the same line.
+        tableTargets: tableTargets.length,
       });
       return askEthnos(
         "solve_hawkes_problem",
@@ -2146,18 +2284,21 @@ async function acceptReply(reply) {
   // six solves in a row ended that way on `2sqrt(2(-x^9))`. The panel already
   // shows the editor's own objection; this is so the log shows it too.
   const partsFit = hasParts
-    && (multiAnswerFits(answerParts, state.editor)
+    && (tableAnswerFits(answerParts, state.tableTargets ?? [], state.editor)
+      || multiAnswerFits(answerParts, state.editor)
       || commaAnswerPlan(answerParts, state.editor, reply.problem_text) !== null);
   let partsFailure = null;
   if (hasParts && !partsFit) {
     // Everything needed to see why, in one line: the answer's shape, the
-    // shape the page published, and what each of the two entry routes said
+    // shape the page published, and what each of the three entry routes said
     // about each part.
-    partsFailure = describePartsFailure(answerParts, state.editor, reply.problem_text);
+    partsFailure = describePartsFailure(
+      answerParts, state.editor, reply.problem_text, state.tableTargets ?? []
+    );
     noteRunEvent("answer-parts-unplaceable");
     log.info("answer-parts-unplaceable", partsFailure);
   }
-  if (hasParts && state.editor?.kind !== "multi") {
+  if (hasParts && state.editor?.kind !== "multi" && (state.tableTargets ?? []).length < 2) {
     log.info("multi-answer-editor-described", {
       allowedCharacters: state.editor?.allowedCharacters ?? "",
       slots: state.editor?.slots ?? {},
@@ -2278,6 +2419,7 @@ async function buildStructured(answer, cadence, target, editor) {
  * @property {number} frameId
  * @property {string} fieldId
  * @property {string[]} fieldIds
+ * @property {object[]} tableTargets blank-to-control mapping, in blank order
  * @property {string | null} signature the question the answer was reviewed for
  * @property {string} reviewed the answer as shown and approved
  * @property {string} machineEntry the form the panel planned and offered
@@ -2293,6 +2435,12 @@ function pinInsertionTarget() {
     frameId: state.frameId,
     fieldId: state.fieldId,
     fieldIds: Object.freeze([...(state.fieldIds ?? [])]),
+    // Frozen with everything else, and for the same reason: the mapping is
+    // what says which box each value belongs in, so it must not be re-read
+    // from the live state between the awaits of a paced insertion.
+    tableTargets: Object.freeze((state.tableTargets ?? []).map(
+      (target) => Object.freeze({ ...target })
+    )),
     signature: state.signature,
     detail: state.detail,
     graphPlan: state.graphPlan,
@@ -2339,6 +2487,7 @@ const OWNERSHIP_COMPONENTS = Object.freeze({
   frameId: (target) => state.frameId === target.frameId,
   fieldId: (target) => state.fieldId === target.fieldId,
   fieldIds: (target) => sameStringArray(state.fieldIds ?? [], target.fieldIds),
+  tableTargets: (target) => sameTableMapping(state.tableTargets ?? [], target.tableTargets),
   answerParts: (target) => sameStringArray(state.answerParts ?? [], target.answerParts),
   signature: (target) => state.signature === target.signature,
   graphPlan: (target) => state.graphPlan === target.graphPlan,
@@ -2366,6 +2515,7 @@ function ownershipSnapshot(target) {
     frameId: target.frameId,
     fieldId: target.fieldId,
     fieldIds: target.fieldIds.length,
+    tableTargets: target.tableTargets.length,
     answerParts: target.answerParts.length,
     signature: target.signature,
     graphPlan: target.graphPlan ?? "",
@@ -2471,9 +2621,12 @@ async function insert() {
   // Read from the pinned frame and compared against the pinned signature. Read
   // from the live state instead, a retargeted insertion compared the new
   // question against the new signature, agreed with itself, and wrote on.
-  const onScreen = questionSignature(
-    target.fieldId, await readQuestion(target.tabId, target.frameId)
-  );
+  // One read, used for both halves of the same question: the signature that
+  // says it is still this question, and the mapping that says where its
+  // answers go. Two reads could disagree with each other while each agreed
+  // with itself, which is the whole shape of a wrong-box insertion.
+  const liveQuestion = await readQuestion(target.tabId, target.frameId);
+  const onScreen = questionSignature(target.fieldId, liveQuestion);
   if (onScreen === null || target.signature === null) {
     fail("errorQuestionUnverified");
     return;
@@ -2523,6 +2676,97 @@ async function insert() {
   // A performance now runs for seconds, so how long it actually took is the
   // one thing worth recording. The answer itself never enters the log.
   const entryStartedAt = Date.now();
+  if (target.answerParts.length >= 2 && target.tableTargets.length >= 2) {
+    // The mapping, read again from the page by the same reader that made it,
+    // and compared cell by cell against the one the answer was reviewed
+    // against. Nothing here re-derives a target: a disagreement is a refusal,
+    // because the only two readings that exist have stopped agreeing about
+    // which control holds which blank.
+    const liveTargets = tableTargetsOf(liveQuestion);
+    if (!sameTableMapping(liveTargets, target.tableTargets)) {
+      log.warn("table-targets-changed-before-insert", {
+        was: tableTargetShapes(target.tableTargets),
+        now: tableTargetShapes(liveTargets),
+        blanks: liveTargets.length,
+      });
+      fail("errorQuestionChanged", { detail: "table-targets-changed" });
+      return;
+    }
+    if (!tableAnswerFits(target.answerParts, target.tableTargets, editor)) {
+      // The editor was re-read a moment ago, so this is the question's own
+      // current character rule against the answer that was approved.
+      log.warn("table-answer-no-longer-fits", describePartsFailure(
+        target.answerParts, editor, target.problemText, target.tableTargets
+      ));
+      fail("errorEditorUnknown", { detail: "table-answer-refused" });
+      return;
+    }
+    if (!ownsTarget(target)) {
+      abandonInsertion(target, "before-table-write");
+      return;
+    }
+    const frame = { tabId: target.tabId, frameIds: [target.frameId] };
+    let outcome;
+    try {
+      // Refresh the isolated-world prelude immediately before the one-shot
+      // function, exactly as the single-field path does.
+      await runOperation(frame, INSPECT_SCRIPT);
+      if (!ownsTarget(target)) {
+        abandonInsertion(target, "before-table-write");
+        return;
+      }
+      const cells = target.tableTargets.map((one) => one.id);
+      const [entry] = await runScoredEntry(
+        target,
+        target.answerParts.map((text) => ({ op: "type", text })),
+        cadence,
+        () => runInjection({
+          target: frame,
+          func: enterTableParts,
+          args: [[...target.answerParts], cells, cadence],
+        })
+      );
+      outcome = entry?.result;
+      if (
+        !outcome?.ok
+        || outcome.code !== "native-input-cells"
+        || !sameStringArray(outcome.cells, cells)
+      ) {
+        log.warn("table-answer-not-placed", {
+          code: outcome?.code ?? "no-result",
+          blank: outcome?.blank ?? 0,
+          written: outcome?.written ?? 0,
+          cells: cells.length,
+          // How much each control was carrying when the write began. Lengths
+          // only, and the reason they are here: live, every box drawn empty
+          // reported characters, which is the answer control's own text model
+          // and not the page's statement about the cell.
+          held: outcome?.held ?? [],
+        });
+        fail(insertErrorKey(outcome?.code ?? "table-answer-incomplete"));
+        return;
+      }
+    } catch (error) {
+      fail(errorKeyOf(error));
+      return;
+    }
+    log.info("inserted", {
+      via: "table-cells",
+      fields: target.tableTargets.length,
+      parts: target.answerParts.length,
+      answerLength: reviewed.length,
+      // What each cell held before and after, as lengths. The second list is
+      // what confirms every cell took its whole part without any of them
+      // being read back.
+      held: outcome.held ?? [],
+      placed: outcome.placed ?? [],
+      elapsedMs: Date.now() - entryStartedAt,
+    });
+    await finishInsertion(
+      `entered all ${target.answerParts.length} table cells`, target
+    );
+    return;
+  }
   if (target.answerParts.length >= 2) {
     const commaPlan = commaAnswerPlan(
       target.answerParts, editor, target.problemText
@@ -3108,6 +3352,10 @@ function markedCode() {
     "common/failure-record.js#buildFailureRecord": buildFailureRecord,
     "common/failure-record.js#recordFailure": recordFailure,
     "common/editor-rules.js#insertErrorKey": insertErrorKey,
+    "common/editor-rules.js#isTableMapping": isTableMapping,
+    "common/editor-rules.js#sameTableMapping": sameTableMapping,
+    "common/editor-rules.js#tableAnswerFits": tableAnswerFits,
+    "common/editor-rules.js#tableAnswerVerdicts": tableAnswerVerdicts,
     "common/frames.js#describeResults": describeResults,
     "common/frames.js#selectAnswerFrame": selectAnswerFrame,
     "common/graph-actions.js#graphOperation": graphOperation,

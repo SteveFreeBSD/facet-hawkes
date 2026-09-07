@@ -21,15 +21,18 @@ quickjs = pytest.importorskip("quickjs", reason="pip install quickjs")
 
 
 RULES_JS = PROJECT_ROOT / "extension" / "common" / "editor-rules.js"
+CONFIG_JS = PROJECT_ROOT / "extension" / "common" / "config.js"
 
 
 @pytest.fixture(scope="module")
 def plan():
     # The planner shares the character rule with editor-rules; load both.
     rules = re.sub(r"^export ", "", RULES_JS.read_text(), flags=re.MULTILINE)
+    rules = re.sub(r"^import .*\n", "", rules, flags=re.MULTILINE)
     source = re.sub(r"^export ", "", PLAN_JS.read_text(), flags=re.MULTILINE)
     source = re.sub(r"^import .*\n", "", source, flags=re.MULTILINE)
     context = quickjs.Context()
+    context.eval(re.sub(r"^export ", "", CONFIG_JS.read_text(), flags=re.MULTILINE))
     context.eval(rules)
     context.eval(source)
 

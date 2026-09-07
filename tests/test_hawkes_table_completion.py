@@ -403,14 +403,34 @@ def test_the_real_table_overrides_the_ten_cell_collection_with_five_parts() -> N
     from hawkes_dom import read_fixture
 
     shape = background("answerShapeOf")
-    table = read_fixture("table-completion.html")["answerTable"]
+    read = read_fixture("table-completion.html")
 
     assert shape(
         describe_editor(10),
-        table,
+        read["answerTable"],
+        read["answerTargets"]["blanks"],
     ) == {
         "kind": "multi",
         "count": 5,
+    }
+
+
+def test_a_grid_with_no_mapping_is_never_asked_for_as_five_parts() -> None:
+    """A count nothing can place is not a count worth asking the host for.
+
+    The blanks and the controls under them are two halves of one reading. If
+    the second half is missing -- a box with no id, one the reader could not
+    call editable -- the browser has nowhere to put five answers, and asking
+    for them would produce a solve that could only ever end in a refusal.
+    """
+    from hawkes_dom import read_fixture
+
+    shape = background("answerShapeOf")
+    read = read_fixture("table-completion.html")
+
+    assert shape(describe_editor(10), read["answerTable"], []) == {
+        "kind": "field",
+        "representations": [{"kind": "signed-integer", "maxLength": 4}],
     }
 
 

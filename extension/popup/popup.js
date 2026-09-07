@@ -30,6 +30,7 @@ const elements = {
   problemBlock: document.querySelector("#problem-block"),
   problem: document.querySelector("#problem"),
   answer: document.querySelector("#answer"),
+  answerParts: document.querySelector("#answer-parts"),
   placed: document.querySelector("#placed"),
   copy: document.querySelector("#copy"),
   status: document.querySelector("#status"),
@@ -256,6 +257,32 @@ function drawAnswer(text) {
   elements.answer.append(buildRow(layoutAnswer(text)));
 }
 
+/**
+ * Draw a multi-part answer against the places its parts go.
+ *
+ * The one-line answer above says what was solved; this says which value
+ * belongs where. For a completion table those are different statements --
+ * blank order is the mathematics' and box order is the layout's -- and
+ * showing only the line invites reading it as the second.
+ */
+function drawParts(parts) {
+  elements.answerParts.replaceChildren();
+  elements.answerParts.hidden = parts.items.length === 0;
+  elements.answerParts.dataset.kind = parts.kind;
+  for (const item of parts.items) {
+    const row = document.createElement("li");
+    row.className = "parts__row";
+    const label = document.createElement("span");
+    label.className = "parts__label";
+    label.append(item.label);
+    const value = document.createElement("span");
+    value.className = "parts__value";
+    value.append(buildRow(layoutAnswer(item.text)));
+    row.append(label, value);
+    elements.answerParts.append(row);
+  }
+}
+
 function buildRow(row) {
   const span = document.createElement("span");
   span.className = "math";
@@ -313,6 +340,7 @@ function buildItem(item) {
 /** Write one view onto the elements. The only place that touches the DOM. */
 function apply(view) {
   drawAnswer(view.answer.text);
+  drawParts(view.parts);
   // Copied from the view, never from the card. Once the card holds elements,
   // its `textContent` is the *rendered* reading -- `x13` for `x^13` -- and
   // copying that would hand over a different answer than the one on screen.

@@ -27,11 +27,16 @@ def plan_entry():
     rules = re.sub(
         r"^export ", "", (COMMON / "editor-rules.js").read_text(), flags=re.M
     )
+    rules = re.sub(r"^import .*\n", "", rules, flags=re.M)
+    config = re.sub(
+        r"^export ", "", (COMMON / "config.js").read_text(), flags=re.M
+    )
     planner = re.sub(
         r"^export ", "", (COMMON / "editor-plan.js").read_text(), flags=re.M
     )
     planner = re.sub(r"^import .*\n", "", planner, flags=re.M)
     context = quickjs.Context()
+    context.eval(config)
     context.eval(rules)
     context.eval(planner)
 

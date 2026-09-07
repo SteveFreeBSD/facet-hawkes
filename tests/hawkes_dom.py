@@ -49,14 +49,22 @@ class _Tree(HTMLParser):
         self._stack = [self.root]
 
     def handle_starttag(self, tag, attrs):
-        node = {"tag": tag, "attrs": dict(attrs), "children": []}
+        # A valueless attribute reads back as the empty string, which is what
+        # `getAttribute` returns for one. Keeping `None` made `disabled` and
+        # `readonly` indistinguishable from absent to any probe that compares
+        # against null -- true of the reader, and of nothing in a browser.
+        node = {"tag": tag, "attrs": {n: v if v is not None else "" for n, v in attrs}, "children": []}
         self._stack[-1]["children"].append(node)
         if tag not in VOID:
             self._stack.append(node)
 
     def handle_startendtag(self, tag, attrs):
         self._stack[-1]["children"].append(
-            {"tag": tag, "attrs": dict(attrs), "children": []}
+            {
+                "tag": tag,
+                "attrs": {n: v if v is not None else "" for n, v in attrs},
+                "children": [],
+            }
         )
 
     def handle_endtag(self, tag):

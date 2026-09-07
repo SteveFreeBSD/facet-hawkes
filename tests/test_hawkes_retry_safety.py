@@ -20,7 +20,7 @@ def test_running_view_suppresses_every_previous_answer_form():
         IMPORT_LINE.sub("", (EXTENSION / "common" / name).read_text()).replace(
             "export ", ""
         )
-        for name in ("editor-rules.js", "editor-plan.js", "panel-view.js")
+        for name in ("config.js", "editor-rules.js", "editor-plan.js", "panel-view.js")
     )
     context = quickjs.Context()
     context.eval(source)

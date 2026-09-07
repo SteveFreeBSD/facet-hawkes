@@ -161,6 +161,45 @@ body {
   color: var(--text-faint);
 }
 
+/* --- a multi-part answer, part by part ---------------------------------- */
+
+/*
+ * One line reading `0, 8, 8, 5, 3` is five numbers in a row, and a page with
+ * five boxes on it invites reading that as the order of the boxes. For a
+ * completion table it is not: the blanks are numbered by the mathematics and
+ * drawn across two rows, so the two orders name different cells. Each part is
+ * therefore shown against the cell it belongs to, in the table's own words.
+ */
+.parts {
+  display: grid;
+  gap: 2px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.parts__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 5px 12px;
+  border-radius: var(--radius);
+  background: var(--surface-sunken);
+}
+
+.parts__label {
+  color: var(--text-faint);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.parts__value {
+  font-family: var(--font-math);
+  font-size: 16px;
+  white-space: nowrap;
+}
+
 /* --- the answer, as mathematics ---------------------------------------- */
 
 /*
