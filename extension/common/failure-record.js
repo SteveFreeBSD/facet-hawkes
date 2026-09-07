@@ -327,6 +327,10 @@ function collectionEvidence(collection) {
     described: integer(collection.described),
     usable: integer(collection.usable),
     focused: integer(collection.focused),
+    // What the page was drawing beside what its model published. A question
+    // showing one box whose model publishes two controls is the difference
+    // between one answer and two, and triage could not see it.
+    drawn: integer(collection.drawn),
   };
 }
 

@@ -363,6 +363,9 @@ def test_the_real_ten_cell_collection_describes_only_the_focused_box() -> None:
         "described": 10,
         "usable": 10,
         "focused": 0,
+        # No document in this harness, so the page's own drawn count is
+        # unknown -- and unknown is never grounds to overrule the model.
+        "drawn": -1,
         "branch": "focused",
     }
 

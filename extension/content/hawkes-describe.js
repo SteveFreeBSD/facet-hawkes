@@ -25,6 +25,7 @@
   // Kept in step with `common/config.js` by the build's shared-constant
   // check; this file runs in the page's own world and imports nothing.
   const MAX_ANSWER_PARTS = 5;
+  const HAWKES_FIELD_SELECTOR = 'input.qbaseCSS, input[id^="txtAns"], input.boxStyle';
   const ui = window.quant_wp_UI;
   if (!ui || ui.controlsCollection === undefined) {
     return { ok: false, code: "editor-model-missing" };
@@ -169,6 +170,38 @@
    * Counts and a branch name. No control's contents, no name, no character
    * set: those are the description's own fields and are governed there.
    */
+  /**
+   * How many answer boxes the page is actually drawing.
+   *
+   * The control collection is not a count of the question's blanks and never
+   * was. One blank owns a numerator control and a denominator control -- that
+   * is how a Hawkes answer box turns into a fraction when `/` is typed into it
+   * -- so a question with a single box can publish two usable controls before
+   * anyone has typed anything at all.
+   *
+   * Live, on 2026-09-07: `2x + y = 2`, "determine the missing coordinate in
+   * (4, ?)", one box on screen, one answer. The collection published two
+   * usable controls, this probe called it a two-part question, the host was
+   * asked for two answers, and a reasoning model duly produced two -- `10` and
+   * `10` -- for a question whose answer is `-6`. The panel then offered them as
+   * `#1` and `#2` against a page with nowhere to put either.
+   *
+   * The page's own drawn boxes settle it. This is the same fact the table
+   * reader established for a cell -- one logical blank, one or two physical
+   * inputs -- asked of the whole question rather than of one cell.
+   */
+  const drawnBoxes = () => {
+    try {
+      return [...document.querySelectorAll(HAWKES_FIELD_SELECTOR)].filter((node) => {
+        const box = node.getBoundingClientRect();
+        return box.width > 0 && box.height > 0;
+      }).length;
+    } catch {
+      return -1;   // unknown, and treated below as "do not overrule the model"
+    }
+  };
+  const drawn = drawnBoxes();
+
   const collection = {
     // `length` as the loop above sees it, or -1 when there is no usable one.
     controls: Number.isInteger(ui.controlsCollection?.length)
@@ -184,12 +217,30 @@
     focused: Number.isInteger(ui.focusedElementIndex)
       ? ui.focusedElementIndex
       : -1,
+    // What the page is showing, beside what its model publishes. Where those
+    // two disagree the screen is right, and saying both is what makes the
+    // disagreement visible in one run instead of inferable from an answer.
+    drawn,
   };
   // Five enabled controls is what lesson 2.1's table-completion question
   // publishes, one per blank cell. Bounded at four, this fell straight past
   // the multi branch to `focusedElementIndex` below and described a single
   // textbox -- so the page that had just said "five boxes" was reported as
   // one, and the question was solved as one.
+  // Several controls for one drawn box are one blank's parts -- its numerator
+  // and its denominator -- and not several answers. Described as the single
+  // control it is, through the same path a one-control question takes.
+  if (usable.length >= 2 && drawn === 1) {
+    const index = Number.isInteger(ui.focusedElementIndex)
+      && ui.focusedElementIndex >= 0
+      && ui.focusedElementIndex < ui.controlsCollection.length
+        ? ui.focusedElementIndex
+        : candidates[0];
+    const one = describe(index);
+    if (one !== null && one.enabled !== false) {
+      return { ...one, collection: { ...collection, branch: "one-drawn-box" } };
+    }
+  }
   if (usable.length >= 2 && usable.length <= MAX_ANSWER_PARTS) {
     return described.every(Boolean)
       ? {

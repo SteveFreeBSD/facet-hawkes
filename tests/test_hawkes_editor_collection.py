@@ -38,11 +38,22 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 PROBE = PROJECT_ROOT / "extension" / "content" / "hawkes-describe.js"
 
 
-def describe(model: str) -> dict:
-    """Run the MAIN-world probe against a page publishing this `quant_wp_UI`."""
+def describe(model: str, drawn: int | None = None) -> dict:
+    """Run the MAIN-world probe against a page publishing this `quant_wp_UI`.
+
+    `drawn` is how many answer boxes the page is showing. Left out, there is no
+    document at all and the probe reports `-1` -- unknown, and never grounds to
+    overrule the page's own model.
+    """
     quickjs = pytest.importorskip("quickjs", reason="pip install quickjs")
     context = quickjs.Context()
     context.eval(f"globalThis.window = {{quant_wp_UI: {model}}};")
+    if drawn is not None:
+        box = "{getBoundingClientRect: () => ({width: 60, height: 20})}"
+        context.eval(
+            "globalThis.document = {querySelectorAll: () => Array.from("
+            f"{{length: {drawn}}}, () => ({box}))}};"
+        )
     return json.loads(context.eval(PROBE.read_text(encoding="utf-8")).json())
 
 
@@ -85,6 +96,7 @@ def test_five_usable_controls_are_one_multi_answer() -> None:
         "described": 5,
         "usable": 5,
         "focused": 0,
+        "drawn": -1,
     }
 
 
@@ -132,6 +144,7 @@ def test_a_collection_that_is_not_array_like_says_so() -> None:
     assert described["kind"] == "textbox"
     assert described["collection"] == {
         "branch": "focused",
+        "drawn": -1,
         "controls": -1,
         "controlKeys": 5,
         "dataKeys": 5,
@@ -211,6 +224,7 @@ def test_the_retained_ledger_keeps_the_counts_and_nothing_else() -> None:
             "described": 5,
             "usable": 1,
             "focused": 0,
+            "drawn": 1,
             # Not a field; it must be dropped.
             "boxValue": "SECRET",
         },
@@ -227,6 +241,7 @@ def test_the_retained_ledger_keeps_the_counts_and_nothing_else() -> None:
         "described": 5,
         "usable": 1,
         "focused": 0,
+        "drawn": 1,
     }
     assert "SECRET" not in json.dumps(kept)
 
@@ -235,3 +250,93 @@ def test_a_probe_that_read_no_collection_still_reports_one() -> None:
     """An editor model that never loaded is a different fault again."""
     assert describe("undefined")["code"] == "editor-model-missing"
     assert describe("{controlsCollection: []}")["collection"]["branch"] == "none"
+
+
+# --- one drawn box is one answer -------------------------------------------
+#
+# Live, on 2026-09-07: `2x + y = 2`, "determine the missing coordinate in
+# (4, ?) so that it satisfies the equation". One box on screen, one answer, and
+# the answer is -6. The page's control collection published two usable controls
+# for that one box -- a Hawkes answer box owns a numerator control and a
+# denominator control, which is how typing `/` turns it into a fraction -- so
+# this probe called it a two-part question:
+#
+#     editor-described {"kind":"multi","editors":2,"enabled":false,
+#                       "collection":{"controls":2,"usable":2,"branch":"multi"}}
+#     host-request-shaped {"answerShape":"multi","answerParts":2}
+#     solved {"answerParts":2,"facetRouter":"declined","facetMethod":"gpt-oss:20b"}
+#
+# The host was asked for two answers and a reasoning model produced two -- `10`
+# and `10` -- for a question with one. The panel offered them as #1 and #2, and
+# insertion had nowhere to put either.
+#
+# The control collection was never a count of the question's blanks. The table
+# reader established that for a cell; this is the same fact asked of the whole
+# question, and the page's own drawn boxes are what settle it.
+
+
+def pair_model(focused: int = 0) -> str:
+    """One blank's two controls: the box, and the half a `/` would open."""
+    controls = ", ".join(control() for _ in range(2))
+    rows = ", ".join(data() for _ in range(2))
+    return (
+        f"{{focusedElementIndex: {focused}, controlsCollection: [{controls}],"
+        f" controlsCollectionData: [{rows}]}}"
+    )
+
+
+def test_two_controls_behind_one_drawn_box_are_one_answer() -> None:
+    """The live regression: one box, one answer, described as one."""
+    described = describe(pair_model(), drawn=1)
+
+    assert described["kind"] == "textbox"
+    assert described["collection"]["branch"] == "one-drawn-box"
+    assert described["collection"]["usable"] == 2
+    assert described["collection"]["drawn"] == 1
+    # And it is a usable description, not the disabled husk the multi branch
+    # returned -- which is what "the answer editor could not be read" was.
+    assert described["enabled"] is True
+    assert described["allowedCharacters"] == "[0-9-]"
+    assert described["maxLength"] == 4
+
+
+def test_two_controls_behind_two_drawn_boxes_are_still_two_answers() -> None:
+    """The genuine multi-field question is untouched."""
+    described = describe(pair_model(), drawn=2)
+
+    assert described["kind"] == "multi"
+    assert len(described["editors"]) == 2
+    assert described["collection"]["branch"] == "multi"
+
+
+def test_a_completion_grid_is_not_collapsed_by_this() -> None:
+    """Five blanks drawn as five boxes stay five, whatever the model holds."""
+    described = describe(dense(5), drawn=5)
+
+    assert described["kind"] == "multi"
+    assert described["collection"]["branch"] == "multi"
+
+
+def test_the_live_ten_control_grid_is_untouched() -> None:
+    """The table path: ten controls, five drawn boxes, past the bound anyway."""
+    described = describe(dense(10), drawn=5)
+
+    assert described["kind"] == "textbox"
+    assert described["collection"]["branch"] == "focused"
+    assert described["collection"]["drawn"] == 5
+
+
+def test_an_unknown_drawn_count_never_overrules_the_model() -> None:
+    """No document to read: the page said nothing, so nothing is inferred."""
+    described = describe(pair_model())
+
+    assert described["collection"]["drawn"] == -1
+    assert described["kind"] == "multi"
+
+
+def test_the_described_box_is_the_one_the_page_has_selected() -> None:
+    """Two controls, one box: the page's own mirror says which is being edited."""
+    described = describe(pair_model(focused=1), drawn=1)
+
+    assert described["kind"] == "textbox"
+    assert described["collection"]["branch"] == "one-drawn-box"
