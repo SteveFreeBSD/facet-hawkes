@@ -72,7 +72,13 @@ export function mathNotation(value) {
       // And a bare numeric one, which needs no bracket and is written without
       // it: `sqrt101` is `√101` and is one radical over one number.
       .replace(/\bsqrt(\d+(?:\.\d+)?)/g, "√$1")
-      .replace(/\bcbrt(\d+(?:\.\d+)?)/g, "∛$1");
+      .replace(/\bcbrt(\d+(?:\.\d+)?)/g, "∛$1")
+      // A radicand that is one plain number or one symbol is written without
+      // a bracket, because that is how it is written: `√101`, not `√(101)`.
+      // The exact solvers return SymPy's own `sqrt(101)`, and the bracket is
+      // that notation's, not the mathematics'. Anything compound keeps it --
+      // `√(2x)` means something `√2x` does not.
+      .replace(/([√∛∜])\((\d+(?:\.\d+)?|[A-Za-z])\)/g, "$1$2");
   }
   return text;
 }

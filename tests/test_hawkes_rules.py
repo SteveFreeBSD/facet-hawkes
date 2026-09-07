@@ -447,11 +447,16 @@ def test_a_bare_machine_radical_is_read_as_a_radical(notation) -> None:
     assert notation("cbrt27") == "∛27"
 
 
-def test_a_bracketed_radicand_is_unchanged_in_meaning(notation) -> None:
-    """The conversion that was already made, still made, and only once."""
-    assert notation("sqrt(101)") == "√(101)"
-    # `sqrt(30)*y` cannot mean sqrt(30y); the brackets are why, and they stay.
-    assert notation("sqrt(30)*y") == "√(30)*y"
+def test_a_bracketed_radicand_keeps_what_the_bracket_was_holding(notation):
+    """The conversion that was already made, still made, and only once.
+
+    `sqrt(30)*y` cannot mean sqrt(30y). What keeps them apart is the explicit
+    multiplication, which survives; the bracket around a single number does
+    not need to, and a person does not write one.
+    """
+    assert notation("sqrt(101)") == "√101"
+    assert notation("sqrt(30)*y") == "√30*y"
+    assert notation("sqrt(30*y)") == "√(30*y)"
 
 
 def test_ordinary_answers_pass_through_untouched(notation) -> None:
@@ -541,3 +546,43 @@ def test_the_event_page_publishes_notation_and_never_unchecked_prose() -> None:
     plan = (PROJECT_ROOT / "extension" / "common" / "editor-plan.js").read_text()
     assert "answer = mathNotation(answer);" in plan
     assert "sqrt\\(" not in plan
+
+
+def test_a_solvers_bracketed_radicand_reads_without_the_bracket(notation) -> None:
+    """The exact solvers return SymPy's `sqrt(101)`; a person reads `√101`.
+
+    The bracket belongs to that notation, not to the mathematics, and only
+    where the radicand is one plain number or one symbol. Anything compound
+    keeps it -- `√(2x)` means something `√2x` does not.
+    """
+    assert notation("sqrt(101)") == "√101"
+    assert notation("10*sqrt(2)") == "10*√2"
+    assert notation("cbrt(27)") == "∛27"
+    assert notation("sqrt(2*x)") == "√(2*x)"
+    assert notation("sqrt(x+1)") == "√(x+1)"
+
+
+def test_the_exact_distance_answer_is_planned_as_a_radical() -> None:
+    """End to end for the live question: `sqrt(101)` in, Radical template out.
+
+    Facet's exact stage now answers the distance between two points, and this
+    is the form it returns. Nothing types the letters of `sqrt` anywhere.
+    """
+    context = rules_context()
+    plan_js = PROJECT_ROOT / "extension" / "common" / "editor-plan.js"
+    source = re.sub(r"^export ", "", plan_js.read_text(), flags=re.MULTILINE)
+    context.eval(re.sub(r"^import .*\n", "", source, flags=re.MULTILINE))
+    plan = json.loads(
+        context.eval(
+            "JSON.stringify(planEntry("
+            f"{json.dumps('sqrt(101)')}, {json.dumps(RADICAL_EDITOR)}))"
+        )
+    )
+
+    assert plan == {
+        "ok": True,
+        "steps": [
+            {"op": "template", "name": "Radical"},
+            {"op": "type", "text": "101"},
+        ],
+    }
