@@ -2,17 +2,15 @@
 <!--
   Lesson 2.1, the table-completion question for x = y^2.
 
-  Modelled on the live page observed on 2026-09-07 (run rmtraz84kec53). What is
-  taken from that observation rather than imagined: the question is
-  `x = y^2`, the table has five blank cells, all five answer boxes are visible,
-  enabled and uniquely identified, the focused box's id was
-  `MatrixTextBoxes3_num`, and each box publishes `[0-9-]` with a maximum of
-  four characters -- so every answer here is a signed integer even though two
-  of the *given* cells are exact radicals.
+  Built from the real page inspected on 2026-09-07 after run rmtrgct2452e4.
+  Hawkes draws two rows headed x and y, then five ordered-pair columns. It does
+  not draw a header row above five records. The DOM sweep reported the exact
+  row-major ids used below: MatrixTextBoxes3_num, MatrixTextBoxes6_num,
+  MatrixTextBoxes8_num, MatrixTextBoxes10_num and MatrixTextBoxes11_num.
 
-  The per-box numbering is modelled: the live evidence counted five boxes and,
-  because it counted more than four, reported no ids at all. That is the fault
-  this fixture exists for.
+  The values retain the same x = y^2 case whose expected five parts are known;
+  their purpose is to prove that the row-headed DOM is transposed into five
+  ordered pairs without changing the mathematical reading.
 
   The instruction wording is modelled too. The live run reported only its
   length -- 123 characters -- and that a prompt was found at all, which means
@@ -26,11 +24,7 @@
 <div id="partInformation"><div class="part_status">Step 1 of 1:</div><div id="partDescription">Complete the table of values below for the given equation. Write each answer as an integer.
 <div><mjx-container class="MathJax"><mjx-math aria-hidden="true"><mjx-mi>x</mjx-mi><mjx-mo>=</mjx-mo><mjx-msup><mjx-mi>y</mjx-mi><mjx-mn>2</mjx-mn></mjx-msup></mjx-math><mjx-assistive-mml style="display:inline-block;position:absolute;width:1px;height:1px;overflow:hidden"><math><mi>x</mi><mo>=</mo><msup><mi>y</mi><mn>2</mn></msup></math></mjx-assistive-mml></mjx-container></div>
 </div></div>
-<table><thead><tr><th>x</th><th>y</th></tr></thead>
-<tbody>
-<tr><td>0</td><td><input class="qbaseCSS" id="MatrixTextBoxes1_num" maxlength="4"></td></tr>
-<tr><td><input class="qbaseCSS" id="MatrixTextBoxes2_num" maxlength="4"></td><td><mjx-container class="MathJax"><mjx-math aria-hidden="true"><mjx-mn>2</mjx-mn><mjx-msqrt><mjx-mn>2</mjx-mn></mjx-msqrt></mjx-math><mjx-assistive-mml style="display:inline-block;position:absolute;width:1px;height:1px;overflow:hidden"><math><mn>2</mn><msqrt><mn>2</mn></msqrt></math></mjx-assistive-mml></mjx-container></td></tr>
-<tr><td>64</td><td><input class="qbaseCSS" id="MatrixTextBoxes3_num" maxlength="4"></td></tr>
-<tr><td>25</td><td><input class="qbaseCSS" id="MatrixTextBoxes4_num" maxlength="4"></td></tr>
-<tr><td><input class="qbaseCSS" id="MatrixTextBoxes5_num" maxlength="4"></td><td><mjx-container class="MathJax"><mjx-math aria-hidden="true"><mjx-mo>-</mjx-mo><mjx-msqrt><mjx-mn>3</mjx-mn></mjx-msqrt></mjx-math><mjx-assistive-mml style="display:inline-block;position:absolute;width:1px;height:1px;overflow:hidden"><math><mo>-</mo><msqrt><mn>3</mn></msqrt></math></mjx-assistive-mml></mjx-container></td></tr>
+<table><tbody>
+<tr><td>x</td><td>0</td><td><input class="qbaseCSS" id="MatrixTextBoxes3_num" maxlength="4"></td><td>64</td><td>25</td><td><input class="qbaseCSS" id="MatrixTextBoxes6_num" maxlength="4"></td></tr>
+<tr><td>y</td><td><input class="qbaseCSS" id="MatrixTextBoxes8_num" maxlength="4"></td><td><mjx-container class="MathJax"><mjx-math aria-hidden="true"><mjx-mn>2</mjx-mn><mjx-msqrt><mjx-mn>2</mjx-mn></mjx-msqrt></mjx-math><mjx-assistive-mml style="display:inline-block;position:absolute;width:1px;height:1px;overflow:hidden"><math><mn>2</mn><msqrt><mn>2</mn></msqrt></math></mjx-assistive-mml></mjx-container></td><td><input class="qbaseCSS" id="MatrixTextBoxes10_num" maxlength="4"></td><td><input class="qbaseCSS" id="MatrixTextBoxes11_num" maxlength="4"></td><td><mjx-container class="MathJax"><mjx-math aria-hidden="true"><mjx-mo>-</mjx-mo><mjx-msqrt><mjx-mn>3</mjx-mn></mjx-msqrt></mjx-math><mjx-assistive-mml style="display:inline-block;position:absolute;width:1px;height:1px;overflow:hidden"><math><mo>-</mo><msqrt><mn>3</mn></msqrt></math></mjx-assistive-mml></mjx-container></td></tr>
 </tbody></table>

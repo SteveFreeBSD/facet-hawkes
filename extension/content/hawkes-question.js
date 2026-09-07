@@ -207,6 +207,31 @@
       : null;
   };
 
+  // Hawkes' live completion grid for `x = y²` is turned on its side: the
+  // first column names the two coordinate rows and each following column is
+  // one ordered pair. It has no `thead` and no row made of `th` cells. Keep
+  // this recognition deliberately exact; accepting arbitrary first-column
+  // labels would turn ordinary layout tables into questions.
+  const rowHeadedGrid = (table) => {
+    if (table.tHead !== null || table.rows.length !== 2) return null;
+    const sourceRows = [...table.rows];
+    const width = sourceRows[0]?.cells.length ?? 0;
+    if (width < 3 || width > 33) return null;
+    if (sourceRows.some((row) => row.cells.length !== width)) return null;
+    const columns = sourceRows.map((row) => clean(row.cells[0]));
+    if (columns[0] !== "x" || columns[1] !== "y") return null;
+    if (sourceRows.some((row) => row.cells[0].querySelector(ANSWER_CONTROLS))) {
+      return null;
+    }
+    return {
+      columns,
+      rows: Array.from(
+        { length: width - 1 },
+        (_, column) => sourceRows.map((row) => row.cells[column + 1])
+      ),
+    };
+  };
+
   const dataTable = (() => {
     const candidates = [...document.querySelectorAll("table")].filter(
       (table) =>
@@ -237,8 +262,8 @@
   /**
    * The table a question is answered *in*, read as a table.
    *
-   * A completion question draws the table and leaves a cell blank in each row;
-   * the answer boxes are those cells. Nothing above the answer area states the
+   * A completion question draws the table and leaves a cell blank in each
+   * logical record; the answer boxes are those cells. Nothing above the answer area states the
    * numbers, so the exact readings all came back empty and the question
    * crossed as its equation and a sentence -- `x = y²` and "Complete the table
    * of values below", with no table and no values. Live, on lesson 2.1, that
@@ -275,7 +300,9 @@
       if (!visible(table)) return (dropped.hidden += 1) && false;
       if (table.querySelector("table") !== null) return (dropped.nested += 1) && false;
       if (table.rows.length > 33) return (dropped.rows += 1) && false;
-      if (headerRow(table) === null) return (dropped.header += 1) && false;
+      if (headerRow(table) === null && rowHeadedGrid(table) === null) {
+        return (dropped.header += 1) && false;
+      }
       return true;
     });
     if (candidates.length !== 1) {
@@ -287,18 +314,23 @@
     }
     const table = candidates[0];
     const header = headerRow(table);
-    const columns = [...header.cells].map(clean);
+    const rowHeaded = header === null ? rowHeadedGrid(table) : null;
+    const columns = header === null
+      ? rowHeaded.columns
+      : [...header.cells].map(clean);
     if (columns.length < 2 || columns.length > 8) {
       return refuse(`columns-${columns.length}`);
     }
     if (columns.some((name) => name.length === 0 || name.length > 80)) {
       return refuse("column-unnamed");
     }
-    const body = [...table.rows].filter(
-      (row) => row !== header && !(table.tHead?.contains(row) ?? false)
-    );
+    const body = header === null
+      ? rowHeaded.rows
+      : [...table.rows]
+        .filter((row) => row !== header && !(table.tHead?.contains(row) ?? false))
+        .map((row) => [...row.cells]);
     if (body.length < 2 || body.length > 32) return refuse(`rows-${body.length}`);
-    if (body.some((row) => row.cells.length !== columns.length)) {
+    if (body.some((row) => row.length !== columns.length)) {
       return refuse("row-not-rectangular");
     }
 
@@ -306,7 +338,7 @@
     const rows = [];
     for (const row of body) {
       const cells = [];
-      for (const cell of row.cells) {
+      for (const cell of row) {
         const inside = [...cell.querySelectorAll(ANSWER_CONTROLS)].filter(visible);
         if (inside.length > 1) return refuse("cell-has-two-controls");
         if (inside.length === 1) {
@@ -342,18 +374,24 @@
     }
     if (blanks.length === 0) return refuse("no-blank-cells");
     if (blanks.length > MAX_ANSWER_PARTS) return refuse(`blanks-${blanks.length}`);
-    // Every box on the page is one of these cells. The answer's parts are
-    // placed by a separate sweep that sorts the page's boxes by position, so a
-    // sixth box outside the table would shift every part by one; refusing is
-    // the only reading that keeps part N and blank N the same cell.
+    // Every box on the page is one of these cells. A box elsewhere would mean
+    // this grid is not the page's complete answer surface, so refuse it.
     if (blanks.length !== controls.length) return refuse("controls-outside-table");
-    const placed = [...blanks].sort((left, right) => {
-      const a = left.getBoundingClientRect();
-      const b = right.getBoundingClientRect();
-      return a.top - b.top || a.left - b.left;
-    });
-    if (placed.some((field, index) => field !== blanks[index])) {
-      return refuse("blank-order-disagrees");
+    // A conventional record-per-row table numbers boxes in geometric reading
+    // order, which is also the field sweep's order. The live row-headed table
+    // is different by design: its mathematical records are columns, so blank
+    // numbers run left-to-right by ordered pair while the DOM sweep encounters
+    // the x-row controls before the y-row controls. No field ids cross in the
+    // answer table, and cardinality does not pretend that those orders agree.
+    if (header !== null) {
+      const placed = [...blanks].sort((left, right) => {
+        const a = left.getBoundingClientRect();
+        const b = right.getBoundingClientRect();
+        return a.top - b.top || a.left - b.left;
+      });
+      if (placed.some((field, index) => field !== blanks[index])) {
+        return refuse("blank-order-disagrees");
+      }
     }
     return { table: { node: table, columns, rows }, tableReason: "" };
   })();

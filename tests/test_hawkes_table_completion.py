@@ -1,19 +1,19 @@
 """A table-completion question with five blanks, which was answered as one box.
 
 Lesson 2.1 completes a table of values for `x = y²`. The page draws five blank
-cells and publishes one enabled control for each of them. Live, on
-2026-09-07 (run `rmtraz84kec53`), the add-on reported:
+cells in two row-headed DOM rows. Live, on 2026-09-07 (run
+`rmtrgct2452e4`), the add-on reported:
 
-    multiFieldEvidence  {"fields": 5, "separators": 0, "fieldIds": []}
-    editor-described    {"kind": "textbox", "maxLength": 4, "editors": 0}
+    multiFieldEvidence  {"fields": 5, "fieldIds": [3, 6, 8, 10, 11]}
+    editor-described    {"kind": "textbox", "editors": 0,
+                         "collection": {"controls": 10, "usable": 10}}
+    question-read       {"answerTable": "held-1-kept-0-header-1"}
     solved              {"answerLength": 1}
 
-Five boxes counted, no ids for them, a single textbox described, and one
-number back for a five-part question. Every gate between the page and Facet
-bounded a multi-part answer at *four* -- a bound sized for `x = ___ or ___`
-and a quartic's four roots -- so five fell out of the multi path at the first
-gate and was carried the rest of the way as a single field. Facet answered the
-single field it was asked about, exactly.
+The model collection describes all ten value cells, not the five blanks, and
+the old reader expected a header row above vertical records. These tests pin
+the real row-headed shape and make the validated five blank positions, rather
+than that ten-cell collection, define the request's cardinality.
 
 These tests pin the shape the page actually publishes, from
 `tests/fixtures/table-completion.html`, at every gate the count crosses: the
@@ -104,14 +104,21 @@ def result(context, expression):
 
 
 def test_the_fixture_is_the_live_shape() -> None:
-    """Five blanks, five ids, and the two exact radicals that were given."""
+    """The observed two-by-six grid, exact five ids, and two given radicals."""
     markup = FIXTURE.read_text(encoding="utf-8")
 
     assert len(FIELD_IDS) == 5
-    assert FIELD_IDS == sorted(FIELD_IDS), "the ids are in the page's own order"
+    assert FIELD_IDS == [
+        "MatrixTextBoxes3_num",
+        "MatrixTextBoxes6_num",
+        "MatrixTextBoxes8_num",
+        "MatrixTextBoxes10_num",
+        "MatrixTextBoxes11_num",
+    ]
     assert len(set(FIELD_IDS)) == 5
-    # The focused box on the live run, which is how its id pattern is known.
-    assert "MatrixTextBoxes3_num" in FIELD_IDS
+    assert "<thead>" not in markup
+    assert markup.count("<tr>") == 2
+    assert all(row.count("<td>") == 6 for row in re.findall(r"<tr>(.*?)</tr>", markup))
     # Given exactly, as the page wrote them; neither is an answer.
     assert "<msqrt><mn>2</mn></msqrt>" in markup
     assert "<msqrt><mn>3</mn></msqrt>" in markup
@@ -177,8 +184,8 @@ def table_completion_page():
         const documentElement = new Element();
         globalThis.fields = [];
         globalThis.extras = [];
-        // Cells of one column, then the next: the sweep sorts by top and then
-        // by left, which is the order the page draws the blanks in.
+        // The sweep sorts by top and then left, which is the real DOM's
+        // row-major order rather than the table's ordered-pair order.
         globalThis.addField = (id, row, column) => {
           fields.push(new HTMLInputElement({
             id: id, top: 100 + row * 40, left: 100 + column * 120, width: 80,
@@ -212,26 +219,24 @@ def table_completion_page():
         };
         """
     )
-    # Row by row, left to right, exactly as the fixture lays the blanks out:
-    # the y cell, then the x cell, then three more y cells.
-    for row, (identifier, column) in enumerate(
-        zip(FIELD_IDS, [1, 0, 1, 1, 0], strict=True)
-    ):
+    # Two x-row blanks, then three y-row blanks: the exact order and positions
+    # reported by the real DOM sweep.
+    for identifier, row, column in [
+        (FIELD_IDS[0], 0, 1),
+        (FIELD_IDS[1], 0, 4),
+        (FIELD_IDS[2], 1, 0),
+        (FIELD_IDS[3], 1, 2),
+        (FIELD_IDS[4], 1, 3),
+    ]:
         context.eval(f"addField({json.dumps(identifier)}, {row}, {column});")
     # The owner clicked one of them, which is how the live run was focused.
-    context.eval("document.activeElement = fields[2];")
+    context.eval("document.activeElement = fields[0];")
     context.eval(source)
     return context
 
 
 def test_all_five_blanks_are_reported_as_candidates(table_completion_page):
-    """The whole fault, at the gate it started on.
-
-    Live, this report carried `{"fields": 5, "fieldIds": []}`: the sweep counted
-    the boxes and then, because it counted more than four, threw their ids away.
-    The event page had a count and nothing it could type into, so it fell back
-    to the single focused box and the question was solved as one.
-    """
+    """The DOM side reproduces the exact five ids from the latest run."""
     reported = result(table_completion_page, "ethnosHawkes.inspectField()")
 
     assert reported["code"] == "focused-answer-field"
@@ -292,7 +297,7 @@ def describe_editor(controls: int, enabled: int | None = None):
         const total = {controls};
         const live = {controls if enabled is None else enabled};
         globalThis.window = {{quant_wp_UI: {{
-          focusedElementIndex: 2,
+          focusedElementIndex: 0,
           controlsCollection: Array.from({{length: total}}, (unused, at) => ({{
             enabled: at < live,
           }})),
@@ -315,12 +320,7 @@ def describe_editor(controls: int, enabled: int | None = None):
 
 
 def test_five_published_controls_are_one_multi_answer() -> None:
-    """Live, this returned `{"kind": "textbox", "editors": 0}`.
-
-    Bounded at four, five enabled controls fell straight past the multi branch
-    to `focusedElementIndex`, and the page that had just said "five boxes" was
-    described as one -- which is the description `answerShapeOf` then read.
-    """
+    """A genuine five-control collection remains a five-part editor."""
     described = describe_editor(5)
 
     assert described["ok"] is True
@@ -346,6 +346,23 @@ def test_six_published_controls_are_still_not_a_multi_answer() -> None:
     described = describe_editor(6)
 
     assert described["kind"] == "textbox"
+
+
+def test_the_real_ten_cell_collection_describes_only_the_focused_box() -> None:
+    """Hawkes publishes every table cell; that count is not answer cardinality."""
+    described = describe_editor(10)
+
+    assert described["kind"] == "textbox"
+    assert described["collection"] == {
+        "controls": 10,
+        "controlKeys": 10,
+        "dataKeys": 10,
+        "paired": 10,
+        "described": 10,
+        "usable": 10,
+        "focused": 0,
+        "branch": "focused",
+    }
 
 
 # --- reconciling the two readings -------------------------------------------
@@ -379,26 +396,36 @@ def test_a_model_counting_differently_is_still_not_adopted() -> None:
 # --- the shape sent to the host ---------------------------------------------
 
 
-def test_the_question_is_sent_as_five_signed_integers() -> None:
-    """The contract that became one scalar.
+def test_the_real_table_overrides_the_ten_cell_collection_with_five_parts() -> None:
+    """The validated blank positions turn the real focused editor into five parts."""
+    from hawkes_dom import read_fixture
 
-    Live, the editor arrived as a single `textbox` and this returned
-    `{"kind": "field"}` -- one value, which is what Facet was asked for and
-    what it correctly returned.
-    """
     shape = background("answerShapeOf")
+    table = read_fixture("table-completion.html")["answerTable"]
 
     assert shape(
-        {
-            "kind": "multi",
-            "editors": [
-                {"kind": "textbox", "allowedCharacters": "[0-9-]", "maxLength": 4}
-            ] * 5,
-        }
+        describe_editor(10),
+        table,
     ) == {
         "kind": "multi",
         "count": 5,
-        "representations": [{"kind": "signed-integer", "maxLength": 4}] * 5,
+    }
+
+
+@pytest.mark.parametrize(
+    "blanks",
+    [[1, 2, 4, 5, 6], [1, 2, 3, 4, 5, 6], [2, 3, 4, 5, 6]],
+)
+def test_an_ambiguous_table_never_overrides_the_editor(blanks) -> None:
+    """Only two-to-five sequential blanks can alter answer cardinality."""
+    table = {
+        "columns": ["x", "y"],
+        "rows": [[{"text": str(index)}, {"blank": blank}] for index, blank in enumerate(blanks)],
+    }
+
+    assert background("answerShapeOf")(describe_editor(10), table) == {
+        "kind": "field",
+        "representations": [{"kind": "signed-integer", "maxLength": 4}],
     }
 
 

@@ -1,7 +1,8 @@
 """The table a completion question is answered in, read as a table.
 
-Lesson 2.1 completes a table of values for `x = y²`. The page draws five rows,
-states a value in one cell of each and leaves an answer box in the other. Live,
+Lesson 2.1 completes a table of values for `x = y²`. The page draws two rows
+headed `x` and `y`; each of the five following columns is an ordered pair with
+one stated value and one answer box. Live,
 on 2026-09-07, what crossed to Facet was the equation and a sentence:
 
     question-read  expressions=1 table=no-data-table promptChars=123
@@ -61,7 +62,7 @@ def variant(**replacements: str) -> dict:
 
 
 def test_the_whole_grid_crosses(completion) -> None:
-    """Five rows, two named columns, and every cell accounted for."""
+    """Two live DOM rows become five ordered pairs, with every cell accounted for."""
     assert completion["evidence"]["answerTable"] == ""
     assert completion["answerTable"] == {"columns": ["x", "y"], "rows": EXPECTED_ROWS}
 
@@ -149,8 +150,8 @@ def test_what_is_typed_in_a_box_is_never_read() -> None:
 def test_a_box_with_words_beside_it_is_refused() -> None:
     """A cell is a blank or a value. One that is both is not read as either."""
     read = variant(**{
-        '<input class="qbaseCSS" id="MatrixTextBoxes1_num" maxlength="4">':
-        '<input class="qbaseCSS" id="MatrixTextBoxes1_num" maxlength="4">or 0'
+        '<input class="qbaseCSS" id="MatrixTextBoxes3_num" maxlength="4">':
+        '<input class="qbaseCSS" id="MatrixTextBoxes3_num" maxlength="4">or 0'
     })
 
     assert read["evidence"]["answerTable"] == "blank-not-empty"
@@ -210,9 +211,9 @@ def test_a_box_outside_the_table_is_refused() -> None:
 
 
 def test_a_table_without_a_heading_row_is_refused() -> None:
-    """The same rule the data table uses: a layout table is not data."""
+    """Without the real x/y row labels, this could only be a layout table."""
     markup = FIXTURE.read_text(encoding="utf-8").replace(
-        "<thead><tr><th>x</th><th>y</th></tr></thead>", ""
+        "<tr><td>x</td>", "<tr><td>not-x</td>"
     )
     read = read_question(markup)
 
@@ -222,10 +223,16 @@ def test_a_table_without_a_heading_row_is_refused() -> None:
 
 def test_more_blanks_than_the_answer_bound_are_refused() -> None:
     """Six blanks is more parts than the add-on can place, so none are read."""
-    markup = FIXTURE.read_text(encoding="utf-8").replace(
-        "</tbody></table>",
-        '<tr><td>9</td><td><input class="qbaseCSS" id="MatrixTextBoxes6_num">'
-        "</td></tr></tbody></table>",
+    markup = FIXTURE.read_text(encoding="utf-8")
+    markup = markup.replace(
+        '<input class="qbaseCSS" id="MatrixTextBoxes6_num" maxlength="4"></td></tr>',
+        '<input class="qbaseCSS" id="MatrixTextBoxes6_num" maxlength="4"></td>'
+        '<td>9</td></tr>',
+    ).replace(
+        '</mjx-assistive-mml></mjx-container></td></tr>\n</tbody></table>',
+        '</mjx-assistive-mml></mjx-container></td>'
+        '<td><input class="qbaseCSS" id="MatrixTextBoxes12_num"></td></tr>\n'
+        '</tbody></table>',
     )
     read = read_question(markup)
 
@@ -233,11 +240,15 @@ def test_more_blanks_than_the_answer_bound_are_refused() -> None:
     assert "answerTable" not in read
 
 
-def test_a_ragged_row_is_refused() -> None:
-    """A grid that is not rectangular has no cell for a part to belong to."""
-    read = variant(**{"<tr><td>64</td>": "<tr><td>64</td><td>spare</td>"})
+def test_a_ragged_row_headed_table_is_refused() -> None:
+    """Unequal x/y rows are not recognized as the live answer-table shape."""
+    read = variant(**{
+        '<td><input__class="qbaseCSS"__id="MatrixTextBoxes6_num"__maxlength="4"></td></tr>':
+        '<td><input class="qbaseCSS" id="MatrixTextBoxes6_num" maxlength="4"></td>'
+        '<td>spare</td></tr>'
+    })
 
-    assert read["evidence"]["answerTable"] == "row-not-rectangular"
+    assert read["evidence"]["answerTable"] == "held-1-kept-0-header-1"
     assert "answerTable" not in read
 
 
@@ -433,37 +444,31 @@ def solve_request(read: dict, parts: int) -> dict:
             "answer_shape": {
                 "kind": "multi",
                 "count": parts,
-                "representations": [{"kind": "signed-integer", "maxLength": 4}] * parts,
             },
         },
     }
 
 
 def test_the_table_reaches_the_question_facet_is_asked(monkeypatch, completion) -> None:
-    """End to end, over Facet's own protocol and its own router.
-
-    Four rows rather than five, because Facet still bounds a reply at four --
-    see the test below. What this proves is the half that is this repository's:
-    the givens the page states now reach the question, with the radical intact,
-    and the blanks arrive numbered as the parts Facet is asked to return.
-    """
+    """End to end: the real grid makes Facet ask for all five ordered parts."""
     from ethnos.hawkes_host import handle
 
     loop = facet(
         monkeypatch,
         **reasoning(
-            "FINAL ANSWER: 0 8 8 5\nPART 1: 0\nPART 2: 8\nPART 3: 8\nPART 4: 5"
+            "FINAL ANSWER: 0 8 8 5 3\nPART 1: 0\nPART 2: 8\nPART 3: 8\n"
+            "PART 4: 5\nPART 5: 3"
         ),
     )
 
-    response = handle(solve_request(completion, 4))
+    response = handle(solve_request(completion, 5))
 
     [asked] = loop.prompts
     assert "0 | (part 1)" in asked
     assert r"(part 2) | 2\sqrt{2}" in asked
-    assert "This question takes 4 separate answers." in asked
+    assert "This question takes 5 separate answers." in asked
     assert response.status == "ready"
-    assert response.answer.parts == ["0", "8", "8", "5"]
+    assert response.answer.parts == ["0", "8", "8", "5", "3"]
 
 
 def test_the_answer_boxes_themselves_never_cross(monkeypatch, completion) -> None:
@@ -473,11 +478,12 @@ def test_the_answer_boxes_themselves_never_cross(monkeypatch, completion) -> Non
     loop = facet(
         monkeypatch,
         **reasoning(
-            "FINAL ANSWER: 0 8 8 5\nPART 1: 0\nPART 2: 8\nPART 3: 8\nPART 4: 5"
+            "FINAL ANSWER: 0 8 8 5 3\nPART 1: 0\nPART 2: 8\nPART 3: 8\n"
+            "PART 4: 5\nPART 5: 3"
         ),
     )
 
-    handle(solve_request(completion, 4))
+    handle(solve_request(completion, 5))
 
     crossed = json.dumps(loop.problems)
     for browser_only in ("MatrixTextBoxes", "qbaseCSS", "fieldId", "maxlength"):

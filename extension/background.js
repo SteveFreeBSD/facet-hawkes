@@ -973,7 +973,41 @@ function commaAnswerPlan(parts, editor, problemText) {
  * version before this one implied and what the host still assumes when the
  * field is absent.
  */
-function answerShapeOf(editor) {
+function answerShapeOf(editor, answerTable = null) {
+  // A validated completion table numbers its blanks in the order the
+  // mathematics is read. Hawkes' live row-headed table publishes ten control
+  // models (one for every value cell) even though the DOM has five answer
+  // boxes, so that collection cannot define answer cardinality. The table can:
+  // only the closed, sequential blank numbering emitted by our reader is used.
+  const tableParts = (() => {
+    if (
+      editor?.kind !== "textbox"
+      || !Array.isArray(answerTable?.columns)
+      || !Array.isArray(answerTable?.rows)
+      || answerTable.columns.length < 2
+      || answerTable.columns.length > 8
+      || answerTable.rows.length < 2
+      || answerTable.rows.length > 32
+      || answerTable.rows.some(
+        (row) => !Array.isArray(row) || row.length !== answerTable.columns.length
+      )
+    ) {
+      return 0;
+    }
+    const blanks = answerTable.rows.flatMap((row) =>
+      row
+        .filter((cell) => cell && Number.isInteger(cell.blank))
+        .map((cell) => cell.blank)
+    );
+    if (
+      blanks.length < 2
+      || blanks.length > MAX_ANSWER_PARTS
+      || blanks.some((blank, index) => blank !== index + 1)
+    ) {
+      return 0;
+    }
+    return blanks.length;
+  })();
   if (editor?.kind === "graph") return { kind: "graph", graph: editor.context };
   if (
     editor?.kind === "multi"
@@ -994,6 +1028,7 @@ function answerShapeOf(editor) {
       ...(representations.every(Boolean) ? { representations } : {}),
     };
   }
+  if (tableParts > 0) return { kind: "multi", count: tableParts };
   if (editor?.kind === "option") {
     return { kind: "option" };
   }
@@ -1836,7 +1871,7 @@ async function solve(windowId = state.windowId) {
             // their ids and their rules stay here.
             ...(question.answerTable ? { answer_table: question.answerTable } : {}),
             screenshot_png_base64: image,
-            answer_shape: answerShapeOf(state.editor),
+            answer_shape: answerShapeOf(state.editor, question.answerTable),
           },
         },
         Math.max(1, solveDeadline - Date.now()),
