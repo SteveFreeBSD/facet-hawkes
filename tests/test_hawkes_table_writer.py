@@ -88,8 +88,16 @@ class InputEvent {
 class CustomEvent {
   constructor(type, init = {}) { this.type = type; this.detail = init.detail; }
 }
+class FocusEvent {
+  constructor(type, init = {}) {
+    this.type = type;
+    this.bubbles = init.bubbles === true;
+    this.target = null;
+  }
+}
 globalThis.InputEvent = InputEvent;
 globalThis.CustomEvent = CustomEvent;
+globalThis.FocusEvent = FocusEvent;
 
 // --- the page's elements ---------------------------------------------------
 class Element {
@@ -122,6 +130,10 @@ class Element {
     event.target = this;
     if (event.type === "beforeinput") { return this.accept !== false; }
     if (event.type === "input") { globalThis.__hawkesInput(event); }
+    // A bubbling focus event reaches the handler Hawkes binds at document
+    // level. `focus()` alone does not, which is the whole of the live case:
+    // the panel holds system focus, so the browser fires nothing.
+    if (event.type === "focusin") { globalThis.__hawkesFocus(event); }
     return true;
   }
   setSelectionRange(start, end) {
@@ -214,6 +226,10 @@ globalThis.buildTable = (ids, {focused = 0, link = "cell", names = "id"} = {}) =
                Name: opt.id});
   }
   globalThis.window.quant_wp_UI = {
+    // The authoritative router: the element Hawkes edits through. The index
+    // beside it is a mirror of the same selection, and only the page's own
+    // focus handling moves the two together.
+    focusedElement: controls[focused] ? controls[focused].field : null,
     focusedElementIndex: focused,
     controlsCollection: controls,
     controlsCollectionData: rows,
@@ -233,10 +249,28 @@ globalThis.controlFor = (id) =>
 globalThis.__hawkesInput = (event) => {
   const ui = globalThis.window.quant_wp_UI;
   if (!ui) return;
-  const control = ui.controlsCollection[ui.focusedElementIndex];
-  if (!control || control.buffer === undefined) return;
+  // Routed through `focusedElement`, never through the index. Setting the
+  // index is what 674329b did, and it changed nothing about where this goes.
+  const control = ui.controlsCollection.find(
+    (one) => one.field === ui.focusedElement && one.buffer !== undefined
+  );
+  if (!control) return;
   control.buffer = event.target.value;
-  if (control.field) { control.field.render(control.buffer); }
+  control.field.render(control.buffer);
+  // A page that crosses two cells even when the right control is selected.
+  if (control.alsoRenders) { control.alsoRenders.render(control.buffer); }
+};
+
+// Hawkes' own focus handling, which is what a click on a cell delivers: it
+// selects the control that owns the box and moves the router and the mirror
+// together. Nothing else in this page moves the router.
+globalThis.__hawkesFocus = (event) => {
+  const ui = globalThis.window.quant_wp_UI;
+  if (!ui) return;
+  const at = ui.controlsCollection.findIndex((one) => one.field === event.target);
+  if (at < 0) return;
+  ui.focusedElement = event.target;
+  ui.focusedElementIndex = at;
 };
 
 // --- the writer this replaced ----------------------------------------------
@@ -244,6 +278,28 @@ globalThis.__hawkesInput = (event) => {
 // Focus the box, set its value through the prototype setter, dispatch `input`.
 // Kept here, and only here, so the harness above has to keep reproducing the
 // failure it was built to reproduce.
+globalThis.oldSelectionWriter = async (parts, ids) => {
+  const ui = globalThis.window.quant_wp_UI;
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
+  const put = (field, text, character) => {
+    setter.call(field, text);
+    field.dispatchEvent(new InputEvent("input", {data: character, inputType: "insertText"}));
+  };
+  const mirrorAgreed = [];
+  for (let at = 0; at < ids.length; at += 1) {
+    const field = document.getElementById(ids[at]);
+    const index = controlFor(ids[at]);
+    field.focus();
+    ui.focusedElementIndex = index;                     // 674329b's selection
+    mirrorAgreed.push(ui.focusedElementIndex === index);  // and its read-back
+    put(field, "", "");
+    let placed = "";
+    for (const character of parts[at]) { placed += character; put(field, placed, character); }
+  }
+  return {ok: true, code: "index-mirror-only", mirrorAgreed,
+          router: ui.focusedElement ? ui.focusedElement.id : null};
+};
+
 globalThis.oldWriter = async (parts, ids) => {
   const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
   const put = (field, text, character) => {
@@ -281,15 +337,15 @@ def score(parts):
     return {"score": {"offsets": [0] * len("".join(parts))}}
 
 
-def write(context, parts=None, cells=None, old=False):
+def write(context, parts=None, cells=None, writer="enterTableCells"):
     """Run one writer to completion and return what it reported."""
     parts = parts or LIVE_PARTS
     cells = cells or LIVE_CELLS
     call = (
-        f"oldWriter({json.dumps(parts)}, {json.dumps(cells)})"
-        if old
-        else f"enterTableCells({json.dumps(parts)}, {json.dumps(cells)}, "
+        f"enterTableCells({json.dumps(parts)}, {json.dumps(cells)}, "
         f"{json.dumps(score(parts))})"
+        if writer == "enterTableCells"
+        else f"{writer}({json.dumps(parts)}, {json.dumps(cells)})"
     )
     context.eval(f"globalThis.outcome = null; {call}.then(v => {{ outcome = v; }});")
     for _ in range(20000):
@@ -323,13 +379,105 @@ def buffers(context):
 # --- the harness reproduces the live failure --------------------------------
 
 
-def test_dom_focus_does_not_move_the_pages_own_selection() -> None:
+def test_dom_focus_moves_neither_the_router_nor_the_mirror() -> None:
     """The one fact the old harness did not have, stated on its own."""
     live = page()
     live.eval("document.getElementById('MatrixTextBoxes6_num').focus();")
 
     assert live.eval("document.activeElement.id") == "MatrixTextBoxes6_num"
     assert live.eval("window.quant_wp_UI.focusedElementIndex") == 0
+    assert live.eval("window.quant_wp_UI.focusedElement.id") == "MatrixTextBoxes3_num"
+
+
+def test_the_index_is_a_mirror_and_the_element_is_the_router() -> None:
+    """Assigning the mirror moves nothing the editor edits through."""
+    live = page()
+    live.eval("window.quant_wp_UI.focusedElementIndex = 4;")
+
+    assert live.eval("window.quant_wp_UI.focusedElementIndex") == 4
+    assert live.eval("window.quant_wp_UI.focusedElement.id") == "MatrixTextBoxes3_num"
+
+
+def test_the_pages_own_focus_handling_moves_both_together() -> None:
+    """And it is the only thing that does, which is what a click delivers."""
+    live = page()
+    live.eval(
+        "document.getElementById('MatrixTextBoxes8_num')"
+        ".dispatchEvent(new FocusEvent('focusin', {bubbles: true}));"
+    )
+
+    assert live.eval("window.quant_wp_UI.focusedElementIndex") == 4
+    assert live.eval("window.quant_wp_UI.focusedElement.id") == "MatrixTextBoxes8_num"
+
+
+def test_the_selection_this_replaced_crosses_two_cells_either_way() -> None:
+    """674329b's selection, and the matched pair of live failures it produced.
+
+    It assigned `focusedElementIndex` and read it back, and the read-back
+    always agreed -- that is all a mirror can tell you. The router stayed where
+    Hawkes had left it before the panel opened, so every write went there:
+    pre-focused on blank 1's control the first write lands and the second
+    crosses into blank 1, and pre-focused on blank 2's the very first write
+    crosses into blank 2.
+    """
+    on_blank_two = page(focused=0)  # MatrixTextBoxes3_num, blank 2
+    reported = write(on_blank_two, writer="oldSelectionWriter")
+
+    assert reported["mirrorAgreed"] == [True] * 5
+    assert reported["router"] == "MatrixTextBoxes3_num"
+    # Blank 1's value went into blank 2's cell, on the very first write.
+    assert cellsNow(on_blank_two)["MatrixTextBoxes3_num"] == LIVE_PARTS[4]
+    assert cellsNow(on_blank_two)["MatrixTextBoxes8_num"] == LIVE_PARTS[0]
+
+    on_blank_one = page(focused=4)  # MatrixTextBoxes8_num, blank 1
+    reported = write(on_blank_one, writer="oldSelectionWriter")
+
+    assert reported["mirrorAgreed"] == [True] * 5
+    assert reported["router"] == "MatrixTextBoxes8_num"
+    assert cellsNow(on_blank_one)["MatrixTextBoxes8_num"] == LIVE_PARTS[4]
+    assert cellsNow(on_blank_one)["MatrixTextBoxes3_num"] == LIVE_PARTS[1]
+
+
+def test_the_new_selection_fixes_both_of_those_starting_states() -> None:
+    """Same two pages, same five parts, through the page's own focus path."""
+    for focused in (0, 4):
+        live = page(focused=focused)
+
+        reported = write(live)
+
+        assert reported["ok"] is True, focused
+        assert cellsNow(live) == dict(zip(LIVE_CELLS, LIVE_PARTS)), focused
+
+
+def test_a_page_that_cannot_be_proven_focused_refuses() -> None:
+    """No selection Hawkes made is no selection: nothing is written."""
+    live = page()
+    live.eval("globalThis.__hawkesFocus = () => {};")
+
+    reported = write(live)
+
+    assert reported["ok"] is False
+    assert reported["code"] == "table-cell-not-selected"
+    assert reported["blank"] == 1
+    assert reported["written"] == 0
+    assert set(cellsNow(live).values()) == {""}
+
+
+def test_a_router_left_on_another_cell_refuses_even_when_the_mirror_agrees() -> None:
+    """The confirmation that 674329b did not make: the router, not the index."""
+    live = page()
+    live.eval(
+        "globalThis.__hawkesFocus = (event) => {"
+        " const ui = window.quant_wp_UI;"
+        " ui.focusedElementIndex = ui.controlsCollection"
+        "   .findIndex((one) => one.field === event.target); };"
+    )
+
+    reported = write(live)
+
+    assert reported["ok"] is False
+    assert reported["code"] == "table-cell-not-selected"
+    assert set(cellsNow(live).values()) == {""}
 
 
 def test_the_writer_this_replaced_corrupts_the_table() -> None:
@@ -343,7 +491,7 @@ def test_the_writer_this_replaced_corrupts_the_table() -> None:
     """
     live = page()
 
-    reported = write(live, old=True)
+    reported = write(live, writer="oldWriter")
     settled = cellsNow(live)
 
     assert reported["ok"] is True
@@ -400,7 +548,7 @@ def test_a_stale_selection_pointing_at_the_wrong_model_is_corrected() -> None:
 
         assert reported["ok"] is True, focused
         assert cellsNow(live)["MatrixTextBoxes3_num"] == "8", focused
-        assert reported["selected"] == ["state"] * 5, focused
+        assert reported["selected"] == ["focus"] * 5, focused
 
 
 def test_writing_a_later_part_cannot_overwrite_an_earlier_cell() -> None:
@@ -424,17 +572,17 @@ def test_writing_a_later_part_cannot_overwrite_an_earlier_cell() -> None:
 def test_a_cell_the_editor_moves_after_a_write_is_a_refusal() -> None:
     """If the page still crosses two cells, nothing is reported as inserted.
 
-    The editor is made to keep the old defect for one control: whatever is
-    written into the fourth cell also lands in the first. That must end as a
-    named refusal with the table put back, not as four parts and a shrug.
+    The right control is selected and the page still rerenders a second cell
+    from it: whatever is written into the fourth cell also lands in the first.
+    That must end as a named refusal with the table put back, not as four parts
+    and a shrug.
     """
     live = page()
     live.eval(
         "const controls = window.quant_wp_UI.controlsCollection;"
-        "const crossed = controls[controlFor('MatrixTextBoxes11_num')];"
-        "const other = controls[controlFor('MatrixTextBoxes8_num')].field;"
-        "Object.defineProperty(crossed, 'field',"
-        " {value: other, enumerable: false, configurable: true});"
+        "Object.defineProperty(controls[controlFor('MatrixTextBoxes11_num')],"
+        " 'alsoRenders', {value: controls[controlFor('MatrixTextBoxes8_num')].field,"
+        " enumerable: false, configurable: true});"
     )
 
     reported = write(live)
@@ -699,5 +847,5 @@ def test_the_writer_reports_how_it_reached_the_page() -> None:
     assert set(reported) == {
         "ok", "code", "cells", "settled", "models", "ownership", "selected", "timing",
     }
-    assert reported["selected"] == ["state"] * 5
+    assert reported["selected"] == ["focus"] * 5
     assert reported["timing"]["notes"] == 5

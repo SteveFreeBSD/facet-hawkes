@@ -29,16 +29,22 @@
  * own text buffer, and `focusedElementIndex` naming the one entry the page
  * believes is being edited — and its `input` handling is delegated: the event
  * updates *the selected control's* buffer and then rerenders the box that
- * control owns. `HTMLElement.focus()` does not move `focusedElementIndex`. It
- * moves `document.activeElement`; Hawkes moves its own index from its own
- * focus handling, which never ran, because the panel had system focus the
- * whole time.
+ * control owns. `HTMLElement.focus()` moves `document.activeElement` and
+ * nothing else: Hawkes selects from its own focus handling, which never ran,
+ * because the panel had system focus the whole time. So all five writes routed
+ * through whichever control the page had selected before the add-on was ever
+ * opened, and each in turn overwrote that one cell from the value it had just
+ * read off a different box.
  *
- * So all five writes routed through whichever control the page had selected
- * before the add-on was ever opened — index 0, the first cell — and each one
- * in turn overwrote that cell from the value it had just read off a different
- * box. Four cells kept the value the DOM setter left in them and the first one
- * ended up holding the last part written anywhere.
+ * `focusedElementIndex` is only the *mirror* of that selection. The router for
+ * a plain answer box is the element reference Hawkes keeps beside it -- the
+ * `focusedElement` its own `AnswerBoxKeyPadClick` reads -- so assigning the
+ * index and reading it back confirms nothing at all. A first attempt at this
+ * fix did exactly that, and on one mapping produced a matched pair of live
+ * failures: pre-focused on blank 1's control, the first write landed and the
+ * second crossed into blank 1; pre-focused on blank 2's, the very first write
+ * crossed into blank 2. Selection has to be made by the page, not asserted
+ * to it.
  *
  * ## What this does instead
  *
@@ -493,38 +499,95 @@ export async function enterTableCells(parts, cells, cadence = {}) {
   }
 
   /**
-   * Make the page believe it is editing this cell, and say how.
+   * The page's own reference to the box it believes is being edited.
    *
-   * The page's own path is tried first and is what runs whenever the lesson
-   * has system focus: `focus()` fires the focus handling Hawkes binds at
-   * document level, which moves the index itself. When the panel holds focus
-   * instead -- which is the whole of the live case, because the Insert button
-   * is in the panel -- that never runs, and the index is set directly. It is
-   * the page's own selection state, the same value its keypad routing gates
-   * on, and it is read back rather than assumed.
+   * `focusedElementIndex` is a mirror, and a plain answer box is not routed by
+   * it: Hawkes keeps an element reference -- the `focusedElement` its own
+   * `AnswerBoxKeyPadClick` reads -- and that is the authoritative router. So
+   * every element-valued property the model publishes is compared against the
+   * table's own cells, and a reference to some other cell of this table is
+   * proof the page is not editing the one we mean.
+   */
+  const routedAt = () => {
+    const found = [];
+    let keys = [];
+    try {
+      keys = Object.keys(ui);
+    } catch {
+      return found;
+    }
+    if (keys.length > 200) {
+      return found;
+    }
+    for (const key of keys) {
+      let value;
+      try {
+        value = ui[key];
+      } catch {
+        continue;   // a getter that throws says nothing
+      }
+      const element = asElement(value);
+      if (element && fields.includes(element)) {
+        found.push(element);
+      }
+    }
+    return found;
+  };
+
+  /** Whether the page is provably editing this cell, router included. */
+  const focusedOn = (at) => {
+    if (ui.focusedElementIndex !== candidates[owners[at]].index) {
+      return false;
+    }
+    return routedAt().every((element) => element === fields[at]);
+  };
+
+  /**
+   * Make Hawkes select this cell itself, and say how it was reached.
+   *
+   * This function used to assign `focusedElementIndex` and read it back, and
+   * the read-back was worthless: the index is a mirror the page keeps beside
+   * its real selection, so writing it confirmed only that the property had
+   * taken the value. Live, on the same mapping, that produced a matched pair
+   * of failures -- with the page pre-focused on blank 1's control the first
+   * write landed and the second crossed into blank 1, and with it pre-focused
+   * on blank 2's the very first write crossed into blank 2. In both the input
+   * went to whichever control Hawkes had selected before the panel opened.
+   *
+   * Nothing here assigns the index any more. Instead the page's own focus
+   * handling is made to run -- `focus()`, and then the focus events Hawkes
+   * binds at document level, which is what a click on the cell would deliver
+   * and what never fires while the panel holds system focus -- and the index
+   * moving *by itself* is then evidence that the handler ran and set the
+   * router with it. That, plus the router agreeing, is the whole of what
+   * counts as selected; a cell that cannot be proven focused is refused.
    */
   const selectFor = (at) => {
-    const { index, control } = candidates[owners[at]];
+    const { control } = candidates[owners[at]];
+    const field = fields[at];
     try {
-      fields[at].focus();
+      field.focus();
     } catch { /* the page's own path, tried first */ }
-    if (ui.focusedElementIndex === index) {
+    if (focusedOn(at)) {
       return "page";
+    }
+    // The events the page listens for. A cell reached this way is selected by
+    // Hawkes' own handler, so its router and its mirror cannot disagree.
+    try {
+      field.dispatchEvent(new FocusEvent("focus", { relatedTarget: null }));
+      field.dispatchEvent(
+        new FocusEvent("focusin", { bubbles: true, relatedTarget: null })
+      );
+    } catch { /* an event the page will not take is not a selection */ }
+    if (focusedOn(at)) {
+      return "focus";
     }
     try {
       if (typeof control.setFocus === "function") {
         control.setFocus();
       }
     } catch { /* the editor's own selector, where a control has one */ }
-    if (ui.focusedElementIndex === index) {
-      return "editor";
-    }
-    try {
-      ui.focusedElementIndex = index;
-    } catch {
-      return null;
-    }
-    return ui.focusedElementIndex === index ? "state" : null;
+    return focusedOn(at) ? "editor" : null;
   };
 
   /**
@@ -635,7 +698,9 @@ export async function enterTableCells(parts, cells, cadence = {}) {
         if (!fields[at].isConnected || fields[at].value === original[at]) {
           continue;
         }
-        selectFor(at);
+        if (selectFor(at) === null) {
+          continue;   // reported as left behind rather than written blind
+        }
         writeCell(fields[at], original[at], "");
       } catch { /* an undo that cannot run is reported, not thrown */ }
     }

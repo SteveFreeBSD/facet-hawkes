@@ -426,9 +426,13 @@ def _check_table_writer(problems: list[str]) -> None:
         if re.search(pattern, text):
             problems.append(f"{MAIN_WORLD_TABLE}: {what}; it may only enter table cells")
 
-    if not re.search(r"\bfocusedElementIndex\s*=(?!=)", text):
+    # Selection is made by the page, never asserted to it. The index is a
+    # mirror of Hawkes' real selection, so assigning it proves only that the
+    # property took the value -- which is exactly how two cells were crossed
+    # while the read-back agreed. The events below are what a click delivers.
+    if '"focusin"' not in text:
         problems.append(
-            f"{MAIN_WORLD_TABLE}: expected to select the page's own control"
+            f"{MAIN_WORLD_TABLE}: expected to run the page's own focus handling"
         )
     if "const noteOffsets = cadence.score?.offsets" not in text:
         problems.append(f"{MAIN_WORLD_TABLE} must consume the shared Cadence score")
@@ -437,14 +441,15 @@ def _check_table_writer(problems: list[str]) -> None:
     ):
         problems.append("background.js must pass enterTableCells as the injected function")
 
-    # And it is the only file that moves that selection.
+    # And nothing writes the mirror -- not even this file.
     for other in packaged_files():
-        if other.suffix != ".js" or other == MAIN_WORLD_TABLE:
+        if other.suffix != ".js":
             continue
         source = (EXTENSION_DIR / other).read_text(encoding="utf-8")
         if re.search(r"\bfocusedElementIndex\s*=(?!=)", source):
             problems.append(
-                f"{other}: only {MAIN_WORLD_TABLE} may move the editor's selection"
+                f"{other}: assigns focusedElementIndex, which is a mirror of "
+                f"Hawkes' own selection and not the router it edits through"
             )
 
 

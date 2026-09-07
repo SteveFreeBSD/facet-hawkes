@@ -18,8 +18,11 @@ name the add-on as it was called at the time.
   held system focus the whole time -- so all five writes routed through
   whichever control the page had selected before the add-on was opened. The
   write now happens in the page's own world: every cell is resolved to exactly
-  one page-owned control before anything is typed, that control is selected
-  through the page's own state, and each part is read back cell by cell once
+  one page-owned control before anything is typed, Hawkes' own focus handling
+  is made to select that control -- `focusedElementIndex` is only a mirror of
+  its real selection, and a first attempt that assigned the mirror and read it
+  back crossed two cells anyway, because a plain answer box is edited through
+  the separate element reference beside it -- and each part is read back once
   the editor has settled. A cell that does not keep its part, a control that
   disagrees with its cell, or a write that moves any other cell of the table is
   a refusal that puts the table back, and success now means five page-owned
