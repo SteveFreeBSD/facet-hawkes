@@ -190,7 +190,9 @@ def test_a_second_candidate_table_is_refused() -> None:
         + "</tbody></table>"
     )
 
-    assert read["evidence"]["answerTable"] == "candidates-2"
+    # Two tables held a control and both survived every rule; picking between
+    # them is what this reader will not do.
+    assert read["evidence"]["answerTable"] == "held-2-kept-2"
     assert "answerTable" not in read
 
 
@@ -214,7 +216,7 @@ def test_a_table_without_a_heading_row_is_refused() -> None:
     )
     read = read_question(markup)
 
-    assert read["evidence"]["answerTable"] == "candidates-0"
+    assert read["evidence"]["answerTable"] == "held-1-kept-0-header-1"
     assert "answerTable" not in read
 
 
@@ -260,8 +262,8 @@ def test_ordinary_data_tables_read_exactly_as_before(page) -> None:
         "rows": [["$56", "4", "$224"], ["$52", "5", "$260"], ["$24", "12", "$288"]],
     }
     # A word problem's table holds no answer control, so there is nothing here
-    # for the completion reader to find.
-    assert read["evidence"]["answerTable"] == "candidates-0"
+    # for the completion reader to find, and it says exactly that.
+    assert read["evidence"]["answerTable"] == "no-table-holds-a-control"
     assert "answerTable" not in read
 
 
@@ -403,9 +405,13 @@ def test_every_refusal_code_is_a_shape_and_never_a_cell() -> None:
 
     assert len(codes) >= 10, "the reader names each of its refusals"
     for code in codes:
-        # A count interpolated into a code is a length, never a value: every
-        # placeholder here counts nodes.
-        assert re.fullmatch(r"[a-z-]+(\$\{[a-z]+\.length\})?", code), code
+        # A placeholder in a code is a count of nodes or a tally of refusals,
+        # never a cell: `${blanks.length}` and `${why}` and nothing else.
+        assert re.fullmatch(
+            r"[a-z-]+(-?\$\{[a-z]+(\.length)?\}|[a-z0-9-]+)*", code
+        ), code
+    # And `why` itself is built only from the tally's own names and counts.
+    assert '.map(([name, count]) => `-${name}-${count}`)' in reader
 
 
 # --- through the real Facet router ------------------------------------------
@@ -476,26 +482,3 @@ def test_the_answer_boxes_themselves_never_cross(monkeypatch, completion) -> Non
     crossed = json.dumps(loop.problems)
     for browser_only in ("MatrixTextBoxes", "qbaseCSS", "fieldId", "maxlength"):
         assert browser_only not in crossed
-
-
-def test_facet_itself_still_bounds_a_reply_at_four_parts() -> None:
-    """The blocker this commit does not lift, recorded where it cannot be lost.
-
-    `facet-runtime` is a separate repository and its own protocol still refuses
-    more than four parts, so lesson 2.1's five-blank table is rejected as
-    `invalid_request` before any solver or model runs -- with the whole table
-    correctly stated in the request. Confirmed against the real transport, not
-    only in the loopback.
-
-    When that bound moves, this test fails. Delete it, and the note beside it
-    in `docs/FACET_BRIDGE.md`.
-    """
-    from facet_runtime.solve import MAX_ANSWER_PARTS as FACET_BOUND
-
-    from ethnos.hawkes_protocol import MAX_ANSWER_PARTS as ETHNOS_BOUND
-
-    assert FACET_BOUND < ETHNOS_BOUND, (
-        f"facet-runtime now accepts {FACET_BOUND} parts, which is what Ethnos "
-        "sends; a five-blank table can be answered end to end and this test, "
-        "and the note in docs/FACET_BRIDGE.md, are both obsolete"
-    )

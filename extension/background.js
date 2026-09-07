@@ -1590,6 +1590,10 @@ async function prepare(windowId = state.windowId) {
       templates: editor?.templates,
       slots: editor?.slots ?? null,
       editors: editor?.editors?.length ?? 0,
+      // What the page's own control collection held, beside the control chosen
+      // out of it. One textbox reported against five boxes on screen is four
+      // different faults and one description without this.
+      collection: editor?.collection ?? null,
     });
     if (fieldIds.length >= 2) {
       log.info("multi-editor-described", {

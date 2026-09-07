@@ -6,6 +6,26 @@ name the add-on as it was called at the time.
 
 ## Unreleased
 
+- **Two readings that refused a question now say which condition refused it.**
+  A fresh install of the five-part build, one press of Solve, and lesson 2.1's
+  five-blank table still answered `0`. The build was current -- the running
+  marker folded from the working tree exactly -- and the isolated DOM sweep had
+  found all five boxes by name. What decided the question was the page's own
+  control collection, which described a single textbox; the answer shape is
+  read from that description and nothing else, so Facet was asked for one
+  value, returned one value correctly, and the panel rendered it. The five
+  parts became one before the question left the browser.
+  Which fault that was, the run could not say. A single described textbox comes
+  back when the collection holds one usable control, when four of five are
+  disabled, when `controlsCollectionData` covers only one index, and when the
+  collection is not array-like and the candidate loop never runs -- four faults
+  and one description. The probe now reports the collection beside the control
+  it chose, in counts and a branch name, the way the DOM sweep has reported
+  `multiFieldEvidence` since the labelled-pair fix. The completion table's
+  refusal is named the same way: `candidates-0` stood for five conditions and
+  is now a tally of which rule dropped which table. Neither changes a decision
+  -- both probes were run against the previous build over every fixture and
+  every collection shape, and decide identically.
 - **A completion question now sends the table it is completed in.** Lesson
   2.1's table of values for `x = y²` states a value in one cell of each row and
   leaves an answer box in the other; the givens are the question, and none of

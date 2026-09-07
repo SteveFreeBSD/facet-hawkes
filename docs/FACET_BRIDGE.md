@@ -364,13 +364,6 @@ blank cells: every gate between the page and Facet refused the fifth, fell back
 to "one box", and the question was answered -- exactly, and once. A question
 with more parts than the bound is refused whole rather than half-answered.
 
-**Facet's own protocol still bounds a reply at four.** `facet-runtime` is a
-separate repository, and until its bound moves a five-part question is refused
-there as `invalid_request` before any solver runs -- with the question, and its
-table, correctly stated in the request. Four parts of the same question are
-answered normally. `test_facet_itself_still_bounds_a_reply_at_four_parts` fails
-when that stops being true, and this paragraph goes with it.
-
 What crosses is the resulting count, as `answer_parts`. Character sets,
 templates, slot rules, field ids and the shape word itself stay in the browser,
 because none of them change the mathematics. Facet turns the count into a

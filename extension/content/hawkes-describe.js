@@ -111,6 +111,24 @@
     };
   };
 
+  /**
+   * How many own keys a page-owned collection has, or -1 if it cannot say.
+   *
+   * The loop below walks `0 .. length - 1`. A collection that is not
+   * array-like has no `length`, the comparison is false at once, and the loop
+   * finds nothing -- which is indistinguishable, in the result, from a
+   * collection of one usable control. Both then return a single described
+   * textbox, and live that is exactly what came back for a question whose page
+   * was showing five boxes. Counting the keys separates them.
+   */
+  const keysOf = (collection) => {
+    try {
+      return Object.keys(collection ?? {}).length;
+    } catch {
+      return -1;
+    }
+  };
+
   const candidates = [];
   for (let offset = 0; offset < ui.controlsCollection.length; offset += 1) {
     if (ui.controlsCollection[offset] && ui.controlsCollectionData?.[offset]) {
@@ -134,6 +152,39 @@
   const usable = described.filter(
     (editor) => editor !== null && editor.enabled !== false
   );
+
+  /**
+   * The collection this probe read, in counts, beside the control it chose.
+   *
+   * Every return below reports one control or several, and until now that was
+   * the whole of what it said. It is not enough to diagnose the case that
+   * matters: a page publishing five boxes and a probe reporting one textbox is
+   * consistent with a collection holding one usable control, with four of five
+   * being disabled, with `controlsCollectionData` covering only one index, and
+   * with a collection that is not array-like at all. Those are four different
+   * faults and one description. `multiFieldEvidence` has reported exactly this
+   * for the isolated DOM sweep since the labelled-pair fix, and it is what let
+   * the sweep's own five-box bug be found in one run rather than guessed at.
+   *
+   * Counts and a branch name. No control's contents, no name, no character
+   * set: those are the description's own fields and are governed there.
+   */
+  const collection = {
+    // `length` as the loop above sees it, or -1 when there is no usable one.
+    controls: Number.isInteger(ui.controlsCollection?.length)
+      ? ui.controlsCollection.length
+      : -1,
+    controlKeys: keysOf(ui.controlsCollection),
+    dataKeys: keysOf(ui.controlsCollectionData),
+    // Indices carrying both a control and its data, then how many of those
+    // could be described, then how many of those anyone can type into.
+    paired: candidates.length,
+    described: described.filter(Boolean).length,
+    usable: usable.length,
+    focused: Number.isInteger(ui.focusedElementIndex)
+      ? ui.focusedElementIndex
+      : -1,
+  };
   // Five enabled controls is what lesson 2.1's table-completion question
   // publishes, one per blank cell. Bounded at four, this fell straight past
   // the multi branch to `focusedElementIndex` below and described a single
@@ -141,24 +192,43 @@
   // one, and the question was solved as one.
   if (usable.length >= 2 && usable.length <= MAX_ANSWER_PARTS) {
     return described.every(Boolean)
-      ? { ok: true, code: "described-multi", kind: "multi", editors: usable }
-      : { ok: false, code: "no-focused-control" };
+      ? {
+          ok: true,
+          code: "described-multi",
+          kind: "multi",
+          editors: usable,
+          collection: { ...collection, branch: "multi" },
+        }
+      : {
+          ok: false,
+          code: "no-focused-control",
+          collection: { ...collection, branch: "multi-incomplete" },
+        };
   }
   if (usable.length === 1) {
     // One control left once the unusable ones are out: unambiguous, and the
     // same answer the single-control path below would give.
-    return usable[0];
+    return { ...usable[0], collection: { ...collection, branch: "one-usable" } };
   }
 
   let index = ui.focusedElementIndex;
+  let branch = "focused";
   if (!Number.isInteger(index) || index < 0 || index >= ui.controlsCollection.length) {
     // Opening the sidebar clears Hawkes' cursor. Exactly one live model remains
     // unambiguous; a multi-control model is returned above and must additionally
     // match the isolated DOM solution set before insertion is offered.
     if (candidates.length !== 1) {
-      return { ok: false, code: "no-focused-control" };
+      return {
+        ok: false,
+        code: "no-focused-control",
+        collection: { ...collection, branch: "none" },
+      };
     }
     [index] = candidates;
+    branch = "only-candidate";
   }
-  return describe(index) ?? { ok: false, code: "no-focused-control" };
+  const one = describe(index);
+  return one === null
+    ? { ok: false, code: "no-focused-control", collection: { ...collection, branch: "none" } }
+    : { ...one, collection: { ...collection, branch } };
 })();

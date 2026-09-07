@@ -994,7 +994,12 @@ def test_the_only_editor_control_is_described_after_sidebar_takes_focus() -> Non
     assert len(describe(4)["editors"]) == 4
     # Five is lesson 2.1's table of values: one control per blank cell.
     assert len(describe(5)["editors"]) == 5
-    assert describe(6) == {"ok": False, "code": "no-focused-control"}
+    beyond = describe(6)
+    assert beyond["ok"] is False
+    assert beyond["code"] == "no-focused-control"
+    # And it says what it was looking at when it gave up, which is the whole of
+    # `collection` -- see `tests/test_hawkes_editor_collection.py`.
+    assert beyond["collection"]["usable"] == 6
 
 
 def test_a_disabled_control_is_not_one_of_the_questions_answers() -> None:

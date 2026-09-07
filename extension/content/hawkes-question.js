@@ -258,15 +258,33 @@
     const refuse = (tableReason) => ({ table: null, tableReason });
     const controls = [...document.querySelectorAll(ANSWER_CONTROLS)].filter(visible);
     if (controls.length === 0) return refuse("no-answer-controls");
-    const candidates = [...document.querySelectorAll("table")].filter(
-      (table) =>
-        visible(table)
-        && table.querySelector("table") === null
-        && table.querySelector(ANSWER_CONTROLS) !== null
-        && table.rows.length <= 33
-        && headerRow(table) !== null
+    // Which condition dropped each table that could have been this one.
+    //
+    // A bare `candidates-0` was one word for five conditions, and live it was
+    // the whole of what a run had to say about a page whose table plainly held
+    // five answer boxes: the reader refused it and named nothing. Hawkes lays
+    // its pages out with tables, so a table holding a control is common; the
+    // question is always which rule then rejected it, and that is a tally of
+    // counts with no cell of anybody's coursework in it.
+    const holding = [...document.querySelectorAll("table")].filter(
+      (table) => table.querySelector(ANSWER_CONTROLS) !== null
     );
-    if (candidates.length !== 1) return refuse(`candidates-${candidates.length}`);
+    if (holding.length === 0) return refuse("no-table-holds-a-control");
+    const dropped = { hidden: 0, nested: 0, rows: 0, header: 0 };
+    const candidates = holding.filter((table) => {
+      if (!visible(table)) return (dropped.hidden += 1) && false;
+      if (table.querySelector("table") !== null) return (dropped.nested += 1) && false;
+      if (table.rows.length > 33) return (dropped.rows += 1) && false;
+      if (headerRow(table) === null) return (dropped.header += 1) && false;
+      return true;
+    });
+    if (candidates.length !== 1) {
+      const why = Object.entries(dropped)
+        .filter(([, count]) => count > 0)
+        .map(([name, count]) => `-${name}-${count}`)
+        .join("");
+      return refuse(`held-${holding.length}-kept-${candidates.length}${why}`);
+    }
     const table = candidates[0];
     const header = headerRow(table);
     const columns = [...header.cells].map(clean);

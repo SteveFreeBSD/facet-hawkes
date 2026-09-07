@@ -213,10 +213,34 @@ export function controlEvidence(editor) {
  * that the diagnosis needed a screenshot of the owner's coursework to reach a
  * guess.
  */
+/**
+ * The shape of the page's own control collection, in counts.
+ *
+ * Beside the control that was chosen, how many there were to choose from. A
+ * record saying "one textbox" against a page showing five boxes cannot say
+ * which of four faults that was; these counts can, and none of them is a
+ * control's contents, its name or its character set.
+ */
+function collectionEvidence(collection) {
+  if (!collection || typeof collection !== "object") {
+    return null;
+  }
+  return {
+    branch: bounded(collection.branch, 24),
+    controls: integer(collection.controls),
+    controlKeys: integer(collection.controlKeys),
+    dataKeys: integer(collection.dataKeys),
+    paired: integer(collection.paired),
+    described: integer(collection.described),
+    usable: integer(collection.usable),
+    focused: integer(collection.focused),
+  };
+}
+
 export function editorEvidence(editor) {
   const described = controlEvidence(editor);
   if (described === null) {
-    return { kind: "none", ok: false, count: 0, controls: [] };
+    return { kind: "none", ok: false, count: 0, controls: [], collection: null };
   }
   const children = Array.isArray(editor.editors)
     ? editor.editors.slice(0, MAX_EDITORS).map(controlEvidence).filter(Boolean)
@@ -225,6 +249,7 @@ export function editorEvidence(editor) {
     ...described,
     count: children.length || 1,
     controls: children,
+    collection: collectionEvidence(editor.collection),
   };
 }
 
@@ -241,7 +266,7 @@ export function questionEvidence(evidence) {
     // Why a completion table was not read, when one was not. A count or a
     // named disagreement, bounded like every other code here; a cell of one
     // has no path into this record and no name to arrive under.
-    answerTable: bounded(evidence.answerTable, 24),
+    answerTable: bounded(evidence.answerTable, 48),
     promptChars: integer(evidence.promptChars),
     // A digest of the question, never the question. The ring already carries
     // this as `signature`; it is here so two records can be recognized as the
