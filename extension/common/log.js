@@ -27,6 +27,14 @@
 /** Where the ring lives in `storage.local`. */
 export const LOG_STORAGE_KEY = "diagnostics";
 
+/**
+ * The lock every context takes before touching that key.
+ *
+ * Extension pages share one origin, so one named lock covers the event page,
+ * the panel and the settings page together. See {@link exclusively}.
+ */
+export const LOG_LOCK_NAME = "ethnos:diagnostics";
+
 /** Entries kept. Roughly a full session of solving; a few tens of kilobytes. */
 export const RING_LIMIT = 200;
 
@@ -193,8 +201,8 @@ function write(level, event, data) {
  * Append the queued entries to the stored ring.
  *
  * Read-modify-write, because two contexts can be logging at once and neither
- * owns the key. Entries are ordered by time on the way in, so an interleaved
- * write from the event page and the panel still reads in the right order.
+ * owns the key -- so it is done under a lock the whole origin shares. See
+ * {@link exclusively} for what happened without one.
  *
  * The returned promise settles only once everything queued at the time of the
  * call has actually been written. A second call during a write therefore waits
@@ -203,6 +211,37 @@ function write(level, event, data) {
  * the newest entries, exactly where it matters: copying the log after a
  * failure.
  */
+/**
+ * Run one read-modify-write of the ring with every other context shut out.
+ *
+ * The write below is read-modify-write, and `flushing` serialises it only
+ * within one context. Each context loads its own copy of this module, so the
+ * event page and the panel hold different `flushing` promises and neither
+ * excludes the other: both read the same stored array, both append their own
+ * batch to it, and the second `set` overwrites the first. The entries are not
+ * dropped by the ring's own bound -- they never reach it.
+ *
+ * That is not hypothetical. On 2026-09-07 the event page logged `solved`,
+ * `answer-retained` and `answer-not-insertable`, the panel logged
+ * `panel-rendered` a few milliseconds later, and the stored ring came back
+ * with `seq` running 9, 13 and 15, 19 -- three entries missing from each gap,
+ * every one of them the background's. Reading that log said a solve had
+ * produced no answer at all, and an afternoon went into a defect that had not
+ * happened. A diagnostic that silently loses the record it was consulted for
+ * is worse than none.
+ *
+ * Web Locks is the browser's own answer to this and is shared across the
+ * origin's contexts. Where it is unavailable the write proceeds as before --
+ * an unlocked append still beats refusing to log.
+ */
+async function exclusively(work) {
+  const locks = globalThis.navigator?.locks;
+  if (typeof locks?.request !== "function") {
+    return work();
+  }
+  return locks.request(LOG_LOCK_NAME, work);
+}
+
 function flush() {
   if (flushTimer !== null) {
     clearTimeout(flushTimer);
@@ -218,12 +257,20 @@ function flush() {
   pending = [];
   flushing = (async () => {
     try {
-      const stored = await browser.storage.local.get(LOG_STORAGE_KEY);
-      const existing = Array.isArray(stored?.[LOG_STORAGE_KEY]) ? stored[LOG_STORAGE_KEY] : [];
-      const merged = [...existing, ...batch]
-        .sort((left, right) => left.t - right.t || left.seq - right.seq)
-        .slice(-RING_LIMIT);
-      await browser.storage.local.set({ [LOG_STORAGE_KEY]: merged });
+      await exclusively(async () => {
+        const stored = await browser.storage.local.get(LOG_STORAGE_KEY);
+        const existing = Array.isArray(stored?.[LOG_STORAGE_KEY])
+          ? stored[LOG_STORAGE_KEY]
+          : [];
+        // Ordered by time on the way in, so an interleaved write from the
+        // event page and the panel still reads in the right order. Sorting
+        // was never the problem; reading a value another context was about to
+        // replace was.
+        const merged = [...existing, ...batch]
+          .sort((left, right) => left.t - right.t || left.seq - right.seq)
+          .slice(-RING_LIMIT);
+        await browser.storage.local.set({ [LOG_STORAGE_KEY]: merged });
+      });
     } catch {
       // Storage being unavailable must never fail the operation being logged.
       // The console mirror above already carried the entry.
