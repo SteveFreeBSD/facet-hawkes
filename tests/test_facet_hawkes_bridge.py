@@ -50,6 +50,7 @@ def request(
     instruction="Simplify x squared.",
     shape=None,
     shape_count=1,
+    representations=None,
 ):
     problem = {
         "prompt_text": instruction,
@@ -57,6 +58,8 @@ def request(
     }
     if shape is not None:
         problem["answer_shape"] = {"kind": shape, "count": shape_count}
+        if representations is not None:
+            problem["answer_shape"]["representations"] = representations
     return {
         "protocol_version": 1,
         "operation": "solve_hawkes_problem",
@@ -474,6 +477,57 @@ def test_a_paired_answer_shape_reaches_facet_as_a_two_part_contract(
         assert leak not in prompt
 
 
+# Retained failure f1:6079e2061820668f.  Only the page-owned shape is kept:
+# two enabled textboxes, each six characters and restricted to digits/minus.
+# The real answer and coursework text are deliberately not fixtures.
+RETAINED_NUMERIC_PAIR = [
+    {"kind": "signed-integer", "maxLength": 6},
+    {"kind": "signed-integer", "maxLength": 6},
+]
+
+
+def test_a_numeric_only_pair_reaches_facet_as_an_answer_form_contract(
+    monkeypatch,
+) -> None:
+    """The count-only request let the reasoner return five-character structure."""
+    loopback = answering(monkeypatch, text=TWO_PART_REPLY)
+
+    response = handle(
+        request(
+            mathml=[QUADRATIC],
+            instruction=INTERCEPTS,
+            shape="multi",
+            shape_count=2,
+            representations=RETAINED_NUMERIC_PAIR,
+        )
+    )
+
+    crossed = loopback.problems[0]
+    assert crossed["answer_parts"] == 2
+    assert crossed["instruction"].startswith(INTERCEPTS)
+    assert "only digits and an optional leading minus sign" in crossed["instruction"]
+    assert "at most 6 characters" in crossed["instruction"]
+    for structure in ("fraction", "radical", "exponent notation", "parentheses"):
+        assert structure in crossed["instruction"]
+    assert "field" not in crossed["instruction"].lower()
+    assert "editor" not in crossed["instruction"].lower()
+    # The representation is a request constraint, not a browser description
+    # added to Facet's protocol.
+    assert set(crossed) == {"instruction", "expressions", "answer_parts"}
+    assert response.status == "ready"
+
+
+def test_answer_representations_must_align_with_the_answer_count() -> None:
+    with pytest.raises(ValueError):
+        SolveRequest.model_validate(
+            request(
+                shape="multi",
+                shape_count=2,
+                representations=RETAINED_NUMERIC_PAIR[:1],
+            )
+        )
+
+
 def test_a_structured_two_part_reply_survives_validation_intact(
     monkeypatch,
 ) -> None:
@@ -752,10 +806,53 @@ def test_the_browser_normalises_every_editor_into_one_shape_word(
     )
 
 
+def test_the_retained_numeric_pair_is_normalised_without_crossing_editor_rules() -> (
+    None
+):
+    quickjs = pytest.importorskip("quickjs", reason="pip install quickjs")
+    source = (EXTENSION / "background.js").read_text(encoding="utf-8")
+    context = quickjs.Context()
+    context.eval(_lift(source, "answerShapeOf"))
+    editor = {
+        "kind": "multi",
+        "editors": [
+            {
+                "kind": "textbox",
+                "enabled": True,
+                "maxLength": 6,
+                "allowedCharacters": "[0-9-]",
+                "templates": {},
+            },
+            {
+                "kind": "textbox",
+                "enabled": True,
+                "maxLength": 6,
+                "allowedCharacters": "[0-9-]",
+                "templates": {},
+            },
+        ],
+    }
+
+    shape = json.loads(
+        context.eval(f"JSON.stringify(answerShapeOf({json.dumps(editor)}))")
+    )
+
+    assert shape == {
+        "kind": "multi",
+        "count": 2,
+        "representations": RETAINED_NUMERIC_PAIR,
+    }
+    assert set(shape) == {"kind", "count", "representations"}
+    assert all(set(item) == {"kind", "maxLength"} for item in shape["representations"])
+
+
 def test_the_editor_description_itself_never_crosses_to_the_host() -> None:
-    """Character sets, templates and field ids stay on the browser side."""
+    """Raw character sets, templates, slots and field ids stay browser-side."""
     source = (EXTENSION / "background.js").read_text(encoding="utf-8")
     normaliser = _lift(source, "answerShapeOf")
 
-    for browser_only in ("allowedCharacters", "templates", "slots", "fieldId"):
+    # `allowedCharacters` is read here only to recognize the one closed
+    # signed-integer contract. Its raw value is absent from the returned shape,
+    # as the retained-evidence test above proves.
+    for browser_only in ("templates", "slots", "fieldId"):
         assert browser_only not in normaliser

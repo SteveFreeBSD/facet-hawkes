@@ -952,13 +952,15 @@ function commaAnswerPlan(parts, editor, problemText) {
 }
 
 /**
- * The one word the host needs about how this page takes an answer.
+ * The compact contract the host needs about how this page takes an answer.
  *
  * The described editor carries everything the browser needs to *enter* an
- * answer — character sets, templates, slots, field ids — and none of that
- * crosses to the host, because none of it changes the mathematics. What does
- * change it is whether the page wants one value or several, how many values,
- * and whether it is answered by typing at all. Those collapse to three names.
+ * answer — character sets, templates, slots, field ids — and none of those
+ * page details crosses to the host. What does change the required answer is
+ * whether the page wants one value or several, how many values, whether it is
+ * answered by typing at all, and whether a value is restricted to a signed
+ * integer. The latter is a mathematical representation constraint, normalised
+ * from the one exact textbox pattern Hawkes publishes for it.
  *
  * Anything unrecognised is reported as the single box, which is what every
  * version before this one implied and what the host still assumes when the
@@ -972,12 +974,28 @@ function answerShapeOf(editor) {
     && editor.editors.length >= 2
     && editor.editors.length <= 4
   ) {
-    return { kind: "multi", count: editor.editors.length };
+    const representations = editor.editors.map((one) =>
+      one?.kind === "textbox"
+      && one.allowedCharacters === "[0-9-]"
+      && Number.isInteger(one.maxLength)
+        ? { kind: "signed-integer", maxLength: one.maxLength }
+        : null
+    );
+    return {
+      kind: "multi",
+      count: editor.editors.length,
+      ...(representations.every(Boolean) ? { representations } : {}),
+    };
   }
   if (editor?.kind === "option") {
     return { kind: "option" };
   }
-  return { kind: "field" };
+  const representation = editor?.kind === "textbox"
+    && editor.allowedCharacters === "[0-9-]"
+    && Number.isInteger(editor.maxLength)
+      ? { kind: "signed-integer", maxLength: editor.maxLength }
+      : null;
+  return { kind: "field", ...(representation ? { representations: [representation] } : {}) };
 }
 
 /**

@@ -41,6 +41,20 @@ class GraphContext(BaseModel):
         return self
 
 
+class AnswerRepresentation(BaseModel):
+    """One mathematical representation the answer surface requires.
+
+    This is deliberately not an editor description.  A signed integer and its
+    maximum written length can change which equivalent form answers a question;
+    selectors, templates, slots, and allowed-character patterns cannot cross.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["signed-integer"]
+    maxLength: int = Field(ge=1, le=40)
+
+
 class AnswerShape(BaseModel):
     """How the page takes an answer, as the add-on observed it.
 
@@ -52,8 +66,9 @@ class AnswerShape(BaseModel):
     choosing rather than by typing. A graph carries normalized geometry bounds
     and snap spacing. Everything else about the page -- which
     field, what characters it accepts, which templates it offers, where the
-    caret goes -- stays on the browser side, because none of it changes the
-    mathematics.
+    caret goes -- stays on the browser side. A normalized representation may
+    cross because it does change the form Facet must return: a question whose
+    answer surface accepts only a signed integer must not receive a fraction.
 
     What the shape *means* is decided by the host, not here. A single box is
     still a two-value answer when the question says to separate them with a
@@ -65,6 +80,9 @@ class AnswerShape(BaseModel):
     kind: Literal["field", "option", "multi", "graph"] = "field"
     count: int = Field(default=1, ge=1, le=4)
     graph: GraphContext | None = None
+    representations: list[AnswerRepresentation] = Field(
+        default_factory=list, max_length=4
+    )
 
     @model_validator(mode="after")
     def count_matches_kind(self) -> AnswerShape:
@@ -74,6 +92,10 @@ class AnswerShape(BaseModel):
             raise ValueError("a multi answer needs at least two parts")
         if self.kind != "multi" and self.count != 1:
             raise ValueError("only a multi answer may have more than one part")
+        if self.representations and len(self.representations) != self.count:
+            raise ValueError("answer representations must match the answer count")
+        if self.kind in {"option", "graph"} and self.representations:
+            raise ValueError("only written answers may name representations")
         return self
 
 

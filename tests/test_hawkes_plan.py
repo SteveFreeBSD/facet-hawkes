@@ -50,6 +50,15 @@ def plan():
 
     call.parts = parts
 
+    def fits(answer, editor):
+        return json.loads(
+            context.eval(
+                f"JSON.stringify(answerFitsEditor({json.dumps(answer)}, {json.dumps(editor)}))"
+            )
+        )
+
+    call.fits = fits
+
     return call
 
 
@@ -386,6 +395,34 @@ TEXTBOX = {
     "maxLength": 11,
     "templates": {"fraction": False, "radical": False, "exponent": False},
 }
+
+
+# Retained failure f1:6079e2061820668f, without answer or coursework text.
+# Its second part was five characters and produced these same two reason codes
+# against this exact published contract. The bundle intentionally omitted the
+# template detail, so the four synthetic values below prove that the structural
+# subtype cannot be recovered from the retained codes alone.
+RETAINED_NUMERIC_TEXTBOX = {
+    "ok": True,
+    "kind": "textbox",
+    "enabled": True,
+    "allowedCharacters": "[0-9-]",
+    "maxLength": 6,
+    "templates": {},
+}
+
+
+@pytest.mark.parametrize("structured", ["12/34", "12^34", "(123)", "√(12)"])
+def test_the_retained_five_character_codes_do_not_identify_one_template(
+    plan, structured
+):
+    assert len(structured) == 5
+    assert plan.fits(structured, RETAINED_NUMERIC_TEXTBOX)["code"] == (
+        "answer-needs-template"
+    )
+    assert plan(structured, RETAINED_NUMERIC_TEXTBOX)["code"] == (
+        "template-refused-by-question"
+    )
 
 
 def test_a_textbox_rule_is_read_as_a_pattern_not_a_character_set(plan):

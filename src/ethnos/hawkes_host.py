@@ -299,6 +299,31 @@ def required_answer_parts(shape, instruction: str) -> int:
     return 1
 
 
+def instruction_with_answer_representation(instruction: str, shape) -> str:
+    """Add the normalized answer-form requirement Facet otherwise cannot know.
+
+    The browser does not send editor vocabulary here.  It sends a mathematical
+    representation only when every answer part has the same narrow, published
+    contract.  Facet owns its prompt, so the requirement is appended to the
+    question handed to Facet rather than implemented as an editor exception.
+    """
+    representations = list(shape.representations) if shape is not None else []
+    if not representations:
+        return instruction
+    if any(item.kind != "signed-integer" for item in representations):
+        return instruction
+    limits = {item.maxLength for item in representations}
+    if len(limits) != 1:
+        return instruction
+    [limit] = limits
+    subject = "Each separate answer" if len(representations) > 1 else "The answer"
+    return (
+        f"{instruction}\n{subject} must use only digits and an optional leading "
+        f"minus sign, with at most {limit} characters. Do not use a fraction, "
+        "radical, exponent notation, parentheses, or any other characters."
+    )
+
+
 def optimum_direction(instruction: str) -> str | None:
     """Which end of a fitted curve this question asks for, or None.
 
@@ -373,7 +398,9 @@ def _solve_table_optimum_with_facet(request, instruction, announce):
         parts_required = required_answer_parts(problem.answer_shape, instruction)
         announce("solving", "Facet exact regression optimum")
         solution = solve_math(
-            instruction=instruction,
+            instruction=instruction_with_answer_representation(
+                instruction, problem.answer_shape
+            ),
             request_id=safe_request_id(request.request_id),
             # The measurements and how many answers the question takes. Which
             # columns they came from, and what the page looks like, stay here.
@@ -741,9 +768,10 @@ def _solve_with_facet(
 
     announce("reading", "exact page markup")
     # What the page will take, decided here and stated to Facet as a
-    # requirement on its reply. How many values a question has is a property of
-    # the question; where they are typed is nobody's business but Ethnos's, so
-    # Facet is told the count and nothing about the fields it came from.
+    # requirement on its reply. How many values a question has, and whether
+    # their published representation is signed-integer-only, are properties of
+    # the answer the question requests. Where they are typed remains nobody's
+    # business but Ethnos's.
     parts_required = required_answer_parts(problem.answer_shape, instruction)
     announce("solving", "Facet solver routing")
     # A need, not a device. Ethnos requires accelerated execution and refuses a
@@ -752,7 +780,9 @@ def _solve_with_facet(
     # An exactly solved question satisfies it by needing no processor at all.
     try:
         solution = solve_math(
-            instruction=instruction,
+            instruction=instruction_with_answer_representation(
+                instruction, problem.answer_shape
+            ),
             expressions=expressions,
             request_id=safe_request_id(request.request_id),
             answer_parts=parts_required,

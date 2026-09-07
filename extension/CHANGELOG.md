@@ -6,6 +6,15 @@ name the add-on as it was called at the time.
 
 ## Unreleased
 
+- **Facet is now told when every answer part must be a signed integer.** A
+  recurring two-box question published two six-character textboxes accepting
+  only digits and minus, but the solve request reduced that contract to the
+  number `2`. The reasoning route could therefore return structured notation
+  as one part; the browser correctly refused it because the question offered
+  no templates. The browser now normalizes that one narrow textbox rule
+  into an answer-form requirement, and the host includes it in the mathematical
+  question sent to Facet. Raw character patterns, templates, slots and field
+  identifiers still do not cross, and editor restrictions are unchanged.
 - **Every diagnostic entry now says which operation it belongs to.** One user
   gesture mints a run id, and that id is also the native-host `request_id` as
   `<run>.<n>`, which Ethnos passes on to Facet unchanged -- so one gesture, one
