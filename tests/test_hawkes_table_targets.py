@@ -224,299 +224,25 @@ def test_the_mapping_never_reaches_the_host(live) -> None:
 
 
 # --- what the writer does with it -------------------------------------------
-
-#: A DOM the size of one completion table, and no larger.
-#:
-#: Two things it does that the two-field harness does not. Every visible box is
-#: shadowed by the hidden control Hawkes puts beside it, so a mapping that named
-#: one of those would have to be refused rather than typed into. And `value` is
-#: an accessor that counts its reads: the table path must never read a
-#: student's answer back, and a counter states that in an assertion rather than
-#: leaving it to a reason code.
-EDITOR_DOM = r"""
-class Element {
-  constructor({id = "", kind = "box", top = 0, left = 0, maxLength = 4} = {}) {
-    this.id = id;
-    this.kind = kind;
-    this.top = top;
-    this.left = left;
-    this.width = 60;
-    this.height = 20;
-    this.maxLength = maxLength;
-    this.disabled = false;
-    this.readOnly = false;
-    this.isConnected = true;
-    this.accept = true;
-    this.selectionStart = 0;
-    this.selectionEnd = 0;
-    this.textContent = "";
-    this._value = "";
-  }
-  getBoundingClientRect() {
-    const hidden = this.kind === "opt";
-    return {
-      left: this.left, right: this.left + (hidden ? 0 : this.width),
-      top: this.top, bottom: this.top + (hidden ? 0 : this.height),
-      width: hidden ? 0 : this.width, height: hidden ? 0 : this.height,
-    };
-  }
-  dispatchEvent(event) {
-    return event.type !== "beforeinput" || this.accept;
-  }
-  matches(selector) {
-    return this.kind === "box" && selector.includes("input.qbaseCSS");
-  }
-  closest() { return null; }
-  focus() { globalThis.document.activeElement = this; }
-  setSelectionRange(start, end) {
-    const length = this._value.length;
-    this.selectionStart = Math.min(start, length);
-    this.selectionEnd = Math.min(end, length);
-  }
-}
-class HTMLInputElement extends Element {}
-class HTMLTextAreaElement extends Element {}
-class HTMLIFrameElement extends Element {}
-class HTMLFrameElement extends Element {}
-class InputEvent { constructor(type, init) { this.type = type; this.data = init && init.data; } }
-
-// The one thing this harness is really for: `value` is an accessor, so a read
-// is counted. The table path must never read a student's answer back, and a
-// counter says so in the assertion rather than in a reason code.
-globalThis.__valueReads = 0;
-Object.defineProperty(HTMLInputElement.prototype, "value", {
-  get() { globalThis.__valueReads += 1; return this._value; },
-  set(next) { this._value = next; },
-  configurable: true,
-});
-
-globalThis.fields = [];
-globalThis.document = {
-  activeElement: null,
-  body: new Element(),
-  documentElement: new Element(),
-  getElementById(id) {
-    return globalThis.fields.find((field) => field.id === id && field.isConnected) ?? null;
-  },
-  querySelectorAll(selector) {
-    if (selector.includes('input[type="radio"].opt')) return [];
-    if (selector.includes("customMessageBox")) return [];
-    if (selector === "*") return [];
-    if (selector.includes("input.qbaseCSS")) {
-      return globalThis.fields.filter((field) => field.kind === "box");
-    }
-    return [];
-  },
-};
-globalThis.window = {
-  location: {origin: "https://learn.hawkeslearning.com"},
-  getSelection() { return null; },
-};
-globalThis.performance = { now: () => 0 };
-globalThis.ethnosCadence = {
-  normalize(value) { return value ?? {}; },
-  planCharacters() { return {offsets: []}; },
-  async playCharacters(characters, write) {
-    for (const character of characters) {
-      if (globalThis.beforeBeat) { globalThis.beforeBeat(character); }
-      const failure = write(character);
-      if (failure) return {failure};
-    }
-    return {failure: null};
-  },
-};
-"""
+#
+# The writer moved. A completion cell is a controlled editor -- the page owns a
+# model per cell and routes `input` through the one it has selected -- so
+# writing from an isolated world placed four parts in their cells and the fifth
+# in someone else's, and reported five successful writes. That work, and the
+# harness that reproduces the failure it was written against, now live in
+# `tests/test_hawkes_table_writer.py`. What is checked here is that this
+# mapping is what the write is aimed at.
 
 
-def editor_page(boxes=("a", "b", "c")):
-    context = quickjs.Context()
-    context.eval(EDITOR_DOM)
-    context.eval((EXTENSION / "content" / "hawkes-editor.js").read_text())
-    context.eval(
-        "".join(
-            f'fields.push(new HTMLInputElement({{id: {json.dumps(name)}, top: {index * 30}}}));'
-            f'fields.push(new HTMLInputElement({{id: {json.dumps(name + "_opt")}, '
-            f'kind: "opt", top: {index * 30}}}));'
-            for index, name in enumerate(boxes)
-        )
-    )
-    return context
-
-
-def place(context, parts, cells):
-    context.eval(
-        "globalThis.outcome = null; ethnosHawkes.insertTableParts("
-        f"{json.dumps(parts)}, {json.dumps(cells)}).then(v => {{ outcome = v; }});"
-    )
-    while context.execute_pending_job():
-        pass
-    return json.loads(context.eval("JSON.stringify(outcome)"))
-
-
-def written(context):
-    return json.loads(
-        context.eval(
-            "JSON.stringify(fields.filter(f => f.kind === 'box')"
-            ".map(f => [f.id, f._value]))"
-        )
-    )
-
-
-def test_each_part_goes_to_the_cell_the_mapping_names_not_the_next_box() -> None:
-    """The live failure, if the mapping were a list of boxes in visual order.
-
-    The mapping here is the live one's shape: the third box first, then the
-    first, then the second. Every value would be in the wrong place if the
-    writer walked the page instead of the list it was given.
-    """
-    page = editor_page()
-
-    outcome = place(page, ["7", "-2", "30"], ["c", "a", "b"])
-
-    assert outcome["ok"] is True
-    assert outcome["code"] == "native-input-cells"
-    assert outcome["cells"] == ["c", "a", "b"]
-    assert written(page) == [["a", "-2"], ["b", "30"], ["c", "7"]]
-
-
-def test_nothing_reads_what_is_in_a_box() -> None:
-    """A blank is a position the page states; its contents are the student's."""
-    page = editor_page()
-
-    assert place(page, ["7", "-2", "30"], ["c", "a", "b"])["ok"] is True
-    assert page.eval("__valueReads") == 0
-
-
-def test_the_writer_never_reaches_for_a_value_in_its_own_source() -> None:
-    """The counter above proves this run; this proves there is no other path."""
+def test_the_table_writer_is_no_longer_in_the_isolated_prelude() -> None:
+    """It cannot be: an isolated script cannot see the page's own selection."""
     source = (EXTENSION / "content" / "hawkes-editor.js").read_text()
-    table = source[source.index("function resolveTableTargets(") :]
-    table = table[: table.index("\n  return {\n    answerIsSupported")]
-    # Comments name `.value` to say why it is not read; the two writes below
-    # are the only places the property is touched at all.
-    code = re.sub(r"/\*[\s\S]*?\*/|//[^\n]*", "", table)
-    code = code.replace("descriptor.set.call(target, next)", "")
-    code = code.replace("target.value = next;", "")
 
-    assert ".value" not in code
-    assert "placedLength" in code and "setSelectionRange" in code
-
-
-def test_a_hidden_internal_control_is_never_written_to() -> None:
-    """Hawkes publishes one beside every box; none of them is an answer field."""
-    page = editor_page()
-
-    outcome = place(page, ["1", "2", "3"], ["a", "b_opt", "c"])
-
-    assert outcome == {"ok": False, "code": "table-target-missing", "blank": 2}
-    assert written(page) == [["a", ""], ["b", ""], ["c", ""]]
-
-
-def test_a_replaced_cell_refuses_before_anything_is_written() -> None:
-    """Hawkes swaps a question in place; the id can stop naming anything."""
-    page = editor_page()
-    page.eval("fields.find(f => f.id === 'b').isConnected = false;")
-
-    outcome = place(page, ["1", "2", "3"], ["a", "b", "c"])
-
-    assert outcome == {"ok": False, "code": "table-target-missing", "blank": 2}
-    assert written(page) == [["a", ""], ["b", ""], ["c", ""]]
-
-
-def test_a_disabled_cell_refuses_before_anything_is_written() -> None:
-    page = editor_page()
-    page.eval("fields.find(f => f.id === 'c').disabled = true;")
-
-    outcome = place(page, ["1", "2", "3"], ["a", "b", "c"])
-
-    assert outcome == {"ok": False, "code": "table-target-not-editable", "blank": 3}
-    assert written(page) == [["a", ""], ["b", ""], ["c", ""]]
-
-
-def test_a_cell_holding_the_controls_own_buffer_still_takes_its_part() -> None:
-    """The finding that unblocked this live.
-
-    A Hawkes answer control keeps a text model of its own, and live it reported
-    characters for boxes the page was drawing as empty cells. Refusing on that
-    number stopped five correct values reaching five blanks the reader had
-    already proved blank. What each control was carrying is reported as a
-    length, and the cell ends holding exactly the reviewed part.
-    """
-    page = editor_page()
-    page.eval("fields.find(f => f.id === 'b')._value = '41';")
-
-    outcome = place(page, ["1", "2", "3"], ["a", "b", "c"])
-
-    assert outcome["ok"] is True
-    assert outcome["held"] == [0, 2, 0]
-    assert outcome["placed"] == [1, 1, 1]
-    assert written(page) == [["a", "1"], ["b", "2"], ["c", "3"]]
-    assert page.eval("__valueReads") == 0
-
-
-def test_one_cell_refusing_the_characters_stops_all_of_them() -> None:
-    """The page's own objection, asked of every cell before any is changed."""
-    page = editor_page()
-    page.eval("fields.find(f => f.id === 'c').accept = false;")
-
-    outcome = place(page, ["1", "2", "3"], ["a", "b", "c"])
-
-    assert outcome == {"ok": False, "code": "input-cancelled"}
-    assert written(page) == [["a", ""], ["b", ""], ["c", ""]]
-
-
-def test_a_part_longer_than_its_own_box_refuses() -> None:
-    """The one entry rule the markup publishes per cell, applied per cell."""
-    page = editor_page()
-    page.eval("fields.find(f => f.id === 'b').maxLength = 2;")
-
-    outcome = place(page, ["1", "234", "3"], ["a", "b", "c"])
-
-    assert outcome == {"ok": False, "code": "answer-invalid", "blank": 2}
-    assert written(page) == [["a", ""], ["b", ""], ["c", ""]]
-
-
-def test_a_cell_that_closes_mid_write_stops_the_rest() -> None:
-    """Paced entry runs for seconds, so a cell can close under the caret."""
-    page = editor_page()
-    page.eval(
-        "globalThis.beforeBeat = () => {"
-        " if (fields.find(f => f.id === 'c')._value === '3')"
-        " { fields.find(f => f.id === 'c').disabled = true; } };"
+    assert "insertTableParts" not in source.replace(
+        "`insertTableParts` used to live at this point in the file", ""
     )
-
-    outcome = place(page, ["1", "2", "34"], ["a", "b", "c"])
-
-    assert outcome["ok"] is False
-    assert outcome["code"] == "table-target-not-editable"
-    assert outcome["written"] == 2
-    assert written(page) == [["a", "1"], ["b", "2"], ["c", "3"]]
-
-
-def test_a_cell_lost_between_two_writes_stops_the_rest() -> None:
-    """The mapping is re-resolved before every cell, not only at the start."""
-    page = editor_page()
-    page.eval(
-        "globalThis.beforeBeat = () => {"
-        " if (fields.find(f => f.id === 'a')._value === '1')"
-        " { fields.find(f => f.id === 'b').isConnected = false; } };"
-    )
-
-    outcome = place(page, ["12", "2", "3"], ["a", "b", "c"])
-
-    assert outcome["ok"] is False
-    # Its own reason, not "the targets changed": the cell is gone, which is a
-    # different fault from one that closed or one the page renamed.
-    assert outcome["code"] == "table-target-missing"
-    assert outcome["blank"] == 2
-    assert outcome["written"] == 1
-    assert written(page) == [["a", "12"], ["b", ""], ["c", ""]]
-
-
-def test_two_blanks_naming_one_control_are_refused() -> None:
-    page = editor_page()
-
-    assert place(page, ["1", "2"], ["a", "a"]) == {"ok": False, "code": "answer-invalid"}
+    assert "quant_wp_UI" not in source
+    assert "insertTableParts" not in (EXTENSION / "background.js").read_text()
 
 
 def test_the_generic_multi_field_writer_is_untouched() -> None:
@@ -685,12 +411,11 @@ def test_the_insertion_writes_to_the_cells_the_mapping_names() -> None:
     page.pump()
     page.answer(TABLE_EDITOR)  # the editor, re-read
     page.answer(question)  # the signature and the mapping, from one read
-    page.answer(TABLE_INSPECT)  # the isolated-world prelude
-    page.answer({"ok": True, "code": "native-input-cells",
+    page.answer({"ok": True, "code": "entered-table-cells", "settled": 5, "models": 5,
                  "cells": [one["id"] for one in mapping_of(question)]})
     page.answer(question)  # finishInsertion's rebase read
 
-    [write] = entries(page, "enterTableParts")
+    [write] = entries(page, "enterTableCells")
     assert write["args"][0] == PARTS
     assert write["args"][1] == [
         "MatrixTextBoxes8_num",
@@ -723,7 +448,7 @@ def test_a_renumbered_grid_refuses_rather_than_writing_by_position() -> None:
     page.answer(TABLE_EDITOR)
     page.answer(renumbered)
 
-    assert entries(page, "enterTableParts") == []
+    assert entries(page, "enterTableCells") == []
     assert page.json("state.errorKey") == "errorQuestionChanged"
     changed = page.said("table-targets-changed-before-insert")
     assert changed and changed[-1]["data"]["blanks"] == 5
@@ -742,7 +467,7 @@ def test_a_grid_that_stopped_mapping_at_all_refuses() -> None:
     page.answer(TABLE_EDITOR)
     page.answer(unmapped)
 
-    assert entries(page, "enterTableParts") == []
+    assert entries(page, "enterTableCells") == []
     assert page.json("state.errorKey") == "errorQuestionChanged"
 
 
@@ -757,7 +482,7 @@ def test_an_answer_the_boxes_will_not_take_is_refused_before_the_write() -> None
     page.answer(TABLE_EDITOR)
     page.answer(question)
 
-    assert entries(page, "enterTableParts") == []
+    assert entries(page, "enterTableCells") == []
     assert page.json("state.errorKey") == "errorEditorUnknown"
 
 
@@ -776,7 +501,7 @@ def test_the_mapping_is_an_ownership_component() -> None:
     page.answer(TABLE_EDITOR)
     page.pump()
 
-    assert entries(page, "enterTableParts") == []
+    assert entries(page, "enterTableCells") == []
     assert page.said("insertion-target-changed")
     assert "tableTargets" in page.said("insertion-target-changed")[-1]["data"]["changed"]
 

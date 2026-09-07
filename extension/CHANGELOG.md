@@ -6,6 +6,25 @@ name the add-on as it was called at the time.
 
 ## Unreleased
 
+- **A completion table's answers are now written through the editor the page
+  owns, so each one settles in its own cell.** Five correct values, five
+  distinct cells, and two live runs that reported success over a table holding
+  one wrong answer: writing the fifth part into `MatrixTextBoxes6_num` also
+  changed `MatrixTextBoxes3_num`, which is the second part's cell. A Hawkes
+  completion cell is not a text box. The page keeps a control per cell with its
+  own text buffer and a `focusedElementIndex` naming the one it believes is
+  being edited, and its `input` handling is delegated: the event updates *that*
+  control and rerenders the box it owns. `focus()` never moved it -- the panel
+  held system focus the whole time -- so all five writes routed through
+  whichever control the page had selected before the add-on was opened. The
+  write now happens in the page's own world: every cell is resolved to exactly
+  one page-owned control before anything is typed, that control is selected
+  through the page's own state, and each part is read back cell by cell once
+  the editor has settled. A cell that does not keep its part, a control that
+  disagrees with its cell, or a write that moves any other cell of the table is
+  a refusal that puts the table back, and success now means five page-owned
+  states holding five parts rather than five write calls that returned.
+
 - **A table of values is now answered by computing it, not by asking a model.**
   The grid crossed to Facet flattened into the instruction, which put it in
   front of a reasoning model and nowhere else: the only route that could read

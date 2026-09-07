@@ -1,0 +1,756 @@
+"use strict";
+
+/**
+ * The one function that writes a completion table's cells.
+ *
+ * It is passed to `scripting.executeScript` as `func` with `world: "MAIN"`, so
+ * it runs in the page's own world, and it must stay self-contained:
+ * `executeScript` serialises it, so it may not reference anything outside its
+ * own body.
+ *
+ * ## Why this is not the isolated writer any more
+ *
+ * The isolated writer did the obvious thing for a page of five ordinary text
+ * boxes: focus the box, set its value through the prototype setter, dispatch
+ * `input`. Every cell was resolved from the reader's own blank-to-control
+ * mapping, all five targets were distinct, and all five write calls returned
+ * without complaint. Live, on 2026-09-07, the log said so twice:
+ *
+ *     inserted {"via":"table-cells","fields":5,"parts":5,
+ *               "held":[0,0,0,0,0],"placed":[1,1,1,1,1]}
+ *
+ * and the page still held four right answers and one wrong one. Writing the
+ * fifth part into `MatrixTextBoxes6_num` also changed `MatrixTextBoxes3_num`,
+ * which is the second part's cell.
+ *
+ * The mapping was right and the targets were right. What was wrong is that a
+ * Hawkes answer cell is not an ordinary text box. The page owns a controlled
+ * editor model — `quant_wp_UI.controlsCollection`, one entry per cell with its
+ * own text buffer, and `focusedElementIndex` naming the one entry the page
+ * believes is being edited — and its `input` handling is delegated: the event
+ * updates *the selected control's* buffer and then rerenders the box that
+ * control owns. `HTMLElement.focus()` does not move `focusedElementIndex`. It
+ * moves `document.activeElement`; Hawkes moves its own index from its own
+ * focus handling, which never ran, because the panel had system focus the
+ * whole time.
+ *
+ * So all five writes routed through whichever control the page had selected
+ * before the add-on was ever opened — index 0, the first cell — and each one
+ * in turn overwrote that cell from the value it had just read off a different
+ * box. Four cells kept the value the DOM setter left in them and the first one
+ * ended up holding the last part written anywhere.
+ *
+ * ## What this does instead
+ *
+ * Every cell is resolved to exactly one page-owned control before anything is
+ * written, that control is *selected* through the page's own state, the part
+ * is written, the editor is allowed to settle, and the result is read back
+ * cell by cell — the intended cell holds the intended part, and no other cell
+ * moved. Any of those failing is a refusal, not a smaller success.
+ *
+ * ## Reading a cell back
+ *
+ * The isolated writer was forbidden from reading a cell at all, and that rule
+ * was right for what it was protecting: a blank is a position the page states,
+ * so going to the control for its contents would have let the writer decide
+ * from a student's own work. Nothing here decides from a cell. It composes
+ * every value it writes character by character from what it has placed itself,
+ * exactly as before, and the only reads are comparisons made in the page's own
+ * world: does this cell now hold the part meant for it, and did any other cell
+ * change. What crosses back out of this function is names, counts, booleans
+ * and reason codes; no cell's text ever does. Without those comparisons
+ * `placed=[1,1,1,1,1]` was the whole of what success meant, and it meant five
+ * write calls that returned.
+ */
+
+/**
+ * @param {string[]} parts reviewed answers, in semantic blank order
+ * @param {string[]} cells control ids, in the same order; `cells[N]` holds
+ *   blank `N + 1`, as the reader that accepted the table states it
+ * @param {object} cadence the shared score, as data
+ * @returns {Promise<{ok: boolean, code: string}>}
+ */
+export async function enterTableCells(parts, cells, cadence = {}) {
+  // Kept in step with `common/config.js` by the build's shared-constant
+  // check; this function is serialized into the page's own world by
+  // `scripting.executeScript`, so no import survives here.
+  const ALLOWED_ORIGIN = "https://learn.hawkeslearning.com";
+  const MAX_ANSWER_LENGTH = 40;
+  const MAX_ANSWER_PARTS = 5;
+  const ANSWER_PATTERN = /^[0-9A-Za-z+\-*/^().,√π ]+$/;
+
+  const HAWKES_FIELD_SELECTOR = 'input.qbaseCSS, input[id^="txtAns"], input.boxStyle';
+  /** How long the editor is given to finish rerendering after one part. */
+  const SETTLE_MS = 2000;
+  /** How far into a control's own object graph ownership is looked for. */
+  const WALK_DEPTH = 6;
+  const WALK_BUDGET = 400;
+
+  if (window.location.origin !== ALLOWED_ORIGIN) {
+    return { ok: false, code: "wrong-site" };
+  }
+
+  const dialogUp = () =>
+    [...document.querySelectorAll('[id*="customMessageBox"]')].some(
+      (node) => node.getBoundingClientRect().height > 0
+    );
+  if (dialogUp()) {
+    return { ok: false, code: "editor-dialog-open" };
+  }
+
+  const supported = (value) =>
+    typeof value === "string"
+    && value.length > 0
+    && value.length <= MAX_ANSWER_LENGTH
+    && ANSWER_PATTERN.test(value);
+  if (
+    !Array.isArray(parts)
+    || parts.length < 2
+    || parts.length > MAX_ANSWER_PARTS
+    || !parts.every(supported)
+    || !Array.isArray(cells)
+    || cells.length !== parts.length
+    || !cells.every((id) => typeof id === "string" && id.length > 0)
+    || new Set(cells).size !== cells.length
+  ) {
+    return { ok: false, code: "answer-invalid" };
+  }
+
+  // The extension passes the shared, already-built score as data. MAIN owns
+  // editor mechanics only; it carries no second rhythm algorithm.
+  const noteOffsets = cadence.score?.offsets;
+  const noteCount = parts.join("").length;
+  if (
+    !Array.isArray(noteOffsets)
+    || noteOffsets.length !== noteCount
+    || noteOffsets.some(
+      (at, index) =>
+        !Number.isFinite(at)
+        || at < 0
+        || at > 12000
+        || (index > 0 && at < noteOffsets[index - 1])
+    )
+  ) {
+    return { ok: false, code: "answer-invalid" };
+  }
+
+  const ui = window.quant_wp_UI;
+  if (!ui || ui.controlsCollection === undefined) {
+    return { ok: false, code: "editor-model-missing" };
+  }
+
+  // --- the score, performed exactly as the structured writer performs it ---
+
+  const performanceStartedAt = performance.now();
+  let origin = performanceStartedAt;
+  let notesStruck = 0;
+  let heldMs = 0;
+  const lateness = [];
+
+  const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  /**
+   * Tell an optional listener that one note landed, in the write's own turn.
+   *
+   * One-way, string-only, and never awaited. A page can observe or forge this;
+   * it confers no capability, and a failure here cannot change what was typed.
+   */
+  const emit = (payload) => {
+    try {
+      if (cadence.channel) {
+        document.dispatchEvent(
+          new CustomEvent(cadence.channel, { detail: JSON.stringify(payload) })
+        );
+      }
+    } catch { /* audio failure cannot change entry */ }
+  };
+
+  /** Hold until this note is due. A late clock simply plays it now. */
+  const waitForNote = async () => {
+    const due = noteOffsets[notesStruck];
+    notesStruck += 1;
+    if (due === undefined) {
+      return;
+    }
+    for (let approach = 0; approach < 8; approach += 1) {
+      const wait = due - (performance.now() - origin);
+      if (wait <= 0) {
+        break;
+      }
+      await pause(wait > 250 ? wait - 200 : wait);
+    }
+    lateness.push(Math.round(performance.now() - origin - due));
+  };
+
+  /**
+   * Absorb the wall time the editor took to rerender a cell.
+   *
+   * Waiting for a controlled editor to settle is real work of a length only
+   * the editor knows, and the score never allotted time for it. Leaving the
+   * origin where it was would make every remaining note overdue the moment the
+   * cell came back, so the rest of the table would arrive in one burst.
+   */
+  const holdForSettling = () => {
+    const due = noteOffsets[notesStruck] ?? noteOffsets[noteOffsets.length - 1] ?? 0;
+    const overrun = performance.now() - origin - due;
+    if (overrun > 0) {
+      origin += overrun;
+      heldMs += overrun;
+    }
+  };
+
+  /** How this performance actually ran, as numbers only. */
+  const measured = () => ({
+    notes: lateness.length,
+    heldMs: Math.round(heldMs),
+    elapsedMs: Math.round(performance.now() - performanceStartedAt),
+    maxLatenessMs: lateness.length ? Math.max(...lateness) : 0,
+    meanLatenessMs: lateness.length
+      ? Math.round(lateness.reduce((total, late) => total + late, 0) / lateness.length)
+      : 0,
+    driftMs: lateness.length ? lateness[lateness.length - 1] - lateness[0] : 0,
+  });
+
+  // --- the cells the mapping names ----------------------------------------
+
+  /**
+   * Resolve the mapping against the live page's own elements.
+   *
+   * The mapping is `blank N -> control id`, decided by the one reader that
+   * accepted the table and re-derived by that same reader immediately before
+   * this runs. What is checked here is the elements: that each id still names
+   * a Hawkes answer box, that it is visible and editable, that its own stated
+   * bound can hold the part, and that no two blanks resolved to one box.
+   */
+  const resolveFields = () => {
+    const found = [];
+    for (const [index, id] of cells.entries()) {
+      const field = document.getElementById(id);
+      if (!field || field.isConnected === false) {
+        return { ok: false, code: "table-target-missing", blank: index + 1 };
+      }
+      if (!(field instanceof HTMLInputElement) || !field.matches?.(HAWKES_FIELD_SELECTOR)) {
+        return { ok: false, code: "table-target-missing", blank: index + 1 };
+      }
+      const rect = field.getBoundingClientRect();
+      if (!(rect.width > 0 && rect.height > 0) || field.disabled || field.readOnly) {
+        return { ok: false, code: "table-target-not-editable", blank: index + 1 };
+      }
+      if (found.includes(field)) {
+        return { ok: false, code: "table-target-repeated", blank: index + 1 };
+      }
+      const bound = field.maxLength;
+      if (Number.isInteger(bound) && bound > 0 && parts[index].length > bound) {
+        return { ok: false, code: "answer-invalid", blank: index + 1 };
+      }
+      found.push(field);
+    }
+    return { ok: true, fields: found };
+  };
+
+  const resolved = resolveFields();
+  if (!resolved.ok) {
+    return resolved;
+  }
+  const fields = resolved.fields;
+
+  // --- the controls the page owns them with --------------------------------
+
+  /** Every index the collection publishes, array-like or keyed. */
+  const indicesOf = (source) => {
+    const found = [];
+    if (Number.isInteger(source?.length)) {
+      for (let at = 0; at < source.length; at += 1) {
+        found.push(at);
+      }
+      return found;
+    }
+    let keys = [];
+    try {
+      keys = Object.keys(source ?? {});
+    } catch {
+      return found;
+    }
+    for (const key of keys) {
+      if (/^\d+$/.test(key)) {
+        found.push(Number(key));
+      }
+    }
+    return found;
+  };
+
+  const collection = ui.controlsCollection;
+  const rows = ui.controlsCollectionData;
+  const published = indicesOf(collection);
+
+  const candidates = [];
+  for (const index of published) {
+    const control = collection[index];
+    if (!control || typeof control !== "object") {
+      continue;
+    }
+    const data = rows ? rows[index] : null;
+    // The same classification the read-only probe makes. A control that is
+    // neither a dynamic editor nor a text box is an option -- Hawkes publishes
+    // one beside every table cell, which is why its collection is twice the
+    // answer surface -- and no answer is ever typed into one.
+    const dynamic = data?.isQDy === true || control.Type !== undefined;
+    if (data && !dynamic && data.boxValue === undefined) {
+      continue;
+    }
+    if (control.enabled === false) {
+      continue;
+    }
+    candidates.push({ index, control, data: data ?? null });
+  }
+
+  // A control's own graph is walked for ownership; the other controls' graphs
+  // are not. Hawkes' objects hold references back to their siblings and to the
+  // collection, and following those would let every control claim every cell.
+  const foreign = new Set();
+  for (const index of published) {
+    const control = collection[index];
+    if (control && typeof control === "object") {
+      foreign.add(control);
+    }
+    const data = rows ? rows[index] : null;
+    if (data && typeof data === "object") {
+      foreign.add(data);
+    }
+  }
+  foreign.add(ui);
+  if (collection && typeof collection === "object") {
+    foreign.add(collection);
+  }
+  if (rows && typeof rows === "object") {
+    foreign.add(rows);
+  }
+
+  /** An element, whether it is one or a jQuery wrapper around one. */
+  const asElement = (value) => {
+    try {
+      if (value && value.nodeType === 1 && typeof value.getAttribute === "function") {
+        return value;
+      }
+      if (value && value.jquery !== undefined && value[0]?.nodeType === 1) {
+        return value[0];
+      }
+    } catch { /* a getter that throws is not evidence */ }
+    return null;
+  };
+
+  /**
+   * The elements and names one control publishes, found by identity.
+   *
+   * Deliberately not a named property. Hawkes links a plain answer box to its
+   * control differently from a dynamic one, the link has moved between
+   * lessons, and a writer that guessed `objMyDiv` and found nothing would
+   * either refuse every table or, worse, fall back to position. So the
+   * control's own object graph is walked, bounded in depth and in work, and
+   * whatever it turns out to hold -- the element itself, the cell around it,
+   * or the id as a string -- is recorded with the depth it was found at.
+   */
+  const evidenceOf = (entry) => {
+    const elements = [];
+    const names = [];
+    const seen = new Set();
+    let budget = WALK_BUDGET;
+    const visit = (value, depth) => {
+      if (budget <= 0 || depth > WALK_DEPTH || value === null || value === undefined) {
+        return;
+      }
+      if (typeof value === "string") {
+        if (value.length > 0 && value.length <= 120) {
+          names.push([value, depth]);
+        }
+        return;
+      }
+      if (typeof value !== "object" && typeof value !== "function") {
+        return;
+      }
+      if (seen.has(value)) {
+        return;
+      }
+      seen.add(value);
+      budget -= 1;
+      const element = asElement(value);
+      if (element) {
+        elements.push([element, depth]);
+        return;   // the page's tree is evidence, not something to walk into
+      }
+      if (depth > 0 && foreign.has(value)) {
+        return;
+      }
+      let keys = [];
+      try {
+        keys = Object.keys(value);
+      } catch {
+        return;
+      }
+      if (keys.length > 80) {
+        return;   // a page-sized collection, not one control's own fields
+      }
+      for (const key of keys) {
+        let next;
+        try {
+          next = value[key];
+        } catch {
+          continue;   // a getter that throws is not evidence either
+        }
+        visit(next, depth + 1);
+      }
+    };
+    visit(entry.control, 0);
+    visit(entry.data, 0);
+    return { elements, names };
+  };
+
+  /** `MatrixTextBoxes3_num` names the control `MatrixTextBoxes3`. */
+  const baseName = (id) => id.replace(/_[A-Za-z]+$/, "");
+
+  /**
+   * How strongly one control claims one cell: the kind of evidence first, and
+   * within a kind the shallowest reference. Zero is no claim at all.
+   */
+  const claimOf = (found, cell, others) => {
+    let best = 0;
+    const note = (kind, depth) => {
+      const rank = kind * 1000 + Math.max(0, 100 - depth);
+      if (rank > best) {
+        best = rank;
+      }
+    };
+    const holds = (element, node) => {
+      try {
+        return element.contains(node) === true;
+      } catch {
+        return false;
+      }
+    };
+    for (const [element, depth] of found.elements) {
+      if (element === cell) {
+        note(4, depth);
+        continue;
+      }
+      // A container is evidence only when it holds this one target and no
+      // other: the grid itself contains all five and says nothing about any.
+      if (holds(element, cell) && !others.some((other) => holds(element, other))) {
+        note(3, depth);
+      }
+    }
+    const base = baseName(cell.id);
+    for (const [text, depth] of found.names) {
+      if (text === cell.id) {
+        note(2, depth);
+      } else if (base.length > 0 && text === base) {
+        note(1, depth);
+      }
+    }
+    return best;
+  };
+
+  const EVIDENCE = ["", "name", "id", "cell", "element"];
+  const evidence = candidates.map(evidenceOf);
+  const claims = fields.map((field, at) =>
+    candidates.map((_control, which) =>
+      claimOf(evidence[which], field, fields.filter((_one, other) => other !== at))
+    )
+  );
+
+  const owners = [];
+  const ownership = [];
+  for (let at = 0; at < fields.length; at += 1) {
+    const row = claims[at];
+    const best = Math.max(0, ...row);
+    if (best === 0) {
+      return { ok: false, code: "table-cell-model-missing", blank: at + 1 };
+    }
+    const winners = [];
+    for (let which = 0; which < row.length; which += 1) {
+      if (row[which] === best) {
+        winners.push(which);
+      }
+    }
+    if (winners.length !== 1) {
+      return { ok: false, code: "table-cell-model-ambiguous", blank: at + 1 };
+    }
+    owners.push(winners[0]);
+    ownership.push(EVIDENCE[Math.floor(best / 1000)]);
+  }
+  if (new Set(owners).size !== owners.length) {
+    return { ok: false, code: "table-cell-model-shared" };
+  }
+  // And the other direction. A control that claims some other cell of this
+  // table more strongly than the one it was given does not own that one; the
+  // two readings of ownership disagree, and a disagreement is a refusal.
+  for (let at = 0; at < fields.length; at += 1) {
+    const which = owners[at];
+    for (let other = 0; other < fields.length; other += 1) {
+      if (other !== at && claims[other][which] > claims[at][which]) {
+        return { ok: false, code: "table-cell-model-disagrees", blank: at + 1 };
+      }
+    }
+  }
+
+  /**
+   * Make the page believe it is editing this cell, and say how.
+   *
+   * The page's own path is tried first and is what runs whenever the lesson
+   * has system focus: `focus()` fires the focus handling Hawkes binds at
+   * document level, which moves the index itself. When the panel holds focus
+   * instead -- which is the whole of the live case, because the Insert button
+   * is in the panel -- that never runs, and the index is set directly. It is
+   * the page's own selection state, the same value its keypad routing gates
+   * on, and it is read back rather than assumed.
+   */
+  const selectFor = (at) => {
+    const { index, control } = candidates[owners[at]];
+    try {
+      fields[at].focus();
+    } catch { /* the page's own path, tried first */ }
+    if (ui.focusedElementIndex === index) {
+      return "page";
+    }
+    try {
+      if (typeof control.setFocus === "function") {
+        control.setFocus();
+      }
+    } catch { /* the editor's own selector, where a control has one */ }
+    if (ui.focusedElementIndex === index) {
+      return "editor";
+    }
+    try {
+      ui.focusedElementIndex = index;
+    } catch {
+      return null;
+    }
+    return ui.focusedElementIndex === index ? "state" : null;
+  };
+
+  /**
+   * What one control's own buffer holds, or null when it publishes none.
+   *
+   * This is the reading the DOM cannot give: the whole failure was the model
+   * and the box disagreeing about which cell an answer belonged to. Where the
+   * control states its text it is compared against the part; where it states
+   * none, the cross-cell check below is what catches a misrouted write, and
+   * the result says how many models could actually be read.
+   */
+  const modelText = (entry) => {
+    const { control, data } = entry;
+    let text;
+    try {
+      const dynamic = data?.isQDy === true || control.Type !== undefined;
+      const states = dynamic ? control.CurrentTextboxText : control.boxValue;
+      text = typeof states === "function" ? states.call(control) : states;
+    } catch {
+      return null;
+    }
+    return typeof text === "string" ? text : null;
+  };
+
+  // --- writing -------------------------------------------------------------
+
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
+
+  /**
+   * Put one exact string in a cell and tell the page it changed.
+   *
+   * `text` is composed by this function from what it has placed itself,
+   * starting from nothing, so the cell ends holding exactly the reviewed part
+   * whatever the control was carrying before -- and so a rerender that has
+   * put someone else's value in the box cannot be appended to.
+   */
+  const writeCell = (field, text, character) => {
+    setter.call(field, text);
+    field.setSelectionRange?.(text.length, text.length);
+    field.dispatchEvent(
+      new InputEvent("input", {
+        bubbles: true,
+        data: character,
+        inputType: text === "" ? "deleteContentBackward" : "insertText",
+      })
+    );
+  };
+
+  /**
+   * What the mapped cells hold, as one string each.
+   *
+   * Compared, never reported and never decided from: see the note at the top
+   * of this file about what a cell's contents are and are not for.
+   */
+  const snapshot = () => fields.map((field) => field.value);
+
+  /** Wait for the editor to stop rerendering, or for the deadline. */
+  const settle = async () => {
+    const deadline = Date.now() + SETTLE_MS;
+    let last = snapshot().join("\n");
+    let stable = 0;
+    while (Date.now() < deadline) {
+      await pause(60);
+      const now = snapshot().join("\n");
+      if (now !== last) {
+        last = now;
+        stable = 0;
+        continue;
+      }
+      stable += 1;
+      if (stable >= 3) {
+        break;
+      }
+    }
+    return snapshot();
+  };
+
+  // Ask every cell before changing any of them. Hawkes uses this event to
+  // reject characters its published model does not accept, and a question that
+  // would refuse the fourth value must not be given the first three.
+  const asked = fields.every((field, at) =>
+    field.dispatchEvent(
+      new InputEvent("beforeinput", {
+        bubbles: true,
+        cancelable: true,
+        data: parts[at],
+        inputType: "insertText",
+      })
+    )
+  );
+  if (!asked) {
+    return { ok: false, code: "input-cancelled" };
+  }
+
+  // What the surface held before this ran, so a refusal can put it back.
+  const original = snapshot();
+  const expected = [...original];
+  let mutated = false;
+  let written = 0;
+
+  /** Put back what was there, so a refusal leaves no partial answer behind. */
+  const undo = async () => {
+    if (!mutated) {
+      return false;
+    }
+    for (let at = 0; at < fields.length; at += 1) {
+      try {
+        if (!fields[at].isConnected || fields[at].value === original[at]) {
+          continue;
+        }
+        selectFor(at);
+        writeCell(fields[at], original[at], "");
+      } catch { /* an undo that cannot run is reported, not thrown */ }
+    }
+    await settle();
+    return snapshot().some((value, at) => value !== original[at]);
+  };
+
+  const refuse = async (report) =>
+    (await undo()) ? { ...report, leftBehind: true } : report;
+
+  const selected = [];
+  let modelsRead = 0;
+
+  for (let at = 0; at < fields.length; at += 1) {
+    // The mapping, re-resolved between cells. Paced entry runs for seconds and
+    // Hawkes swaps a question in place: the cell this is about to write can
+    // have been replaced while the previous one was being typed.
+    const again = resolveFields();
+    if (!again.ok) {
+      return await refuse({ ...again, written: at });
+    }
+    if (again.fields.some((one, other) => one !== fields[other])) {
+      return await refuse({ ok: false, code: "table-targets-changed", written: at });
+    }
+
+    const how = selectFor(at);
+    if (how === null) {
+      return await refuse({
+        ok: false, code: "table-cell-not-selected", blank: at + 1, written: at,
+      });
+    }
+    selected.push(how);
+
+    const field = fields[at];
+    mutated = true;
+    // Emptied first, through the control that now owns the cell, so the part
+    // lands in a cleared model rather than behind whatever it was carrying.
+    writeCell(field, "", "");
+    let placed = "";
+    for (const character of parts[at]) {
+      await waitForNote();
+      if (!field.isConnected) {
+        return await refuse({
+          ok: false, code: "table-target-missing", blank: at + 1, written: at,
+        });
+      }
+      if (field.disabled || field.readOnly) {
+        return await refuse({
+          ok: false, code: "table-target-not-editable", blank: at + 1, written: at,
+        });
+      }
+      placed = `${placed}${character}`;
+      writeCell(field, placed, character);
+      emit([notesStruck - 1, performance.now() - origin]);
+    }
+    written = at + 1;
+
+    const settled = await settle();
+    holdForSettling();
+    if (dialogUp()) {
+      return await refuse({
+        ok: false, code: "editor-dialog-open", blank: at + 1, written,
+      });
+    }
+    expected[at] = parts[at];
+    if (settled[at] !== parts[at]) {
+      return await refuse({
+        ok: false, code: "table-cell-not-settled", where: "cell", blank: at + 1, written,
+      });
+    }
+    // The failure this writer exists to catch: the editor took the part and
+    // put it, or the cell it was holding, somewhere else in the same table.
+    const moved = settled.findIndex(
+      (value, other) => other !== at && value !== expected[other]
+    );
+    if (moved >= 0) {
+      return await refuse({
+        ok: false, code: "table-cell-crossed", blank: at + 1, moved: moved + 1, written,
+      });
+    }
+    const text = modelText(candidates[owners[at]]);
+    if (text !== null) {
+      modelsRead += 1;
+      if (text !== parts[at]) {
+        return await refuse({
+          ok: false, code: "table-cell-not-settled", where: "model", blank: at + 1, written,
+        });
+      }
+    }
+  }
+
+  // Every cell, once more, after the last one settled.
+  const final = resolveFields();
+  if (!final.ok || final.fields.some((one, at) => one !== fields[at])) {
+    return await refuse({ ok: false, code: "table-targets-changed", written });
+  }
+  if (snapshot().some((value, at) => value !== parts[at])) {
+    return await refuse({ ok: false, code: "table-cell-not-settled", where: "cell", written });
+  }
+
+  return {
+    ok: true,
+    code: "entered-table-cells",
+    cells: [...cells],
+    // What this insertion actually established, rather than how many write
+    // calls returned. `settled` is cells whose own state was read back and
+    // matched, with no other cell moving; `models` is how many of the page's
+    // own control buffers could be read and agreed as well.
+    settled: fields.length,
+    models: modelsRead,
+    // How each cell was tied to a control, and how each control was selected.
+    // Names, not values: this is what a live refusal would otherwise cost a
+    // screenshot of the owner's coursework to guess at.
+    ownership,
+    selected,
+    timing: measured(),
+  };
+}

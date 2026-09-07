@@ -297,6 +297,18 @@ export function insertErrorKey(code) {
     "table-target-repeated": "errorQuestionChanged",
     "table-targets-changed": "errorQuestionChanged",
     "table-answer-incomplete": "errorInsertRejected",
+    // A cell the page owns no single control for, or two cells owning one
+    // control: the write has nowhere unambiguous to be routed.
+    "table-cell-model-missing": "errorEditorUnknown",
+    "table-cell-model-ambiguous": "errorEditorUnknown",
+    "table-cell-model-shared": "errorEditorUnknown",
+    "table-cell-model-disagrees": "errorEditorUnknown",
+    "table-cell-not-selected": "errorEditorUnknown",
+    // The cell did not settle holding its own part, or a write moved another
+    // cell of the same table. Its own sentence: this is the editor placing an
+    // answer somewhere nobody asked for, not the editor refusing one.
+    "table-cell-not-settled": "errorTableCellsCrossed",
+    "table-cell-crossed": "errorTableCellsCrossed",
     "answer-fields-not-empty": "errorFieldNotEditable",
     "answer-parts-incomplete": "errorInsertRejected",
     "editor-multiple-answer": "errorEditorUnknown",

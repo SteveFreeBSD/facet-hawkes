@@ -37,6 +37,7 @@ import { planAnswerParts, planEntry } from "/common/editor-plan.js";
 import { describeResults, selectAnswerFrame } from "/common/frames.js";
 import { graphOperation } from "/common/graph-actions.js";
 import { enterPlan } from "/common/page-actions.js";
+import { enterTableCells } from "/common/table-actions.js";
 import { collectSources, foldSources } from "/common/build-marker.js";
 import { buildFailureRecord, recordFailure } from "/common/failure-record.js";
 import {
@@ -652,24 +653,6 @@ async function enterPlainAnswerParts(parts, fieldIds, cadence) {
     return { ok: false, code: "wrong-site" };
   }
   return ethnosHawkes.insertAnswerParts(parts, fieldIds, cadence);
-}
-
-/**
- * One-shot insertion into the cells of one completion table.
- *
- * `cells` is the browser's authoritative mapping in semantic blank order, so
- * `cells[N]` is the control that holds blank `N + 1`. It is passed as an
- * argument rather than rediscovered in the page: the order is the table's, not
- * the layout's, and no sweep of the DOM can recover it.
- */
-async function enterTableParts(parts, cells, cadence) {
-  if (typeof ethnosHawkes === "undefined") {
-    return { ok: false, code: "prelude-missing" };
-  }
-  if (!ethnosHawkes.originAllowed()) {
-    return { ok: false, code: "wrong-site" };
-  }
-  return ethnosHawkes.insertTableParts(parts, cells, cadence);
 }
 
 /**
@@ -2708,40 +2691,40 @@ async function insert() {
     const frame = { tabId: target.tabId, frameIds: [target.frameId] };
     let outcome;
     try {
-      // Refresh the isolated-world prelude immediately before the one-shot
-      // function, exactly as the single-field path does.
-      await runOperation(frame, INSPECT_SCRIPT);
-      if (!ownsTarget(target)) {
-        abandonInsertion(target, "before-table-write");
-        return;
-      }
       const cells = target.tableTargets.map((one) => one.id);
       const [entry] = await runScoredEntry(
         target,
         target.answerParts.map((text) => ({ op: "type", text })),
         cadence,
+        // The page's own world. A completion cell is a controlled editor: the
+        // page owns a model per cell and routes `input` through the one it has
+        // selected, which no isolated script can see or move. Writing from
+        // outside it put four parts in their cells and the fifth in someone
+        // else's, and reported five successful writes.
         () => runInjection({
           target: frame,
-          func: enterTableParts,
+          world: "MAIN",
+          func: enterTableCells,
           args: [[...target.answerParts], cells, cadence],
         })
       );
       outcome = entry?.result;
       if (
         !outcome?.ok
-        || outcome.code !== "native-input-cells"
+        || outcome.code !== "entered-table-cells"
         || !sameStringArray(outcome.cells, cells)
+        || outcome.settled !== cells.length
       ) {
         log.warn("table-answer-not-placed", {
           code: outcome?.code ?? "no-result",
           blank: outcome?.blank ?? 0,
+          // Which other cell a write moved, when one did: the failure that
+          // used to be indistinguishable from success.
+          moved: outcome?.moved ?? 0,
+          where: outcome?.where ?? "",
           written: outcome?.written ?? 0,
+          leftBehind: outcome?.leftBehind === true,
           cells: cells.length,
-          // How much each control was carrying when the write began. Lengths
-          // only, and the reason they are here: live, every box drawn empty
-          // reported characters, which is the answer control's own text model
-          // and not the page's statement about the cell.
-          held: outcome?.held ?? [],
         });
         fail(insertErrorKey(outcome?.code ?? "table-answer-incomplete"));
         return;
@@ -2755,11 +2738,14 @@ async function insert() {
       fields: target.tableTargets.length,
       parts: target.answerParts.length,
       answerLength: reviewed.length,
-      // What each cell held before and after, as lengths. The second list is
-      // what confirms every cell took its whole part without any of them
-      // being read back.
-      held: outcome.held ?? [],
-      placed: outcome.placed ?? [],
+      // What was established, not how many writes returned. Every cell settled
+      // holding its own part with no other cell moving; `models` says how many
+      // of the page's own control buffers agreed as well, and the two lists
+      // say how each cell was tied to a control and how each was selected.
+      settled: outcome.settled,
+      models: outcome.models ?? 0,
+      ownership: outcome.ownership ?? [],
+      selected: outcome.selected ?? [],
       elapsedMs: Date.now() - entryStartedAt,
     });
     await finishInsertion(
@@ -3367,6 +3353,7 @@ function markedCode() {
     "common/log.js#setLogLevel": setLogLevel,
     "common/log.js#setRun": setRun,
     "common/page-actions.js#enterPlan": enterPlan,
+    "common/table-actions.js#enterTableCells": enterTableCells,
     "common/settings.js#defaultSettings": defaultSettings,
     "common/settings.js#migrateSettings": migrateSettings,
     "common/settings.js#onSettingsChanged": onSettingsChanged,

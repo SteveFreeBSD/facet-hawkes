@@ -253,6 +253,10 @@
     "message": "Hawkes has a message box open, which blocks the answer field. Close it, then try again.",
     "description": "Error when a Hawkes modal is holding focus."
   },
+  "errorTableCellsCrossed": {
+    "message": "The Hawkes table did not keep each answer in its own cell, so the table was put back as it was. Click one of the empty cells, then try again.",
+    "description": "Shown when a completion table's editor settled with an answer outside the cell it was typed into."
+  },
   "errorTabAccessLost": {
     "message": "Hawkes access is not granted. Grant access to use the sidebar across navigation.",
     "description": "Error when neither the site permission nor a current activeTab grant is available."

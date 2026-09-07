@@ -46,6 +46,7 @@ MODULES = (
     "common/cadence-audio.js",
     "common/cadence-session.js",
     "common/page-actions.js",
+    "common/table-actions.js",
     "common/graph-actions.js",
     "common/settings.js",
     "background.js",

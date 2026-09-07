@@ -293,7 +293,8 @@ INJECTED_PATH = re.compile(r"""_SCRIPT = ["']([^"']+)["']""")
 # Hawkes drives its editor through page-owned JavaScript, so reading the rules
 # and building structure both require it.
 MAIN_WORLD_SCRIPT = Path("content/hawkes-describe.js")  # reads only
-MAIN_WORLD_WRITER = Path("common/page-actions.js")  # the one writer
+MAIN_WORLD_WRITER = Path("common/page-actions.js")  # builds structured answers
+MAIN_WORLD_TABLE = Path("common/table-actions.js")  # types a completion table
 
 
 def _check_main_world(problems: list[str]) -> None:
@@ -320,6 +321,7 @@ def _check_main_world(problems: list[str]) -> None:
                 f"{MAIN_WORLD_SCRIPT}: {what}; the page-world probe is read-only"
             )
     _check_main_world_writer(problems)
+    _check_table_writer(problems)
 
     graph_path = Path("common/graph-actions.js")
     graph_text = (EXTENSION_DIR / graph_path).read_text(encoding="utf-8")
@@ -338,7 +340,12 @@ def _check_main_world(problems: list[str]) -> None:
             problems.append(f"{graph_path}: forbidden graph capability {token}")
 
     # No other script may reach the page model.
-    allowed = {MAIN_WORLD_SCRIPT, MAIN_WORLD_WRITER, Path("common/graph-actions.js")}
+    allowed = {
+        MAIN_WORLD_SCRIPT,
+        MAIN_WORLD_WRITER,
+        MAIN_WORLD_TABLE,
+        Path("common/graph-actions.js"),
+    }
     for other in packaged_files():
         if other.suffix != ".js" or other in allowed:
             continue
@@ -387,6 +394,60 @@ def _check_main_world_writer(problems: list[str]) -> None:
         problems.append("background.js must pass enterPlan as the injected function")
 
 
+def _check_table_writer(problems: list[str]) -> None:
+    """The page-world table writer types into named cells, and nothing else.
+
+    It is the only file allowed to move Hawkes' own selection, because that is
+    the whole of the fix: a completion cell's `input` is routed through the
+    control the page has selected, and DOM focus does not move that. The
+    capability is bounded here -- it may select a control and type into the
+    cell that control owns, and it may not press a keypad template, build
+    structure, click, navigate, or evaluate anything.
+    """
+    path = EXTENSION_DIR / MAIN_WORLD_TABLE
+    if not path.is_file():
+        problems.append(f"{MAIN_WORLD_TABLE} is missing")
+        return
+    text = path.read_text(encoding="utf-8")
+
+    forbidden = (
+        (r"\beval\s*\(", "evaluates code"),
+        (r"\bnew Function\s*\(", "builds a function from text"),
+        (r"\.click\s*\(", "clicks a page element"),
+        (r"\bsubmit\b", "references submission"),
+        (r"location\s*(?:=|\.(?!origin\b))", "touches navigation"),
+        (r"\bfetch\s*\(|XMLHttpRequest", "makes a request"),
+        (r"innerHTML|outerHTML|insertAdjacentHTML", "writes markup"),
+        # Structure is the structured writer's job and needs the keypad; this
+        # one types characters into cells that already exist.
+        (r"keyPadButtonClick|addElement\s*\(", "builds editor structure"),
+    )
+    for pattern, what in forbidden:
+        if re.search(pattern, text):
+            problems.append(f"{MAIN_WORLD_TABLE}: {what}; it may only enter table cells")
+
+    if not re.search(r"\bfocusedElementIndex\s*=(?!=)", text):
+        problems.append(
+            f"{MAIN_WORLD_TABLE}: expected to select the page's own control"
+        )
+    if "const noteOffsets = cadence.score?.offsets" not in text:
+        problems.append(f"{MAIN_WORLD_TABLE} must consume the shared Cadence score")
+    if "func: enterTableCells" not in (EXTENSION_DIR / "background.js").read_text(
+        encoding="utf-8"
+    ):
+        problems.append("background.js must pass enterTableCells as the injected function")
+
+    # And it is the only file that moves that selection.
+    for other in packaged_files():
+        if other.suffix != ".js" or other == MAIN_WORLD_TABLE:
+            continue
+        source = (EXTENSION_DIR / other).read_text(encoding="utf-8")
+        if re.search(r"\bfocusedElementIndex\s*=(?!=)", source):
+            problems.append(
+                f"{other}: only {MAIN_WORLD_TABLE} may move the editor's selection"
+            )
+
+
 def _check_injected_paths(problems: list[str]) -> None:
     """Injected file paths must be root-absolute and must exist.
 
@@ -425,13 +486,14 @@ def _check_cadence_score(problems: list[str]) -> None:
 #: which is serialized into the page by `executeScript` and loses its imports.
 #: Each name is checked against every copy that declares it.
 SELF_CONTAINED_COPIES: dict[str, tuple[str, ...]] = {
-    "MAX_ANSWER_LENGTH": ("content/hawkes-editor.js",),
-    "ANSWER_PATTERN": ("content/hawkes-editor.js",),
+    "MAX_ANSWER_LENGTH": ("content/hawkes-editor.js", "common/table-actions.js"),
+    "ANSWER_PATTERN": ("content/hawkes-editor.js", "common/table-actions.js"),
     "MAX_ANSWER_PARTS": (
         "content/hawkes-editor.js",
         "content/hawkes-describe.js",
         "content/hawkes-question.js",
         "common/page-actions.js",
+        "common/table-actions.js",
     ),
 }
 
