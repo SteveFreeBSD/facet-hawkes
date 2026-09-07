@@ -20,6 +20,9 @@ What it decodes, and why by hand:
   word pairs of `(data, tag)`, with strings and numbers inline. Only the tags
   this log actually contains are handled; anything else is reported rather
   than guessed at.
+* An object that appears more than once in the same value is written once and
+  referred back to by position afterwards, so the reader keeps the table of
+  objects it has opened and resolves those references through it.
 
 Usage::
 
@@ -56,6 +59,7 @@ TAG_INT32 = 0xFFFF0003
 TAG_STRING = 0xFFFF0004
 TAG_ARRAY = 0xFFFF0007
 TAG_OBJECT = 0xFFFF0008
+TAG_BACK_REFERENCE_OBJECT = 0xFFFF000D
 TAG_END_OF_KEYS = 0xFFFF0013
 TAG_NULL = 0xFFFF0000
 TAG_UNDEFINED = 0xFFFF0001
@@ -122,6 +126,10 @@ class Clone:
     def __init__(self, raw: bytes) -> None:
         self.raw = raw
         self.pos = 0
+        # Every object and array in the order it was opened. Firefox writes a
+        # repeated object once and refers back to it by position in this
+        # table, so the table is the only way to read the second appearance.
+        self.objects: list = []
 
     def pair(self) -> tuple[int, int]:
         if self.pos + 8 > len(self.raw):
@@ -156,21 +164,51 @@ class Clone:
             return self.collection(as_list=False)
         if tag == TAG_ARRAY:
             return self.collection(as_list=True)
+        if tag == TAG_BACK_REFERENCE_OBJECT:
+            return self.backreference(data)
         raise Unreadable(f"unhandled structured-clone tag 0x{tag:08X}")
 
+    def backreference(self, index: int):
+        """An object that has already been read, named by its position.
+
+        An index the table cannot answer means these bytes are not the clone
+        they claim to be. Returning anything at that point -- an empty object,
+        the nearest entry -- would put a line in a diagnostic log that the
+        browser never wrote, so this stops instead.
+        """
+        if index >= len(self.objects):
+            raise Unreadable(
+                f"structured-clone back reference to object {index}, "
+                f"but only {len(self.objects)} have been read"
+            )
+        return self.objects[index]
+
     def collection(self, *, as_list: bool):
-        """Read key/value pairs until the end marker; arrays key by index."""
-        items: dict = {}
+        """Read key/value pairs until the end marker; arrays key by index.
+
+        The container joins the object table before its children are read,
+        which is the order SpiderMonkey numbers back references in. Filling it
+        afterwards would shift every index a nested object refers to, and a
+        child that refers back to something already open -- an ancestor, or an
+        earlier sibling that contains one -- would resolve to the wrong value.
+        """
+        container: list | dict = [] if as_list else {}
+        self.objects.append(container)
+        indexed: dict = {}
         while True:
             data, tag = self.pair()
             if tag == TAG_END_OF_KEYS:
                 break
             key = self.value(data, tag)
             data, tag = self.pair()
-            items[key] = self.value(data, tag)
-        if not as_list:
-            return items
-        return [items[k] for k in sorted(items, key=lambda k: int(k))]
+            value = self.value(data, tag)
+            if as_list:
+                indexed[key] = value
+            else:
+                container[key] = value
+        if as_list:
+            container.extend(indexed[k] for k in sorted(indexed, key=lambda k: int(k)))
+        return container
 
     def read(self):
         # Header pair, then the value itself.
