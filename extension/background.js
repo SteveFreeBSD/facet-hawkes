@@ -18,6 +18,8 @@
 import {
   ALLOWED_HOST_PATTERN,
   MAX_ANSWER_PARTS,
+  displayableAnswer,
+  mathNotation,
   validateAnswer,
 } from "/common/config.js";
 import {
@@ -287,6 +289,9 @@ function blankState() {
     detail: "",
     errorKey: "",
     errorArgs: [],
+    // The answer a held refusal was about, so an obsolete one can be told from
+    // a current one rather than being trusted because it is still there.
+    errorAnswer: "",
     startedAt: 0,
     // Which run produced the answer now held. Solving and inserting are two
     // gestures and therefore two runs, and "what changed between the solve and
@@ -426,7 +431,16 @@ function fail(errorKey, { detail = "", args = [] } = {}) {
     // and the trail is what separates them.
     stages: runStages.join(">"),
   });
-  update({ phase: "failed", errorKey, errorArgs: args, detail });
+  // Which answer this refusal is about. A message naming the characters an
+  // editor rejected is only true of the answer those characters came from, and
+  // the panel drops it the moment the answer on the card is a different one.
+  update({
+    phase: "failed",
+    errorKey,
+    errorArgs: args,
+    errorAnswer: state.entryText || state.answer || "",
+    detail,
+  });
   retain("failed", { errorKey, ...stopped });
 }
 
@@ -1885,6 +1899,13 @@ async function prepare(windowId = state.windowId) {
       graphCoefficients: hasAnswer ? previous.graphCoefficients : [],
       promptSeen: hasAnswer ? previous.promptSeen : true,
       placedText: alreadyInserted ? previous.placedText : "",
+      // A refusal describes one question. Carried while the question is
+      // unchanged, and dropped with the answer it was about when it is not --
+      // otherwise the previous question's rejected characters arrive on the
+      // next question's card, naming a character its answer does not contain.
+      errorKey: sameQuestion ? state.errorKey : "",
+      errorArgs: sameQuestion ? (state.errorArgs ?? []) : [],
+      errorAnswer: sameQuestion ? (state.errorAnswer ?? "") : "",
       problemText: context ? previous.problemText : "",
       source: context ? previous.source : "",
       detail: context ? previous.detail : "",
@@ -2194,8 +2215,11 @@ function readableAnswer(answer) {
         `${/[+\-]/.test(numerator) ? `(${numerator})` : numerator}/${group(denominator)}`
     );
   }
-  return readable.replace(/\\/g, "").trim() || display;
+  // The wire spelling is not a reading. `sqrt101` is `√101`, and the same
+  // rule the entry planner builds from is the one applied here.
+  return mathNotation(readable.replace(/\\/g, "").trim()) || mathNotation(display);
 }
+
 
 /**
  * The companion's refusals, as labels this file owns.
@@ -2423,7 +2447,10 @@ async function acceptReply(reply) {
     stage: "done",
     solveRun: currentRun(),
     answer,
-    displayText,
+    // The machine form is validated; the readable one is only preferred when
+    // it is itself an answer. Falling back keeps the card honest without
+    // failing a solve whose entry value was perfectly good all along.
+    displayText: displayableAnswer(displayText) ? displayText : answer,
     entryText,
     answerParts: hasParts ? answerParts : [],
     problemText: reply.problem_text ?? "",
@@ -2433,6 +2460,12 @@ async function acceptReply(reply) {
     promptSeen: certainty.prompt_seen !== false,
     detail: notes.join("\n"),
     errorKey: certainty.insertable ? "" : "errorTranscriptionDisputed",
+    // A new answer is a new question of insertability. Whatever the last one
+    // was refused for does not describe this one, and its arguments describe
+    // it even less -- `update` merges, so an unreset `errorArgs` outlives the
+    // answer whose characters it names.
+    errorArgs: [],
+    errorAnswer: "",
   });
   log.info("answer-retained", {
     answerParts: Array.isArray(state.answerParts) ? state.answerParts.length : 0,
@@ -3477,6 +3510,8 @@ function markedCode() {
     "common/cadence.js": globalThis.ethnosCadence,
     "common/config.js#ALLOWED_HOST_PATTERN": ALLOWED_HOST_PATTERN,
     "common/config.js#MAX_ANSWER_PARTS": MAX_ANSWER_PARTS,
+    "common/config.js#displayableAnswer": displayableAnswer,
+    "common/config.js#mathNotation": mathNotation,
     "common/config.js#validateAnswer": validateAnswer,
     "common/editor-plan.js#planAnswerParts": planAnswerParts,
     "common/editor-plan.js#planEntry": planEntry,

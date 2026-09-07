@@ -378,3 +378,166 @@ def test_the_cells_own_published_bound_still_wins_over_the_questions(table_fits)
 
     assert verdicts[0] == {"insertable": False, "code": "answer-too-long"}
     assert verdicts[1] == {"insertable": True}
+
+
+# --- the answer as mathematics, not as the spelling it travelled in ----------
+#
+# Live, on 2026-09-07, the distance between (7,0) and (-3,-1). Facet solved it
+# exactly and the panel showed
+#
+#     sqrt101
+#
+# beside "This question's answer box does not accept: s" -- the `s` of `sqrt`,
+# which in the panel's face reads as a 5. Both were the same defect: the host's
+# machine spelling reached the card and the entry planner unconverted, and that
+# question's editor publishes `0123456789-` with a Radical template, so every
+# letter of `sqrt` is refused one at a time.
+
+
+@pytest.fixture(scope="module")
+def notation():
+    context = rules_context()
+
+    def call(text):
+        return context.eval(f"mathNotation({json.dumps(text)})")
+
+    return call
+
+
+@pytest.fixture(scope="module")
+def displayable():
+    context = rules_context()
+
+    def call(text):
+        return context.eval(f"displayableAnswer({json.dumps(text)})")
+
+    return call
+
+
+#: The editor Hawkes published for that question, from the live log verbatim.
+RADICAL_EDITOR = {
+    "ok": True,
+    "kind": "dynamic",
+    "code": "described",
+    "enabled": True,
+    "maxLength": 16,
+    "allowedCharacters": "0123456789-",
+    "templates": {
+        "fraction": False,
+        "radical": True,
+        "exponent": False,
+        "parentheses": False,
+        "absoluteValue": False,
+    },
+    "slots": {
+        "base": "0123456789-",
+        "numerator": "0123456789",
+        "denominator": "0123456789",
+        "exponent": "0123456789",
+        "exponentBase": "0123456789xy",
+        "radicand": "0123456789",
+        "index": "23456789",
+    },
+}
+
+
+def test_a_bare_machine_radical_is_read_as_a_radical(notation) -> None:
+    """`sqrt101` is one radical over one number, and is written as one."""
+    assert notation("sqrt101") == "√101"
+    assert notation("cbrt27") == "∛27"
+
+
+def test_a_bracketed_radicand_is_unchanged_in_meaning(notation) -> None:
+    """The conversion that was already made, still made, and only once."""
+    assert notation("sqrt(101)") == "√(101)"
+    # `sqrt(30)*y` cannot mean sqrt(30y); the brackets are why, and they stay.
+    assert notation("sqrt(30)*y") == "√(30)*y"
+
+
+def test_ordinary_answers_pass_through_untouched(notation) -> None:
+    assert notation("2/3") == "2/3"
+    assert notation("-x^13 + 2x^12") == "-x^13 + 2x^12"
+    assert notation("Not a Real Number") == "Not a Real Number"
+
+
+def test_the_editor_builds_the_radical_it_publishes_a_template_for() -> None:
+    """Not typed: pressed. The radicand is typed into the slot it opens."""
+    context = rules_context()
+    plan_js = PROJECT_ROOT / "extension" / "common" / "editor-plan.js"
+    source = re.sub(r"^export ", "", plan_js.read_text(), flags=re.MULTILINE)
+    context.eval(re.sub(r"^import .*\n", "", source, flags=re.MULTILINE))
+    plan = json.loads(
+        context.eval(
+            "JSON.stringify(planEntry("
+            f"{json.dumps('sqrt101')}, {json.dumps(RADICAL_EDITOR)}))"
+        )
+    )
+
+    assert plan == {
+        "ok": True,
+        "steps": [
+            {"op": "template", "name": "Radical"},
+            {"op": "type", "text": "101"},
+        ],
+    }
+
+
+def test_the_machine_spelling_is_still_refused_by_the_character_set(fits) -> None:
+    """The rule did not get looser: `sqrt101` typed literally is still wrong.
+
+    What changed is that nothing asks the box to take it any more.
+    """
+    assert fits("sqrt101", RADICAL_EDITOR) == {
+        "insertable": False,
+        "code": "answer-has-rejected-characters",
+        "detail": "s q r t",
+    }
+
+
+def test_the_prompts_own_instruction_never_reaches_the_answer_card(displayable):
+    """The host's model contract is built out of English sentences.
+
+    A model that echoes its instruction back instead of answering hands one
+    over as the answer. `validateAnswer` already refuses it, and the machine
+    form is checked against that -- but the readable form was published
+    unchecked, so the sentence reached the card while a good `keyboard_entry`
+    sat behind it.
+    """
+    assert displayable("all answers as they would ordinarily be written") is False
+    assert displayable("Reply with exactly two labelled lines and nothing else") is False
+
+
+def test_the_answers_a_person_should_see_are_all_displayable(displayable) -> None:
+    """The rule is about shape, and must not catch mathematics or an escape."""
+    for answer in ("√101", "√(30yz)/(5z)", "2/3", "-x^13 + 2x^12", "|x|", "17/4"):
+        assert displayable(answer) is True, answer
+    # The named escapes Hawkes really does ask for are four words at most.
+    assert displayable("Not a Real Number") is True
+    assert displayable("Not Factorable") is True
+
+
+def test_the_event_page_publishes_notation_and_never_unchecked_prose() -> None:
+    """The wiring behind the two rules above, which run DOM-free above it.
+
+    `readableAnswer` is what the card shows and was published unchecked; the
+    machine form beside it was validated all along. Both now go through the
+    same two gates.
+    """
+    background = (PROJECT_ROOT / "extension" / "background.js").read_text()
+
+    # The readable form is notation, by the rule the entry planner shares.
+    assert "return mathNotation(" in background
+    # And it reaches the card only when it is an answer at all.
+    assert "displayText: displayableAnswer(displayText) ? displayText : answer," in background
+    # A refusal is stamped with the answer it was raised for, and a changed
+    # question drops it rather than carrying it onto the next one.
+    assert "errorAnswer: state.entryText || state.answer" in background
+    assert 'errorKey: sameQuestion ? state.errorKey : ""' in background
+    assert "errorArgs: sameQuestion ? (state.errorArgs ?? []) : []" in background
+    # And a fresh solve clears whatever the last answer was refused for.
+    assert "errorArgs: []," in background
+
+    # There is one conversion, not a copy of it in the planner.
+    plan = (PROJECT_ROOT / "extension" / "common" / "editor-plan.js").read_text()
+    assert "answer = mathNotation(answer);" in plan
+    assert "sqrt\\(" not in plan

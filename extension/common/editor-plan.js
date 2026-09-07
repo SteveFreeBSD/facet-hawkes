@@ -1,5 +1,6 @@
 "use strict";
 
+import { mathNotation } from "./config.js";
 import { accepts } from "./editor-rules.js";
 
 /**
@@ -37,15 +38,11 @@ export function planEntry(answer, editor) {
   if (typeof answer !== "string" || answer.length === 0) {
     return { ok: false, code: "answer-empty" };
   }
-  // The host's machine form is deliberately explicit. Convert the small set
-  // of supported function spellings into the planner's grouped visual tokens
-  // before parsing; unlike compact display text, `sqrt(30)*y` cannot mean
-  // sqrt(30y).
-  for (let pass = 0; pass < 3; pass += 1) {
-    answer = answer
-      .replace(/\bsqrt\(([^()]*)\)/g, "√($1)")
-      .replace(/\bcbrt\(([^()]*)\)/g, "∛($1)");
-  }
+  // The host's machine form is deliberately explicit; unlike compact display
+  // text, `sqrt(30)*y` cannot mean sqrt(30y). Converted to notation by the
+  // same rule the panel reads with, so what is shown and what is built can
+  // never disagree about what the answer is.
+  answer = mathNotation(answer);
   // Display answers may contain spacing for readability; Hawkes treats it as
   // formatting, and its per-question character set often excludes spaces.
   answer = answer.replace(/\s+/g, "");

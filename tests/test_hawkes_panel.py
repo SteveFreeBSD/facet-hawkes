@@ -766,3 +766,134 @@ def test_the_panel_still_refuses_a_table_value_no_cell_can_hold(view) -> None:
 
     assert shown["insert"]["enabled"] is False
     assert shown["status"]["kind"] == "error"
+
+
+# --- a refusal belongs to the answer that produced it ------------------------
+#
+# Live, on 2026-09-07: the distance between (7,0) and (-3,-1), solved exactly,
+# with the panel showing the answer and, beside it, "This question's answer box
+# does not accept: s". The event page's state is merged rather than rebuilt, so
+# an insertion refusal and its arguments outlive the answer they were raised
+# for and land on the next one's card -- naming a character that answer does
+# not contain, in a face where `s` reads as a 5.
+
+
+#: The editor the distance question published, from the live log verbatim.
+RADICAL_EDITOR = {
+    "ok": True,
+    "kind": "dynamic",
+    "code": "described",
+    "enabled": True,
+    "maxLength": 16,
+    "allowedCharacters": "0123456789-",
+    "templates": {
+        "fraction": False,
+        "radical": True,
+        "exponent": False,
+        "parentheses": False,
+        "absoluteValue": False,
+    },
+    "slots": {
+        "base": "0123456789-",
+        "numerator": "0123456789",
+        "denominator": "0123456789",
+        "exponent": "0123456789",
+        "exponentBase": "0123456789xy",
+        "radicand": "0123456789",
+        "index": "23456789",
+    },
+}
+
+
+def radical_state(**changes):
+    """√101, as the event page now publishes it."""
+    state = {
+        "phase": "solved",
+        "editor": RADICAL_EDITOR,
+        "answer": "sqrt101",
+        "displayText": "√101",
+        "entryText": "sqrt101",
+        "answerParts": [],
+        "problemText": "Find the distance between the two points.",
+    }
+    state.update(changes)
+    return state
+
+
+def test_the_card_shows_the_radical_and_not_the_wire_spelling(view) -> None:
+    """`sqrt101` is a transport encoding. `√101` is the answer."""
+    shown = view(radical_state())
+
+    assert shown["answer"]["text"] == "√101"
+    assert "sqrt" not in shown["answer"]["text"]
+
+
+def test_the_radical_is_offered_because_the_keypad_can_build_it(view) -> None:
+    """The question publishes a Radical template and a numeric radicand."""
+    shown = view(radical_state())
+
+    assert shown["insert"]["enabled"] is True
+    assert shown["status"]["key"] == "statusWillBuild"
+
+
+def test_a_refusal_raised_for_another_answer_is_dropped(view) -> None:
+    """The crossover: `does not accept: s` beside an answer with no `s`."""
+    shown = view(
+        radical_state(
+            errorKey="errorAnswerRejected",
+            errorArgs=["s"],
+            errorAnswer="something the previous question was answered with",
+        )
+    )
+
+    assert shown["status"]["key"] != "errorAnswerRejected"
+    assert shown["status"]["args"] == []
+    assert shown["status"]["key"] == "statusWillBuild"
+    assert shown["insert"]["enabled"] is True
+
+
+def test_a_refusal_about_this_very_answer_is_not_cleared_early(view) -> None:
+    """The other half of the rule, and the one that must not regress."""
+    shown = view(
+        radical_state(
+            errorKey="errorAnswerRejected", errorArgs=["s"], errorAnswer="sqrt101"
+        )
+    )
+
+    assert shown["status"]["key"] == "errorAnswerRejected"
+    assert shown["status"]["args"] == ["s"]
+    assert shown["insert"]["enabled"] is False
+
+
+def test_a_fault_that_is_not_about_an_answer_always_shows(view) -> None:
+    """A lost tab is about the session. Clearing it early would hide it."""
+    for key in ("errorTabAccessLost", "errorWrongSite", "errorNoFocusedField"):
+        shown = view(radical_state(errorKey=key, errorArgs=[], errorAnswer=""))
+        assert shown["status"]["key"] == key, key
+
+
+def test_a_state_written_before_the_stamp_existed_still_shows_its_error(view):
+    """An older event page publishes no `errorAnswer`. It is still believed."""
+    shown = view(radical_state(errorKey="errorAnswerRejected", errorArgs=["s"]))
+
+    assert shown["status"]["key"] == "errorAnswerRejected"
+
+
+def test_the_solve_button_reads_as_retry_only_for_a_refusal_that_holds(view):
+    """The stance follows the same rule, so the panel cannot half-clear one."""
+    stale = view(
+        radical_state(
+            errorKey="errorAnswerRejected", errorArgs=["s"], errorAnswer="elsewhere"
+        )
+    )
+    held = view(
+        radical_state(
+            errorKey="errorAnswerRejected", errorArgs=["s"], errorAnswer="sqrt101"
+        )
+    )
+
+    assert stale["stance"] == "review"
+    assert stale["progress"]["state"] == "done"
+    assert held["stance"] == "solve"
+    assert held["solve"]["key"] == "popupRetryButton"
+    assert held["progress"]["state"] == "error"

@@ -224,6 +224,34 @@ function reviewOffer(state) {
 }
 
 /**
+ * The refusal this state may still show, which is not always the one it holds.
+ *
+ * An insertion refusal is about one answer. "This question's answer box does
+ * not accept: s" is a true and useful sentence about `sqrt101`, and says
+ * nothing whatever about the answer that replaced it -- but the event page's
+ * state is merged rather than rebuilt, so a key and its arguments outlive the
+ * answer they were raised for and land on the next one's card. Live, on
+ * 2026-09-07, that put a rejected-character message beside an answer with no
+ * such character in it, and the character it named read as a digit.
+ *
+ * So a refusal is stamped with the answer that produced it, and shown only
+ * while that is still the answer. A refusal about nothing in particular -- a
+ * lost tab, a site that is not Hawkes, a state written before this stamp
+ * existed -- carries no answer and is always shown; those are about the
+ * session, not about a value, and clearing them early would hide a live fault.
+ */
+function heldRefusal(state) {
+  if (!state?.errorKey) {
+    return "";
+  }
+  const about = state.errorAnswer ?? "";
+  if (about.length === 0) {
+    return state.errorKey;
+  }
+  return about === (state.entryText || state.answer || "") ? state.errorKey : "";
+}
+
+/**
  * A multi-part answer, part by part, each named by where it goes.
  *
  * One line reading `0, 8, 8, 5, 3` is the reviewed answer and is also five
@@ -309,16 +337,20 @@ export function describeView(state, now = 0, { docked = false } = {}) {
   // prior result look current while a fresh solve is running.
   const shown = running ? "" : state.displayText || state.answer || placed;
 
+  // The refusal this state is still entitled to show, which is not always the
+  // one it is still carrying. Worked out before anything reads it.
+  const errorKey = heldRefusal(state);
+
   // Worked out before the stance, because whether the editor will take this
   // answer is exactly what separates "press Insert" from "your turn".
-  const offer = !state.errorKey && state.phase === "solved" ? reviewOffer(state) : null;
+  const offer = !errorKey && state.phase === "solved" ? reviewOffer(state) : null;
 
   /** @type {Stance} */
   const stance = running
     ? "working"
     : state.phase === "inserting"
       ? "inserting"
-      : state.errorKey
+      : errorKey
         ? "solve"
         : state.phase === "inserted"
           ? "placed"
@@ -342,9 +374,9 @@ export function describeView(state, now = 0, { docked = false } = {}) {
     solve: {
       key: running
         ? "popupCancelButton"
-        : state.errorKey === "errorTabAccessLost"
+        : errorKey === "errorTabAccessLost"
           ? "popupGrantAccessButton"
-          : state.errorKey
+          : errorKey
             ? "popupRetryButton"
             // The same button, renamed for what pressing it would now mean.
             // "Solve with Facet" beside an answer already in the box reads as
@@ -365,8 +397,8 @@ export function describeView(state, now = 0, { docked = false } = {}) {
     running,
   };
 
-  if (state.errorKey) {
-    view.status = { key: state.errorKey, args: state.errorArgs ?? [], kind: "error" };
+  if (errorKey) {
+    view.status = { key: errorKey, args: state.errorArgs ?? [], kind: "error" };
   } else if (offer) {
     view.status = offer.status;
   } else if (running) {
@@ -390,7 +422,7 @@ export function describeView(state, now = 0, { docked = false } = {}) {
 
   if (running) {
     view.progress = { fraction: stageProgress(state.stage), state: "" };
-  } else if (state.errorKey) {
+  } else if (errorKey) {
     view.progress = { fraction: 1, state: "error" };
   } else if (state.phase === "solved" || state.phase === "inserted") {
     view.progress = { fraction: 1, state: "done" };

@@ -42,6 +42,78 @@ export const MAX_ANSWER_PARTS = 5;
 const ANSWER_PATTERN = /^[0-9A-Za-z+\-*/^().,√π ]+$/;
 
 /**
+ * One answer written as mathematics, rather than as the spelling it arrived in.
+ *
+ * The host's machine form is deliberately explicit: on a wire `sqrt101` cannot
+ * be misread, and `sqrt(30)*y` cannot be mistaken for `sqrt(30y)`. It is not a
+ * form to show a person, and it is not one any Hawkes answer box will take.
+ * The distance question publishes `0123456789-` and a Radical template, so the
+ * letters of `sqrt` are refused one at a time.
+ *
+ * Live, on 2026-09-07, `√101` -- solved exactly -- reached the panel as
+ * `sqrt101`, and the panel said "this question's answer box does not accept:
+ * s". Both the reading a person sees and the plan the keypad is driven from
+ * need the same conversion, so it is made once, here, and neither of them
+ * carries a copy of it.
+ *
+ * Nothing about the answer changes. The radicand is the same number, and what
+ * is inserted is still built from the editor's own templates.
+ */
+export function mathNotation(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+  let text = value;
+  for (let pass = 0; pass < 3; pass += 1) {
+    text = text
+      // A bracketed radicand, which is how a compound one always arrives.
+      .replace(/\bsqrt\(([^()]*)\)/g, "√($1)")
+      .replace(/\bcbrt\(([^()]*)\)/g, "∛($1)")
+      // And a bare numeric one, which needs no bracket and is written without
+      // it: `sqrt101` is `√101` and is one radical over one number.
+      .replace(/\bsqrt(\d+(?:\.\d+)?)/g, "√$1")
+      .replace(/\bcbrt(\d+(?:\.\d+)?)/g, "∛$1");
+  }
+  return text;
+}
+
+/** How much readable notation the answer card will carry. */
+export const MAX_DISPLAY_LENGTH = 120;
+
+/**
+ * Whether a readable form may be put on the answer card.
+ *
+ * The card shows the readable form rather than the machine one, and that is
+ * deliberate: it may legitimately carry notation no answer box would take, a
+ * radical sign or a fraction bar. What it must never carry is text that is
+ * not an answer at all.
+ *
+ * The host builds its model contract out of English sentences -- one of them
+ * is "FINAL ANSWER: all answers as they would ordinarily be written" -- and a
+ * model that echoes its instruction back instead of answering hands that
+ * sentence over as the answer. `validateAnswer` already refuses it, and the
+ * machine form is checked against it; the display form was published
+ * unchecked, so the sentence reached the card while a perfectly good
+ * `keyboard_entry` sat behind it.
+ *
+ * The rule is about shape, not about that sentence: several words of letters
+ * with no digit, operator or notation anywhere among them is prose. The named
+ * escapes Hawkes really does ask for -- "Not a Real Number" and its kin -- are
+ * shorter than that and are kept.
+ */
+export function displayableAnswer(text) {
+  if (typeof text !== "string") {
+    return false;
+  }
+  const trimmed = text.trim();
+  if (trimmed.length === 0 || trimmed.length > MAX_DISPLAY_LENGTH) {
+    return false;
+  }
+  const words = trimmed.split(/\s+/);
+  return words.length <= 4 || /[0-9+\-*/^√∛∜()|]/.test(trimmed);
+}
+
+/**
  * Validate a candidate answer.
  *
  * @param {unknown} value

@@ -6,6 +6,37 @@ name the add-on as it was called at the time.
 
 ## Unreleased
 
+- **The answer card shows the answer, not the spelling it travelled in.** The
+  distance between `(7,0)` and `(-3,-1)` was solved exactly and reached the
+  panel as `sqrt101`, beside "This question's answer box does not accept: s" --
+  the `s` of `sqrt`, which in the panel's face reads as a 5. One defect, twice:
+  the host's machine form is deliberately explicit so that nothing on a wire
+  can misread it, and it was being shown to a person and handed to the entry
+  planner unconverted. That question's editor publishes `0123456789-` and a
+  Radical template, so the letters were refused one at a time against a
+  question that needed no letters typed at all. The conversion is now made once
+  and shared: the card reads `√101`, and Insert builds it by pressing the
+  question's own Radical template and typing `101` into the radicand slot it
+  opens. Nothing about solving, or about which characters an editor accepts,
+  changed.
+- **An insertion refusal now belongs to the answer that produced it.** The
+  event page's state is merged rather than rebuilt, so a refusal and its
+  arguments outlived the answer they were raised for and landed on the next
+  one's card, naming a character that answer does not contain. A refusal is
+  stamped with the answer it was about and shown only while that is still the
+  answer; a new question drops it outright, and a fresh solve clears it. A
+  fault that is not about a value -- a lost tab, a page that is not Hawkes --
+  carries no stamp and is always shown, because clearing those early would hide
+  a live one.
+- **The prompt's own instructions can no longer be mistaken for an answer.**
+  The host builds its model contract out of English sentences, and a model that
+  echoes one back instead of answering hands it over as the answer -- which is
+  how "all answers as they would ordinarily be written" reached the card. The
+  machine form was checked against that all along; the readable form was
+  published unchecked. It now has to be an answer too, and falls back to the
+  checked form when it is not. The named escapes Hawkes really does ask for are
+  short and are kept.
+
 - **A cell already showing a fraction is selected through the half the page is
   actually in.** Reloaded onto the fix below, the live refusal named its own
   gate: `blank 1, written 0, why mirror, mirrorIndex 1, wantedIndex 0,
