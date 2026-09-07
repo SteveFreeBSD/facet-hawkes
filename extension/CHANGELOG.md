@@ -6,6 +6,21 @@ name the add-on as it was called at the time.
 
 ## Unreleased
 
+- **A cell already showing a fraction is selected through the half the page is
+  actually in.** Reloaded onto the fix below, the live refusal named its own
+  gate: `blank 1, written 0, why mirror, mirrorIndex 1, wantedIndex 0,
+  routed []`. Two things that had been guessed at. The page publishes no
+  element-valued property this add-on can enumerate, so the element half of the
+  selection proof reads back empty and the editor's own mirror is the whole of
+  the evidence -- and a cell already showing a fraction is being edited through
+  its *denominator's* control, so requiring the cell's own control by name
+  refused a table nobody had touched. Selection is now asked of one exact box,
+  because every write is aimed at one: an expanded cell is emptied through its
+  denominator first, which is where the page already is, and the value is then
+  typed through the cell's own box, each proven separately. Accepting either
+  half as "this cell" is not enough -- that types the numerator into the
+  denominator -- and the crossing this proof exists to catch still fails it.
+
 - **One fraction in a table no longer makes every cell of it unwritable.** With
   Insert finally reachable, the writer refused with nothing written at all --
   `table-cell-not-selected`, blank 1, three runs running -- on a table that

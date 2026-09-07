@@ -2860,6 +2860,13 @@ async function insert() {
           wantedIndex: Number.isInteger(outcome?.wantedIndex) ? outcome.wantedIndex : -1,
           routed: Array.isArray(outcome?.routed) ? outcome.routed.slice(0, 8) : [],
           expanded: outcome?.expanded === true,
+          // How much of its own model the page published, what the mirror's
+          // entry claims, and this cell's other half. Names and counts only.
+          uiKeys: Number.isInteger(outcome?.uiKeys) ? outcome.uiKeys : -1,
+          mirrorOwns: Array.isArray(outcome?.mirrorOwns)
+            ? outcome.mirrorOwns.slice(0, 4)
+            : [],
+          halfIndex: Number.isInteger(outcome?.halfIndex) ? outcome.halfIndex : -1,
         });
         fail(insertErrorKey(outcome?.code ?? "table-answer-incomplete"));
         return;

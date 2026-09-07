@@ -186,7 +186,8 @@ globalThis.window = {location: {origin: "https://learn.hawkeslearning.com"}};
 // is why the live collection held ten entries for five blanks. Only the text
 // controls carry a buffer; the option ones publish no `boxValue`, which is the
 // same thing the read-only probe classifies them by.
-globalThis.buildTable = (  ids, {focused = 0, link = "cell", names = "id", showing = []} = {}
+globalThis.buildTable = (  ids,
+  {focused = 0, link = "cell", names = "id", showing = [], router = "element"} = {}
 ) => {
   // `ids` is markup order, because that is the order Hawkes numbers its own
   // controls in. The answers arrive in the order the mathematics numbers the
@@ -249,17 +250,38 @@ globalThis.buildTable = (  ids, {focused = 0, link = "cell", names = "id", showi
     fractionNumerator: null,
     fractionDenominator: null,
   };
+  const ui = globalThis.window.quant_wp_UI;
   // A cell the owner already typed a fraction into before the add-on ran.
   // Live, on 2026-09-07, this was the state on screen: one semantic cell
   // expanded into two boxes, the other three still single boxes, and every
-  // one of the four still asking for exactly one value.
+  // one of the four still asking for exactly one value -- with the editor
+  // sitting in the expanded cell's *denominator*, which is where typing a
+  // fraction leaves it and where the caret still was.
   for (const id of showing) {
     const control = controls[globalThis.controlFor(id)];
     control.half.field.visible = true;
-    globalThis.window.quant_wp_UI.fractionNumerator = control.field;
-    globalThis.window.quant_wp_UI.fractionDenominator = control.half.field;
+    ui.fractionNumerator = control.field;
+    ui.fractionDenominator = control.half.field;
+    ui.focusedElement = control.half.field;
+    ui.focusedElementIndex = controls.indexOf(control.half);
   }
-  return globalThis.window.quant_wp_UI;
+  // Some Hawkes pages publish no element-valued property this add-on can
+  // enumerate at all: live the router read back as `routed: []`, and the
+  // mirror was the only evidence there was. A proof that depends on the
+  // router has to survive its absence.
+  if (router === "none") {
+    const held = ui.focusedElement;
+    delete ui.focusedElement;
+    Object.defineProperty(ui, "focusedElement",
+      {value: held, writable: true, enumerable: false, configurable: true});
+    for (const key of ["fractionNumerator", "fractionDenominator"]) {
+      const value = ui[key];
+      delete ui[key];
+      Object.defineProperty(ui, key,
+        {value, writable: true, enumerable: false, configurable: true});
+    }
+  }
+  return ui;
 };
 
 /** Which published control owns one visible box. */
@@ -1178,3 +1200,96 @@ def test_a_stale_reference_still_never_excuses_writing_the_wrong_cell() -> None:
     # And it says which half of the proof failed, rather than only that one did.
     assert reported["why"] in {"mirror", "router"}
     assert reported["routed"]
+
+
+# --- the state the page was actually in --------------------------------------
+#
+# Reloaded onto the fix above, the live refusal named its own gate:
+#
+#     table-answer-not-placed {"code":"table-cell-not-selected","blank":1,
+#       "written":0,"expanded":true,"why":"mirror",
+#       "mirrorIndex":1,"wantedIndex":0,"routed":[]}
+#
+# Two facts the harness did not have. The page publishes no element-valued
+# property this add-on can enumerate -- the router half of the proof reads back
+# empty and the mirror is the whole of the evidence. And a cell already showing
+# a fraction is being edited through its *denominator's* control, so demanding
+# the cell's own control by name refused a table nobody had touched yet.
+
+
+def live_page(**options):
+    """The exact shape of the live grid: one expanded cell, no router."""
+    return fraction_page(showing=["MatrixTextBoxes2_num"], router="none", **options)
+
+
+def test_the_page_publishes_no_router_and_the_mirror_is_on_the_denominator():
+    """Both halves of what the live refusal reported."""
+    live = live_page()
+
+    assert live.eval(
+        "Object.keys(window.quant_wp_UI).filter("
+        " k => window.quant_wp_UI[k] && window.quant_wp_UI[k].nodeType === 1).length"
+    ) == 0
+    assert live.eval("window.quant_wp_UI.focusedElement.id") == "MatrixTextBoxes2_den"
+    assert live.eval("window.quant_wp_UI.focusedElementIndex") == 1
+
+
+def test_the_expanded_first_blank_no_longer_refuses_the_whole_table() -> None:
+    """`blank 1, written 0` -- the refusal this state produced, three runs."""
+    live = live_page()
+
+    reported = write(live, parts=FRACTION_PARTS, cells=FRACTION_CELLS)
+
+    assert reported["ok"] is True
+    assert reported["settled"] == 4
+    assert cellsNow(live) == dict(zip(FRACTION_CELLS, FRACTION_PARTS))
+
+
+def test_the_answers_that_were_on_the_owners_screen_go_in() -> None:
+    """`9/4, -9/2, 3/2, 17/4`, into a grid whose first blank is expanded."""
+    live = live_page()
+    parts = ["9/4", "-9/2", "3/2", "17/4"]
+
+    reported = write(live, parts=parts, cells=FRACTION_CELLS)
+
+    assert reported["ok"] is True
+    assert cellsNow(live) == dict(zip(FRACTION_CELLS, parts))
+
+
+def test_a_cell_is_never_written_through_the_half_the_page_happens_to_be_in():
+    """Accepting either half as "this cell" typed the numerator into the den.
+
+    The proof is asked of one exact box, because every write is aimed at one:
+    the denominator is cleared through the denominator, and the value is then
+    typed through the cell's own box, each one proven separately.
+    """
+    live = live_page()
+
+    write(live, parts=FRACTION_PARTS, cells=FRACTION_CELLS)
+
+    halves = json.loads(
+        live.eval(
+            "JSON.stringify(window.quant_wp_UI.controlsCollection"
+            ".filter(c => c.buffer !== undefined)"
+            ".map(c => c.buffer))"
+        )
+    )
+    # Every half holds its own digits, and none holds the other's.
+    assert "16" in halves and "9" in halves
+    assert not any("/" in half for half in halves)
+
+
+def test_the_mirror_alone_still_refuses_a_page_editing_another_cell() -> None:
+    """With no router to read, the mirror carries the whole proof."""
+    live = live_page()
+    live.eval(
+        "globalThis.__hawkesFocus = () => {};"
+        "window.quant_wp_UI.focusedElementIndex = controlFor('MatrixTextBoxes8_num');"
+    )
+
+    reported = write(live, parts=FRACTION_PARTS, cells=FRACTION_CELLS)
+
+    assert reported["ok"] is False
+    assert reported["code"] == "table-cell-not-selected"
+    assert reported["why"] == "mirror"
+    assert reported["routed"] == []

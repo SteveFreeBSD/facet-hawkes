@@ -581,77 +581,90 @@ export async function enterTableCells(parts, cells, cadence = {}) {
   };
 
   /**
-   * Every box one mapped cell is edited through: its own, and its other half.
+   * The collection entry the page edits this cell's *other half* through.
    *
-   * A cell showing a fraction is edited through two inputs and is still one
-   * blank, so the page holding a reference to either of them is the page
-   * referring to this cell.
+   * A cell showing a fraction is one blank edited through two controls, and
+   * the page's mirror names whichever of the two the editor is in. Found by
+   * the same evidence ownership is decided by, and never the cell's own
+   * control: what is wanted here is the entry that is not already `owners`.
    */
-  const boxesOf = (at) => {
+  const halfOwnerOf = (at) => {
     const other = halfBox(at);
-    return other === null ? [fields[at]] : [fields[at], other];
-  };
-
-  /**
-   * Whether the page's own router names this cell.
-   *
-   * Presence, not unanimity, and that distinction is the whole of this fix.
-   *
-   * The router was read as "every element-valued property the model
-   * publishes", and every one of them was required to name the one cell. That
-   * held only while a table had one box per blank. Hawkes keeps element
-   * references to a fraction's numerator and denominator for as long as the
-   * fraction is drawn -- they are furniture, not a selection, and they do not
-   * move when the editor leaves that cell for the next one. So the moment any
-   * cell of the table showed a fraction, no cell of that table could ever be
-   * proven selected again.
-   *
-   * Live, on 2026-09-07, both halves of that: `table-cell-not-selected` at
-   * blank 1 with nothing written, three runs running, on a table the owner
-   * had already typed one fraction into by hand -- and the same refusal at
-   * blank 3 on a run where this writer had expanded blank 1 itself a moment
-   * before. The mirror agreed in both; the leftover references did not.
-   *
-   * What proves selection is the page naming *this* cell, alongside the
-   * mirror naming this cell's control. What a stale reference to some other
-   * cell cannot do is make that evidence disappear. The crossing this proof
-   * exists to catch still fails it -- there the page names the other cell and
-   * never this one -- and every write is still read back afterwards against
-   * the cell it was meant for and every other cell of the table.
-   */
-  const focusedOn = (at) => {
-    if (ui.focusedElementIndex !== candidates[owners[at]].index) {
-      return false;
+    if (other === null) {
+      return null;
     }
-    const routed = routedAt();
-    const mine = boxesOf(at);
-    return routed.length === 0 || routed.some((element) => mine.includes(element));
+    const own = candidates[owners[at]].index;
+    for (let which = 0; which < candidates.length; which += 1) {
+      if (candidates[which].index === own) {
+        continue;
+      }
+      const found = evidence[which];
+      const claims = found.elements.some(([element]) => element === other)
+        || found.names.some(([text]) => text === other.id);
+      if (claims) {
+        return candidates[which].index;
+      }
+    }
+    return null;
   };
 
-  /**
-   * Make Hawkes select one box that is not a cell of its own.
-   *
-   * The denominator a `/` just created has no mapping entry and no ownership
-   * claim -- it is the other half of a cell that already has both. What can
-   * be proven about it is the same thing that matters for a cell: that the
-   * page's own router is on it before anything is typed. Hawkes moves there
-   * itself when the fraction opens, exactly as it focuses a template's first
-   * slot; this confirms that, and runs the page's own focus handling when it
-   * has not.
-   */
+  /** The collection entry that owns one exact box of one cell. */
+  const ownerOfBox = (box, at) =>
+    box === fields[at] ? candidates[owners[at]].index : halfOwnerOf(at);
+
   /**
    * Whether the page is provably editing this exact box.
    *
-   * A denominator is nobody's blank, so there is no control of its own to
-   * check the mirror against. What can be checked is that the page names this
-   * box, and that its mirror has left the cell's own control -- which is how
-   * Hawkes says the editor moved into the half rather than staying in front
-   * of it.
+   * Every write is aimed at one box, so this is asked of one box -- never of
+   * "the cell", which a fraction makes an ambiguous thing to be editing. The
+   * page's own mirror has to name the control that owns this box, and its
+   * element router, where it publishes one at all, must not name a different
+   * one.
+   *
+   * Both halves of that were wrong for a fraction, and each cost a live run.
+   *
+   * The router was read as "every element-valued property the model
+   * publishes", with all of them required to name the box. Hawkes keeps
+   * references to a drawn fraction's two halves for as long as it is on
+   * screen -- furniture, not a selection -- so one fraction anywhere in a
+   * table made every cell of it unselectable. On the real page that check
+   * turned out to be vacuous anyway: `routed: []`, no element-valued property
+   * to read. Presence is what it can honestly ask for.
+   *
+   * The mirror was compared only against the cell's own control. A cell
+   * already showing a fraction is being edited through its *denominator's*
+   * control, and that is still this cell -- live, on 2026-09-07, a table
+   * whose first blank was already expanded refused with nothing written and
+   * said exactly that: `mirrorIndex 1, wantedIndex 0, routed []`.
    */
-  const focusedOnBox = (box, at) =>
-    routedAt().includes(box)
-    && ui.focusedElementIndex !== candidates[owners[at]].index;
+  const focusedOnBox = (box, at) => {
+    const wanted = ownerOfBox(box, at);
+    if (wanted === null || ui.focusedElementIndex !== wanted) {
+      return false;
+    }
+    const routed = routedAt();
+    return routed.length === 0 || routed.includes(box);
+  };
 
+  /**
+   * Make Hawkes select one exact box, and say how it was reached.
+   *
+   * This function used to assign `focusedElementIndex` and read it back, and
+   * the read-back was worthless: the index is a mirror the page keeps beside
+   * its real selection, so writing it confirmed only that the property had
+   * taken the value. Live, on the same mapping, that produced a matched pair
+   * of failures -- with the page pre-focused on blank 1's control the first
+   * write landed and the second crossed into blank 1, and with it pre-focused
+   * on blank 2's the very first write crossed into blank 2. In both the input
+   * went to whichever control Hawkes had selected before the panel was opened.
+   *
+   * Nothing here assigns the index any more. Instead the page's own focus
+   * handling is made to run -- `focus()`, and then the focus events Hawkes
+   * binds at document level, which is what a click on the box would deliver
+   * and what never fires while the panel holds system focus -- and the index
+   * moving *by itself* is then evidence that the handler ran and set the
+   * selection with it. A box that cannot be proven selected is refused.
+   */
   const selectBox = (box, at) => {
     if (focusedOnBox(box, at)) {
       return "page";
@@ -662,60 +675,28 @@ export async function enterTableCells(parts, cells, cadence = {}) {
     if (focusedOnBox(box, at)) {
       return "page";
     }
+    // The events the page listens for. A box reached this way is selected by
+    // Hawkes' own handler, so its mirror and its router cannot disagree.
     try {
       box.dispatchEvent(new FocusEvent("focus", { relatedTarget: null }));
-      box.dispatchEvent(new FocusEvent("focusin", { bubbles: true, relatedTarget: null }));
-    } catch { /* an event the page will not take is not a selection */ }
-    return focusedOnBox(box, at) ? "focus" : null;
-  };
-
-  /**
-   * Make Hawkes select this cell itself, and say how it was reached.
-   *
-   * This function used to assign `focusedElementIndex` and read it back, and
-   * the read-back was worthless: the index is a mirror the page keeps beside
-   * its real selection, so writing it confirmed only that the property had
-   * taken the value. Live, on the same mapping, that produced a matched pair
-   * of failures -- with the page pre-focused on blank 1's control the first
-   * write landed and the second crossed into blank 1, and with it pre-focused
-   * on blank 2's the very first write crossed into blank 2. In both the input
-   * went to whichever control Hawkes had selected before the panel opened.
-   *
-   * Nothing here assigns the index any more. Instead the page's own focus
-   * handling is made to run -- `focus()`, and then the focus events Hawkes
-   * binds at document level, which is what a click on the cell would deliver
-   * and what never fires while the panel holds system focus -- and the index
-   * moving *by itself* is then evidence that the handler ran and set the
-   * router with it. That, plus the router agreeing, is the whole of what
-   * counts as selected; a cell that cannot be proven focused is refused.
-   */
-  const selectFor = (at) => {
-    const { control } = candidates[owners[at]];
-    const field = fields[at];
-    try {
-      field.focus();
-    } catch { /* the page's own path, tried first */ }
-    if (focusedOn(at)) {
-      return "page";
-    }
-    // The events the page listens for. A cell reached this way is selected by
-    // Hawkes' own handler, so its router and its mirror cannot disagree.
-    try {
-      field.dispatchEvent(new FocusEvent("focus", { relatedTarget: null }));
-      field.dispatchEvent(
+      box.dispatchEvent(
         new FocusEvent("focusin", { bubbles: true, relatedTarget: null })
       );
     } catch { /* an event the page will not take is not a selection */ }
-    if (focusedOn(at)) {
+    if (focusedOnBox(box, at)) {
       return "focus";
     }
     try {
-      if (typeof control.setFocus === "function") {
+      const { control } = candidates[owners[at]];
+      if (box === fields[at] && typeof control.setFocus === "function") {
         control.setFocus();
       }
     } catch { /* the editor's own selector, where a control has one */ }
-    return focusedOn(at) ? "editor" : null;
+    return focusedOnBox(box, at) ? "editor" : null;
   };
+
+  /** The cell's own box: what an ordinary blank is written through. */
+  const selectFor = (at) => selectBox(fields[at], at);
 
   /**
    * What one control's own buffer holds, or null when it publishes none.
@@ -812,8 +793,23 @@ export async function enterTableCells(parts, cells, cadence = {}) {
         return "";
       }
     });
+    let keyCount = -1;
+    try {
+      keyCount = Object.keys(ui).length;
+    } catch { /* a model that will not enumerate is its own answer */ }
+    // What the entry the mirror names claims to own, by the page's own names.
+    // "The mirror is on another cell" and "the mirror is on this cell's other
+    // half" are different failures and were one word.
+    const named = candidates.find((one) => one.index === mirror);
+    const owns = named
+      ? evidence[candidates.indexOf(named)].names
+        .map(([text]) => text).filter(Boolean).slice(0, 4)
+      : [];
     return {
       why: mirror === wanted ? "router" : "mirror",
+      uiKeys: keyCount,
+      mirrorOwns: owns,
+      halfIndex: Number.isInteger(halfOwnerOf(at)) ? halfOwnerOf(at) : -1,
       mirrorIndex: Number.isInteger(mirror) ? mirror : -1,
       wantedIndex: Number.isInteger(wanted) ? wanted : -1,
       routed: routed.slice(0, 8),
@@ -929,36 +925,36 @@ export async function enterTableCells(parts, cells, cadence = {}) {
       return await refuse({ ok: false, code: "table-targets-changed", written: at });
     }
 
-    const how = selectFor(at);
-    if (how === null) {
-      return await refuse({
-        ok: false, code: "table-cell-not-selected", blank: at + 1, written: at,
-        ...selectionEvidence(at),
-      });
-    }
-    selected.push(how);
-
     const field = fields[at];
-    mutated = true;
+    const refuseSelection = () => refuse({
+      ok: false, code: "table-cell-not-selected", blank: at + 1, written: at,
+      ...selectionEvidence(at),
+    });
+
     // A cell already showing both halves -- someone typed a fraction in by
     // hand, or a previous run left one -- is emptied from its second box back
     // to its first, so nothing it was carrying survives this write.
+    //
+    // It is dealt with *before* the cell's own box is asked for, because that
+    // is where the page already is: Hawkes edits an expanded cell through its
+    // denominator's control, and demanding the numerator's first refused the
+    // whole table with nothing written. Live, on 2026-09-07: `blank 1,
+    // written 0, mirrorIndex 1, wantedIndex 0`.
     const carried = halfBox(at);
     if (carried !== null) {
       if (selectBox(carried, at) === null) {
-        return await refuse({
-          ok: false, code: "table-cell-not-selected", blank: at + 1, written: at,
-          ...selectionEvidence(at),
-        });
+        return await refuseSelection();
       }
+      mutated = true;
       writeCell(carried, "", "");
-      if (selectFor(at) === null) {
-        return await refuse({
-          ok: false, code: "table-cell-not-selected", blank: at + 1, written: at,
-          ...selectionEvidence(at),
-        });
-      }
     }
+
+    const how = selectFor(at);
+    if (how === null) {
+      return await refuseSelection();
+    }
+    selected.push(how);
+    mutated = true;
     // Emptied first, through the control that now owns the cell, so the part
     // lands in a cleared model rather than behind whatever it was carrying.
     writeCell(field, "", "");
