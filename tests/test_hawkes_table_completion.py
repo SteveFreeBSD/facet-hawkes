@@ -36,7 +36,9 @@ FIXTURE = PROJECT_ROOT / "tests" / "fixtures" / "table-completion.html"
 #: The five blanks, in the order the page draws them: y for x=0, x for y=2√2,
 #: y for x=64, y for x=25, and x for y=-√3. Taken from the fixture so the two
 #: cannot drift.
-FIELD_IDS = re.findall(r'<input[^>]*id="([^"]+)"', FIXTURE.read_text(encoding="utf-8"))
+FIELD_IDS = re.findall(
+    r'<input class="qbaseCSS" id="([^"]+)"', FIXTURE.read_text(encoding="utf-8")
+)
 
 #: What the five blanks are, once `x = y²` is applied to the cell beside each.
 #: The given cells carry exact radicals; every answer is a signed integer,

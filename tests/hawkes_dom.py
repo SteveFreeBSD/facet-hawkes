@@ -97,6 +97,8 @@ def _place(root: dict) -> None:
             node["rect"] = {
                 "top": order[0] * 10, "left": 0, "width": 200, "height": 20
             }
+        if "hidden" in node.get("attrs", {}):
+            node["rect"] = {"top": 0, "left": 0, "width": 0, "height": 0}
         if node["tag"] == "table" and inherited is None:
             _place_table(node, walk)
             return

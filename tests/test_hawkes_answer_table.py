@@ -35,10 +35,10 @@ FIXTURE = PROJECT_ROOT / "tests" / "fixtures" / "table-completion.html"
 #: What the page states, in the order it draws the cells. The blanks are y for
 #: x=0, x for y=2√2, y for x=64, y for x=25, and x for y=-√3.
 EXPECTED_ROWS = [
-    [{"text": "0"}, {"blank": 1}],
+    [{"mathml": "<math><mn>0</mn></math>"}, {"blank": 1}],
     [{"blank": 2}, {"mathml": "<math><mn>2</mn><msqrt><mn>2</mn></msqrt></math>"}],
-    [{"text": "64"}, {"blank": 3}],
-    [{"text": "25"}, {"blank": 4}],
+    [{"mathml": "<math><mn>64</mn></math>"}, {"blank": 3}],
+    [{"mathml": "<math><mn>25</mn></math>"}, {"blank": 4}],
     [{"blank": 5}, {"mathml": "<math><mo>-</mo><msqrt><mn>3</mn></msqrt></math>"}],
 ]
 
@@ -86,9 +86,9 @@ def test_the_whole_grid_crosses(completion) -> None:
             "domColumns": 6,
             "logicalRows": 5,
             "logicalColumns": 2,
-            "controls": 5,
-            "math": 2,
-            "mathJax": 4,
+            "controls": 10,
+            "math": 5,
+            "mathJax": 10,
             "blanks": 5,
         },
         "cell": None,
@@ -117,10 +117,10 @@ def test_each_blank_keeps_the_value_beside_it(completion) -> None:
         paired.append((blank, column, given.get("text") or given["mathml"]))
 
     assert paired == [
-        (1, "y", "0"),
+        (1, "y", "<math><mn>0</mn></math>"),
         (2, "x", "<math><mn>2</mn><msqrt><mn>2</mn></msqrt></math>"),
-        (3, "y", "64"),
-        (4, "y", "25"),
+        (3, "y", "<math><mn>64</mn></math>"),
+        (4, "y", "<math><mn>25</mn></math>"),
         (5, "x", "<math><mo>-</mo><msqrt><mn>3</mn></msqrt></math>"),
     ]
 
@@ -136,7 +136,7 @@ def test_radicals_cross_as_mathml_not_as_their_glyphs(completion) -> None:
         cell
         for row in completion["answerTable"]["rows"]
         for cell in row
-        if "mathml" in cell
+        if "msqrt" in cell.get("mathml", "")
     ]
 
     assert len(radicals) == 2
@@ -178,11 +178,12 @@ def test_what_is_typed_in_a_box_is_never_read() -> None:
 def test_the_observed_hawkes_accessibility_labels_are_not_table_values(
     completion,
 ) -> None:
-    """The two live text owners belong to the exact Hawkes answer wrapper."""
+    """The two live text owners label both controls in the exact wrapper."""
     markup = FIXTURE.read_text(encoding="utf-8")
 
-    assert "label class=\"sr-only\"" in markup
-    assert "span class=\"QFractionBox\"" in markup
+    assert markup.count('label class="sr-only"') == 10
+    assert markup.count('input type="radio" class="opt"') == 5
+    assert markup.count('span class="QFractionBox"') == 5
     assert completion["evidence"]["answerTable"] == ""
 
 
@@ -217,6 +218,32 @@ def test_an_accessibility_label_targeting_another_control_is_refused() -> None:
     assert culprit["forOther"] is True
     assert culprit["forCellControl"] is False
     assert culprit["target"] == "none"
+    assert culprit["ignored"] is False
+
+
+def test_an_unassociated_sr_only_label_is_still_refused() -> None:
+    """`sr-only` alone is not enough to erase page text from a blank."""
+    read = variant(**{
+        'for="MatrixTextBoxes3_opt"': ''
+    })
+
+    assert read["evidence"]["answerTable"] == "blank-not-empty"
+    culprit = read["evidence"]["answerTableDetail"]["cell"]["textOwners"][1]
+    assert culprit["srOnly"] is True
+    assert culprit["forCellControl"] is False
+    assert culprit["ignored"] is False
+
+
+def test_a_label_targeting_a_control_in_another_cell_is_refused() -> None:
+    """Association is local to this mathematical blank, never table-wide."""
+    read = variant(**{
+        'for="MatrixTextBoxes3_opt"': 'for="MatrixTextBoxes6_opt"'
+    })
+
+    assert read["evidence"]["answerTable"] == "blank-not-empty"
+    culprit = read["evidence"]["answerTableDetail"]["cell"]["textOwners"][1]
+    assert culprit["forOther"] is True
+    assert culprit["forCellControl"] is False
     assert culprit["ignored"] is False
 
 
@@ -323,9 +350,9 @@ def test_more_blanks_than_the_answer_bound_are_refused() -> None:
     """Six blanks is more parts than the add-on can place, so none are read."""
     markup = FIXTURE.read_text(encoding="utf-8")
     markup = markup.replace(
-        '<input class="qbaseCSS" id="MatrixTextBoxes6_num" maxlength="4">'
+        '<input type="radio" class="opt" id="MatrixTextBoxes6_opt" hidden>'
         '</span></span></span></span></td></tr>',
-        '<input class="qbaseCSS" id="MatrixTextBoxes6_num" maxlength="4">'
+        '<input type="radio" class="opt" id="MatrixTextBoxes6_opt" hidden>'
         '</span></span></span></span></td>'
         '<td>9</td></tr>',
     ).replace(
@@ -343,9 +370,9 @@ def test_more_blanks_than_the_answer_bound_are_refused() -> None:
 def test_a_ragged_row_headed_table_is_refused() -> None:
     """Unequal x/y rows are not recognized as the live answer-table shape."""
     read = variant(**{
-        '<input__class="qbaseCSS"__id="MatrixTextBoxes6_num"__maxlength="4">'
+        '<input__type="radio"__class="opt"__id="MatrixTextBoxes6_opt"__hidden>'
         '</span></span></span></span></td></tr>':
-        '<input class="qbaseCSS" id="MatrixTextBoxes6_num" maxlength="4">'
+        '<input type="radio" class="opt" id="MatrixTextBoxes6_opt" hidden>'
         '</span></span></span></span></td>'
         '<td>spare</td></tr>'
     })

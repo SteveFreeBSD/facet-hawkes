@@ -23,7 +23,7 @@
   // every decision, and the observatory applies the same normalization to the
   // tree. Unlike the event-page marker, this proves which Hawkes reader was
   // injected into the authoritative page DOM.
-  const HAWKES_READER_BUILD = "00e8ead8976d";
+  const HAWKES_READER_BUILD = "d458e714e51a";
 
   const ANSWER_CONTROLS =
     'input.qbaseCSS, input[id^="txtAns"], input.boxStyle, input[id$="_optchk"], '
@@ -318,10 +318,12 @@
    * The page-owned accessibility prose inside Hawkes' live answer widget.
    *
    * The real blank cell puts two `label.sr-only` elements inside this exact
-   * wrapper chain. Their text names the control for a screen reader; it is not
-   * a value in the table. A label outside this chain, one targeting another
-   * control, one containing mathematics or another answer control, and every
-   * other text node remain data and make the cell nonempty.
+   * wrapper chain. One labels the visible textbox and the other labels a
+   * hidden answer-control input in the same cell; their text is accessibility
+   * decoration, not a value in the table. A label outside this chain, one
+   * without an explicit target, one targeting outside this cell, one
+   * containing mathematics or another answer control, and every other text
+   * node remain data and make the cell nonempty.
    */
   const hawkesAnswerLabel = (text, cell, control) => {
     const label = text.parentElement?.closest("label.sr-only") ?? null;
@@ -341,10 +343,11 @@
     ) {
       return false;
     }
-    const target = typeof label.getAttribute === "function"
-      ? label.getAttribute("for")
-      : label.attributes?.for ?? null;
-    return target === null || target === "" || target === control.id;
+    const targetId = attribute(label, "for");
+    const target = targetId ? document.getElementById?.(targetId) ?? null : null;
+    return target !== null
+      && target.matches(ANSWER_CONTROLS)
+      && cell.contains(target);
   };
 
   // The row that names the columns, or null. Two unambiguous declarations of
