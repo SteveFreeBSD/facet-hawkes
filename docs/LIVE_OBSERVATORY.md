@@ -8,6 +8,12 @@ without guessing.
 $ python3 scripts/observe_live_hawkes.py --bundle
 ```
 
+That command deterministically re-execs through `.venv/bin/python` when the
+system interpreter lacks QuickJS, because a report that cannot compare the
+running build is not a usable observation. If the project interpreter is
+missing or incomplete, it refuses with the exact `uv sync --extra dev` repair
+instead of quietly reporting the build as uncomparable.
+
 Run it *before* forming a theory about a live failure, and again after a fix so
 the two bundles can be compared.
 
@@ -158,8 +164,10 @@ is where a failure is actually triaged. See
 
 ## Known blind spots
 
-- The build marker does not cover the panel, the settings page or the content
-  scripts. Their staleness shows only as `changed_since_event_page_loaded`.
+- The event-page build marker does not cover the panel or settings page. Their
+  staleness shows only as `changed_since_event_page_loaded`. The Hawkes
+  question content script has its own whole-source marker in every reader
+  decision, which the observatory compares to the checked-out source.
 - Stage transitions are logged at `debug`, which is off by default. The trail is
   reported once, on the entry that ends the run, and a run that never ends
   leaves none — but a run that *ends badly* now carries its whole trail into a

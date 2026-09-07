@@ -318,6 +318,7 @@ globalThis.buildDocument = (raw) => {
   globalThis.document = {
     querySelectorAll: (selector) => root.querySelectorAll(selector),
     querySelector: (selector) => root.querySelector(selector),
+    getElementById: (id) => root.descendants().find((node) => node.id === id) ?? null,
     createTreeWalker(node) {
       const texts = [];
       const walk = (at) => {

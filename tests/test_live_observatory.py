@@ -221,6 +221,81 @@ def test_the_question_and_editor_the_add_on_saw_are_both_reported():
     assert summary["editor"]["enabled"] == [True, True]
 
 
+def test_structural_reader_evidence_survives_the_run_and_prints(monkeypatch):
+    detail = {
+        "reader": "answer-table",
+        "schema": 1,
+        "build": "abcdef123456",
+        "decision": "refused",
+        "branch": "row-headed",
+        "reason": "blank-not-empty",
+        "candidates": {"controls": 5, "holding": 1, "kept": 1},
+        "table": {"logicalRows": 5, "logicalColumns": 2, "blanks": 1},
+        "cell": {
+            "logicalRow": 2,
+            "logicalColumn": 1,
+            "controls": 1,
+            "textOwners": [{
+                "tag": "label",
+                "classes": ["sr-only"],
+                "path": ["label.sr-only", "span.QFractionBox"],
+                "textNodes": 1,
+                "textChars": 14,
+                "ignored": False,
+                "containsControl": True,
+            }],
+        },
+    }
+    monkeypatch.setattr(
+        OBS,
+        "working_tree_reader_marker",
+        lambda: {"computed": True, "marker": "abcdef123456", "valid": True},
+    )
+    summary = run_of([
+        entry(
+            "question-read",
+            run="rA",
+            expressions=1,
+            answerTable="blank-not-empty",
+            answerTableDetail=detail,
+        ),
+        entry("failed", t=1100, run="rA", errorKey="errorQuestionRegion"),
+    ])
+
+    kept = summary["question"]["answer_table_detail"]
+    assert kept["build_matches_tree"] is True
+    assert kept["cell"]["textOwners"][0]["textChars"] == 14
+    rendered = "\n".join(OBS._run_lines(summary))
+    assert "blank-not-empty" in rendered
+    assert "label.sr-only" in rendered
+    assert "textChars=14" in rendered
+
+
+def test_one_run_reports_each_five_part_boundary():
+    summary = run_of([
+        entry(
+            "host-request-shaped", run="rA", answerTable=True,
+            tableRows=5, tableColumns=2, tableBlanks=5,
+            answerShape="multi", answerParts=5,
+        ),
+        entry(
+            "solved", t=1100, run="rA", answerLength=13,
+            answerParts=5, hostAnswerParts=5,
+        ),
+        entry("answer-retained", t=1101, run="rA", answerParts=5, panels=1),
+        entry(
+            "panel-rendered", t=1102, run="rA", answerParts=5,
+            answerLength=13, answerEmpty=False,
+        ),
+    ])
+
+    assert summary["host_request"]["answer_parts"] == 5
+    assert summary["answer_parts"] == 5
+    assert summary["host_answer_parts"] == 5
+    assert summary["answer_retained"] == {"answer_parts": 5, "panels": 1}
+    assert summary["panel_rendered"]["answer_parts"] == 5
+
+
 def test_the_runtime_that_answered_is_carried_out_of_the_solve_entry():
     summary = run_of(
         [
@@ -618,6 +693,22 @@ def test_the_observer_polls_nothing():
     probes = ("_kwin_windows", "_extension_status", "read_entries", "_matching_processes")
     for probe in probes:
         assert CODE.count(probe) == 1, probe
+
+
+def test_the_documented_command_reexecs_through_the_project_runtime(monkeypatch):
+    calls = []
+    monkeypatch.setattr(OBS.importlib.util, "find_spec", lambda name: None)
+    monkeypatch.setattr(OBS.sys, "executable", "/usr/bin/python3")
+    monkeypatch.setattr(OBS.sys, "argv", [str(SCRIPT), "--run", "rA"])
+    monkeypatch.setattr(OBS.os, "execv", lambda program, argv: calls.append((program, argv)))
+
+    OBS.ensure_marker_runtime()
+
+    project_python = str(PROJECT_ROOT / ".venv" / "bin" / "python")
+    assert calls == [(
+        project_python,
+        [project_python, str(SCRIPT), "--run", "rA"],
+    )]
 
 
 def test_the_marker_touches_no_browser_api_that_could_hold_a_context_open():

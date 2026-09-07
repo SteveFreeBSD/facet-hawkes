@@ -221,6 +221,50 @@ def test_the_evidence_the_route_and_the_runtime_all_survive_into_one_record(js):
     }
 
 
+def test_the_sanitized_dom_cause_survives_event_page_failure_storage(js):
+    """A suspension loses JS objects; the stored projection keeps the cause."""
+    record = build(js, evidence={
+        **FAILURE["evidence"],
+        "answerTable": "blank-not-empty",
+        "answerTableDetail": {
+            "reader": "answer-table",
+            "schema": 1,
+            "build": "abcdef123456",
+            "decision": "refused",
+            "branch": "row-headed",
+            "reason": "blank-not-empty",
+            "candidates": {"controls": 5, "holding": 1, "kept": 1},
+            "table": {"logicalRows": 5, "logicalColumns": 2, "blanks": 1},
+            "cell": {
+                "logicalRow": 2,
+                "logicalColumn": 1,
+                "textOwners": [{
+                    "tag": "label",
+                    "classes": ["sr-only"],
+                    "path": ["label.sr-only", "span.QFractionBox"],
+                    "textNodes": 1,
+                    "textChars": 14,
+                    "ignored": False,
+                    "containsControl": True,
+                    "forCellControl": True,
+                    "target": "input.opt",
+                    "value": "NEVER",
+                    "rawText": "COURSEWORK",
+                }],
+            },
+        },
+    })
+
+    detail = record["evidence"]["answerTableDetail"]
+    assert detail["reason"] == "blank-not-empty"
+    assert detail["cell"]["textOwners"][0]["containsControl"] is True
+    assert detail["cell"]["textOwners"][0]["forCellControl"] is True
+    assert detail["cell"]["textOwners"][0]["target"] == "input.opt"
+    assert detail["cell"]["textOwners"][0]["textChars"] == 14
+    assert "NEVER" not in json.dumps(record)
+    assert "COURSEWORK" not in json.dumps(record)
+
+
 def test_a_run_names_the_host_requests_it_made(js):
     """`<run>.<n>` is the request id all the way through the companion and into
     Facet, so listing them is what joins a browser gesture to a Facet run."""

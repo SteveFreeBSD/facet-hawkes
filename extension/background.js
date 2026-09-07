@@ -1801,6 +1801,7 @@ async function solve(windowId = state.windowId) {
       graph: question.evidence?.graph ?? "unknown",
       table: question.evidence?.table ?? "unknown",
       answerTable: question.evidence?.answerTable ?? "unknown",
+      answerTableDetail: question.evidence?.answerTableDetail ?? null,
       promptChars: question.evidence?.promptChars ?? 0,
     };
     log.info("question-read", {
@@ -1808,6 +1809,7 @@ async function solve(windowId = state.windowId) {
       graph: runFacts.evidence.graph,
       table: runFacts.evidence.table,
       answerTable: runFacts.evidence.answerTable,
+      answerTableDetail: runFacts.evidence.answerTableDetail,
       promptChars: runFacts.evidence.promptChars,
     });
     // The answer about to be solved belongs to the question just read, not to
@@ -1832,6 +1834,7 @@ async function solve(windowId = state.windowId) {
         graph: question.evidence?.graph ?? "unknown",
         table: question.evidence?.table ?? "unknown",
         answerTable: question.evidence?.answerTable ?? "unknown",
+        answerTableDetail: question.evidence?.answerTableDetail ?? null,
         promptChars: question.evidence?.promptChars ?? 0,
       };
       noteRunEvent("evidence-refused");
@@ -1840,6 +1843,7 @@ async function solve(windowId = state.windowId) {
         graph: runFacts.evidence.graph,
         table: runFacts.evidence.table,
         answerTable: runFacts.evidence.answerTable,
+        answerTableDetail: runFacts.evidence.answerTableDetail,
         promptChars: runFacts.evidence.promptChars,
       });
       screenshot = await captureQuestion(state.tabId, state.frameId);
@@ -1852,8 +1856,19 @@ async function solve(windowId = state.windowId) {
     }
 
     const solveDeadline = Date.now() + settings.solveTimeoutSeconds * 1000;
-    const askToSolve = (image, pipeline) =>
-      askEthnos(
+    const shape = answerShapeOf(state.editor, question.answerTable);
+    const askToSolve = (image, pipeline) => {
+      log.info("host-request-shaped", {
+        pipeline,
+        answerTable: Boolean(question.answerTable),
+        tableRows: question.answerTable?.rows?.length ?? 0,
+        tableColumns: question.answerTable?.columns?.length ?? 0,
+        tableBlanks: question.answerTable?.rows?.flatMap((row) => row)
+          .filter((cell) => Number.isInteger(cell?.blank)).length ?? 0,
+        answerShape: shape.kind,
+        answerParts: shape.count ?? 0,
+      });
+      return askEthnos(
         "solve_hawkes_problem",
         {
           origin: "https://learn.hawkeslearning.com",
@@ -1871,7 +1886,7 @@ async function solve(windowId = state.windowId) {
             // their ids and their rules stay here.
             ...(question.answerTable ? { answer_table: question.answerTable } : {}),
             screenshot_png_base64: image,
-            answer_shape: answerShapeOf(state.editor, question.answerTable),
+            answer_shape: shape,
           },
         },
         Math.max(1, solveDeadline - Date.now()),
@@ -1881,6 +1896,7 @@ async function solve(windowId = state.windowId) {
         },
         controller.signal
       );
+    };
 
     // Facet is asked about the mathematics, never about a picture: it has no
     // reader for one, so sending the capture here would hand image data to a
@@ -2100,6 +2116,8 @@ async function acceptReply(reply) {
     facetInvoked: Boolean(certainty.facet_invoked),
     insertable: Boolean(certainty.insertable),
     answerLength: answer.length,
+    answerParts: answerParts.length,
+    hostAnswerParts: Number.isInteger(certainty.answer_parts) ? certainty.answer_parts : 0,
     elapsedMs: state.startedAt ? Date.now() - state.startedAt : 0,
     // Which machinery answered. The panel has shown this in its provenance
     // block from the beginning; the log had it only for a graph plan, so
@@ -2188,6 +2206,10 @@ async function acceptReply(reply) {
     promptSeen: certainty.prompt_seen !== false,
     detail: notes.join("\n"),
     errorKey: certainty.insertable ? "" : "errorTranscriptionDisputed",
+  });
+  log.info("answer-retained", {
+    answerParts: Array.isArray(state.answerParts) ? state.answerParts.length : 0,
+    panels: panels.size,
   });
   // The answer this solve produced, kept past the end of this run so the
   // insertion -- a separate gesture, a separate run -- can still say what

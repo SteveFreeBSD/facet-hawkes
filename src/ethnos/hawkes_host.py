@@ -885,6 +885,7 @@ def _solve_with_facet(
         ),
         certainty=Certainty(
             prompt_seen=prompt_seen,
+            answer_parts=parts_required,
             # Facet's own identity for the route it took, reported rather than
             # assembled here: "Facet Exact", or "Facet Reasoning · GPU".
             source=solution.source,

@@ -213,6 +213,15 @@ def test_the_working_tree_marker_is_computable_from_this_checkout():
     assert computed["symbols"] > 40
 
 
+def test_the_complete_hawkes_reader_carries_its_own_valid_marker():
+    """The event-page marker cannot prove which classic script was injected."""
+    computed = OBS.working_tree_reader_marker()
+
+    assert computed["computed"] is True, computed.get("why")
+    assert computed["valid"] is True
+    assert computed["declared"] == computed["marker"]
+
+
 def test_a_marker_that_does_not_match_the_tree_is_reported_as_stale_code():
     verdict = OBS.code_verdict(
         {"marker": "0123456789ab", "symbols": 55},

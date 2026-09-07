@@ -148,6 +148,99 @@ function integer(value) {
   return Number.isFinite(value) ? Math.trunc(value) : null;
 }
 
+/** A Hawkes-owned structural class, never an arbitrary page token. */
+function structuralClass(value) {
+  const name = bounded(value, 32);
+  return name === "sr-only"
+    || /^(?:Q|Fraction|GridTable__|MathJax)[A-Za-z0-9_-]{0,31}$/.test(name)
+    ? name
+    : "";
+}
+
+function structuralOwner(owner) {
+  if (!owner || typeof owner !== "object") return null;
+  return {
+    tag: bounded(owner.tag, 16),
+    classes: Array.isArray(owner.classes)
+      ? owner.classes.slice(0, 3).map(structuralClass).filter(Boolean)
+      : [],
+    path: Array.isArray(owner.path)
+      ? owner.path.slice(0, 8).map((item) => bounded(item, 48))
+      : [],
+    textNodes: integer(owner.textNodes),
+    textChars: integer(owner.textChars),
+    ignored: owner.ignored === true,
+    assistiveMath: owner.assistiveMath === true,
+    hidden: owner.hidden === true,
+    srOnly: owner.srOnly === true,
+    forControl: owner.forControl === true,
+    forOther: owner.forOther === true,
+    forCellControl: owner.forCellControl === true,
+    targetVisible: owner.targetVisible === true,
+    target: bounded(owner.target, 48),
+    labelledByControl: owner.labelledByControl === true,
+    containsControl: owner.containsControl === true,
+    insideControlBox: owner.insideControlBox === true,
+    containsControlBox: owner.containsControlBox === true,
+    childElements: integer(owner.childElements),
+    controls: integer(owner.controls),
+    math: integer(owner.math),
+    mathJax: integer(owner.mathJax),
+  };
+}
+
+/** Strictly projected structural cause from the live DOM reader. */
+export function answerTableEvidence(detail) {
+  if (!detail || typeof detail !== "object") return null;
+  const candidates = detail.candidates && typeof detail.candidates === "object"
+    ? detail.candidates
+    : {};
+  const table = detail.table && typeof detail.table === "object" ? detail.table : null;
+  const cell = detail.cell && typeof detail.cell === "object" ? detail.cell : null;
+  return {
+    reader: bounded(detail.reader, 24),
+    schema: integer(detail.schema),
+    build: bounded(detail.build, 16),
+    decision: bounded(detail.decision, 16),
+    branch: bounded(detail.branch, 24),
+    reason: bounded(detail.reason, 48),
+    candidates: {
+      controls: integer(candidates.controls),
+      holding: integer(candidates.holding),
+      kept: integer(candidates.kept),
+      droppedHidden: integer(candidates.droppedHidden),
+      droppedNested: integer(candidates.droppedNested),
+      droppedRows: integer(candidates.droppedRows),
+      droppedHeader: integer(candidates.droppedHeader),
+    },
+    table: table
+      ? {
+        domRows: integer(table.domRows),
+        domColumns: integer(table.domColumns),
+        logicalRows: integer(table.logicalRows),
+        logicalColumns: integer(table.logicalColumns),
+        controls: integer(table.controls),
+        math: integer(table.math),
+        mathJax: integer(table.mathJax),
+        blanks: integer(table.blanks),
+      }
+      : null,
+    cell: cell
+      ? {
+        logicalRow: integer(cell.logicalRow),
+        logicalColumn: integer(cell.logicalColumn),
+        childElements: integer(cell.childElements),
+        controls: integer(cell.controls),
+        math: integer(cell.math),
+        mathJax: integer(cell.mathJax),
+        textOwners: Array.isArray(cell.textOwners)
+          ? cell.textOwners.slice(0, 6).map(structuralOwner).filter(Boolean)
+          : [],
+      }
+      : null,
+  };
+}
+
 /** The names of the templates a control offers, as one stable word. */
 function templateNames(templates) {
   if (!templates || typeof templates !== "object") {
@@ -267,6 +360,7 @@ export function questionEvidence(evidence) {
     // named disagreement, bounded like every other code here; a cell of one
     // has no path into this record and no name to arrive under.
     answerTable: bounded(evidence.answerTable, 48),
+    answerTableDetail: answerTableEvidence(evidence.answerTableDetail),
     promptChars: integer(evidence.promptChars),
     // A digest of the question, never the question. The ring already carries
     // this as `signature`; it is here so two records can be recognized as the

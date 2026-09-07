@@ -65,6 +65,34 @@ def test_the_whole_grid_crosses(completion) -> None:
     """Two live DOM rows become five ordered pairs, with every cell accounted for."""
     assert completion["evidence"]["answerTable"] == ""
     assert completion["answerTable"] == {"columns": ["x", "y"], "rows": EXPECTED_ROWS}
+    assert completion["evidence"]["answerTableDetail"] == {
+        "reader": "answer-table",
+        "schema": 1,
+        "build": completion["evidence"]["answerTableDetail"]["build"],
+        "decision": "accepted",
+        "branch": "row-headed",
+        "reason": "",
+        "candidates": {
+            "controls": 5,
+            "holding": 1,
+            "kept": 1,
+            "droppedHidden": 0,
+            "droppedNested": 0,
+            "droppedRows": 0,
+            "droppedHeader": 0,
+        },
+        "table": {
+            "domRows": 2,
+            "domColumns": 6,
+            "logicalRows": 5,
+            "logicalColumns": 2,
+            "controls": 5,
+            "math": 2,
+            "mathJax": 4,
+            "blanks": 5,
+        },
+        "cell": None,
+    }
 
 
 def test_five_blanks_are_numbered_in_reading_order(completion) -> None:
@@ -166,9 +194,14 @@ def test_a_student_text_mirror_is_not_ignored_or_transmitted() -> None:
         '<input class="qbaseCSS" id="MatrixTextBoxes3_num" maxlength="4">'
     })
 
-    assert "span[name=NotAnObject]" in read["evidence"]["answerTable"]
+    assert read["evidence"]["answerTable"] == "blank-not-empty"
     assert "answerTable" not in read
     assert "SECRET" not in json.dumps(read)
+    culprit = read["evidence"]["answerTableDetail"]["cell"]["textOwners"][-1]
+    assert culprit["tag"] == "span"
+    assert culprit["hidden"] is True
+    assert culprit["ignored"] is False
+    assert culprit["textChars"] == 6
 
 
 def test_an_accessibility_label_targeting_another_control_is_refused() -> None:
@@ -177,10 +210,14 @@ def test_an_accessibility_label_targeting_another_control_is_refused() -> None:
         'for="MatrixTextBoxes3_num"': 'for="AnotherControl"'
     })
 
-    assert read["evidence"]["answerTable"].startswith(
-        "blank-not-empty:label.sr-only"
-    )
+    assert read["evidence"]["answerTable"] == "blank-not-empty"
     assert "answerTable" not in read
+    culprit = read["evidence"]["answerTableDetail"]["cell"]["textOwners"][0]
+    assert culprit["classes"] == ["sr-only"]
+    assert culprit["forOther"] is True
+    assert culprit["forCellControl"] is False
+    assert culprit["target"] == "none"
+    assert culprit["ignored"] is False
 
 
 def test_the_accessibility_label_wrapper_must_match_exactly() -> None:
@@ -189,9 +226,7 @@ def test_the_accessibility_label_wrapper_must_match_exactly() -> None:
         '<span__class="FractionBoxStyle">': '<span class="OtherBoxStyle">'
     })
 
-    assert read["evidence"]["answerTable"].startswith(
-        "blank-not-empty:label.sr-only"
-    )
+    assert read["evidence"]["answerTable"] == "blank-not-empty"
     assert "answerTable" not in read
 
 
@@ -203,8 +238,11 @@ def test_math_beside_the_control_is_still_refused() -> None:
         '<math><mn>7</mn></math>'
     })
 
-    assert read["evidence"]["answerTable"].startswith("blank-not-empty:")
+    assert read["evidence"]["answerTable"] == "blank-not-empty"
     assert "answerTable" not in read
+    detail = read["evidence"]["answerTableDetail"]["cell"]
+    assert detail["math"] == 1
+    assert any(not owner["ignored"] for owner in detail["textOwners"])
 
 
 def test_a_box_with_words_beside_it_is_refused() -> None:
@@ -214,7 +252,7 @@ def test_a_box_with_words_beside_it_is_refused() -> None:
         '<input class="qbaseCSS" id="MatrixTextBoxes3_num" maxlength="4">or 0'
     })
 
-    assert read["evidence"]["answerTable"].startswith("blank-not-empty:")
+    assert read["evidence"]["answerTable"] == "blank-not-empty"
     assert "answerTable" not in read
 
 
@@ -447,6 +485,34 @@ def test_only_the_refusal_code_reaches_the_retained_ledger() -> None:
         "answerTable": "drawn-without-mathml",
         "promptChars": 104,
         "signature": "MatrixTextBoxes3_num|11fmr2s|1769",
+        "answerTableDetail": {
+            "reader": "answer-table",
+            "schema": 1,
+            "build": "abcdef123456",
+            "decision": "refused",
+            "branch": "row-headed",
+            "reason": "blank-not-empty",
+            "candidates": {"controls": 5, "holding": 1, "kept": 1},
+            "table": {"logicalRows": 5, "logicalColumns": 2, "blanks": 1},
+            "cell": {
+                "logicalRow": 2,
+                "logicalColumn": 1,
+                "textOwners": [{
+                    "tag": "label",
+                    "classes": ["sr-only", "SECRET-CLASS"],
+                    "path": ["label.sr-only", "span.QFractionBox"],
+                    "textNodes": 1,
+                    "textChars": 999,
+                    "ignored": False,
+                    "forCellControl": True,
+                    "target": "input.qbaseCSS",
+                    "rawText": "SECRET",
+                    "value": "999",
+                }],
+                "rawDom": "<label>SECRET</label>",
+            },
+            "rawQuestion": "SECRET",
+        },
         # None of these are fields; every one must be dropped.
         "answerTableRows": EXPECTED_ROWS,
         "columns": ["x", "y"],
@@ -464,10 +530,18 @@ def test_only_the_refusal_code_reaches_the_retained_ledger() -> None:
         "graph": "no-regression-in",
         "table": "no-data-table",
         "answerTable": "drawn-without-mathml",
+        "answerTableDetail": kept["answerTableDetail"],
         "promptChars": 104,
         "signature": "MatrixTextBoxes3_num|11fmr2s|1769",
     }
+    detail = kept["answerTableDetail"]
+    assert detail["branch"] == "row-headed"
+    assert detail["cell"]["textOwners"][0]["classes"] == ["sr-only"]
+    assert detail["cell"]["textOwners"][0]["forCellControl"] is True
+    assert detail["cell"]["textOwners"][0]["target"] == "input.qbaseCSS"
+    assert "rawText" not in detail["cell"]["textOwners"][0]
     assert "64" not in json.dumps(kept)
+    assert "SECRET" not in json.dumps(kept)
 
 
 def test_every_refusal_code_is_a_shape_and_never_a_cell() -> None:

@@ -20,7 +20,9 @@ import { message, localizeDocument } from "../common/i18n.js";
 import { ALLOWED_HOST_PATTERN } from "../common/config.js";
 import { describeView } from "../common/panel-view.js";
 import { layoutAnswer } from "../common/answer-math.js";
-import { initLog, log, flushLog, readLog, formatEntry, describeError } from "../common/log.js";
+import {
+  initLog, log, flushLog, readLog, formatEntry, describeError, setRun,
+} from "../common/log.js";
 import { readSettings } from "../common/settings.js";
 
 const elements = {
@@ -60,6 +62,8 @@ let ticking = null;
 let primary = "none";
 /** The answer as a string, which is what Copy must hand over. */
 let copyText = "";
+/** The solved state already proved by an actual panel paint. */
+let lastRenderedSolve = "";
 
 /**
  * Whether this is the docked sidebar rather than the toolbar popup.
@@ -211,7 +215,19 @@ function render(state) {
 /** Repaint now, from `current`. Never throws. */
 function paint() {
   try {
-    apply(describeView(current, Date.now(), { docked: inSidebar }));
+    const view = describeView(current, Date.now(), { docked: inSidebar });
+    apply(view);
+    const parts = Array.isArray(current?.answerParts) ? current.answerParts.length : 0;
+    const proof = current?.phase === "solved" ? `${current.solveRun ?? ""}:${parts}` : "";
+    if (proof && proof !== lastRenderedSolve) {
+      lastRenderedSolve = proof;
+      setRun(current.solveRun ?? "");
+      log.info("panel-rendered", {
+        answerParts: parts,
+        answerLength: String(view.answer.text ?? "").length,
+        answerEmpty: view.answer.empty,
+      });
+    }
   } catch (error) {
     // A rendering bug must degrade to a visible fault, not to a panel that
     // has quietly stopped updating. That is exactly how the 0.22.0 panel

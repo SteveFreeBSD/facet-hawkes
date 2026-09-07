@@ -27,6 +27,10 @@ and which of eight kinds of failure this was -- as a human summary beside a
 machine-readable `observation.jsonl`. It reads only; it never drives the
 browser, and it cannot wake a suspended event page.
 
+Use that command exactly even when system Python has no QuickJS: it
+deterministically re-execs through `.venv/bin/python` for the build comparison,
+or explains how to restore the project interpreter if it cannot.
+
 Add `--screenshot` when a picture would settle something. That needs `--bundle`,
 writes 0600, and prints the command that deletes it -- a Hawkes page is
 coursework. Add `--match` with part of a window title when several Firefox

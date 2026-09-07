@@ -329,6 +329,25 @@ def working_tree_marker() -> dict:
     }
 
 
+def working_tree_reader_marker() -> dict:
+    """Hash the complete Hawkes question reader using its in-file convention."""
+    path = EXTENSION_DIR / "content" / "hawkes-question.js"
+    if not path.is_file():
+        return {"computed": False, "why": "no Hawkes question reader in this tree"}
+    source = path.read_text(encoding="utf-8")
+    match = re.search(r'const HAWKES_READER_BUILD = "([0-9a-f]{12})";', source)
+    if match is None:
+        return {"computed": False, "why": "Hawkes reader has no source marker"}
+    normalized = source[: match.start(1)] + ("0" * 12) + source[match.end(1) :]
+    marker = hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:12]
+    return {
+        "computed": True,
+        "marker": marker,
+        "declared": match.group(1),
+        "valid": match.group(1) == marker,
+    }
+
+
 def fold(entries: list[tuple[str, str]]) -> dict:
     """`common/build-marker.js`'s fold, in Python. The two must agree exactly."""
     lines = sorted(
@@ -556,6 +575,11 @@ def summarize_run(group: dict, reference: dict) -> dict:
         "ownership": None,
         "cadence": None,
         "answer_length": None,
+        "answer_parts": None,
+        "host_answer_parts": None,
+        "host_request": None,
+        "answer_retained": None,
+        "panel_rendered": None,
         "outcome": "incomplete",
         "error_key": "",
         "evidence_refused": "evidence-refused" in seen,
@@ -571,6 +595,8 @@ def summarize_run(group: dict, reference: dict) -> dict:
                 "expressions": data.get("expressions"),
                 "graph": data.get("graph"),
                 "table": data.get("table"),
+                "answer_table": data.get("answerTable"),
+                "answer_table_detail": data.get("answerTableDetail"),
                 "prompt_chars": data.get("promptChars"),
             }
         elif event == "question-read" and run["question"] is None:
@@ -583,6 +609,8 @@ def summarize_run(group: dict, reference: dict) -> dict:
                 "expressions": data.get("expressions"),
                 "graph": data.get("graph"),
                 "table": data.get("table"),
+                "answer_table": data.get("answerTable"),
+                "answer_table_detail": data.get("answerTableDetail"),
                 "prompt_chars": data.get("promptChars"),
             }
         elif event == "answer-target-inspected":
@@ -601,6 +629,16 @@ def summarize_run(group: dict, reference: dict) -> dict:
                 }
         elif event in {"editor-described", "multi-editor-described"}:
             run["editor"] = {**(run["editor"] or {}), "described": data}
+        elif event == "host-request-shaped":
+            run["host_request"] = {
+                "pipeline": data.get("pipeline"),
+                "answer_table": data.get("answerTable"),
+                "table_rows": data.get("tableRows"),
+                "table_columns": data.get("tableColumns"),
+                "table_blanks": data.get("tableBlanks"),
+                "answer_shape": data.get("answerShape"),
+                "answer_parts": data.get("answerParts"),
+            }
         elif event == "answer-parts-unplaceable":
             run["editor"] = {
                 **(run["editor"] or {}),
@@ -633,9 +671,22 @@ def summarize_run(group: dict, reference: dict) -> dict:
                 "fallback": data.get("facetFallback"),
             }
             run["answer_length"] = data.get("answerLength")
+            run["answer_parts"] = data.get("answerParts")
+            run["host_answer_parts"] = data.get("hostAnswerParts")
             if data.get("stages"):
                 run["stages"] = str(data["stages"]).split(">")
             run["outcome"] = "solved"
+        elif event == "answer-retained":
+            run["answer_retained"] = {
+                "answer_parts": data.get("answerParts"),
+                "panels": data.get("panels"),
+            }
+        elif event == "panel-rendered":
+            run["panel_rendered"] = {
+                "answer_parts": data.get("answerParts"),
+                "answer_length": data.get("answerLength"),
+                "answer_empty": data.get("answerEmpty"),
+            }
         elif event == "insertion-pinned":
             run["ownership"] = {"pinned": data, "changed": [], "why": ""}
             run["solved_in"] = data.get("solvedIn") or None
@@ -668,6 +719,15 @@ def summarize_run(group: dict, reference: dict) -> dict:
                 "plan": data.get("plan"),
                 "source": data.get("source"),
             }
+
+    detail = (run.get("question") or {}).get("answer_table_detail")
+    if isinstance(detail, dict):
+        tree_reader = working_tree_reader_marker()
+        detail["tree_build"] = tree_reader.get("marker")
+        detail["build_matches_tree"] = bool(
+            tree_reader.get("valid")
+            and detail.get("build") == tree_reader.get("marker")
+        )
 
     run["first_failing_stage"] = _first_failing_stage(run)
     run["failure"] = classify(run)
@@ -1214,15 +1274,46 @@ def _run_lines(run: dict) -> list[str]:
     if run.get("signature"):
         lines.append(f"     question   sig={run['signature']}")
     if run.get("question"):
-        lines.append(f"     evidence   {_compact(run['question'])}")
+        question = dict(run["question"])
+        reader = question.pop("answer_table_detail", None)
+        lines.append(f"     evidence   {_compact(question)}")
+        if isinstance(reader, dict):
+            lines.append(
+                "     reader     "
+                + _compact({
+                    "decision": reader.get("decision"),
+                    "branch": reader.get("branch"),
+                    "reason": reader.get("reason"),
+                    "build": reader.get("build"),
+                    "tree": reader.get("tree_build"),
+                    "matches": "yes" if reader.get("build_matches_tree") else "no",
+                })
+            )
+            if reader.get("candidates"):
+                lines.append(f"     candidates {_compact(reader['candidates'])}")
+            if reader.get("table"):
+                lines.append(f"     table      {_compact(reader['table'])}")
+            cell = reader.get("cell")
+            if isinstance(cell, dict):
+                owners = cell.get("textOwners") or []
+                shape = {key: value for key, value in cell.items() if key != "textOwners"}
+                lines.append(f"     cell       {_compact(shape)} text_owners={len(owners)}")
+                for index, owner in enumerate(owners, 1):
+                    lines.append(f"       owner {index}  {_compact(owner)}")
     if run.get("editor"):
         lines.append(f"     editor     {_compact(run['editor'])}")
+    if run.get("host_request"):
+        lines.append(f"     host sent  {_compact(run['host_request'])}")
     if run["stages"]:
         lines.append(f"     stages     {' > '.join(run['stages'])}")
     if run.get("route"):
         lines.append(f"     route      {_compact(run['route'])}")
     if run.get("runtime") and any(run["runtime"].values()):
         lines.append(f"     ran on     {_compact(run['runtime'])}")
+    if run.get("answer_retained"):
+        lines.append(f"     retained   {_compact(run['answer_retained'])}")
+    if run.get("panel_rendered"):
+        lines.append(f"     panel      {_compact(run['panel_rendered'])}")
     if run.get("ownership"):
         own = run["ownership"]
         changed = ",".join(own.get("changed") or []) or "nothing"
@@ -1318,7 +1409,42 @@ def _writable_bundle(explicit: str | None) -> Path:
     return path
 
 
+def ensure_marker_runtime() -> None:
+    """Re-exec through the project venv when system Python lacks QuickJS.
+
+    The build comparison is the observer's safety check, not an optional
+    embellishment. Keeping the documented ``python3`` command deterministic
+    avoids an apparently successful report whose one crucial verdict is
+    silently ``uncomparable``.
+    """
+    if importlib.util.find_spec("quickjs") is not None:
+        return
+    project_python = PROJECT_ROOT / ".venv" / "bin" / "python"
+    if not project_python.is_file():
+        raise ObservationError(
+            "QuickJS is unavailable and the project interpreter was not found at "
+            f"{project_python}; run `uv sync --extra dev` in {PROJECT_ROOT} first"
+        )
+    # A venv interpreter is commonly a symlink to the system binary. Resolving
+    # both paths would erase the environment boundary that determines which
+    # site-packages (and therefore QuickJS) Python loads.
+    same = Path(sys.executable).absolute() == project_python.absolute()
+    if same:
+        raise ObservationError(
+            "the project interpreter cannot import QuickJS; run `uv sync --extra dev`"
+        )
+    os.execv(
+        str(project_python),
+        [str(project_python), str(Path(__file__).resolve()), *sys.argv[1:]],
+    )
+
+
 def main() -> int:
+    try:
+        ensure_marker_runtime()
+    except ObservationError as error:
+        print(f"observation refused: {error}", file=sys.stderr)
+        return 1
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--match", help="Substring of the Firefox window title to mean.")
     parser.add_argument("--last", type=int, default=400, help="Log entries to consider.")

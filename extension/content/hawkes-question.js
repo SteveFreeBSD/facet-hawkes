@@ -18,6 +18,13 @@
  */
 
 (() => {
+  // A digest of this complete content-script source, with this literal
+  // replaced by twelve zeroes before hashing. The live reader returns it with
+  // every decision, and the observatory applies the same normalization to the
+  // tree. Unlike the event-page marker, this proves which Hawkes reader was
+  // injected into the authoritative page DOM.
+  const HAWKES_READER_BUILD = "00e8ead8976d";
+
   const ANSWER_CONTROLS =
     'input.qbaseCSS, input[id^="txtAns"], input.boxStyle, input[id$="_optchk"], '
     + 'input[type="radio"].opt, #QGraph[role="application"]';
@@ -193,61 +200,118 @@
     return text.replace(/[\u2061-\u2064\u200b\ufeff]/g, "").replace(/\s+/g, " ").trim();
   };
 
+  const attribute = (element, name) => typeof element?.getAttribute === "function"
+    ? element.getAttribute(name)
+    : element?.attributes?.[name] ?? null;
+
+  /** A bounded structural name. Arbitrary page classes and ids stay out. */
+  const structuralToken = (element) => {
+    const classes = String(attribute(element, "class") ?? "").split(/\s+/)
+      .filter((name) =>
+        name === "sr-only"
+        || /^(?:Q|Fraction|GridTable__|MathJax)[A-Za-z0-9_-]{0,31}$/.test(name)
+      )
+      .slice(0, 3);
+    return [element.tagName.toLowerCase(), ...classes.map((name) => `.${name}`)].join("");
+  };
+
+  const structurallyHidden = (element) =>
+    attribute(element, "aria-hidden") === "true"
+    || String(attribute(element, "class") ?? "").split(/\s+/).includes("sr-only")
+    || element.hidden === true
+    || /(?:^|;)\s*(?:visibility\s*:\s*hidden|display\s*:\s*none)\b/i.test(
+      attribute(element, "style") ?? ""
+    );
+
   /**
-   * Structure-only names for text nodes that make an answer cell nonempty.
+   * Sanitized structural facts for every page-owned text owner in one cell.
    *
-   * This is the content script's live diagnostic path: it reports element
-   * names, bounded class names and fixed relationships to the answer control.
-   * It never includes a text node, an input value or an element id. The text
-   * walk is the same one `clean` already performs; its only extra result is
-   * which page-owned element contains the non-whitespace node.
+   * This deliberately records counts and relationships, never the text, raw
+   * markup, element ids, or an answer control's `.value`. It uses the same
+   * text-node walk as `clean`, so a refusal immediately names the owner that
+   * made the reader's emptiness test fail, while also showing which owners
+   * were safely excluded and why.
    */
-  const nonemptyCellStructure = (cell, control, excluded) => {
-    const attribute = (element, name) => typeof element.getAttribute === "function"
-      ? element.getAttribute(name)
-      : element.attributes?.[name] ?? null;
-    const token = (element) => {
-      const classes = String(attribute(element, "class") ?? "").split(/\s+/)
-        .filter((name) => /^[A-Za-z][A-Za-z0-9_-]{0,31}$/.test(name))
-        .slice(0, 2)
-        .map((name) => `.${name}`)
-        .join("");
-      const relation = element.tagName === "LABEL"
-        && attribute(element, "for") === control.id
-          ? "[for=control]"
-          : attribute(element, "name") === "NotAnObject"
-            ? "[name=NotAnObject]"
-            : /(?:^|;)\s*visibility\s*:\s*hidden(?:\s*!important)?\s*(?:;|$)/i.test(
-              attribute(element, "style") ?? ""
-            )
-              ? "[visibility=hidden]"
-              : "";
-      return `${element.tagName.toLowerCase()}${classes}${relation}`;
-    };
+  const cellStructure = (cell, control, excluded, logicalRow, logicalColumn) => {
+    const controlBox = control.closest("span.QFractionBox");
+    const labelledBy = new Set(
+      String(attribute(control, "aria-labelledby") ?? "").split(/\s+/).filter(Boolean)
+    );
+    const owners = [];
+    const ownerFor = (text) => text.parentElement?.closest(
+      "label, [aria-hidden=\"true\"], [name=\"NotAnObject\"], .sr-only"
+    ) ?? text.parentElement ?? cell;
     const walker = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT);
-    const paths = [];
     for (let text = walker.nextNode(); text !== null; text = walker.nextNode()) {
-      if (
-        excluded(text)
-        ||
-        text.parentElement?.closest("mjx-assistive-mml")
-        || text.textContent.replace(/[\u2061-\u2064\u200b\ufeff]/g, "").trim().length === 0
-      ) {
-        continue;
+      const normalized = text.textContent
+        .replace(/[\u2061-\u2064\u200b\ufeff]/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
+      if (normalized.length === 0) continue;
+      const owner = ownerFor(text);
+      let found = owners.find((entry) => entry.node === owner);
+      if (!found) {
+        const path = [];
+        for (
+          let element = owner;
+          element !== null && element !== cell && path.length < 8;
+          element = element.parentElement
+        ) {
+          path.push(structuralToken(element));
+        }
+        const target = attribute(owner, "for");
+        const ownerId = attribute(owner, "id");
+        const targetElement = target ? document.getElementById?.(target) ?? null : null;
+        found = {
+          node: owner,
+          detail: {
+            tag: owner.tagName.toLowerCase(),
+            classes: String(attribute(owner, "class") ?? "").split(/\s+/)
+              .filter((name) =>
+                name === "sr-only"
+                || /^(?:Q|Fraction|GridTable__|MathJax)[A-Za-z0-9_-]{0,31}$/.test(name)
+              )
+              .slice(0, 3),
+            path,
+            textNodes: 0,
+            textChars: 0,
+            ignored: true,
+            assistiveMath: owner.closest("mjx-assistive-mml") !== null,
+            hidden: structurallyHidden(owner),
+            srOnly: owner.matches(".sr-only"),
+            forControl: target === control.id,
+            forOther: target !== null && target !== "" && target !== control.id,
+            forCellControl: targetElement !== null
+              && targetElement.matches(ANSWER_CONTROLS)
+              && cell.contains(targetElement),
+            targetVisible: targetElement !== null && visible(targetElement),
+            target: targetElement === null ? "none" : structuralToken(targetElement),
+            labelledByControl: ownerId !== null && ownerId !== "" && labelledBy.has(ownerId),
+            containsControl: owner.contains(control),
+            insideControlBox: controlBox?.contains(owner) === true,
+            containsControlBox: controlBox !== null && owner.contains(controlBox),
+            childElements: owner.children.length,
+            controls: owner.querySelectorAll(ANSWER_CONTROLS).length,
+            math: owner.querySelectorAll("math").length,
+            mathJax: owner.querySelectorAll("mjx-container, mjx-assistive-mml, .MathJax").length,
+          },
+        };
+        owners.push(found);
       }
-      const path = [];
-      for (
-        let element = text.parentElement;
-        element !== null && element !== cell;
-        element = element.parentElement
-      ) {
-        path.push(token(element));
-      }
-      const named = path.join(">");
-      if (named && !paths.includes(named)) paths.push(named);
-      if (paths.length >= 4) break;
+      found.detail.textNodes += 1;
+      found.detail.textChars += normalized.length;
+      found.detail.ignored = found.detail.ignored
+        && (excluded(text) || text.parentElement?.closest("mjx-assistive-mml") !== null);
     }
-    return paths.join("+").slice(0, 180) || "direct-text";
+    return {
+      logicalRow,
+      logicalColumn,
+      childElements: cell.children.length,
+      controls: cell.querySelectorAll(ANSWER_CONTROLS).length,
+      math: cell.querySelectorAll("math").length,
+      mathJax: cell.querySelectorAll("mjx-container, mjx-assistive-mml, .MathJax").length,
+      textOwners: owners.slice(0, 6).map((entry) => entry.detail),
+    };
   };
 
   /**
@@ -372,8 +436,32 @@
    * holding a box and anything else is refused rather than guessed at.
    */
   const answerTable = (() => {
-    const refuse = (tableReason) => ({ table: null, tableReason });
+    const detail = {
+      reader: "answer-table",
+      schema: 1,
+      build: HAWKES_READER_BUILD,
+      decision: "refused",
+      branch: "none",
+      reason: "",
+      candidates: {
+        controls: 0,
+        holding: 0,
+        kept: 0,
+        droppedHidden: 0,
+        droppedNested: 0,
+        droppedRows: 0,
+        droppedHeader: 0,
+      },
+      table: null,
+      cell: null,
+    };
+    const refuse = (tableReason, extra = {}) => ({
+      table: null,
+      tableReason,
+      tableDetail: { ...detail, ...extra, decision: "refused", reason: tableReason },
+    });
     const controls = [...document.querySelectorAll(ANSWER_CONTROLS)].filter(visible);
+    detail.candidates.controls = controls.length;
     if (controls.length === 0) return refuse("no-answer-controls");
     // Which condition dropped each table that could have been this one.
     //
@@ -386,6 +474,7 @@
     const holding = [...document.querySelectorAll("table")].filter(
       (table) => table.querySelector(ANSWER_CONTROLS) !== null
     );
+    detail.candidates.holding = holding.length;
     if (holding.length === 0) return refuse("no-table-holds-a-control");
     const dropped = { hidden: 0, nested: 0, rows: 0, header: 0 };
     const candidates = holding.filter((table) => {
@@ -397,6 +486,11 @@
       }
       return true;
     });
+    detail.candidates.kept = candidates.length;
+    detail.candidates.droppedHidden = dropped.hidden;
+    detail.candidates.droppedNested = dropped.nested;
+    detail.candidates.droppedRows = dropped.rows;
+    detail.candidates.droppedHeader = dropped.header;
     if (candidates.length !== 1) {
       const why = Object.entries(dropped)
         .filter(([, count]) => count > 0)
@@ -407,6 +501,7 @@
     const table = candidates[0];
     const header = headerRow(table);
     const rowHeaded = header === null ? rowHeadedGrid(table) : null;
+    detail.branch = header === null ? "row-headed" : "column-headed";
     const columns = header === null
       ? rowHeaded.columns
       : [...header.cells].map(clean);
@@ -421,6 +516,16 @@
       : [...table.rows]
         .filter((row) => row !== header && !(table.tHead?.contains(row) ?? false))
         .map((row) => [...row.cells]);
+    detail.table = {
+      domRows: table.rows.length,
+      domColumns: table.rows[0]?.cells.length ?? 0,
+      logicalRows: body.length,
+      logicalColumns: columns.length,
+      controls: table.querySelectorAll(ANSWER_CONTROLS).length,
+      math: table.querySelectorAll("math").length,
+      mathJax: table.querySelectorAll("mjx-container, mjx-assistive-mml, .MathJax").length,
+      blanks: 0,
+    };
     if (body.length < 2 || body.length > 32) return refuse(`rows-${body.length}`);
     if (body.some((row) => row.length !== columns.length)) {
       return refuse("row-not-rectangular");
@@ -428,9 +533,9 @@
 
     const blanks = [];
     const rows = [];
-    for (const row of body) {
+    for (const [rowIndex, row] of body.entries()) {
       const cells = [];
-      for (const cell of row) {
+      for (const [columnIndex, cell] of row.entries()) {
         const inside = [...cell.querySelectorAll(ANSWER_CONTROLS)].filter(visible);
         if (inside.length > 1) return refuse("cell-has-two-controls");
         if (inside.length === 1) {
@@ -440,11 +545,14 @@
           // box being read back as the question.
           const decoration = (text) => hawkesAnswerLabel(text, cell, inside[0]);
           if (clean(cell, decoration).length > 0) {
-            return refuse(
-              `blank-not-empty:${nonemptyCellStructure(cell, inside[0], decoration)}`
-            );
+            return refuse("blank-not-empty", {
+              cell: cellStructure(
+                cell, inside[0], decoration, rowIndex + 1, columnIndex + 1
+              ),
+            });
           }
           blanks.push(inside[0]);
+          detail.table.blanks = blanks.length;
           cells.push({ blank: blanks.length });
           continue;
         }
@@ -490,7 +598,11 @@
         return refuse("blank-order-disagrees");
       }
     }
-    return { table: { node: table, columns, rows }, tableReason: "" };
+    return {
+      table: { node: table, columns, rows },
+      tableReason: "",
+      tableDetail: { ...detail, decision: "accepted", reason: "" },
+    };
   })();
 
   const expressions = [];
@@ -650,6 +762,7 @@
       // Which condition stopped a completion table being read, when one did.
       // A count, a selector name or a named disagreement -- never a cell.
       answerTable: answerTable.tableReason,
+      answerTableDetail: answerTable.tableDetail,
       promptChars: promptText.length,
     },
     ...(graphPoints ? { graphPoints } : {}),

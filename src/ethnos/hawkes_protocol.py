@@ -280,6 +280,11 @@ class Certainty(BaseModel):
     #: so, because a solve made that way is otherwise indistinguishable from
     #: one made from a well-posed question.
     prompt_seen: bool = True
+    #: The reply cardinality Ethnos required when it called Facet. This is a
+    #: structural boundary fact, not an answer: it proves that a five-control
+    #: page reached Facet as five requested parts rather than collapsing on
+    #: either side of the native-host boundary.
+    answer_parts: int | None = Field(default=None, ge=1, le=MAX_ANSWER_PARTS)
     #: Which engine's answer this is. `exact` is SymPy and the polynomial
     #: solver -- deterministic, checkable, and not a model. `facet` is the
     #: remote reasoner. `model` is the local vision-and-model fallback. Kept
