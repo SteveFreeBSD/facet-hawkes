@@ -6,6 +6,18 @@ name the add-on as it was called at the time.
 
 ## Unreleased
 
+- **A table of values is now answered by computing it, not by asking a model.**
+  The grid crossed to Facet flattened into the instruction, which put it in
+  front of a reasoning model and nowhere else: the only route that could read
+  it was the one whose answers cannot be checked, and a live run came back with
+  five values of the right shape and the wrong mathematics. The grid and the
+  form an answer must take now cross as structure, so Facet completes lesson
+  2.1's five blanks exactly -- `0, 8, 8, 5, 3` on the exact route, in
+  milliseconds, with no model and no accelerator. Where a row has two roots the
+  choice is a documented tie-break rather than a preference. And where a model
+  does answer a question that carries a grid, its answer is put back into that
+  grid and has to satisfy every row exactly before it is offered at all.
+
 - **Two readings that refused a question now say which condition refused it.**
   A fresh install of the five-part build, one press of Solve, and lesson 2.1's
   five-blank table still answered `0`. The build was current -- the running

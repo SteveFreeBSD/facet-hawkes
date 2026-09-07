@@ -100,23 +100,34 @@ A graph question asks for a plan instead of a value, and says so:
 }
 ```
 
-A question answered by *completing a table* sends the grid it is completed in.
-The blanks are numbered as the answer's parts are numbered, so neither side has
-to infer which cell a part belongs to, and a cell MathJax rendered is converted
-by the same converter the expressions use -- a radical is drawn rather than
-written, and its visible glyphs are not the number.
+A question answered by *completing a table* sends the grid it is completed in,
+as a grid. The blanks are numbered as the answer's parts are numbered, so
+neither side has to infer which cell a part belongs to, and a cell MathJax
+rendered is converted by the same converter the expressions use -- a radical is
+drawn rather than written, and its visible glyphs are not the number.
 
-```text
-Complete the table of values below for the given equation.
-The question states this table, and is answered by completing it. Each blank is
-written below as the numbered answer part that belongs in it.
-x | y
-0 | (part 1)
-(part 2) | 2\sqrt{2}
-64 | (part 3)
-25 | (part 4)
-(part 5) | -\sqrt{3}
+```json
+{"answer_table": {"columns": ["x", "y"],
+                  "rows": [[{"value": "0"}, {"blank": 1}],
+                           [{"blank": 2}, {"value": "2\\sqrt{2}"}],
+                           [{"value": "64"}, {"blank": 3}],
+                           [{"value": "25"}, {"blank": 4}],
+                           [{"blank": 5}, {"value": "-\\sqrt{3}"}]]},
+ "answer_representation": {"kind": "signed-integer", "max_length": 4}}
 ```
+
+This used to be flattened into the instruction, and that was the whole defect.
+A grid stated as prose can be read by a model and by nothing else -- so the one
+route that could answer the question was the one whose answers cannot be
+checked, and a live run returned five values of the right shape and the wrong
+mathematics. As structure it is computed from: Facet completes it exactly, and
+holds any reasoned answer to it by substitution before that answer counts as
+one. Facet renders it into its own prompt on the occasions a model is asked.
+
+The form an answer must take crosses twice, in two registers: as a sentence in
+the instruction, which a model reads, and as `answer_representation`, which the
+deterministic route filters its solutions by. A requirement only a model can
+read is not a requirement anything can check.
 
 The answer boxes themselves stay in the browser. Which *cell* a part belongs to
 is a fact about the question; which box it is typed into is not, and no field

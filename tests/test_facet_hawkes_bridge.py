@@ -512,8 +512,21 @@ def test_a_numeric_only_pair_reaches_facet_as_an_answer_form_contract(
     assert "field" not in crossed["instruction"].lower()
     assert "editor" not in crossed["instruction"].lower()
     # The representation is a request constraint, not a browser description
-    # added to Facet's protocol.
-    assert set(crossed) == {"instruction", "expressions", "answer_parts"}
+    # added to Facet's protocol. It crosses twice on purpose and in two
+    # registers: as the sentence above, which a model reads, and as the pair
+    # below, which the deterministic route filters its own solutions by and
+    # which the verifier holds a reasoned answer to. A requirement only a model
+    # can read is not a requirement anything can check.
+    assert set(crossed) == {
+        "instruction",
+        "expressions",
+        "answer_parts",
+        "answer_representation",
+    }
+    assert crossed["answer_representation"] == {
+        "kind": "signed-integer",
+        "max_length": 6,
+    }
     assert response.status == "ready"
 
 

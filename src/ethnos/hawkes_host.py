@@ -299,6 +299,43 @@ def required_answer_parts(shape, instruction: str) -> int:
     return 1
 
 
+def shared_answer_representation(shape) -> tuple[str, int] | None:
+    """The one form every answer part must take, when there is exactly one.
+
+    The browser sends a mathematical representation only when every part has
+    the same narrow, published contract, and this is the reading of that: a
+    kind and a length, or nothing. Anything mixed, anything unrecognised, and
+    anything absent is nothing, because a requirement that holds for some
+    answers and not others is not a requirement on the reply.
+    """
+    representations = list(shape.representations) if shape is not None else []
+    if not representations:
+        return None
+    if any(item.kind != "signed-integer" for item in representations):
+        return None
+    limits = {item.maxLength for item in representations}
+    if len(limits) != 1:
+        return None
+    [limit] = limits
+    return "signed-integer", limit
+
+
+def answer_representation_payload(shape) -> dict[str, object] | None:
+    """The same reading, in the terms Facet takes it in.
+
+    Sent as well as stated in the instruction, and for a different consumer:
+    the sentence is for a model, and this is what the deterministic route
+    filters its solutions by and what the verifier holds a reasoned answer to.
+    A requirement only a model can read is not a requirement that can be
+    checked.
+    """
+    reading = shared_answer_representation(shape)
+    if reading is None:
+        return None
+    kind, limit = reading
+    return {"kind": kind, "max_length": limit}
+
+
 def instruction_with_answer_representation(instruction: str, shape) -> str:
     """Add the normalized answer-form requirement Facet otherwise cannot know.
 
@@ -307,16 +344,15 @@ def instruction_with_answer_representation(instruction: str, shape) -> str:
     contract.  Facet owns its prompt, so the requirement is appended to the
     question handed to Facet rather than implemented as an editor exception.
     """
-    representations = list(shape.representations) if shape is not None else []
-    if not representations:
+    reading = shared_answer_representation(shape)
+    if reading is None:
         return instruction
-    if any(item.kind != "signed-integer" for item in representations):
-        return instruction
-    limits = {item.maxLength for item in representations}
-    if len(limits) != 1:
-        return instruction
-    [limit] = limits
-    subject = "Each separate answer" if len(representations) > 1 else "The answer"
+    _, limit = reading
+    subject = (
+        "Each separate answer"
+        if len(shape.representations) > 1
+        else "The answer"
+    )
     return (
         f"{instruction}\n{subject} must use only digits and an optional leading "
         f"minus sign, with at most {limit} characters. Do not use a fraction, "
@@ -324,50 +360,47 @@ def instruction_with_answer_representation(instruction: str, shape) -> str:
     )
 
 
-def instruction_with_answer_table(instruction: str, table) -> str:
-    """State the table a completion question is answered in, in the question.
+def answer_table_payload(table) -> dict[str, object] | None:
+    """The grid a completion question is answered in, in Facet's terms.
 
-    A completion question's givens are the question. `x = y²` and "Complete the
-    table of values below" is not a question anybody can answer; the same words
-    beside the five cells the page states are. The browser reads that grid
-    exactly and this is where it becomes something Facet can be asked about.
+    A completion question's givens are the question. `x = y²` and "complete the
+    table" is not a question anybody can answer; the same words beside the five
+    cells the page states are.
 
-    The blanks are numbered as Facet numbers the parts of a reply, so part N
-    and the Nth blank are the same cell and neither side has to infer the
-    correspondence from order alone.
+    This used to be flattened into the instruction, which put the grid in front
+    of a model and nowhere else -- so the only thing that could read it was the
+    one route whose answers cannot be checked. It crosses as structure now:
+    the columns, and each cell as either a stated value or a numbered blank.
+    That is what a deterministic route can compute from and what a verifier can
+    hold a reasoned answer to. Facet renders it into its own prompt when a
+    model does end up being asked.
 
-    Written as the page wrote it. A cell MathJax rendered arrives as MathML and
-    is converted by the same converter the expressions use; anything that
-    converter will not translate means the table cannot be stated faithfully,
-    and then it is not stated at all. A partial table would be a different
-    question, so the choice is the whole grid or the instruction untouched --
-    which is the question exactly as it was before any of this was read.
+    A cell MathJax rendered arrives as MathML and is converted by the same
+    converter the expressions use; anything that converter will not translate
+    means the table cannot be stated faithfully, and then it is not stated at
+    all. A partial grid would be a different question, so the choice is the
+    whole thing or nothing.
     """
     from .hawkes_mathml import UnsupportedMathML, mathml_to_latex
 
     if table is None:
-        return instruction
-    lines = [" | ".join(table.columns)]
+        return None
+    rows: list[list[dict[str, object]]] = []
     for row in table.rows:
-        rendered = []
+        cells: list[dict[str, object]] = []
         for cell in row:
             if cell.blank is not None:
-                rendered.append(f"(part {cell.blank})")
+                cells.append({"blank": cell.blank})
                 continue
             if cell.mathml:
                 try:
-                    rendered.append(mathml_to_latex(cell.mathml))
+                    cells.append({"value": mathml_to_latex(cell.mathml)})
                 except UnsupportedMathML:
-                    return instruction
+                    return None
             else:
-                rendered.append(cell.text)
-        lines.append(" | ".join(rendered))
-    stated = "\n".join(lines)
-    return (
-        f"{instruction}\nThe question states this table, and is answered by "
-        "completing it. Each blank is written below as the numbered answer part "
-        f"that belongs in it.\n{stated}"
-    )
+                cells.append({"value": cell.text})
+        rows.append(cells)
+    return {"columns": list(table.columns), "rows": rows}
 
 
 def optimum_direction(instruction: str) -> str | None:
@@ -826,15 +859,19 @@ def _solve_with_facet(
     # An exactly solved question satisfies it by needing no processor at all.
     try:
         solution = solve_math(
-            # The question first -- the table it states is part of what is
-            # being asked -- and then the requirement on the form of the reply.
             instruction=instruction_with_answer_representation(
-                instruction_with_answer_table(instruction, problem.answer_table),
-                problem.answer_shape,
+                instruction, problem.answer_shape
             ),
             expressions=expressions,
             request_id=safe_request_id(request.request_id),
             answer_parts=parts_required,
+            # The grid and the form of an answer, as structure. Facet computes
+            # from these and checks a reasoned answer against them; neither is
+            # possible against a sentence.
+            answer_table=answer_table_payload(problem.answer_table),
+            answer_representation=answer_representation_payload(
+                problem.answer_shape
+            ),
             label=problem.question_label,
             accelerator_required=True,
             allow_fallback=False,

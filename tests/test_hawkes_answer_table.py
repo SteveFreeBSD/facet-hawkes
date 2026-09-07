@@ -446,35 +446,42 @@ def test_the_protocol_refuses_a_grid_it_cannot_place(rows, why) -> None:
         AnswerTable(columns=["x", "y"], rows=rows)
 
 
-def test_the_host_states_the_table_in_the_question() -> None:
-    """What Facet is asked, once the givens exist to ask about."""
-    from ethnos.hawkes_host import instruction_with_answer_table
+def test_the_host_sends_the_table_as_structure() -> None:
+    """The grid crosses as a grid.
+
+    It used to be flattened into the instruction, which put it in front of a
+    model and nowhere else -- so the only route that could read it was the one
+    whose answers cannot be checked. Structure is what the deterministic route
+    computes from and what the verifier holds a reasoned answer to.
+    """
+    from ethnos.hawkes_host import answer_table_payload
     from ethnos.hawkes_protocol import AnswerTable
 
-    stated = instruction_with_answer_table(
-        "Complete the table of values below for the given equation.",
-        AnswerTable(columns=["x", "y"], rows=EXPECTED_ROWS),
+    payload = answer_table_payload(
+        AnswerTable(columns=["x", "y"], rows=EXPECTED_ROWS)
     )
 
-    assert stated.splitlines()[-6:] == [
-        "x | y",
-        "0 | (part 1)",
-        r"(part 2) | 2\sqrt{2}",
-        "64 | (part 3)",
-        "25 | (part 4)",
-        r"(part 5) | -\sqrt{3}",
-    ]
+    assert payload == {
+        "columns": ["x", "y"],
+        "rows": [
+            [{"value": "0"}, {"blank": 1}],
+            [{"blank": 2}, {"value": r"2\sqrt{2}"}],
+            [{"value": "64"}, {"blank": 3}],
+            [{"value": "25"}, {"blank": 4}],
+            [{"blank": 5}, {"value": r"-\sqrt{3}"}],
+        ],
+    }
 
 
-def test_the_host_leaves_the_question_alone_when_there_is_no_table() -> None:
-    from ethnos.hawkes_host import instruction_with_answer_table
+def test_there_is_no_table_payload_without_a_table() -> None:
+    from ethnos.hawkes_host import answer_table_payload
 
-    assert instruction_with_answer_table("Simplify.", None) == "Simplify."
+    assert answer_table_payload(None) is None
 
 
-def test_a_cell_the_converter_cannot_translate_states_no_table_at_all() -> None:
+def test_a_cell_the_converter_cannot_translate_sends_no_table_at_all() -> None:
     """A partial table would be a different question, so it is all or nothing."""
-    from ethnos.hawkes_host import instruction_with_answer_table
+    from ethnos.hawkes_host import answer_table_payload
     from ethnos.hawkes_protocol import AnswerTable
 
     table = AnswerTable(
@@ -485,7 +492,25 @@ def test_a_cell_the_converter_cannot_translate_states_no_table_at_all() -> None:
         ],
     )
 
-    assert instruction_with_answer_table("Complete it.", table) == "Complete it."
+    assert answer_table_payload(table) is None
+
+
+def test_the_answer_form_crosses_as_a_requirement_not_as_a_control() -> None:
+    """A kind and a length. No character set, no field, no editor."""
+    from ethnos.hawkes_host import answer_representation_payload
+    from ethnos.hawkes_protocol import AnswerShape
+
+    shape = AnswerShape(
+        kind="multi",
+        count=5,
+        representations=[{"kind": "signed-integer", "maxLength": 4}] * 5,
+    )
+
+    assert answer_representation_payload(shape) == {
+        "kind": "signed-integer",
+        "max_length": 4,
+    }
+    assert answer_representation_payload(AnswerShape(kind="field")) is None
 
 
 # --- what the diagnostics keep ----------------------------------------------
@@ -614,42 +639,144 @@ def solve_request(read: dict, parts: int) -> dict:
     }
 
 
-def test_the_table_reaches_the_question_facet_is_asked(monkeypatch, completion) -> None:
-    """End to end: the real grid makes Facet ask for all five ordered parts."""
+def test_the_real_fixture_is_answered_exactly_with_no_model(
+    monkeypatch, completion
+) -> None:
+    """End to end, from the page's own markup to five proved values.
+
+    The whole point of sending the grid as structure: Facet's deterministic
+    route completes it, and the model the loopback holds is never spoken to.
+    """
     from ethnos.hawkes_host import handle
 
-    loop = facet(
-        monkeypatch,
-        **reasoning(
-            "FINAL ANSWER: 0 8 8 5 3\nPART 1: 0\nPART 2: 8\nPART 3: 8\n"
-            "PART 4: 5\nPART 5: 3"
-        ),
-    )
+    loop = facet(monkeypatch)
 
     response = handle(solve_request(completion, 5))
 
-    [asked] = loop.prompts
-    assert "0 | (part 1)" in asked
-    assert r"(part 2) | 2\sqrt{2}" in asked
-    assert "This question takes 5 separate answers." in asked
+    assert loop.prompts == []
     assert response.status == "ready"
     assert response.answer.parts == ["0", "8", "8", "5", "3"]
+    assert response.certainty.answered_by == "exact"
+    assert response.certainty.method == "SymPy exact table completion"
+    # An exact solve engages no processor, so it names none.
+    assert response.certainty.actual_backend is None
+
+
+def test_the_grid_crosses_as_a_grid(monkeypatch, completion) -> None:
+    """Columns and cells, not a sentence Facet would have to read back."""
+    from ethnos.hawkes_host import handle
+
+    loop = facet(monkeypatch)
+
+    handle(solve_request(completion, 5))
+
+    [crossed] = loop.problems
+    assert crossed["answer_table"]["columns"] == ["x", "y"]
+    assert crossed["answer_table"]["rows"][1] == [
+        {"blank": 2},
+        {"value": r"2\sqrt{2}"},
+    ]
+    # The grid is no longer written into the instruction as well.
+    assert "(part 1)" not in crossed["instruction"]
 
 
 def test_the_answer_boxes_themselves_never_cross(monkeypatch, completion) -> None:
     """Which cell a part belongs to crosses; which box it is typed into does not."""
     from ethnos.hawkes_host import handle
 
-    loop = facet(
-        monkeypatch,
-        **reasoning(
-            "FINAL ANSWER: 0 8 8 5 3\nPART 1: 0\nPART 2: 8\nPART 3: 8\n"
-            "PART 4: 5\nPART 5: 3"
-        ),
-    )
+    loop = facet(monkeypatch)
 
     handle(solve_request(completion, 5))
 
     crossed = json.dumps(loop.problems)
     for browser_only in ("MatrixTextBoxes", "qbaseCSS", "fieldId", "maxlength"):
         assert browser_only not in crossed
+
+
+# --- the correctness backstop, from the browser's request inward ------------
+
+
+def rounding_request(parts: int = 1) -> dict:
+    """A grid the exact route declines: no integer completes the first row.
+
+    The published answer form takes digits and a minus sign, and a third is
+    neither. Every route below this one has to refuse rather than round.
+    """
+    return {
+        "protocol_version": 1,
+        "operation": "solve_hawkes_problem",
+        "request_id": "answer-table-backstop",
+        "origin": "https://learn.hawkeslearning.com",
+        "solve_engine": "facet",
+        "problem": {
+            "prompt_text": "Complete the table of values below.",
+            "mathml": [
+                "<math><mi>y</mi><mo>=</mo><mi>x</mi></math>",
+            ],
+            "answer_table": {
+                "columns": ["x", "y"],
+                "rows": [
+                    [{"mathml": "<math><mfrac><mn>1</mn><mn>3</mn></mfrac></math>"},
+                     {"blank": 1}],
+                    [{"text": "2"}, {"text": "2"}],
+                ],
+            },
+            "answer_shape": {
+                "kind": "field",
+                "representations": [{"kind": "signed-integer", "maxLength": 4}],
+            },
+        },
+    }
+
+
+def test_a_rounded_model_answer_never_reaches_the_panel(monkeypatch) -> None:
+    """Five parts, or one, is not a reason to believe any of them.
+
+    Live, this question's family came back with values that were the right
+    shape and the wrong mathematics. The verifier substitutes each one into the
+    row it claims and this is what the host does with the result.
+    """
+    from ethnos.hawkes_host import handle
+
+    facet(monkeypatch, **reasoning("FINAL ANSWER: 0"))
+
+    response = handle(rounding_request())
+
+    assert response.status != "ready"
+    assert "does not complete the table" in response.message
+
+
+def test_the_host_reports_the_refusal_as_ambiguous_not_as_a_failure(
+    monkeypatch,
+) -> None:
+    """A checked answer that failed its check is a reading, not a breakage."""
+    from ethnos.hawkes_host import handle
+
+    facet(monkeypatch, **reasoning("FINAL ANSWER: 0"))
+
+    assert handle(rounding_request()).status == "ambiguous"
+
+
+def test_a_verified_reasoned_answer_is_still_offered(monkeypatch) -> None:
+    """The backstop rejects what fails its check, not everything reasoned."""
+    from ethnos.hawkes_host import handle
+
+    facet(monkeypatch, **reasoning("FINAL ANSWER: 1"))
+    request = rounding_request()
+    # A quintic: no solution set this route enumerates, so it declines and a
+    # model is asked -- and `y = 1` still satisfies the row exactly, which one
+    # substitution proves.
+    request["problem"]["answer_shape"] = {"kind": "field"}
+    request["problem"]["mathml"] = [
+        "<math><mi>x</mi><mo>=</mo><msup><mi>y</mi><mn>5</mn></msup>"
+        "<mo>+</mo><mi>y</mi><mo>+</mo><mn>1</mn></math>"
+    ]
+    request["problem"]["answer_table"] = {
+        "columns": ["x", "y"],
+        "rows": [[{"text": "3"}, {"blank": 1}], [{"text": "1"}, {"text": "0"}]],
+    }
+
+    response = handle(request)
+
+    assert response.status == "ready"
+    assert response.answer.display_text == "1" or response.answer.keyboard_entry == "1"

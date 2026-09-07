@@ -626,6 +626,8 @@ def solve_math(
     result_kind: str = VALUE,
     graph: dict[str, Any] | None = None,
     points: list[dict[str, str]] | None = None,
+    answer_table: dict[str, Any] | None = None,
+    answer_representation: dict[str, Any] | None = None,
     accelerator_required: bool = True,
     allow_fallback: bool = False,
     timeout: float = DEFAULT_TIMEOUT_SECONDS,
@@ -649,6 +651,13 @@ def solve_math(
     not of the page -- and `accelerator_required` is a need rather than a
     device. Which route answers, and on what, is Facet's to decide and Facet's
     to report.
+
+    `answer_table` is a question that is a grid: the values it states and the
+    blanks it asks for, in the columns it names. `answer_representation` is the
+    form every separate answer must take. Both are requirements on the reply in
+    the same sense `answer_parts` is, and both cross as structure so that the
+    side which answers can compute from them and check against them. Neither
+    describes a page: there is no field, no control and no character set here.
     """
     if result_kind not in FACET_RESULT_KINDS:
         raise FacetProtocolError(f"{result_kind} is not a Facet result kind")
@@ -678,6 +687,38 @@ def solve_math(
                 f"answer_parts must be 1 to {MAX_ANSWER_PARTS}, not {answer_parts}"
             )
         problem["answer_parts"] = answer_parts
+    if result_kind == VALUE and answer_table is not None:
+        if not isinstance(answer_table, dict) or set(answer_table) != {
+            "columns",
+            "rows",
+        }:
+            raise FacetProtocolError("an answer table is columns and rows")
+        blanks = [
+            cell.get("blank")
+            for row in answer_table["rows"]
+            for cell in row
+            if isinstance(cell, dict) and "blank" in cell
+        ]
+        # The grid and the count are two statements of the same fact, and a
+        # caller whose two statements disagree has read one of them wrongly.
+        # Facet refuses this too; it is checked here so the mistake fails
+        # locally rather than over a transport.
+        if blanks != list(range(1, answer_parts + 1)):
+            raise FacetProtocolError(
+                "the table's blanks must be numbered from one, in order, and "
+                "match answer_parts"
+            )
+        problem["answer_table"] = answer_table
+    if result_kind == VALUE and answer_representation is not None:
+        if not isinstance(answer_representation, dict) or set(
+            answer_representation
+        ) != {"kind", "max_length"}:
+            raise FacetProtocolError("a representation is a kind and a max_length")
+        problem["answer_representation"] = answer_representation
+    if result_kind != VALUE and (answer_table or answer_representation):
+        # A plan carries no value for anybody to write down, so a requirement
+        # on the form of one is a question about something else.
+        raise FacetProtocolError("only a value question takes an answer shape")
     if result_kind == PARABOLA_PLAN:
         if not isinstance(graph, dict) or not graph:
             raise FacetProtocolError("a parabola plan needs normalised geometry")
