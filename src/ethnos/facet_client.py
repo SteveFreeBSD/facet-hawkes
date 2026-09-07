@@ -70,7 +70,13 @@ PLAN_KINDS: frozenset[str] = frozenset({PARABOLA_PLAN, QUADRATIC_REGRESSION})
 #: never asked -- which is a different claim from having tried and declined.
 FACET_ROUTER_STATES: frozenset[str] = frozenset({"solved", "declined", "not-run"})
 
-MAX_ANSWER_PARTS = 4
+#: How many separate values Facet may be asked for, and may return.
+#:
+#: Four was the shape this was written against -- `x = ___ or ___`, and a
+#: quartic's four roots. A table-completion question publishes one control per
+#: blank cell, and lesson 2.1's `x = y²` table has five. Must equal
+#: `hawkes_protocol.MAX_ANSWER_PARTS`; the tests assert it.
+MAX_ANSWER_PARTS = 5
 MAX_REGRESSION_POINTS = 32
 
 # Deployment configuration. Nothing in the protocol or in any caller depends

@@ -17,6 +17,7 @@ These tests pin the live shape: two boxes, no separator anywhere on the page.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -24,6 +25,14 @@ import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 EXTENSION = PROJECT_ROOT / "extension"
+
+#: How many separate values one answer may have, as the add-on declares it.
+MAX_ANSWER_PARTS = int(
+    re.search(
+        r"\bMAX_ANSWER_PARTS = (\d+);",
+        (EXTENSION / "common" / "config.js").read_text(encoding="utf-8"),
+    ).group(1)
+)
 
 
 def _lift(source: str, name: str) -> str:
@@ -142,6 +151,12 @@ def adopt(choice, evidence, editor):
     quickjs = pytest.importorskip("quickjs", reason="pip install quickjs")
     source = (EXTENSION / "background.js").read_text(encoding="utf-8")
     context = quickjs.Context()
+    # The bound on how many parts one answer may have, read from the module the
+    # event page imports it from rather than repeated here.
+    context.eval(
+        (EXTENSION / "common" / "config.js").read_text(encoding="utf-8")
+        .replace("export ", "")
+    )
     context.eval(_lift(source, "answerFieldIds"))
     return json.loads(
         context.eval(
@@ -264,7 +279,9 @@ def test_an_accepted_pair_passes_through_untouched() -> None:
     [
         ["QBase1_input", "QBase1_input"],  # ids it cannot tell apart
         ["QBase1_input", ""],  # a box with no id to aim at
-        ["a", "b", "c", "d", "e"],  # more boxes than any answer shape allows
+        # One past the bound, whatever the bound is; five is now a table of
+        # values completed cell by cell, and no longer "too many".
+        [f"box{index}" for index in range(MAX_ANSWER_PARTS + 1)],
         ["QBase1_input"],  # not a pair
     ],
     ids=["duplicate", "empty-id", "too-many", "single"],

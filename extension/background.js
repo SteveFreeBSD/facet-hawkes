@@ -15,7 +15,11 @@
  * and Firefox unloads it when idle.
  */
 
-import { ALLOWED_HOST_PATTERN, validateAnswer } from "/common/config.js";
+import {
+  ALLOWED_HOST_PATTERN,
+  MAX_ANSWER_PARTS,
+  validateAnswer,
+} from "/common/config.js";
 import {
   ANSWER_SESSION_KEY,
   restoreSolvedAnswer,
@@ -821,7 +825,7 @@ function multiEntryPlans(parts, editor) {
   if (!(
     Array.isArray(parts)
     && parts.length >= 2
-    && parts.length <= 4
+    && parts.length <= MAX_ANSWER_PARTS
     && editor?.kind === "multi"
     && Array.isArray(editor.editors)
     && editor.editors.length === parts.length
@@ -972,7 +976,7 @@ function answerShapeOf(editor) {
     editor?.kind === "multi"
     && Array.isArray(editor.editors)
     && editor.editors.length >= 2
-    && editor.editors.length <= 4
+    && editor.editors.length <= MAX_ANSWER_PARTS
   ) {
     const representations = editor.editors.map((one) =>
       one?.kind === "textbox"
@@ -1170,7 +1174,7 @@ function answerFieldIds(choice, evidence, editor) {
   if (
     !Array.isArray(candidates)
     || candidates.length < 2
-    || candidates.length > 4
+    || candidates.length > MAX_ANSWER_PARTS
     || !candidates.every((id) => typeof id === "string" && id !== "")
     || new Set(candidates).size !== candidates.length
   ) {
@@ -1549,7 +1553,7 @@ async function prepare(windowId = state.windowId) {
     if (
       fieldIds.length > 0
       && (fieldIds.length < 2
-        || fieldIds.length > 4
+        || fieldIds.length > MAX_ANSWER_PARTS
         || editor?.kind !== "multi"
         || editor.editors?.length !== fieldIds.length)
     ) {
@@ -2008,9 +2012,9 @@ async function acceptReply(reply) {
   const answerParts = Array.isArray(reply.answer.parts)
     ? reply.answer.parts.filter((value) => typeof value === "string")
     : [];
-  const hasParts = answerParts.length >= 2 && answerParts.length <= 4 && answerParts.every(
-    (value) => validateAnswer(value).ok
-  );
+  const hasParts = answerParts.length >= 2
+    && answerParts.length <= MAX_ANSWER_PARTS
+    && answerParts.every((value) => validateAnswer(value).ok);
   // What may be typed is a narrower question than what may be shown. A
   // multi-part answer keeps the readable equality only as its reviewed
   // identity; its entry values remain separate all the way to the field writer.
@@ -3023,6 +3027,7 @@ function markedCode() {
     "common/cadence-session.js#observeCadence": observeCadence,
     "common/cadence.js": globalThis.ethnosCadence,
     "common/config.js#ALLOWED_HOST_PATTERN": ALLOWED_HOST_PATTERN,
+    "common/config.js#MAX_ANSWER_PARTS": MAX_ANSWER_PARTS,
     "common/config.js#validateAnswer": validateAnswer,
     "common/editor-plan.js#planAnswerParts": planAnswerParts,
     "common/editor-plan.js#planEntry": planEntry,

@@ -18,6 +18,7 @@
  * to whoever has a `browser.i18n` to hand.
  */
 
+import { MAX_ANSWER_PARTS } from "/common/config.js";
 import { answerFitsEditor } from "/common/editor-rules.js";
 import { planAnswerParts, planEntry } from "/common/editor-plan.js";
 
@@ -146,7 +147,7 @@ function reviewOffer(state) {
   if (
     Array.isArray(state.answerParts)
     && state.answerParts.length >= 2
-    && state.answerParts.length <= 4
+    && state.answerParts.length <= MAX_ANSWER_PARTS
   ) {
     const editors = state.editor?.kind === "multi" ? state.editor.editors : [];
     const multiInsertable = Array.isArray(editors)

@@ -33,6 +33,9 @@
 var ethnosHawkes = (function () {
   const ALLOWED_ORIGIN = "https://learn.hawkeslearning.com";
   const MAX_ANSWER_LENGTH = 40;
+  // Kept in step with `common/config.js` by the build's shared-constant check;
+  // this file is injected as a classic script and imports nothing.
+  const MAX_ANSWER_PARTS = 5;
   const ANSWER_PATTERN = /^[0-9A-Za-z+\-*/^().,√π ]+$/;
 
   const FIELD_SELECTOR = [
@@ -139,8 +142,9 @@ var ethnosHawkes = (function () {
   }
 
   /**
-   * One complete Hawkes solution set: two through four editors joined by the
-   * expected number of visible literal "or" separators.
+   * One complete Hawkes solution set: two or more editors, up to
+   * `MAX_ANSWER_PARTS`, joined by the expected number of visible literal "or"
+   * separators.
    *
    * Geometry and every separator are required. Merely seeing several inputs
    * is not enough: they could be unrelated fields in a word problem.
@@ -171,7 +175,7 @@ var ethnosHawkes = (function () {
       });
     if (
       fields.length < 2
-      || fields.length > 4
+      || fields.length > MAX_ANSWER_PARTS
       || new Set(fields.map((field) => field.id)).size !== fields.length
     ) {
       lastSolutionFieldEvidence = {
@@ -624,7 +628,7 @@ var ethnosHawkes = (function () {
     if (
       !Array.isArray(parts)
       || parts.length < 2
-      || parts.length > 4
+      || parts.length > MAX_ANSWER_PARTS
       || !parts.every(answerIsSupported)
       || !Array.isArray(expectedFieldIds)
       || expectedFieldIds.length !== parts.length

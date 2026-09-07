@@ -55,6 +55,15 @@ class AnswerRepresentation(BaseModel):
     maxLength: int = Field(ge=1, le=40)
 
 
+#: How many separate values one question may ask for, on this wire.
+#:
+#: Named here as well as in `facet_client`, and asserted equal by the tests:
+#: the two are different boundaries -- browser to host, host to Facet -- and a
+#: request the browser is allowed to make that the next hop refuses is a
+#: refusal with nobody's name on it.
+MAX_ANSWER_PARTS = 5
+
+
 class AnswerShape(BaseModel):
     """How the page takes an answer, as the add-on observed it.
 
@@ -78,10 +87,10 @@ class AnswerShape(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     kind: Literal["field", "option", "multi", "graph"] = "field"
-    count: int = Field(default=1, ge=1, le=4)
+    count: int = Field(default=1, ge=1, le=MAX_ANSWER_PARTS)
     graph: GraphContext | None = None
     representations: list[AnswerRepresentation] = Field(
-        default_factory=list, max_length=4
+        default_factory=list, max_length=MAX_ANSWER_PARTS
     )
 
     @model_validator(mode="after")
@@ -180,7 +189,7 @@ class AnswerPayload(BaseModel):
     keyboard_entry: str = ""
     # Distinct values for a multi-value answer. Keeping these structured avoids
     # recovering mathematical boundaries from display prose later.
-    parts: list[str] = Field(default_factory=list, max_length=4)
+    parts: list[str] = Field(default_factory=list, max_length=MAX_ANSWER_PARTS)
 
 
 class Certainty(BaseModel):

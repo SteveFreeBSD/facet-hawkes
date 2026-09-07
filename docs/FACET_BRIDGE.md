@@ -328,12 +328,19 @@ their place: a substituted answer would carry a provenance nobody asked for.
 
 ### Saying what shape an answer must take
 
-Some Hawkes questions want two answers rather than one: a paired `y = [] or []`
-editor, or a single box the question says to fill with comma-separated values.
-The add-on already normalises every answer control it supports into one word --
-`field`, `option`, `multi`, or `graph` -- and Ethnos reads what that word means
-for *this* question, because a single box is still a two-value answer when the
-instruction says to separate answers with a comma.
+Some Hawkes questions want more than one answer: a paired `y = [] or []`
+editor, a single box the question says to fill with comma-separated values, or
+a table of values with a blank cell in each row. The add-on already normalises
+every answer control it supports into one word -- `field`, `option`, `multi`,
+or `graph` -- and Ethnos reads what that word means for *this* question,
+because a single box is still a two-value answer when the instruction says to
+separate answers with a comma.
+
+Up to five values cross. The bound was four, sized for `y = [] or []` and the
+roots behind it, until lesson 2.1's table of values for `x = y²` published five
+blank cells: every gate between the page and Facet refused the fifth, fell back
+to "one box", and the question was answered -- exactly, and once. A question
+with more parts than the bound is refused whole rather than half-answered.
 
 What crosses is the resulting count, as `answer_parts`. Character sets,
 templates, slot rules, field ids and the shape word itself stay in the browser,

@@ -748,11 +748,28 @@ def test_the_browser_cannot_invent_an_answer_shape() -> None:
 EXTENSION = Path(__file__).resolve().parents[1] / "extension"
 
 
+def _normaliser():
+    """`answerShapeOf`, over the real bound on how many parts an answer has."""
+    quickjs = pytest.importorskip("quickjs", reason="pip install quickjs")
+    context = quickjs.Context()
+    # Read from the module the event page imports it from, so a bound that
+    # moves in one place and not the other fails here.
+    context.eval(
+        (EXTENSION / "common" / "config.js")
+        .read_text(encoding="utf-8")
+        .replace("export ", "")
+    )
+    source = (EXTENSION / "background.js").read_text(encoding="utf-8")
+    context.eval(_lift(source, "answerShapeOf"))
+    return context
+
+
 def _lift(source: str, name: str) -> str:
     """Lift one brace-balanced function out of `background.js`.
 
     The event page is an ES module and cannot be evaluated whole here, but the
-    normaliser is pure and has no imports, so it runs on its own.
+    normaliser is pure, so it runs beside the one constant it reads --
+    see `_normaliser`.
     """
     start = source.index(f"function {name}(")
     depth, index = 0, source.index("{", start)
@@ -782,12 +799,9 @@ def _lift(source: str, name: str) -> str:
 def test_the_browser_normalises_every_editor_into_one_shape_word(
     described, expected
 ) -> None:
-    quickjs = pytest.importorskip("quickjs", reason="pip install quickjs")
     import json
 
-    source = (EXTENSION / "background.js").read_text(encoding="utf-8")
-    context = quickjs.Context()
-    context.eval(_lift(source, "answerShapeOf"))
+    context = _normaliser()
 
     shape = json.loads(
         context.eval(f"JSON.stringify(answerShapeOf({json.dumps(described)}))")
@@ -809,10 +823,7 @@ def test_the_browser_normalises_every_editor_into_one_shape_word(
 def test_the_retained_numeric_pair_is_normalised_without_crossing_editor_rules() -> (
     None
 ):
-    quickjs = pytest.importorskip("quickjs", reason="pip install quickjs")
-    source = (EXTENSION / "background.js").read_text(encoding="utf-8")
-    context = quickjs.Context()
-    context.eval(_lift(source, "answerShapeOf"))
+    context = _normaliser()
     editor = {
         "kind": "multi",
         "editors": [

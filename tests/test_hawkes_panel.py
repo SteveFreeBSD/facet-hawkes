@@ -29,7 +29,7 @@ quickjs = pytest.importorskip("quickjs", reason="pip install quickjs")
 # Dependency order; the modules are concatenated because QuickJS here has no
 # module loader and these three are deliberately import-free apart from each
 # other.
-MODULES = ("editor-rules.js", "editor-plan.js", "panel-view.js")
+MODULES = ("config.js", "editor-rules.js", "editor-plan.js", "panel-view.js")
 
 IMPORT_LINE = re.compile(r"^import\s.*?;\s*$", re.MULTILINE | re.DOTALL)
 

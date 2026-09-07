@@ -420,28 +420,47 @@ def _check_cadence_score(problems: list[str]) -> None:
             problems.append(f"MAIN duplicates score planning: {forbidden}")
 
 
+#: Files that cannot import `common/config.js` and therefore carry their own
+#: copy of a shared bound: two content scripts and the one MAIN-world writer,
+#: which is serialized into the page by `executeScript` and loses its imports.
+#: Each name is checked against every copy that declares it.
+SELF_CONTAINED_COPIES: dict[str, tuple[str, ...]] = {
+    "MAX_ANSWER_LENGTH": ("content/hawkes-editor.js",),
+    "ANSWER_PATTERN": ("content/hawkes-editor.js",),
+    "MAX_ANSWER_PARTS": (
+        "content/hawkes-editor.js",
+        "content/hawkes-describe.js",
+        "common/page-actions.js",
+    ),
+}
+
+
 def _check_shared_constants(problems: list[str]) -> None:
     """The content scripts are self-contained, so their copies must not drift."""
     config = (EXTENSION_DIR / "common" / "config.js").read_text(encoding="utf-8")
+
+    for name, copies in SELF_CONTAINED_COPIES.items():
+        shared = re.search(rf"\b{name} = (.+);", config)
+        if not shared:
+            problems.append(f"could not read {name} from common/config.js")
+            continue
+        for relative in copies:
+            content = re.search(
+                rf"\b{name} = (.+);",
+                (EXTENSION_DIR / relative).read_text(encoding="utf-8"),
+            )
+            if not content:
+                problems.append(f"could not read {name} from {relative} to compare")
+            elif shared.group(1) != content.group(1):
+                problems.append(
+                    f"{relative} {name} ({content.group(1)}) has drifted "
+                    f"from common/config.js ({shared.group(1)})"
+                )
+
+    # The prelude checks a full origin; the popup checks the hostname half.
     editor = (EXTENSION_DIR / "content" / "hawkes-editor.js").read_text(
         encoding="utf-8"
     )
-
-    for name in (
-        "MAX_ANSWER_LENGTH",
-        "ANSWER_PATTERN",
-    ):
-        shared = re.search(rf"\b{name} = (.+);", config)
-        content = re.search(rf"\b{name} = (.+);", editor)
-        if not shared or not content:
-            problems.append(f"could not read {name} from both copies to compare")
-        elif shared.group(1) != content.group(1):
-            problems.append(
-                f"content/hawkes-editor.js {name} ({content.group(1)}) has drifted "
-                f"from common/config.js ({shared.group(1)})"
-            )
-
-    # The prelude checks a full origin; the popup checks the hostname half.
     hostname = re.search(r'ALLOWED_HOSTNAME = "([^"]+)"', config)
     origin = re.search(r'ALLOWED_ORIGIN = "https://([^"]+)"', editor)
     if not hostname or not origin:

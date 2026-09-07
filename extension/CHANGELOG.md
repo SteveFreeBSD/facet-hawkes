@@ -6,6 +6,19 @@ name the add-on as it was called at the time.
 
 ## Unreleased
 
+- **A question with five blank cells is no longer answered as one box.**
+  Lesson 2.1 completes a table of values for `x = y²` and draws five blanks;
+  the page publishes one enabled control for each of them. Every gate between
+  the page and Facet bounded a multi-part answer at four -- a bound sized for
+  `y = [] or []` and the roots behind it -- so the DOM sweep counted five boxes
+  and reported no ids for them, the page's own editor model declined to call
+  five controls a multi-control answer, and the question was sent as a single
+  field. Facet answered the single field it was asked about, exactly, and one
+  number came back for a five-part question. The bound is now five, in the one
+  place the browser declares it and the two the host does, and the build's
+  shared-constant check covers all three of the self-contained copies. A
+  question with more parts than that is still refused whole rather than
+  half-answered.
 - **Facet is now told when every answer part must be a signed integer.** A
   recurring two-box question published two six-character textboxes accepting
   only digits and minus, but the solve request reduced that contract to the

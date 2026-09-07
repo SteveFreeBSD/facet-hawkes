@@ -29,7 +29,12 @@
  */
 export async function enterPlan(steps, cadence = {}, targetFieldIds = []) {
   const SETTLE_MS = 4000;
-  const multi = Array.isArray(targetFieldIds) && targetFieldIds.length >= 2 && targetFieldIds.length <= 4;
+  // Kept in step with `common/config.js` by the build's shared-constant
+  // check; this function is serialized into the page's own world by
+  // `scripting.executeScript`, so no import survives here.
+  const MAX_ANSWER_PARTS = 5;
+  const multi = Array.isArray(targetFieldIds) && targetFieldIds.length >= 2
+    && targetFieldIds.length <= MAX_ANSWER_PARTS;
   const plans = multi ? steps : [steps];
   if (
     !Array.isArray(plans)

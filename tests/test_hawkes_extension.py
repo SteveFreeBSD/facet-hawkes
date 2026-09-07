@@ -992,7 +992,9 @@ def test_the_only_editor_control_is_described_after_sidebar_takes_focus() -> Non
     assert len(paired["editors"]) == 2
     assert len(describe(3)["editors"]) == 3
     assert len(describe(4)["editors"]) == 4
-    assert describe(5) == {"ok": False, "code": "no-focused-control"}
+    # Five is lesson 2.1's table of values: one control per blank cell.
+    assert len(describe(5)["editors"]) == 5
+    assert describe(6) == {"ok": False, "code": "no-focused-control"}
 
 
 def test_a_disabled_control_is_not_one_of_the_questions_answers() -> None:

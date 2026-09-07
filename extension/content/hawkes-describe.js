@@ -22,6 +22,9 @@
  */
 
 (() => {
+  // Kept in step with `common/config.js` by the build's shared-constant
+  // check; this file runs in the page's own world and imports nothing.
+  const MAX_ANSWER_PARTS = 5;
   const ui = window.quant_wp_UI;
   if (!ui || ui.controlsCollection === undefined) {
     return { ok: false, code: "editor-model-missing" };
@@ -131,7 +134,12 @@
   const usable = described.filter(
     (editor) => editor !== null && editor.enabled !== false
   );
-  if (usable.length >= 2 && usable.length <= 4) {
+  // Five enabled controls is what lesson 2.1's table-completion question
+  // publishes, one per blank cell. Bounded at four, this fell straight past
+  // the multi branch to `focusedElementIndex` below and described a single
+  // textbox -- so the page that had just said "five boxes" was reported as
+  // one, and the question was solved as one.
+  if (usable.length >= 2 && usable.length <= MAX_ANSWER_PARTS) {
     return described.every(Boolean)
       ? { ok: true, code: "described-multi", kind: "multi", editors: usable }
       : { ok: false, code: "no-focused-control" };
