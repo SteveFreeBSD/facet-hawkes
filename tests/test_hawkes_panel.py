@@ -730,3 +730,39 @@ def test_a_value_too_long_for_its_own_cell_is_not_offered(view) -> None:
     shown = view(panel_state(tableTargets=targets, answerParts=["0", "8", "88", "5", "3"]))
 
     assert shown["insert"]["enabled"] is False
+
+
+def test_the_panel_offers_a_table_of_fractions(view) -> None:
+    """The live refusal, at the control the owner actually sees.
+
+    Lesson 2.1's four-blank table was answered exactly -- every value proved
+    right by hand -- and Insert stayed disabled on all of it, because the rule
+    behind that button judged `16/9` as one value against one box and named a
+    keypad template the question does not publish. A cell holds a fraction
+    across its own two boxes; the button has to know that too, or the answer
+    goes nowhere.
+    """
+    shown = view(
+        panel_state(
+            answerParts=["16/9", "-8/3", "1/3", "34/9", "1/2"],
+            answer="16/9, -8/3, 1/3, 34/9, 1/2",
+            displayText="16/9, -8/3, 1/3, 34/9, 1/2",
+        )
+    )
+
+    assert shown["insert"]["enabled"] is True
+    assert shown["status"]["key"] == "statusSolved"
+
+
+def test_the_panel_still_refuses_a_table_value_no_cell_can_hold(view) -> None:
+    """Opening the fraction path must not open the door to everything."""
+    shown = view(
+        panel_state(
+            answerParts=["sqrt(2)", "8", "8", "5", "3"],
+            answer="sqrt(2), 8, 8, 5, 3",
+            displayText="√2, 8, 8, 5, 3",
+        )
+    )
+
+    assert shown["insert"]["enabled"] is False
+    assert shown["status"]["kind"] == "error"

@@ -246,3 +246,135 @@ def test_an_option_question_is_found_without_focusing_a_radio():
     assert "names.size === 1" in editor
     assert "focused !== document.body" not in editor
     assert '"option-answer"' in editor
+
+
+# --- a table cell that holds a fraction -------------------------------------
+#
+# Live, on 2026-09-07, lesson 2.1's four-blank table was read correctly,
+# crossed to Facet as a grid, and answered exactly -- and every value was
+# refused:
+#
+#     answer-parts-unplaceable {"parts":4,"tableTargets":4,
+#       "cellFit":["answer-needs-template","answer-needs-template",
+#                  "answer-needs-template","answer-needs-template"],
+#       "editorKind":"textbox","allowed":[]}
+#     answer-not-insertable    {"editor":"answer-parts","plan":"answer-parts"}
+#
+# The writer had already learned that a Hawkes answer cell owns a numerator
+# control and a denominator control, and that typing `/` opens the pair. The
+# rule deciding whether to offer Insert had not: it judged `16/9` as one whole
+# value against one box, saw a `/`, and named a keypad template the question
+# does not publish and that entry never needed.
+
+
+@pytest.fixture(scope="module")
+def table_fits():
+    context = rules_context()
+
+    def call(parts, targets, editor):
+        return json.loads(
+            context.eval(
+                "JSON.stringify(tableAnswerVerdicts("
+                f"{json.dumps(parts)}, {json.dumps(targets)}, {json.dumps(editor)}))"
+            )
+        )
+
+    return call
+
+
+#: The editor the live page published for that question: digits and a minus
+#: sign, four characters, and not one keypad template.
+CELL_EDITOR = {
+    "ok": True,
+    "kind": "textbox",
+    "code": "described",
+    "enabled": True,
+    "allowedCharacters": "[0-9-]",
+    "maxLength": 4,
+    "templates": {"fraction": False, "radical": False, "exponent": False},
+}
+
+
+def cell_mapping(ids, max_length=None):
+    """A mapping of the shape the reader states, over the given controls."""
+    return [
+        {
+            "blank": index + 1,
+            "id": one,
+            "row": index + 1,
+            "column": 1,
+            "maxLength": max_length,
+            "label": f"y #{index + 1}",
+        }
+        for index, one in enumerate(ids)
+    ]
+
+
+#: The four boxes that mapping named, in semantic blank order.
+LIVE_CELLS = cell_mapping(
+    [
+        "MatrixTextBoxes2_num",
+        "MatrixTextBoxes8_num",
+        "MatrixTextBoxes9_num",
+        "MatrixTextBoxes5_num",
+    ]
+)
+
+
+def test_the_live_fractions_are_placeable_in_the_cells_that_hold_them(table_fits):
+    """The exact refusal: four proved answers, four cells, four refusals."""
+    verdicts = table_fits(["16/9", "-8/3", "1/3", "34/9"], LIVE_CELLS, CELL_EDITOR)
+
+    assert verdicts == [{"insertable": True}] * 4
+
+
+def test_a_whole_integer_table_is_judged_exactly_as_before(table_fits):
+    """Plain numeric entry is what already worked live. It must not move."""
+    assert table_fits(["3", "-8", "12", "-4"], LIVE_CELLS, CELL_EDITOR) == [
+        {"insertable": True}
+    ] * 4
+
+
+def test_each_half_is_bounded_by_its_own_box(table_fits):
+    """`100/9` fits two four-character boxes and would never fit one."""
+    verdicts = table_fits(["100/9", "1/2", "1/2", "1/2"], LIVE_CELLS, CELL_EDITOR)
+
+    assert verdicts == [{"insertable": True}] * 4
+
+
+def test_a_half_too_long_for_its_own_box_is_still_refused(table_fits):
+    """The bound is per box, not abolished."""
+    verdicts = table_fits(["16/99999", "1/2", "1/2", "1/2"], LIVE_CELLS, CELL_EDITOR)
+
+    assert verdicts[0] == {"insertable": False, "code": "answer-too-long"}
+
+
+def test_a_half_the_question_will_not_take_is_still_refused(table_fits):
+    """The character set is the question's, and applies to both halves."""
+    verdicts = table_fits(["1/x", "1/2", "1/2", "1/2"], LIVE_CELLS, CELL_EDITOR)
+
+    assert verdicts[0] == {
+        "insertable": False,
+        "code": "answer-has-rejected-characters",
+        "detail": "x",
+    }
+
+
+def test_a_fraction_in_a_cell_that_cannot_open_a_second_box_is_refused(table_fits):
+    """A pair is how the value goes in. A cell with no pair cannot take it."""
+    plain = cell_mapping(["txtAns1", "txtAns2", "txtAns3", "txtAns4"])
+    verdicts = table_fits(["1/3", "2", "3", "4"], plain, CELL_EDITOR)
+
+    assert verdicts[0] == {"insertable": False, "code": "table-cell-not-expandable"}
+    assert verdicts[1:] == [{"insertable": True}] * 3
+
+
+def test_the_cells_own_published_bound_still_wins_over_the_questions(table_fits):
+    """Each box states its own length; the fraction path reads the same one."""
+    narrow = cell_mapping(
+        ["MatrixTextBoxes2_num", "MatrixTextBoxes8_num"], max_length=2
+    )
+    verdicts = table_fits(["100/9", "1/2"], narrow, CELL_EDITOR)
+
+    assert verdicts[0] == {"insertable": False, "code": "answer-too-long"}
+    assert verdicts[1] == {"insertable": True}

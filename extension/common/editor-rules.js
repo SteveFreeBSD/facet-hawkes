@@ -209,6 +209,67 @@ function cellEditor(editor, target) {
 }
 
 /**
+ * One answer part, as the two halves the cell would hold it in, or null.
+ *
+ * The same split the table writer makes, and deliberately the same shape of
+ * answer: one top-level `/` with something on each side. Null means "not a
+ * fraction this cell could hold" -- either there is no `/` at all, or the part
+ * is a shape no pair of boxes can take -- and both are then judged as one
+ * whole value, which is what refuses the second.
+ */
+function fractionHalves(part) {
+  const at = typeof part === "string" ? part.indexOf("/") : -1;
+  if (at < 0) {
+    return null;
+  }
+  const numerator = part.slice(0, at);
+  const denominator = part.slice(at + 1);
+  return numerator.length > 0 && denominator.length > 0 && !denominator.includes("/")
+    ? { numerator, denominator }
+    : null;
+}
+
+/**
+ * Whether this cell can open a second box, by the name Hawkes gives it.
+ *
+ * The mapping names a cell by its numerator control, and the denominator does
+ * not exist until a `/` has been typed -- so at review time the name is all
+ * there is to go on, and it is the same rule the writer routes by. A cell
+ * already showing a fraction also states its other half, and states this box.
+ */
+function cellExpands(target) {
+  return typeof target?.id === "string" && target.id.endsWith("_num");
+}
+
+/**
+ * Whether one part can be placed in the one cell that holds it.
+ *
+ * A plain Hawkes answer box has no keypad template to press, so a fraction is
+ * not built with one: typing `/` into the cell's own box turns it into a
+ * numerator and a denominator, and the value is entered across the pair. That
+ * makes `16/9` one answer in one cell, bounded by two boxes rather than by
+ * one -- `100/9` fits two four-character boxes and would never fit one.
+ *
+ * Judging the whole part against a single box instead is what refused every
+ * value of a four-blank table Facet had answered exactly. Live, on
+ * 2026-09-07, four correct fractions in four mapped cells produced
+ * `answer-needs-template` four times, against a question whose editor
+ * publishes no templates and needs none for the way that answer is entered.
+ */
+function cellVerdict(part, rule, target) {
+  const box = cellEditor(rule, target);
+  const halves = fractionHalves(part);
+  if (halves === null) {
+    return answerFitsEditor(part, box);
+  }
+  if (!cellExpands(target)) {
+    return { insertable: false, code: "table-cell-not-expandable" };
+  }
+  const numerator = answerFitsEditor(halves.numerator, box);
+  return numerator.insertable ? answerFitsEditor(halves.denominator, box) : numerator;
+}
+
+/**
  * Can each part of a table answer be typed into the cell it belongs to?
  *
  * Deliberately not the multi-editor rule. Hawkes' live completion grid
@@ -236,9 +297,7 @@ export function tableAnswerVerdicts(parts, targets, editor) {
   ) {
     return null;
   }
-  return parts.map((part, index) =>
-    answerFitsEditor(part, cellEditor(rule, targets[index]))
-  );
+  return parts.map((part, index) => cellVerdict(part, rule, targets[index]));
 }
 
 /** Whether every part of a table answer can be placed. */

@@ -6,6 +6,22 @@ name the add-on as it was called at the time.
 
 ## Unreleased
 
+- **Insert is offered for a table of fractions, not just written for one.** The
+  writer had already learned that a Hawkes answer cell owns a numerator control
+  and a denominator control, and that typing `/` opens the pair -- but the rule
+  deciding whether to offer Insert at all had not. It judged `16/9` as one
+  whole value against one box, saw the `/`, and named a keypad template the
+  question does not publish and that this entry never needed. Live, that
+  refused all four values of a four-blank table Facet had answered exactly:
+  `cellFit` was `answer-needs-template` four times over four correct answers,
+  and the button stayed grey. A cell that can open a second box is now judged
+  as the pair it will hold the value in, each half against that box's own
+  published bound -- so `100/9` fits two four-character boxes, as it does when
+  a student types it. Whole-number entry is judged exactly as before, a half
+  the question's character set rejects is still refused, and a fraction aimed
+  at a cell with no second box to open is refused by name rather than
+  attempted.
+
 - **A table cell that holds a fraction is one blank, and its answer is entered
   into it.** Facet answered a four-blank table exactly -- `16/9`, `-8/3`,
   `1/3`, `34/9`, all four right by hand -- and could not enter any of them.
