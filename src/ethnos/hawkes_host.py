@@ -360,7 +360,7 @@ def instruction_with_answer_representation(instruction: str, shape) -> str:
     )
 
 
-def answer_table_payload(table) -> dict[str, object] | None:
+def answer_table_payload(table, parts_required: int = 0) -> dict[str, object] | None:
     """The grid a completion question is answered in, in Facet's terms.
 
     A completion question's givens are the question. `x = y²` and "complete the
@@ -380,10 +380,21 @@ def answer_table_payload(table) -> dict[str, object] | None:
     means the table cannot be stated faithfully, and then it is not stated at
     all. A partial grid would be a different question, so the choice is the
     whole thing or nothing.
+
+    `parts_required` is the other reading of the same fact -- how many separate
+    values the page will take -- and the grid is sent only when the two agree.
+    They are read from different places: the blanks come from the table's own
+    markup and the count from the editor the page publishes, and a question
+    where those disagree has been half-read. Facet refuses such a request
+    outright, and rightly; sending it anyway would turn a question that was
+    merely answered narrowly into one that cannot be answered at all.
     """
     from .hawkes_mathml import UnsupportedMathML, mathml_to_latex
 
     if table is None:
+        return None
+    blanks = sum(1 for row in table.rows for cell in row if cell.blank is not None)
+    if blanks != parts_required:
         return None
     rows: list[list[dict[str, object]]] = []
     for row in table.rows:
@@ -868,7 +879,7 @@ def _solve_with_facet(
             # The grid and the form of an answer, as structure. Facet computes
             # from these and checks a reasoned answer against them; neither is
             # possible against a sentence.
-            answer_table=answer_table_payload(problem.answer_table),
+            answer_table=answer_table_payload(problem.answer_table, parts_required),
             answer_representation=answer_representation_payload(
                 problem.answer_shape
             ),

@@ -458,7 +458,7 @@ def test_the_host_sends_the_table_as_structure() -> None:
     from ethnos.hawkes_protocol import AnswerTable
 
     payload = answer_table_payload(
-        AnswerTable(columns=["x", "y"], rows=EXPECTED_ROWS)
+        AnswerTable(columns=["x", "y"], rows=EXPECTED_ROWS), 5
     )
 
     assert payload == {
@@ -476,7 +476,24 @@ def test_the_host_sends_the_table_as_structure() -> None:
 def test_there_is_no_table_payload_without_a_table() -> None:
     from ethnos.hawkes_host import answer_table_payload
 
-    assert answer_table_payload(None) is None
+    assert answer_table_payload(None, 5) is None
+
+
+def test_a_grid_the_page_count_disagrees_with_is_not_sent() -> None:
+    """Five blanks read off the markup, one answer read off the editor.
+
+    That disagreement is exactly the fault this whole line of work started
+    from, and it can return. Facet refuses a request whose two statements of
+    the same fact do not match, so sending one would turn a question that was
+    merely answered narrowly into one that fails outright.
+    """
+    from ethnos.hawkes_host import answer_table_payload
+    from ethnos.hawkes_protocol import AnswerTable
+
+    table = AnswerTable(columns=["x", "y"], rows=EXPECTED_ROWS)
+
+    assert answer_table_payload(table, 1) is None
+    assert answer_table_payload(table, 5) is not None
 
 
 def test_a_cell_the_converter_cannot_translate_sends_no_table_at_all() -> None:
