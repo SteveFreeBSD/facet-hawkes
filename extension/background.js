@@ -1775,7 +1775,21 @@ async function prepare(windowId = state.windowId) {
     }
     const editor = await describeEditor(tab.id, choice.frameId, 5, choice.graph === true);
     if (choice.graph && (!editor?.ok || editor.kind !== "graph")) {
-      fail("errorEditorUnknown", { detail: editor?.code ?? "graph-missing" });
+      // What the page's own graph model says it is drawing. Titles, counts and
+      // flags only -- never a coordinate, and never the question's words -- so
+      // "this family is unsupported" names a gap instead of restating itself.
+      log.warn("graph-unsupported", {
+        code: editor?.code ?? "graph-missing",
+        ...(editor?.found ?? {}),
+      });
+      // Never the editor recovery. It ends "click the answer box and reopen
+      // this panel", and this question has no answer box to click -- the graph
+      // is where it is answered. Live, on 2026-09-07, that instruction was the
+      // whole of what the panel offered somebody asked to plot four points.
+      fail(
+        editor?.code === "wrong-site" ? "errorWrongSite" : "errorGraphUnsupported",
+        { detail: editor?.code ?? "graph-missing" }
+      );
       return;
     }
     const swept = answerFieldIds(choice, evidenceReport?.multiFieldEvidence, editor);

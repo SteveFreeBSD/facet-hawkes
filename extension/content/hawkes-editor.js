@@ -335,12 +335,42 @@ var ethnosHawkes = (function () {
         frameOrigin: focusedSubframeOrigin(),
       };
     }
+    // A question answered on the graph has no answer box, and looking for one
+    // is how the panel came to tell somebody to click a box their question does
+    // not have. Live, on 2026-09-07, on "plot the following points in the
+    // Cartesian plane": `no-focused-answer-field`, and a recovery instruction
+    // that could not be followed.
+    //
+    // The graph is the answer surface whenever the page draws one and offers no
+    // field beside it. Which *kind* of graph question it is -- a parabola whose
+    // three controls this add-on can move, or one it cannot yet place -- is the
+    // editor probe's decision and is made against the page's own graph model,
+    // not guessed from the markup here.
+    const controls = 'svg g.parabola g.point a[draggable="true"][role="button"]';
     const graphs = [...document.querySelectorAll('#QGraph[role="application"]')].filter(
-      node => node.getBoundingClientRect().width > 0 && node.querySelectorAll('svg g.parabola g.point a[draggable="true"][role="button"]').length === 3
+      node => node.getBoundingClientRect().width > 0
     );
     if (graphs.length === 1) {
-      const ids = [...graphs[0].querySelectorAll('svg g.parabola g.point a[draggable="true"][role="button"]')].map(node => node.id);
-      if (ids.every(Boolean)) return { ready: true, code: "graph-answer", fieldId: ids.join("\u001f") };
+      const ids = [...graphs[0].querySelectorAll(controls)].map(node => node.id);
+      if (ids.length === 3 && ids.every(Boolean)) {
+        return {
+          ready: true,
+          code: "graph-answer",
+          via: "parabola-controls",
+          fieldId: ids.join("\u001f"),
+        };
+      }
+      // Only where nothing else on the page takes an answer. A scatter plot
+      // drawn beside a text box is that question's *data*, and the box is
+      // still where its answer goes.
+      if (solutionFields().length === 0) {
+        return {
+          ready: true,
+          code: "graph-answer",
+          via: "graph-surface",
+          fieldId: graphs[0].id || "QGraph",
+        };
+      }
     }
     // A selected option may reveal the only text field that completes it.
     // Hawkes links that field from the radio with aria-controls, so following

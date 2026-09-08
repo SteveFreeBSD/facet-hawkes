@@ -1,6 +1,7 @@
 """Graph plans cross the Facet boundary only as strictly validated geometry."""
 
 import json
+import pathlib
 
 import pytest
 
@@ -172,8 +173,111 @@ def test_graph_dom_is_detected_without_a_text_box():
     assert result == {
         "ready": True,
         "code": "graph-answer",
+        # Which reading claimed it: the three parabola controls this add-on
+        # can move, rather than the graph merely being the only surface there.
+        "via": "parabola-controls",
         "fieldId": "a0\u001fa1\u001fa2",
     }
+
+
+# --- a graph that is the answer, and is not a parabola -----------------------
+#
+# Live, on 2026-09-07: "plot the following points in the Cartesian plane", four
+# ordered pairs written into the prompt, and no answer box anywhere. The panel
+# said `no-focused-answer-field` and offered the editor recovery -- "click the
+# answer box and reopen this panel" -- which cannot be followed on a question
+# that has no box to click.
+#
+# The graph gate looked for exactly three draggable parabola controls, so any
+# other graph question fell past it into the text-field sweep and out the far
+# side as "nothing is focused".
+
+
+def graph_page(*, anchors: int, fields: str = "[]", width: int = 410):
+    """A page drawing one graph, with however many controls it offers."""
+    import quickjs
+
+    context = quickjs.Context()
+    context.eval(f"""
+      globalThis.HTMLIFrameElement = class {{}};
+      globalThis.HTMLFrameElement = class {{}};
+      globalThis.window = {{location: {{origin: 'https://learn.hawkeslearning.com'}}}};
+      const controls = Array.from({{length: {anchors}}}, (_, i) => ({{id: 'a' + i}}));
+      const graph = {{
+        id: 'QGraph',
+        getBoundingClientRect: () => ({{width: {width}}}),
+        querySelectorAll: () => controls,
+      }};
+      globalThis.document = {{
+        activeElement: null,
+        querySelectorAll: s => s.startsWith('#QGraph') ? [graph] : {fields},
+      }};
+    """)
+    context.eval(
+        (pathlib.Path(__file__).parents[1] / "extension/content/hawkes-editor.js")
+        .read_text()
+    )
+    return json.loads(context.eval("JSON.stringify(ethnosHawkes.inspectField())"))
+
+
+def test_a_graph_with_no_parabola_controls_is_still_the_answer_surface():
+    """The live case: four points to plot, no box, and no three controls."""
+    result = graph_page(anchors=0)
+
+    assert result["ready"] is True
+    assert result["code"] == "graph-answer"
+    assert result["via"] == "graph-surface"
+    assert result["fieldId"] == "QGraph"
+
+
+def test_a_graph_offering_some_other_number_of_controls_is_claimed_too():
+    """Four points to place is four controls, and not a parabola's three."""
+    result = graph_page(anchors=4)
+
+    assert result["code"] == "graph-answer"
+    assert result["via"] == "graph-surface"
+
+
+def test_a_graph_beside_a_text_box_never_takes_that_questions_answer():
+    """A scatter plot drawn beside a box is that question's data, not its
+    answer surface, and the box is still where the answer goes."""
+    result = graph_page(
+        anchors=0,
+        fields="[{id:'txtAns1_num', getBoundingClientRect:()=>({width:60,height:20}),"
+        " disabled:false, readOnly:false, type:'text', value:''}]",
+    )
+
+    assert result.get("via") != "graph-surface"
+
+
+def test_a_graph_the_page_is_not_drawing_is_not_an_answer_surface():
+    """Zero width is a graph that is not on screen."""
+    result = graph_page(anchors=0, width=0)
+
+    assert result.get("code") != "graph-answer"
+
+
+def test_the_graph_recovery_never_tells_anyone_to_click_a_box():
+    """`errorEditorUnknown` ends "click the answer box and reopen this panel".
+
+    On a graph question there is no box, so that instruction is impossible to
+    follow. The graph refusal has its own words.
+    """
+    messages = json.loads(
+        (pathlib.Path(__file__).parents[1] / "extension/_locales/en/messages.json")
+        .read_text()
+    )
+    background = (
+        pathlib.Path(__file__).parents[1] / "extension/background.js"
+    ).read_text()
+
+    assert "errorGraphUnsupported" in messages
+    said = messages["errorGraphUnsupported"]["message"]
+    assert "answer box" not in said
+    assert "graph" in said.lower()
+    # And it is what a refused graph describe actually raises.
+    assert '"errorWrongSite" : "errorGraphUnsupported"' in background
+    assert 'log.warn("graph-unsupported"' in background
 
 
 def test_graph_writer_has_no_grading_or_navigation_capability():

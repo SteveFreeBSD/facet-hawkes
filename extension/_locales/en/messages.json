@@ -197,6 +197,10 @@
     "message": "The answer editor could not be read, so nothing was inserted. Click the answer box and reopen this panel.",
     "description": "Shown when the editor model could not be inspected."
   },
+  "errorGraphUnsupported": {
+    "message": "This question is answered on the graph, and this add-on cannot place that kind of graph answer yet. Nothing was inserted, and nothing on the graph was moved.",
+    "description": "Shown when the page's answer surface is a graph whose family the graph path does not support. There is no answer box to click, so the ordinary editor recovery would be impossible to follow."
+  },
   "errorAnswerNeedsAbsoluteValue": {
     "message": "This answer needs absolute-value bars, but this question does not offer that keypad template. The answer is shown above; enter it manually only if Hawkes permits it.",
     "description": "Shown when an answer needs absolute value but the question does not publish that editor template."

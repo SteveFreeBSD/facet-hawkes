@@ -4,7 +4,24 @@
  * keyboard events to the three identified SVG point anchors. No page state is
  * installed. The plan is data, never code or prose. */
 export function graphOperation(offered = null) {
-  const refuse = (code) => ({ ok: false, code });
+  /**
+   * Why this graph was refused, and what it actually is.
+   *
+   * `graph-family-unsupported` was the whole report, and it is true of a
+   * scatter of points to plot, of a circle, of a line, and of a page whose
+   * model this reader simply cannot walk. Live, on 2026-09-07, a question that
+   * asks for four given points to be plotted reached here for the first time
+   * and said only that -- which named no gap anybody could close.
+   *
+   * Titles, counts and flags the page publishes about its own graph. No point
+   * coordinates, no question text: what a graph *is*, never what it holds or
+   * what the student has put on it.
+   */
+  let seen = {};
+  const note = (facts) => {
+    seen = { ...seen, ...facts };
+  };
+  const refuse = (code) => ({ ok: false, code, found: seen });
   try {
     if (window.location.origin !== "https://learn.hawkeslearning.com") return refuse("wrong-site");
     const roots = [...document.querySelectorAll('#QGraph[role="application"]')];
@@ -12,19 +29,40 @@ export function graphOperation(offered = null) {
     const root = roots[0];
     const plotRect = root.querySelector("svg defs clipPath rect");
     const renderedCurve = root.querySelector("svg g.parabola > path");
+    note({
+      plotRect: Boolean(plotRect),
+      parabolaPath: Boolean(renderedCurve),
+      // Every drawn group the graph has, by class, so a family with no
+      // `g.parabola` at all says what it does have instead.
+      groups: [...new Set([...root.querySelectorAll("svg g[class]")]
+        .map((node) => String(node.getAttribute("class") ?? "").slice(0, 24)))]
+        .slice(0, 12),
+      anchorsAnywhere: root.querySelectorAll('a[draggable="true"][role="button"]').length,
+    });
     if (!plotRect || !renderedCurve) return refuse("graph-renderer-unsupported");
     const plotWidth = Number(plotRect.getAttribute("width"));
     const plotHeight = Number(plotRect.getAttribute("height"));
     if (!(plotWidth > 0 && plotHeight > 0)) return refuse("graph-renderer-unsupported");
     const models = Object.values(window.quant_wp_UI?.controlsCollection ?? {});
+    note({ models: models.length, isGraph: models[0]?.isGraph === true });
     if (models.length !== 1 || models[0].isGraph !== true) return refuse("graph-model-missing");
     const model = models[0];
     const objects = Object.values(model.allGraphObjects());
+    note({
+      objects: objects.length,
+      // The page's own name for what it is drawing. This is the one fact that
+      // says which graph question this is.
+      titles: objects.map((one) => String(one?.title ?? "").slice(0, 32)).slice(0, 8),
+      children: objects.map((one) =>
+        Array.isArray(one?.children) ? one.children.length : -1).slice(0, 8),
+      enabled: model.getEnableState() === true,
+    });
     if (objects.length !== 1 || objects[0].title !== "Parabola") return refuse("graph-family-unsupported");
     const curve = objects[0];
     const points = curve.children;
     const names = ["Vertex", "Control Point 1", "Control Point 2"];
     const anchors = [...root.querySelectorAll('svg g.parabola g.point a[draggable="true"][role="button"]')];
+    note({ points: points.length, anchors: anchors.length });
     if (points.length !== 3 || anchors.length !== 3) return refuse("graph-controls-unsupported");
     const titles = anchors.map(anchor => document.getElementById(anchor.getAttribute("aria-labelledby")));
     const circles = anchors.map(anchor => anchor.querySelector("circle"));
