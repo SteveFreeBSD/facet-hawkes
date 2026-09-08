@@ -85,30 +85,134 @@ export function planEntry(answer, editor) {
   const fraction = splitFraction(answer);
   if (fraction !== null) {
     if (editor?.templates?.fraction === true) {
-      // Loading a fraction focuses the numerator, so the numerator is planned
-      // first and the denominator is reached with an explicit slot move.
-      const numerator = planRun(fraction.numerator, editor, "numerator");
-      if (numerator.ok === false) {
-        return numerator;
-      }
-      const denominator = planRun(fraction.denominator, editor, "denominator");
-      if (denominator.ok === false) {
-        return denominator;
-      }
-      return {
-        ok: true,
-        steps: [
-          { op: "template", name: "Fraction" },
-          ...numerator.steps,
-          { op: "slot", name: "denominator" },
-          ...denominator.steps,
-        ],
-      };
+      return planFractionTemplate(fraction, editor);
     }
     return planFractionBySlash(fraction, editor);
   }
 
   return planRun(answer, editor);
+}
+
+/**
+ * One fraction, built with the question's own Fraction template.
+ *
+ * Loading a fraction focuses the numerator, so the numerator is planned first
+ * and the denominator is reached with an explicit slot move. Each half is
+ * planned against the slot it is actually typed into, because the slots
+ * publish their own character sets -- a numerator that takes a minus sign
+ * beside a denominator that does not.
+ *
+ * Lifted out of `planEntry` so there is one definition of "how a fraction is
+ * built" rather than a top-level one and, later, a second one somewhere
+ * inside. `planSegment` below is the other caller, and it is what lets a
+ * fraction appear inside a bracketed pair.
+ */
+function planFractionTemplate(fraction, editor) {
+  const numerator = planRun(fraction.numerator, editor, "numerator");
+  if (numerator.ok === false) {
+    return numerator;
+  }
+  const denominator = planRun(fraction.denominator, editor, "denominator");
+  if (denominator.ok === false) {
+    return denominator;
+  }
+  return {
+    ok: true,
+    steps: [
+      { op: "template", name: "Fraction" },
+      ...numerator.steps,
+      { op: "slot", name: "denominator" },
+      ...denominator.steps,
+    ],
+  };
+}
+
+/**
+ * One value inside a structure: a fraction if it is one, otherwise a run.
+ *
+ * `planEntry` has always asked this question of the *whole* answer, and
+ * `planRun` has never asked it at all -- so a fraction at the top level was
+ * built and a fraction anywhere inside was met by the character loop, where
+ * `/` is in no question's published set. Every composition of a fraction with
+ * a structure was therefore unenterable.
+ *
+ * Live, on 2026-09-08, on a midpoint: Facet answered `(17/2,-1/2)` exactly, the
+ * box published `0123456789-,` with `fraction+parentheses` templates and slots
+ * of `numerator=0123456789-` and `denominator=0123456789` -- every piece
+ * needed, and the plan refused with `answer-has-rejected-characters: /`.
+ */
+function planSegment(text, editor, slot) {
+  const fraction = splitFraction(text);
+  if (fraction !== null && editor?.templates?.fraction === true) {
+    return planFractionTemplate(fraction, editor);
+  }
+  return planRun(text, editor, slot);
+}
+
+/**
+ * A comma-separated list of values, planned inside whatever holds it.
+ *
+ * A coordinate pair is the reason this exists, and it is the same list the
+ * page-bracketed path already plans -- the difference is only who draws the
+ * brackets. Where the page draws them, `planAnswerParts` splits the answer
+ * before any template is pressed; where the question offers `PBrace`, the pair
+ * is the *interior of a group* and is planned here.
+ *
+ * A single segment with no comma in it is the ordinary case and passes
+ * straight through, so nothing about an interval, a radicand or an exponent
+ * changes.
+ */
+function planCommaList(text, editor, slot) {
+  const segments = splitTopLevel(text, ",");
+  if (segments.length === 1) {
+    return planSegment(text, editor, slot);
+  }
+  if (segments.some((segment) => segment.length === 0)) {
+    return { ok: false, code: "answer-invalid" };
+  }
+  // The separator is typed, so it is held to the same published character set
+  // as anything else typed here. A box that takes no comma is not holding a
+  // list, whatever the answer looks like.
+  const divider = planRun(",", editor, slot);
+  if (divider.ok === false) {
+    return divider;
+  }
+  const steps = [];
+  for (const [index, segment] of segments.entries()) {
+    const planned = planSegment(segment, editor, slot);
+    if (planned.ok === false) {
+      return planned;
+    }
+    steps.push(...planned.steps);
+    if (index < segments.length - 1) {
+      // A segment that built a template left the caret inside it. The next
+      // segment belongs beside it, not in it, so the editor is walked back out
+      // to the slot the enclosing structure left open.
+      if (planned.steps.some((step) => step.op === "template")) {
+        steps.push({ op: "base" });
+      }
+      steps.push(...divider.steps);
+    }
+  }
+  // Adjacent typing is one keystroke run. A list with no structure in it --
+  // `(2,0)`, an interval, a plain coordinate pair -- plans exactly the steps it
+  // planned before this split existed, so nothing that already worked has a
+  // new shape to be executed or asserted against.
+  return { ok: true, steps: coalesced(steps) };
+}
+
+/** Adjacent `type` steps merged into one. */
+function coalesced(steps) {
+  const merged = [];
+  for (const step of steps) {
+    const last = merged[merged.length - 1];
+    if (step.op === "type" && last?.op === "type") {
+      merged[merged.length - 1] = { op: "type", text: last.text + step.text };
+      continue;
+    }
+    merged.push(step);
+  }
+  return merged;
 }
 
 /**
@@ -384,7 +488,7 @@ function planRun(answer, editor, slot = "base") {
       if (group === null) {
         return { ok: false, code: "parentheses-not-understood" };
       }
-      const inner = planRun(group.text, editor, slot);
+      const inner = planCommaList(group.text, editor, slot);
       if (inner.ok === false) {
         return inner;
       }

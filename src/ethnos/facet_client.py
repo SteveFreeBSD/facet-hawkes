@@ -63,6 +63,21 @@ FACET_OPERATIONS: tuple[str, ...] = ("generate_text", "solve_math")
 FACET_ROUTES: frozenset[str] = frozenset({"exact", "reasoning"})
 FACET_ENTRY_MODES: frozenset[str] = frozenset({"verbatim", "math", "auto"})
 
+#: Which *family* an answer belongs to, beside how literally to read it.
+#:
+#: A scalar, an ordered pair, several separate values, one chosen alternative.
+#: Facet decides what the answer is; Ethnos decides how it is entered, and this
+#: is the fact Ethnos needs before it can say whether it has a way to enter it
+#: at all. Until it existed the structure had to be recovered by parsing the
+#: string, and every new exact family was found to be unenterable only after it
+#: was already answering live questions -- see `docs/ANSWER_CAPABILITIES.md`.
+#:
+#: Additive, and absent on an older Facet. An answer that names no form is read
+#: exactly as it always was, so this can never fail a solve on its own.
+FACET_ANSWER_FORMS: frozenset[str] = frozenset(
+    {"scalar", "ordered-pair", "parts", "choice"}
+)
+
 #: What Facet may be asked to produce. `value` is an answer to write down. The
 #: other two are *plans*: a proposal Ethnos proves for itself before anything
 #: is drawn, and which carry no writable value at all.
@@ -532,6 +547,9 @@ class FacetAnswer:
     entry: str = ""
     parts: tuple[str, ...] = ()
     entry_mode: str = ""
+    #: The answer's family, when Facet named one. Empty from a Facet that
+    #: predates the field, which is read as "unnamed" and never as a refusal.
+    form: str = ""
     plan: dict[str, Any] | None = None
 
 
@@ -626,12 +644,20 @@ def _answer(payload: Any, expected_kind: str) -> FacetAnswer:
         raise FacetProtocolError(
             "Facet answer must carry exactly one of a single entry or separate parts"
         )
+    form = payload.get("form", "")
+    # A family this client does not know is a family it has no entry path for,
+    # and acting on it as though it were a scalar is how an answer of the wrong
+    # shape reaches a real answer box. Absent is different from unknown: an
+    # older Facet names no form at all, and that is the behaviour this replaced.
+    if form != "" and form not in FACET_ANSWER_FORMS:
+        raise FacetProtocolError(f"Facet answer named an unknown form {form!r}")
     return FacetAnswer(
         kind=kind,
         display=display,
         entry=entry,
         parts=tuple(parts),
         entry_mode=mode,
+        form=form,
     )
 
 

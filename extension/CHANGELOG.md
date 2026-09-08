@@ -6,6 +6,29 @@ name the add-on as it was called at the time.
 
 ## Unreleased
 
+- **A coordinate pair whose halves are fractions can be entered.** Facet answers
+  a midpoint exactly -- `(17/2,-1/2)` -- and the plan refused it on the `/`,
+  against a question publishing a Fraction template, a parentheses template, a
+  numerator slot taking a minus sign and a denominator slot taking digits. Every
+  piece it needed was there.
+
+  A fraction was only ever recognised at the top level of an answer. Inside a
+  group the character loop met the slash with no branch for it, so every
+  composition of a fraction with a structure was unenterable while both halves
+  worked alone. A parenthesised group's interior is now planned as the list of
+  values it is, each of which may be a fraction, built with the same template
+  and the same slot moves the top level already used. An answer carrying no
+  structure -- `(2,3)`, an interval -- plans exactly the steps it planned
+  before. The decimal a model produces for the same question, `(8.5,-0.5)`, is
+  still refused: `.` is on no answer box this add-on has seen.
+
+  This class of defect has now happened four times, so it is written down.
+  [docs/ANSWER_CAPABILITIES.md](../docs/ANSWER_CAPABILITIES.md) is the map of
+  every answer family Facet emits against the way this add-on enters it, with
+  the unsupported compositions named rather than discovered. Facet states which
+  family each answer belongs to, and a test here fails if a family arrives with
+  no row on that page.
+
 - **A question with five choices is one answer, not five.** A quadrant question
   publishes one radio group of five buttons. The editor probe counted five
   *controls* and reported five answers; the host asked Facet for five separate
