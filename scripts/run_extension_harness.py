@@ -512,6 +512,9 @@ def run(selected: str | None, headless: bool = True) -> int:
         for name, body in scenario.pages.items():
             Path(web, name).write_text(body, encoding="utf-8")
     shutil.copyfile(PROJECT_ROOT / "tests/fixtures/graph.html", Path(web, "graph.html"))
+    shutil.copyfile(
+        PROJECT_ROOT / "tests/fixtures/plot-points.html", Path(web, "plot-points.html")
+    )
     for scatter in (
         "scatter.html",
         "scatter-unreadable.html",
@@ -583,6 +586,7 @@ def run(selected: str | None, headless: bool = True) -> int:
         failures += judge_distinct(scenarios, signatures)
         if not selected:
             failures += judge_graph(marionette, site)
+            failures += judge_plot_points(marionette, site)
             failures += judge_scatter(marionette, site)
             failures += judge_unreadable_scatter(marionette, site)
             failures += judge_on_axis_scatter(marionette, site)
@@ -616,7 +620,7 @@ def run(selected: str | None, headless: bool = True) -> int:
     checks = (
         len(scenarios)
         + len({s.distinct for s in scenarios if s.distinct})
-        + (0 if selected else 8)
+        + (0 if selected else 9)
     )
     print(f"\n{checks - failures}/{checks} checks passed")
     return 1 if failures else 0
@@ -862,6 +866,78 @@ def judge_scatter(marionette, site):
         return 1
     say(
         "ok   scatter: exact SVG coordinates and instruction; mismatched description refused"
+    )
+    return 0
+
+
+def judge_plot_points(marionette, site):
+    """A plotting graph, graded the way Hawkes grades one.
+
+    The fixture takes a point into its answer when focus leaves the control,
+    not when the control moves -- which is what Hawkes does, and is why a live
+    run placed four points, read four points back, reported success, and was
+    told the answer was incomplete. Every check Ethnos had was satisfied by the
+    model; the point that never left focus was missing from the answer alone.
+
+    So this asserts on what the page would grade, not on what the model holds.
+    """
+    source = (
+        (PROJECT_ROOT / "extension/common/graph-actions.js")
+        .read_text()
+        .replace("export function", "function")
+        .replace("https://learn.hawkeslearning.com", site)
+    )
+    plan = {
+        "kind": "points",
+        "points": [
+            {"x": "3", "y": "2"},
+            {"x": "-9", "y": "4"},
+            {"x": "-8", "y": "-7"},
+            {"x": "1", "y": "-5"},
+        ],
+    }
+    wanted = sorted([[3, 2], [-9, 4], [-8, -7], [1, -5]])
+    marionette.set_context("content")
+    marionette.navigate(f"{site}/plot-points.html")
+    result = marionette.execute(
+        source
+        + """
+      const probe = graphOperation();
+      if (!probe.ok) return {probe};
+      const outcome = graphOperation(
+        {snapshot: probe.snapshot, plan: """
+        + json.dumps(plan)
+        + """});
+      const model = Object.values(window.quant_wp_UI.controlsCollection)[0];
+      return {probe: probe.ok, context: probe.context, outcome,
+              graded: window.committedPoints(),
+              model: model.allGraphObjects().map(p => [p.x, p.y]),
+              forbidden: window.forbiddenEvents};
+    """
+    )["value"]
+    problems = []
+    if not result.get("probe"):
+        problems.append(f"describe refused: {result.get('probe')}")
+    elif result["context"]["family"] != "points" or result["context"]["count"] != 4:
+        problems.append(f"described the wrong graph: {result['context']}")
+    if result.get("outcome", {}).get("code") != "graph-plotted":
+        problems.append(f"actuation refused: {result.get('outcome')}")
+    if result.get("forbidden"):
+        problems.append(f"forbidden keys: {result['forbidden']}")
+    if sorted(result.get("model", [])) != wanted:
+        problems.append(f"model landed on {sorted(result.get('model', []))}")
+    # The one that matters, and the one nothing else was checking.
+    if sorted(result.get("graded", [])) != wanted:
+        problems.append(
+            f"the page took only {sorted(result.get('graded', []))}, "
+            "so a placed point never entered the answer"
+        )
+    if problems:
+        say(f"FAIL plot-points: {'; '.join(problems)}")
+        return 1
+    say(
+        "ok   plot-points: four stated points stepped onto the grid, verified, "
+        "and every one of them taken into the page's own answer"
     )
     return 0
 
