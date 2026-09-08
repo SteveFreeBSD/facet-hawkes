@@ -238,7 +238,16 @@
         : candidates[0];
     const one = describe(index);
     if (one !== null && one.enabled !== false) {
-      return { ...one, collection: { ...collection, branch: "one-drawn-box" } };
+      return {
+        ...one,
+        // The box is one of a published pair, and that is the whole of what
+        // this probe claims. What the second control is *for* is decided where
+        // an answer is planned: a Hawkes answer box turns into a numerator and
+        // a denominator when a `/` is typed into it, which is how a rational
+        // is entered in a question offering no Fraction template at all.
+        pairedControl: true,
+        collection: { ...collection, branch: "one-drawn-box" },
+      };
     }
   }
   if (usable.length >= 2 && usable.length <= MAX_ANSWER_PARTS) {

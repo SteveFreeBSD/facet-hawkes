@@ -366,6 +366,11 @@ export function insertErrorKey(code) {
     // A fraction part with nowhere to put its other half: the cell's second
     // box did not open, or the mapping names a control that has none.
     "table-cell-not-expandable": "errorEditorUnknown",
+    // The single-answer counterpart: a `/` that did not split the box, or a
+    // box that split into something this writer cannot prove is its own other
+    // half; and a fraction whose two boxes did not settle holding it.
+    "fraction-not-expandable": "errorEditorUnknown",
+    "fraction-not-settled": "errorEditorUnknown",
     // The cell did not settle holding its own part, or a write moved another
     // cell of the same table. Its own sentence: this is the editor placing an
     // answer somewhere nobody asked for, not the editor refusing one.

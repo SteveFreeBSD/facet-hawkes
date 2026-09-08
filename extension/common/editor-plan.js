@@ -84,31 +84,86 @@ export function planEntry(answer, editor) {
 
   const fraction = splitFraction(answer);
   if (fraction !== null) {
-    if (editor?.templates?.fraction !== true) {
-      return { ok: false, code: "template-refused-by-question", detail: "fraction" };
+    if (editor?.templates?.fraction === true) {
+      // Loading a fraction focuses the numerator, so the numerator is planned
+      // first and the denominator is reached with an explicit slot move.
+      const numerator = planRun(fraction.numerator, editor, "numerator");
+      if (numerator.ok === false) {
+        return numerator;
+      }
+      const denominator = planRun(fraction.denominator, editor, "denominator");
+      if (denominator.ok === false) {
+        return denominator;
+      }
+      return {
+        ok: true,
+        steps: [
+          { op: "template", name: "Fraction" },
+          ...numerator.steps,
+          { op: "slot", name: "denominator" },
+          ...denominator.steps,
+        ],
+      };
     }
-    // Loading a fraction focuses the numerator, so the numerator is planned
-    // first and the denominator is reached with an explicit slot move.
-    const numerator = planRun(fraction.numerator, editor, "numerator");
-    if (numerator.ok === false) {
-      return numerator;
-    }
-    const denominator = planRun(fraction.denominator, editor, "denominator");
-    if (denominator.ok === false) {
-      return denominator;
-    }
-    return {
-      ok: true,
-      steps: [
-        { op: "template", name: "Fraction" },
-        ...numerator.steps,
-        { op: "slot", name: "denominator" },
-        ...denominator.steps,
-      ],
-    };
+    return planFractionBySlash(fraction, editor);
   }
 
   return planRun(answer, editor);
+}
+
+/**
+ * A rational typed into an ordinary box that publishes no Fraction template.
+ *
+ * Hawkes offers a keypad template for structure, and where it offers one that
+ * is the route. Where it offers none, this was read as "the answer cannot be
+ * entered here" -- and that is not what the page does. An ordinary Hawkes
+ * answer box turns into a numerator and a denominator when a `/` is typed into
+ * it, which is how a student enters a fraction into it, and the box publishes
+ * the second control from the start.
+ *
+ * Live, on 2026-09-07: an exact rational from Facet, a plain box publishing
+ * `[0-9-]` and not one template, and `template-refused-by-question` against a
+ * question whose own editor would have taken it.
+ *
+ * The same fact the table writer already works from, asked of a single answer
+ * rather than of a cell: `editor.pairedControl` is the probe saying this one
+ * drawn box has a second control behind it. Without that the refusal stands --
+ * a box with nowhere to put a denominator genuinely cannot take a fraction,
+ * and guessing that a `/` will open one is how a half-built answer is left in
+ * somebody's coursework.
+ *
+ * Each half is typed into a box of its own, so each half is what the box's own
+ * bound has to hold; `100/9` fits two six-character boxes and would never fit
+ * one.
+ */
+function planFractionBySlash(fraction, editor) {
+  if (editor?.pairedControl !== true) {
+    return { ok: false, code: "template-refused-by-question", detail: "fraction" };
+  }
+  const bound = editor?.maxLength;
+  if (
+    Number.isInteger(bound)
+    && bound > 0
+    && Math.max(fraction.numerator.length, fraction.denominator.length) > bound
+  ) {
+    return { ok: false, code: "answer-too-long" };
+  }
+  const numerator = planRun(fraction.numerator, editor);
+  if (numerator.ok === false) {
+    return numerator;
+  }
+  const denominator = planRun(fraction.denominator, editor);
+  if (denominator.ok === false) {
+    return denominator;
+  }
+  // Every step is plain typing but the `/` itself, which is not a character
+  // the box accepts -- it is the gesture that splits the box in two, and the
+  // writer proves the second one appeared and belongs to this same answer
+  // before a digit of the denominator is typed into it.
+  return {
+    ok: true,
+    steps: [...numerator.steps, { op: "slash" }, ...denominator.steps],
+  };
 }
 
 /**

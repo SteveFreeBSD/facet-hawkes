@@ -170,6 +170,50 @@ export async function enterPlan(steps, cadence = {}, targetFieldIds = []) {
     return ids();
   };
 
+  /** `txtAns1_num` and `txtAns1_den` are the two halves of `txtAns1`. */
+  const baseOf = (id) => String(id ?? "").replace(/_(?:num|den)$/, "");
+
+  /**
+   * The box a `/` just opened, when it provably belongs to this same answer.
+   *
+   * A denominator has no identity of its own in the plan -- it did not exist
+   * when the plan was made. What can be required of it is that exactly one box
+   * appeared, that it is named as this box's other half, and that Hawkes names
+   * it a denominator. Anything else is a page doing something this writer did
+   * not ask for, and is refused rather than typed into.
+   */
+  const openedDenominator = (from, fresh) => {
+    const base = baseOf(from);
+    if (base.length === 0 || fresh.length !== 1) {
+      return null;
+    }
+    const [opened] = fresh;
+    return opened.endsWith("_den") && baseOf(opened) === base ? opened : null;
+  };
+
+  /**
+   * Make Hawkes select this box through its own focus handling.
+   *
+   * `focus()` moves `document.activeElement` and nothing else; the page selects
+   * from the focus events it binds at document level, which never fire while
+   * the panel holds system focus. Both are run, in that order, exactly as the
+   * table writer reaches a cell's second box.
+   */
+  const focusThroughPage = (id) => {
+    const box = document.getElementById(id);
+    if (!box) {
+      return false;
+    }
+    try {
+      box.focus();
+    } catch { /* the page's own path, tried first */ }
+    try {
+      box.dispatchEvent(new FocusEvent("focus", { relatedTarget: null }));
+      box.dispatchEvent(new FocusEvent("focusin", { bubbles: true, relatedTarget: null }));
+    } catch { /* an event the page will not take is not a selection */ }
+    return true;
+  };
+
   const typeInto = async (id, text) => {
     const box = document.getElementById(id);
     if (!box) {
@@ -514,12 +558,20 @@ export async function enterPlan(steps, cadence = {}, targetFieldIds = []) {
     // One frame per template loaded, so a slot move returns to the structure it
     // belongs to rather than to whatever was opened most recently inside it.
     const frames = [];
+    // What a `/` split, once one has. Kept so the whole logical value can be
+    // read back from the two boxes it ended up in.
+    let expansion = null;
+    let typedSoFar = "";
 
     for (const step of plans[planIndex]) {
       if (step.op === "type") {
         const typed = await typeInto(cursor, step.text);
         if (!typed.ok) {
           return await abandon(typed.code, typed.detail);
+        }
+        typedSoFar = `${typedSoFar}${step.text ?? ""}`;
+        if (expansion) {
+          expansion.denominatorText = `${expansion.denominatorText}${step.text ?? ""}`;
         }
         continue;
       }
@@ -548,6 +600,58 @@ export async function enterPlan(steps, cadence = {}, targetFieldIds = []) {
         continue;
       }
 
+      if (step.op === "slash") {
+        // Native expansion. There is no template to press: typing `/` into an
+        // ordinary Hawkes answer box is what turns it into a numerator and a
+        // denominator, and it is how a student enters a fraction into a
+        // question that publishes no Fraction template at all.
+        //
+        // The `/` is not a character the box keeps, so nothing here checks
+        // that it landed. What is checked is that the box split.
+        const before = ids();
+        const box = document.getElementById(cursor);
+        if (!box) {
+          return await abandon("answer-field-disappeared");
+        }
+        focusThroughPage(cursor);
+        try {
+          const setter = Object.getOwnPropertyDescriptor(
+            HTMLInputElement.prototype, "value"
+          ).set;
+          setter.call(box, `${box.value}/`);
+          box.dispatchEvent(new InputEvent("input", {
+            bubbles: true, data: "/", inputType: "insertText",
+          }));
+        } catch {
+          return await abandon("fraction-not-expandable", "slash");
+        }
+        const after = await settle(before);
+        if (dialogUp()) {
+          return await abandon("editor-dialog-open", "slash");
+        }
+        const opened = openedDenominator(
+          cursor, after.filter((id) => !before.includes(id))
+        );
+        if (opened === null) {
+          return await abandon("fraction-not-expandable", "slash");
+        }
+        // Hawkes moves the editor into the new box itself, as it does for a
+        // template's first slot. Its own focus handling is run for the case
+        // where it has not.
+        if (!focusThroughPage(opened)) {
+          return await abandon("fraction-not-expandable", "slash");
+        }
+        expansion = {
+          numerator: cursor,
+          denominator: opened,
+          numeratorText: typedSoFar,
+          denominatorText: "",
+        };
+        cursor = opened;
+        holdForStructure("Fraction");
+        continue;
+      }
+
       if (step.op === "slot" || step.op === "base") {
         // A named slot belongs to its own template: discard anything opened
         // inside it since, so "denominator" is the fraction's, not a radical's.
@@ -569,6 +673,22 @@ export async function enterPlan(steps, cadence = {}, targetFieldIds = []) {
       }
 
       return await abandon("unknown-step", step.op);
+    }
+    // The whole rational, read back from the two boxes it was entered across.
+    // A cell showing `-3/2` holds it as `-3` and `2`; checking the boxes
+    // separately is the only way to say the logical value settled, and the
+    // only way to catch a denominator that went somewhere else.
+    if (expansion !== null) {
+      const numerator = document.getElementById(expansion.numerator);
+      const denominator = document.getElementById(expansion.denominator);
+      if (
+        !numerator
+        || !denominator
+        || numerator.value !== expansion.numeratorText
+        || denominator.value !== expansion.denominatorText
+      ) {
+        return await abandon("fraction-not-settled", "slash");
+      }
     }
     enteredParts.push(
       plans[planIndex]
