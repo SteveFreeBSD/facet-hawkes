@@ -64,8 +64,16 @@ var everyBox = [numerator, denominator];
 var document = {
   activeElement: null,
   getElementById: id => everyBox.find(box => box.id === id) ?? null,
-  querySelectorAll: selector =>
-    selector.indexOf('customMessageBox') >= 0 ? [] : everyBox,
+  // Honours the selector, because which boxes a writer can see is exactly
+  // what was wrong: a plain answer box is `txtAns1_num` and matches
+  // `input[id^="txtAns"]`, not `input.qbaseCSS`.
+  querySelectorAll: selector => {
+    if (selector.indexOf('customMessageBox') >= 0) { return []; }
+    return everyBox.filter(box =>
+      (selector.indexOf('qbaseCSS') >= 0 && box.className === 'qbaseCSS')
+      || (selector.indexOf('txtAns') >= 0 && box.id.indexOf('txtAns') === 0)
+      || (selector.indexOf('boxStyle') >= 0 && box.className === 'boxStyle'));
+  },
   dispatchEvent: () => true,
 };
 

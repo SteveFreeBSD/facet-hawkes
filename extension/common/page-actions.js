@@ -128,10 +128,18 @@ export async function enterPlan(steps, cadence = {}, targetFieldIds = []) {
     emit([notesStruck, Math.round(performance.now() - origin), name, Math.round(heldMs)]);
   };
 
+  // Every shape of answer box Hawkes draws, which is the same set the reader,
+  // the probe and the table writer all use. This said `input.qbaseCSS` alone,
+  // which is the dynamic editor's box and not the only one: a plain answer box
+  // is `txtAns1_num`, and against one of those `ids()` came back empty, the
+  // first step had no cursor, and a perfectly good plan abandoned itself as
+  // `answer-fields-changed` -- reported as the question having moved on. Live,
+  // on 2026-09-07, that was the last gate between an exact rational and the
+  // box it belonged in.
   const boxes = () =>
-    [...document.querySelectorAll("input.qbaseCSS")].filter(
-      (box) => box.getBoundingClientRect().width > 0
-    );
+    [...document.querySelectorAll(
+      'input.qbaseCSS, input[id^="txtAns"], input.boxStyle'
+    )].filter((box) => box.getBoundingClientRect().width > 0);
   const ids = () => boxes().map((box) => box.id);
   const dialogUp = () =>
     [...document.querySelectorAll('[id*="customMessageBox"]')].some(
