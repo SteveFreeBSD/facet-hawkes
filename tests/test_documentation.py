@@ -7,6 +7,19 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 MARKDOWN_LINK = re.compile(r"(?<!!)\[[^]]+\]\(([^)]+)\)")
 MARKDOWN_HEADING = re.compile(r"^#{1,6}\s+(.+?)\s*$", flags=re.MULTILINE)
+FENCED_BLOCK = re.compile(r"^```.*?^```", flags=re.MULTILINE | re.DOTALL)
+
+
+def _prose(text: str) -> str:
+    """Markdown with fenced code removed.
+
+    A shell comment at the start of a line inside a code block is not a
+    heading. Nothing here trips on that today; the sibling repository did, and
+    the two checks are easier to trust when they agree.
+    """
+    return FENCED_BLOCK.sub("", text)
+
+
 REMOVED_LEGACY_DOCS = {
     "CODE_REVIEW.md",
     "CTO_REVIEW.md",
@@ -37,7 +50,7 @@ def _markdown_files() -> list[Path]:
 def _heading_anchors(path: Path) -> set[str]:
     anchors = set()
     counts: dict[str, int] = {}
-    for heading in MARKDOWN_HEADING.findall(path.read_text(encoding="utf-8")):
+    for heading in MARKDOWN_HEADING.findall(_prose(path.read_text(encoding="utf-8"))):
         slug = re.sub(r"[^\w\- ]", "", heading.lower())
         slug = re.sub(r"\s+", "-", slug.strip())
         duplicate_index = counts.get(slug, 0)
@@ -81,7 +94,9 @@ def test_markdown_files_have_one_top_level_heading():
     failures = []
     for source in _markdown_files():
         headings = re.findall(
-            r"^#\s+(.+?)\s*$", source.read_text(encoding="utf-8"), flags=re.MULTILINE
+            r"^#\s+(.+?)\s*$",
+            _prose(source.read_text(encoding="utf-8")),
+            flags=re.MULTILINE,
         )
         if len(headings) != 1:
             failures.append(f"{source.relative_to(PROJECT_ROOT)}: {len(headings)} H1s")
