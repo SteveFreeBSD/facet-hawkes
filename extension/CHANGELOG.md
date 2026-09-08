@@ -6,6 +6,34 @@ name the add-on as it was called at the time.
 
 ## Unreleased
 
+- **Nothing reaches the answer card unless it is an answer to the question on
+  screen.** A quadrant question showed "all answers as they would ordinarily be
+  written" -- Facet's own description of the line it asks a model to write,
+  echoed back instead of answered. The two guards that should have stopped it
+  had a hole exactly between them: a multi-part reply took its readable form as
+  the reviewed answer without validating it, and the display guard beside it
+  "fell back" to that same unvalidated string, so the fallback was a no-op and
+  the sentence was published twice over. The previous fix checked the display
+  and missed this, because on that branch the two fields were the same string.
+
+  There is one gate now, at `update()` -- the single place every state change
+  passes through on its way to the card, to the session store, to a restored
+  question and to a failure record. It is asked of the state about to become
+  current, against the shape the question published: a plan belongs to a graph
+  question and carries no typed value; separate values must each be a valid
+  answer and must match a count the page stated; a single value is not an
+  answer to a question with several controls; several typed values are not an
+  answer to one answered by choosing; and a readable form never stands alone --
+  something validated has to be behind it. An answer that fails is withheld
+  rather than shown, the card says so, and the diagnostic ring records the
+  reason code and the length, never the text.
+
+  The rule for readable text is about shape and not about any sentence: an
+  answer is written in mathematics, and where it names itself -- "Not a Real
+  Number" -- it does so in three words at most. Its first version let anything
+  containing a digit through, which is most of a contract. Facet holds the same
+  rule at its own end and no longer offers a line worth echoing.
+
 - **A solve no longer leaves the computer and comes back.** The companion
   reached Facet with `ssh steve@192.168.0.247 facet-remote` -- this machine's
   own address -- so every question went out to the network, through sshd and a

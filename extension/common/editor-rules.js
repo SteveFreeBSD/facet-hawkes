@@ -1,6 +1,6 @@
 "use strict";
 
-import { MAX_ANSWER_PARTS } from "./config.js";
+import { MAX_ANSWER_PARTS, displayableAnswer, validateAnswer } from "./config.js";
 
 /**
  * Deciding whether an answer can be typed, from the editor's own rules.
@@ -397,4 +397,109 @@ export function insertErrorKey(code) {
     "answer-empty": "errorAnswerInvalid",
     "unknown-step": "errorEditorUnknown",
   }[code] ?? "errorNoBridge";
+}
+
+
+/**
+ * The one gate every answer a person is shown has to pass.
+ *
+ * Everything above decides whether an answer can be *typed*. This decides
+ * whether it may be *published* at all -- shown on the card, remembered across
+ * an event-page unload, restored onto the next question, named in a failure
+ * record -- and it is asked of the state that is about to become current,
+ * against the shape the question on screen has right now.
+ *
+ * It exists because the answer and its readable form were being checked in
+ * different places and, on one route, in neither. A multi-part reply published
+ * its FINAL ANSWER line as the reviewed identity without validating it, and
+ * the display guard beside it fell back to that same unvalidated string -- so
+ * a card showed "all answers as they would ordinarily be written", which is
+ * Facet's own description of the line, echoed by the model instead of answered.
+ * Two guards, one hole between them. This is the one guard.
+ *
+ * The rule it enforces is a single sentence: nothing may be published as an
+ * answer unless it validates as an answer for the current question shape.
+ *
+ * @param {{answer?: string, displayText?: string, entryText?: string,
+ *          answerParts?: string[], graphPlan?: object|null}} published
+ * @param {{kind?: string, count?: number}} shape from `answerShapeOf`
+ * @returns {{ok: true} | {ok: false, code: string}}
+ */
+export function publishableAnswer(published, shape) {
+  const text = (value) => (typeof value === "string" ? value.trim() : "");
+  const answer = text(published?.answer);
+  const displayText = text(published?.displayText);
+  const entryText = text(published?.entryText);
+  const parts = Array.isArray(published?.answerParts)
+    ? published.answerParts.filter((part) => typeof part === "string")
+    : [];
+  const plan = published?.graphPlan ?? null;
+  const kind = shape?.kind ?? "field";
+
+  // Nothing is being offered as an answer. Every state before a solve lands
+  // looks like this, and holding those to an answer's contract would refuse
+  // the panel's own "Solving…".
+  if (!answer && !displayText && !entryText && parts.length === 0 && plan === null) {
+    return { ok: true };
+  }
+
+  // Whichever field carries it, what reaches a reader has to read as an
+  // answer. Checked before anything else, because it is the only rule that
+  // applies to every shape and it is the one that was missing.
+  for (const readable of [answer, displayText]) {
+    if (readable && !displayableAnswer(readable)) {
+      return { ok: false, code: "answer-not-an-answer" };
+    }
+  }
+
+  // A plan is proved geometry and carries no writable value. It belongs to a
+  // graph question and to no other, and a graph question is answered by no
+  // other means -- a value published for one would be a value nothing proved.
+  if (plan !== null) {
+    return kind === "graph" && parts.length === 0 && !entryText
+      ? { ok: true }
+      : { ok: false, code: "answer-shape-graph" };
+  }
+  if (kind === "graph") {
+    return { ok: false, code: "answer-shape-graph" };
+  }
+
+  if (parts.length > 0) {
+    if (parts.length < 2 || parts.length > MAX_ANSWER_PARTS) {
+      return { ok: false, code: "answer-parts-count" };
+    }
+    // Each part is typed into a real answer box of its own, so each is held to
+    // what may be typed and not merely to what may be read.
+    if (!parts.every((part) => validateAnswer(part).ok)) {
+      return { ok: false, code: "answer-part-invalid" };
+    }
+    // A question that published its own control count is the authority on it.
+    // A single box asking for two answers separated by a comma publishes one
+    // control and is a `field`, so the count is only binding where the page
+    // stated one.
+    if (kind === "multi" && parts.length !== shape.count) {
+      return { ok: false, code: "answer-parts-count" };
+    }
+    // An option question is answered by choosing one of the page's own
+    // choices. Several typed values is not an answer to it in any form.
+    if (kind === "option") {
+      return { ok: false, code: "answer-shape-option" };
+    }
+    // Separate values and a single one are two different answers to the same
+    // question, and nothing downstream picks between them.
+    return entryText ? { ok: false, code: "answer-parts-and-entry" } : { ok: true };
+  }
+
+  // One value, where the page published several controls, is not this
+  // question's answer -- it is an answer to a differently shaped one.
+  if (kind === "multi") {
+    return { ok: false, code: "answer-parts-count" };
+  }
+  // A readable form may carry notation no box would take, so it is never the
+  // thing that makes an answer publishable. Some validated machine form has to
+  // stand behind it, or the card is showing something with nothing under it.
+  if (!validateAnswer(entryText).ok && !validateAnswer(answer).ok) {
+    return { ok: false, code: "answer-invalid" };
+  }
+  return { ok: true };
 }

@@ -468,8 +468,10 @@ def test_a_paired_answer_shape_reaches_facet_as_a_two_part_contract(
     assert set(loopback.problems[0]) == {"instruction", "expressions", "answer_parts"}
     prompt = loopback.prompts[0]
     assert "This question takes 2 separate answers." in prompt
-    assert "PART 1: answer number 1 by itself" in prompt
-    assert "PART 2: answer number 2 by itself" in prompt
+    # The labels are listed bare; what belongs after each is said separately.
+    # Facet stopped listing them as filled-in examples because a model copied
+    # one onto a live answer card as the answer.
+    assert "\nPART 1:\n" in prompt and "\nPART 2:\n" in prompt
     # Facet is told what to produce, never what the page is made of -- and
     # never that a page is what is asking. The vocabulary is Facet's own list,
     # so this gate tightens whenever Facet's does.
@@ -891,3 +893,63 @@ def test_the_editor_description_itself_never_crosses_to_the_host() -> None:
     # as the retained-evidence test above proves.
     for browser_only in ("templates", "slots", "fieldId"):
         assert browser_only not in normaliser
+
+
+#: Facet's own description of the FINAL ANSWER line, which a model handed back
+#: as the answer on a live quadrant question. Data here, not a pattern: what
+#: refuses it is that it is a sentence, whichever sentence it is.
+ECHOED_CONTRACT = "all answers as they would ordinarily be written"
+
+
+def test_an_echoed_contract_never_crosses_as_an_answer(monkeypatch) -> None:
+    """The live leak, through the real protocol and the real router.
+
+    The parts were checked all along -- the right number of them, numbered in
+    order, non-empty. Their *rendering* was not, and the rendering is what a
+    person is shown. Facet rebuilds it from the parts it did check rather than
+    publishing a line it never read.
+    """
+    answering(
+        monkeypatch,
+        text=f"FINAL ANSWER: {ECHOED_CONTRACT}\nPART 1: -1\nPART 2: 5",
+    )
+
+    response = handle(
+        request(
+            mathml=[QUADRATIC], instruction=INTERCEPTS, shape="multi", shape_count=2
+        )
+    )
+
+    assert response.status == "ready"
+    assert response.answer.parts == ["-1", "5"]
+    assert response.answer.display_text == "-1, 5"
+    assert ECHOED_CONTRACT not in response.model_dump_json()
+
+
+def test_an_echoed_part_is_refused_rather_than_rendered_around(monkeypatch) -> None:
+    """A part is what would be typed into a real answer box."""
+    answering(
+        monkeypatch,
+        text="FINAL ANSWER: -1, 5\nPART 1: answer number 1 by itself\nPART 2: 5",
+    )
+
+    response = handle(
+        request(
+            mathml=[QUADRATIC], instruction=INTERCEPTS, shape="multi", shape_count=2
+        )
+    )
+
+    assert response.status == "ambiguous"
+    assert response.answer is None
+    assert "no usable answer" in response.message
+
+
+def test_prose_on_a_single_value_question_is_refused(monkeypatch) -> None:
+    """There is no checked part list to rebuild a single answer from."""
+    answering(monkeypatch, text=f"FINAL ANSWER: {ECHOED_CONTRACT}")
+
+    response = handle(request(mathml=[QUADRATIC], instruction=INTERCEPTS))
+
+    assert response.status == "ambiguous"
+    assert response.answer is None
+    assert ECHOED_CONTRACT not in response.model_dump_json()

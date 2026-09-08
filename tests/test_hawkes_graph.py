@@ -112,8 +112,16 @@ def test_stale_graph_snapshot_refuses_before_actuation(page):  # noqa: F811
         "snapshot": {"question": "original"},
     }
     page.own_window_a()
+    # As a graph solve actually publishes it. A plan carries no writable value,
+    # so `acceptReply` clears the typed fields when it puts one up, and the
+    # publication guard refuses a state holding both -- a plan is proved
+    # geometry and a typed answer is not, and nothing downstream picks between
+    # them. Seeding the value fields and then overlaying a plan was a state the
+    # event page never reaches.
     page.run(
-        f'update({{editor: {json.dumps(editor)}, graphPlan: {json.dumps(PLAN)}, graphCoefficients: ["1","-6","8"]}}); insert();'
+        f'update({{editor: {json.dumps(editor)}, graphPlan: {json.dumps(PLAN)}, '
+        f'graphCoefficients: ["1","-6","8"], answer: "", displayText: "", '
+        f'entryText: "", answerParts: []}}); insert();'
     )
     page.pump()
     page.answer({**editor, "snapshot": {"question": "replacement"}})

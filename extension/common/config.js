@@ -85,6 +85,17 @@ export function mathNotation(value) {
 
 /** How much readable notation the answer card will carry. */
 export const MAX_DISPLAY_LENGTH = 120;
+/**
+ * How many words of English an answer may be before it is prose.
+ *
+ * Three, which is the longest named answer there is: "Not a Real Number" --
+ * "a" is one letter and is not one of them. Set against what has to be refused
+ * rather than against a round number: Facet's own "answer number 1 by itself"
+ * is four words, and the sentence that reached a live card is eight. Facet
+ * holds the same bound on its own side, in `facet_runtime.solve.answer_shaped`.
+ */
+export const MAX_ANSWER_WORDS = 3;
+
 
 /**
  * Whether a readable form may be put on the answer card.
@@ -94,18 +105,22 @@ export const MAX_DISPLAY_LENGTH = 120;
  * radical sign or a fraction bar. What it must never carry is text that is
  * not an answer at all.
  *
- * The host builds its model contract out of English sentences -- one of them
- * is "FINAL ANSWER: all answers as they would ordinarily be written" -- and a
- * model that echoes its instruction back instead of answering hands that
- * sentence over as the answer. `validateAnswer` already refuses it, and the
- * machine form is checked against it; the display form was published
- * unchecked, so the sentence reached the card while a perfectly good
- * `keyboard_entry` sat behind it.
+ * Facet builds its model contract out of English sentences, and a model that
+ * echoes one back instead of answering hands that sentence over as the answer.
+ * That is how "all answers as they would ordinarily be written" reached a live
+ * card on a quadrant question.
  *
- * The rule is about shape, not about that sentence: several words of letters
- * with no digit, operator or notation anywhere among them is prose. The named
- * escapes Hawkes really does ask for -- "Not a Real Number" and its kin -- are
- * shorter than that and are kept.
+ * The rule is about shape, not about any particular sentence, because no list
+ * of phrases to refuse survives the next rewording of the prompt. What makes
+ * prompt text recognisable is that it is made of words at all: an answer is
+ * written in mathematics, and where it names itself instead -- "Not a Real
+ * Number", "All Real Numbers" -- it does so in a few words, because those are
+ * names. Three of them is the longest Hawkes asks for.
+ *
+ * The first version of this rule accepted anything containing a digit or an
+ * operator, which is most of a contract: "Reply with exactly 3 lines and
+ * nothing else" carries a digit and would have passed. Words are counted now,
+ * and nothing else about the text can buy its way past them.
  */
 export function displayableAnswer(text) {
   if (typeof text !== "string") {
@@ -115,9 +130,10 @@ export function displayableAnswer(text) {
   if (trimmed.length === 0 || trimmed.length > MAX_DISPLAY_LENGTH) {
     return false;
   }
-  const words = trimmed.split(/\s+/);
-  return words.length <= 4 || /[0-9+\-*/^√∛∜()|]/.test(trimmed);
+  const words = trimmed.split(/\s+/).filter((word) => /^[A-Za-z]{2,}$/.test(word));
+  return words.length <= MAX_ANSWER_WORDS;
 }
+
 
 /**
  * Validate a candidate answer.

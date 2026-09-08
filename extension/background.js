@@ -31,6 +31,7 @@ import {
   answerFitsEditor,
   insertErrorKey,
   isTableMapping,
+  publishableAnswer,
   sameTableMapping,
   tableAnswerFits,
   tableAnswerVerdicts,
@@ -391,13 +392,81 @@ async function seedRememberedAnswer(windowId) {
     log.info("answer-session-discarded", { why: "window-changed" });
     return false;
   }
-  state = { ...blankState(), ...remembered };
+  // Through the same gate as everything else. A remembered answer is one that
+  // was published before an event-page unload, and a rule that tightens must
+  // apply to what was stored under the old one.
+  state = withheldAnswer({ ...blankState(), ...remembered });
   log.info("answer-session-found", {
     windowId: remembered.windowId,
     tabId: remembered.tabId,
     answerLength: String(remembered.displayText || remembered.answer || "").length,
   });
   return true;
+}
+
+/**
+ * The shape the question on screen takes an answer in, as the state holds it.
+ *
+ * `answerShapeOf` is the authority and is what the host is told, but it is
+ * called during a solve with the question's own table beside it and the state
+ * does not keep that table. What the state does keep is the mapping the reader
+ * built from it -- one control per numbered blank, closed and sequential -- and
+ * that mapping is the same count by construction. Recovering it here is what
+ * lets a completion question be held to its count after the solve, rather than
+ * falling back to "one box" and letting any number of parts through.
+ */
+function publicationShape(next) {
+  const targets = next.tableTargets ?? [];
+  const shape = answerShapeOf(next.editor, null, targets);
+  return shape.kind === "field" && isTableMapping(targets)
+    ? { kind: "multi", count: targets.length }
+    : shape;
+}
+
+/**
+ * The state, with any answer in it that must not be published taken out.
+ *
+ * One gate, at the one place every state change passes through, asked of the
+ * state that is about to become current rather than of the reply that produced
+ * it. A solve, a restore from `storage.session`, a question re-identified while
+ * an answer is held -- all of them arrive here, and an answer that cannot be
+ * published cannot reach a card, a panel, the session store or a failure record
+ * through any of them.
+ *
+ * It withholds rather than fails: the answer is dropped and the card says the
+ * answer could not be validated. Whatever produced it has already logged what
+ * it did, and a state that quietly kept the value while the log said otherwise
+ * is the shape of the defect this exists to end.
+ */
+function withheldAnswer(next) {
+  const shape = publicationShape(next);
+  const verdict = publishableAnswer(next, shape);
+  if (verdict.ok) {
+    return next;
+  }
+  log.warn("answer-withheld", {
+    code: verdict.code,
+    phase: next.phase ?? "",
+    shape: shape.kind,
+    answerLength: String(next.answer ?? "").length,
+    displayLength: String(next.displayText ?? "").length,
+    answerParts: Array.isArray(next.answerParts) ? next.answerParts.length : 0,
+    hasPlan: next.graphPlan !== null && next.graphPlan !== undefined,
+  });
+  noteRunEvent("answer-withheld");
+  return {
+    ...next,
+    phase: next.phase === "solved" || next.phase === "inserted" ? "ready" : next.phase,
+    answer: "",
+    displayText: "",
+    entryText: "",
+    answerParts: [],
+    graphPlan: null,
+    graphCoefficients: [],
+    errorKey: "errorAnswerInvalid",
+    errorArgs: [],
+    errorAnswer: "",
+  };
 }
 
 function update(changes) {
@@ -409,7 +478,7 @@ function update(changes) {
   ) {
     runStages.push(changes.stage);
   }
-  state = { ...state, ...changes };
+  state = withheldAnswer({ ...state, ...changes });
   syncRememberedAnswer(state);
   for (const [port, entry] of panels) {
     try {
@@ -3561,6 +3630,7 @@ function markedCode() {
     "common/failure-record.js#recordFailure": recordFailure,
     "common/editor-rules.js#insertErrorKey": insertErrorKey,
     "common/editor-rules.js#isTableMapping": isTableMapping,
+    "common/editor-rules.js#publishableAnswer": publishableAnswer,
     "common/editor-rules.js#sameTableMapping": sameTableMapping,
     "common/editor-rules.js#tableAnswerFits": tableAnswerFits,
     "common/editor-rules.js#tableAnswerVerdicts": tableAnswerVerdicts,
