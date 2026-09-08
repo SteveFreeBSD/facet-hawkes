@@ -681,9 +681,11 @@ def test_public_release_files_match_the_manifest_version(manifest):
         "https://github.com/SteveFreeBSD/facet-hawkes/blob/main/extension/README.md"
     )
 
+    # Which runtime commit is pinned belongs to tests/test_runtime_pin.py; this
+    # only holds that a release still names one and reads it from the one file.
     workflow = (PROJECT_ROOT / ".github" / "workflows" / "ci.yml").read_text()
     assert "repository: SteveFreeBSD/facet-runtime" in workflow
-    assert "ref: f2e09071415907cbbe1b4b905af9af6473098e8b" in workflow
+    assert "deploy/facet-runtime.pin" in workflow
 
 
 def test_build_produces_a_reproducible_package(tmp_path, manifest):

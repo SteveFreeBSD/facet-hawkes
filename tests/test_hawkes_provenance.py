@@ -347,8 +347,9 @@ def test_the_settings_page_shows_the_pipeline_without_asking_the_network() -> No
     for stage in ("pipeline-exact", "pipeline-reasoner", "pipeline-observed"):
         assert f'id="{stage}"' in options_html
 
-    # Rendering a preferences screen must not wake an SSH connection and a
-    # model host. Everything shown comes from storage and the stored setting.
+    # Rendering a preferences screen must not start the companion, the Facet
+    # helper or a model host. Everything shown comes from storage and the
+    # stored setting.
     assert "browser.storage.local.get" in pipeline
     for reaching_out in ("askEthnos", "sendNativeMessage", "connectNative", "fetch("):
         assert reaching_out not in pipeline

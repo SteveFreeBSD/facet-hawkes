@@ -8,18 +8,31 @@ candidate; do not weaken Firefox signature enforcement to install it.
 
 0.46.0 is the RC5-Cadence source line. It includes the 0.45.0 data-table route,
 the 0.45.1 labelled-pair correction, and the complete Answer Cadence described
-in the changelog. The local candidate has passed the package, repository,
-Mozilla-lint, reproducibility, and clean-profile unsigned-XPI gates:
+in the changelog. The local candidate passed the package, repository,
+Mozilla-lint, reproducibility, and clean-profile unsigned-XPI gates on
+6 September 2026, against the packaged source as it stood that day:
 
 ```text
 dist/facet-hawkes-0.46.0-unsigned.xpi
 SHA-256 6bf24fb9744da4b375171530cee9d0c2069a0e7c4be3536161ad6bd983215d64
+33 packaged files, built twice from unchanged sources with the same digest
 ```
 
-It contains 33 packaged files and was built twice from unchanged packaged
-sources with the same digest. The 0.46.0 publication strategy keeps the
+**That digest is evidence about that build, not about the working tree.** The
+0.46.0 source line has advanced since the audit -- drawn-box fractions, radio
+groups, point plotting and the transport change all landed after it -- so a
+rebuild today produces a different digest and a different file count, and
+should. A version is signed against a *fresh* run of the gates, with its own
+digest recorded here. Re-derive the current one before quoting any number:
+
+```console
+$ uv run python scripts/build_extension.py
+$ sha256sum dist/facet-hawkes-0.46.0-unsigned.xpi
+```
+
+The 0.46.0 publication strategy keeps the
 existing sibling repositories, fixes `facet-runtime` at companion commit
-`f2e09071415907cbbe1b4b905af9af6473098e8b`, and establishes
+`6a337c40eb0b1a17dffac37f443d846089611689`, and establishes
 `SteveFreeBSD/facet-hawkes` as the canonical public Hawkes repository. The old
 Ethnos repository is not a publication target; `ethnos-caspian` may remain as a
 legacy/private remote. CI checks out the exact runtime commit rather than a

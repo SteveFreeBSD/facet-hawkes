@@ -1,5 +1,10 @@
 # Trace Debugging
 
+> **Scope: the local study engine.** These traces come from `ask` and `chat`
+> over ingested PDFs. A live Hawkes failure leaves different evidence -- see
+> [Live Hawkes Observatory](LIVE_OBSERVATORY.md) and [Retained failure
+> ledger](FAILURE_LEDGER.md).
+
 Use answer traces when a grounded `ask` or `chat` response looks incomplete,
 uncited, off-topic, or unexpectedly expensive. Traces are local JSON files and
 are not written unless requested.

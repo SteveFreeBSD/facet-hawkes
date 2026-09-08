@@ -130,6 +130,9 @@ FACET_TRANSPORT_LOCAL = "local"
 FACET_TRANSPORT_SSH = "ssh"
 FACET_TRANSPORTS: tuple[str, ...] = (FACET_TRANSPORT_LOCAL, FACET_TRANSPORT_SSH)
 
+#: Read only on the SSH transport. The default is casbox's own LAN address, left
+#: from the arrangement this replaced; on the default transport nothing reads
+#: it. Set it deliberately if a Facet ever genuinely runs elsewhere.
 FACET_SSH_TARGET = os.environ.get("FACET_SSH_TARGET", "steve@192.168.0.247")
 
 #: A fixed argv, in full: the helper's absolute path and nothing else. It is a

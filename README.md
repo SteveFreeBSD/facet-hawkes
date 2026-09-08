@@ -19,6 +19,12 @@ checks, advances, or silently selects anything.**
 
 [![CI](https://github.com/SteveFreeBSD/facet-hawkes/actions/workflows/ci.yml/badge.svg)](https://github.com/SteveFreeBSD/facet-hawkes/actions/workflows/ci.yml)
 
+> **New to this repository?** Read [Current state](docs/CURRENT_STATE.md) — the
+> whole system in one page: what runs where, who owns what, which names are
+> only internal identifiers, and what is safe to touch. Then
+> [the documentation index](docs/README.md) names the one authority for each
+> question. You should not have to read history to work here.
+
 ## The Firefox add-on
 
 The add-on is **Facet Hawkes Assistant**, currently **0.46.0**. It combines a
@@ -141,25 +147,31 @@ See [Retained failure ledger](docs/FAILURE_LEDGER.md).
 
 ### Install and verify
 
-Firefox 142 or newer, Python 3.11+, `uv`, and a local Ollama installation are
+Firefox 142 or newer, Python 3.12+, `uv`, and a local Ollama installation are
 required. The 0.46.0 source layout uses two sibling repositories, with
-`facet-runtime` fixed at companion commit
-`f2e09071415907cbbe1b4b905af9af6473098e8b`:
+`facet-runtime` fixed at the commit in `deploy/facet-runtime.pin`, currently
+`6a337c40eb0b1a17dffac37f443d846089611689`:
 
 ```bash
 git clone https://github.com/SteveFreeBSD/facet-hawkes.git
 git clone https://github.com/SteveFreeBSD/facet-runtime.git
-git -C facet-runtime checkout --detach f2e09071415907cbbe1b4b905af9af6473098e8b
+git -C facet-runtime checkout --detach 6a337c40eb0b1a17dffac37f443d846089611689
 cd facet-hawkes
 ```
 
-Install the locked Python environment and register the native companion:
+Install the locked Python environment, the Facet helper the companion executes,
+and the native-messaging registration:
 
 ```bash
 uv sync --frozen --extra dev
+uv tool install --force --reinstall ../facet-runtime   # provides facet-remote
 python3 deploy/firefox/install_native_host.py --write
 python3 deploy/firefox/install_native_host.py --check
 ```
+
+`facet-remote` is a separate `uv tool` installation rather than the working
+tree, so it has to be reinstalled after any change to `facet-runtime`. See
+[Runtime, models and deployment](docs/RUNTIME_AND_DEPLOYMENT.md#deploying-a-change).
 
 Normal Firefox requires a Mozilla-signed XPI. Follow the
 [release and installation runbook](extension/RELEASE.md) for signing,
@@ -195,6 +207,12 @@ The host is `casbox` (Ryzen AI HX 370, Radeon 890M), with Ollama on loopback:
 - Facet runs on this same machine, reached by running `facet-remote` as a local
   subprocess. Nothing in a solve crosses a network.
 
+Facet's own model assignment — which model reasons, on which device, with what
+budget — is separate and is declared in `facet-runtime`. Both tables, the
+transport, and everything that has to be reinstalled when either repository
+moves are in [Runtime, models and
+deployment](docs/RUNTIME_AND_DEPLOYMENT.md).
+
 The earlier baseline ran on the HP t740 named `caspian`, against a model alias
 that exists only on that machine and predates this setup. Its fixed MC
 acceptance figure was measured there and is not restated here, because it says
@@ -202,14 +220,14 @@ nothing about the models above: the acceptance benchmark needs re-running before
 any number is quoted as current.
 
 These are operating defaults, not generic recommendations for every machine.
-See [Current Baseline](docs/CURRENT_BASELINE.md) and the
-[Caspian host profile](docs/hosts/caspian.md) for evidence and verification.
+The measurements taken on `caspian`, and the machine profile behind them, are
+kept in [the historical record](docs/history/README.md).
 
 ## Install
 
 Requirements:
 
-- Python 3.11 or newer
+- Python 3.12 or newer
 - `uv`
 - SQLite with FTS5
 - Ollama with `qwen3.5:9b`; screenshot questions additionally use `qwen3.5:4b`
@@ -455,25 +473,24 @@ uv run vulture src tests --min-confidence 80
 
 ## Documentation
 
-Start with the [Documentation Index](docs/README.md). The authoritative current
-documents are:
+Start with [Current state](docs/CURRENT_STATE.md), then
+[the documentation index](docs/README.md). There is one authority per question:
 
-- [Current Baseline](docs/CURRENT_BASELINE.md): known-good app, data, model,
-  and benchmark state.
-- [Pre-calculus Setup](docs/PRECALCULUS.md): math model, benchmark, and course
-  ingestion workflow.
-- [Performance Tuning](docs/PERFORMANCE_TUNING.md): benchmark protocol,
-  measured decisions, and rejected experiments.
-- [Host profiles](docs/hosts/README.md): which machine runs what. One does:
-  `casbox` is the browser machine, the native-host machine and the Facet
-  runtime host at once. [Caspian](docs/hosts/caspian.md) is the historical
-  benchmark host and its hardware notes.
-- [Migration Checklist](docs/MIGRATION.md): reproduce the system elsewhere.
-- [The Ethnos-Facet boundary](docs/FACET_BRIDGE.md): the protocol, its
-  security properties, and how the transport is configured.
-- [Ollama Troubleshooting](docs/OLLAMA_TROUBLESHOOTING.md): model, Vulkan,
-  response, and stability failures.
-- [Live Hawkes Observatory](docs/LIVE_OBSERVATORY.md): one correlated look at
-  the live session, from one clock.
-- [Retained failure ledger](docs/FAILURE_LEDGER.md): what a failure leaves
-  behind when nobody was watching, and how to triage it afterwards.
+| Question | Authority |
+|---|---|
+| Architecture and topology | [The Ethnos-Facet boundary](docs/FACET_BRIDGE.md) |
+| What can be answered, and entered, and is proven live | [Answer capabilities](docs/ANSWER_CAPABILITIES.md) |
+| Which model runs where, and what to reinstall | [Runtime, models and deployment](docs/RUNTIME_AND_DEPLOYMENT.md) |
+| Answer Cadence | [Answer Cadence](docs/ANSWER_CADENCE.md) |
+| Looking at a live failure safely | [Hawkes development flow](docs/HAWKES_DEVELOPMENT_FLOW.md) |
+| What was true before | [Historical record](docs/history/README.md) |
+
+Day to day: [Live Hawkes Observatory](docs/LIVE_OBSERVATORY.md) for one
+correlated look at a live session, [Retained failure
+ledger](docs/FAILURE_LEDGER.md) for what accumulated while nobody was watching,
+and [Ollama Troubleshooting](docs/OLLAMA_TROUBLESHOOTING.md) when a model is
+missing, CPU-only, or unstable.
+
+Historical material is quarantined under [`docs/history/`](docs/history/README.md)
+with a header on each document saying what replaced it. Nothing there describes
+the current system, and nothing there was deleted for being old.

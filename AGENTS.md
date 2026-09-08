@@ -11,6 +11,24 @@ These rules are written to get you to the evidence quickly. Everything that is
 still forbidden below is forbidden for a stated reason; if a reason no longer
 applies, say so rather than working around it silently.
 
+**Do not do archaeology to orient.** One page describes the whole system:
+[Current state](docs/CURRENT_STATE.md). One page names the single authority for
+each question: [the documentation index](docs/README.md). There are six
+authorities and nothing else claims to answer their questions:
+
+| Question | Authority |
+|---|---|
+| Architecture and topology | [The Ethnos-Facet boundary](docs/FACET_BRIDGE.md) |
+| What can be answered, entered, and is proven live | [Answer capabilities](docs/ANSWER_CAPABILITIES.md) |
+| Which model runs where, and what to reinstall | [Runtime, models and deployment](docs/RUNTIME_AND_DEPLOYMENT.md) |
+| Answer Cadence | [Answer Cadence](docs/ANSWER_CADENCE.md) |
+| Looking at a live failure safely | [Hawkes development flow](docs/HAWKES_DEVELOPMENT_FLOW.md) |
+| What was true before | [Historical record](docs/history/README.md) |
+
+Anything under `docs/history/` is evidence, not instruction, and says so in its
+own first lines. If an active document contradicts one of the six, the
+authority wins and the other is a defect worth fixing in the same change.
+
 ## Where things run, and what things are called
 
 **One machine: `casbox`.** Firefox, the add-on, the `ethnos` native host,
@@ -34,8 +52,9 @@ yourself reasoning about "the remote machine", check first:
 $ python3 scripts/observe_live_hawkes.py --bundle    # the FACET record names the transport
 ```
 
-`caspian` is a *historical* host. Documents that describe it as the primary
-workstation are describing the past.
+`caspian` is a *historical* host. Everything measured there lives under
+[`docs/history/`](docs/history/README.md) and describes neither this machine nor
+its models. So does the `ethnos-caspian` git remote.
 
 **`src/ethnos/` is a legacy internal package name.** So are the add-on ID
 `ethnos-hawkes@local`, the native-messaging host `ethnos_hawkes`, and the
@@ -44,7 +63,8 @@ user reads says Ethnos. Do not rename the package as a tidy-up -- the installed
 launcher runs `python -m ethnos.hawkes_host`, so it is a coordinated reinstall
 of the manifest and the launcher, and it belongs in a change of its own.
 [The Ethnos-Facet boundary](docs/FACET_BRIDGE.md) is the reference for all of
-this.
+this, and [`extension/RELEASE.md`](extension/RELEASE.md) carries the full list
+of retained identifiers with the reason each one is load-bearing.
 
 ## Looking at the live session
 
@@ -176,6 +196,13 @@ needing mode A.
   panel decision under QuickJS, the coverage sweep answers "would this question
   have gone to a model?" in about a second, and both catch more than a
   screenshot does.
+- **A change in `../facet-runtime` is not live until it is reinstalled.**
+  `facet-remote` is a `uv tool` install, not the working tree, so a solver or
+  prompt change reaches a solve only after `uv tool install --force
+  --reinstall .` in that repository. A helper left behind refuses a newer
+  client with `unsupported_version`, which is the right failure and reads
+  exactly like a transport problem. The commit this checkout requires is
+  `deploy/facet-runtime.pin`, and it is the only place that is decided.
 - You do not need to sit and watch for a failure any more, and should not.
   Ask the owner to work normally, then triage what accumulated. A failure
   caught live and a failure read back an hour later carry the same evidence.

@@ -1,5 +1,8 @@
 # Agentic Q&A
 
+> **Scope: the local study engine.** Agentic Q&A is a mode of `ask` and `chat`
+> over ingested PDFs. It is not part of a Hawkes solve.
+
 Agentic Q&A is the opt-in research-assistant mode for `ask` and `chat`. The
 default Q&A path stays fast and fixed: retrieve context once, call the model
 once, and answer. Agentic mode gives the model a bounded local-PDF tool loop so

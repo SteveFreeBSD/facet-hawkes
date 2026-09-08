@@ -1,5 +1,12 @@
 # Pre-calculus setup
 
+> **Historical procedure.** `precalc-local` is a local Ollama alias built on
+> `caspian` from Qwen2.5-Math-7B; it does **not** exist on the current host
+> `casbox`, and every figure below was measured there. `ethnos precalc-bench`
+> still defaults to that alias, so pass `--model` explicitly here. Live Hawkes
+> mathematics does not use this path at all -- Facet answers exactly first, and
+> [Answer capabilities](ANSWER_CAPABILITIES.md) is the map of what that covers.
+
 Ethnos keeps its `qwen3.5:9b` default for the existing courses and provides
 `precalc-local` as the transitional math-specific Ollama model. On `caspian`,
 the alias uses Qwen2.5-Math-7B-Instruct Q4_K_M at about 4.7 GB and runs fully

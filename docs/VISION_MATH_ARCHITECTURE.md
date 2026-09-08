@@ -1,5 +1,12 @@
 # Vision and Exact-Math Architecture
 
+> **Historical staging record.** This documents the screenshot-reading rollout
+> as it was staged on `caspian` in September 2026, including a rollback target
+> that no longer exists on this host. The reader pair it describes did ship and
+> is current: two *different* local models must agree before an image-read
+> answer may be inserted. The current model names, devices and settings are in
+> [Runtime, models and deployment](RUNTIME_AND_DEPLOYMENT.md).
+
 Status: functionally validated candidate on `caspian`, 2026-09-02. The established
 `gemma-python` baseline remains available for rollback until the screenshot
 acceptance set passes.

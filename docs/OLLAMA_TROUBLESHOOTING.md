@@ -1,8 +1,16 @@
 # Ollama Troubleshooting
 
-The supported local baseline is `qwen3.5:9b` at
-`http://localhost:11434`, context `4096`, thinking disabled, and Vulkan
-acceleration on `caspian`.
+> **Scope: the local study engine, and `caspian`-era procedure.** The symptoms
+> and the service surgery below are still the right ones for an AMD iGPU host
+> running Ollama, but every expected value was measured on `caspian` against a
+> model alias that exists only there. This host's current models and devices
+> are in [Runtime, models and deployment](RUNTIME_AND_DEPLOYMENT.md), and
+> Facet's own accelerator checks are in that document's *Foundation checks*.
+
+The companion's text baseline is `qwen3.5:9b` at `http://localhost:11434`,
+context `4096`, thinking disabled, over Vulkan. Facet's own models are separate
+and are listed in [Runtime, models and
+deployment](RUNTIME_AND_DEPLOYMENT.md#which-model-answers-what).
 
 ## Fast inventory
 
@@ -17,7 +25,7 @@ swapon --show
 uv run ethnos ask 1 "What is virtue ethics?" --limit 2 --debug-ollama
 ```
 
-Expected on `caspian`:
+Expected on an iGPU host of this class:
 
 - Ollama `0.32.1`, active/running.
 - `qwen3.5:9b:latest` exists.
@@ -25,7 +33,7 @@ Expected on `caspian`:
   `OLLAMA_IGPU_ENABLE=1`, `OLLAMA_MLOCK=1`, and
   `OLLAMA_KEEP_ALIVE=24h`.
 - `LimitMEMLOCK=infinity`.
-- `ollama ps` reports Gemma at `100% GPU`, context `4096`.
+- `ollama ps` reports the model at `100% GPU`, context `4096`.
 - The Ethnos smoke ends with `done_reason=stop`, no hidden thinking, and no API
   error.
 
@@ -38,8 +46,9 @@ Symptoms: `request_failed`, “model not found,” or no `qwen3.5:9b` in
 ollama show qwen3.5:9b
 ```
 
-Recreate the alias using [MIGRATION.md](MIGRATION.md#5-recreate-the-gemma-alias).
-Qwen tags are not substitutes for the required Gemma alias.
+Pull it again — see [Migration checklist](MIGRATION.md#5-obtain-the-models).
+The current models are upstream tags, not local aliases; do not rebuild one
+from a Modelfile that names a different base.
 
 ## Service unavailable
 
@@ -55,7 +64,7 @@ journalctl -u ollama --since '-10 minutes' --no-pager
 
 Rerun the fast inventory after restart.
 
-## Gemma falls back to CPU
+## The model falls back to CPU
 
 Symptoms: `ollama ps` shows `100% CPU`, generation is much slower, or Ollama
 logs do not mention a Vulkan device.
@@ -69,8 +78,8 @@ journalctl -u ollama --since '-10 minutes' --no-pager | \
   rg -i 'vulkan|offload|gpu|amdgpu|error'
 ```
 
-On `caspian`, confirm `OLLAMA_IGPU_ENABLE=1`, a working RADV device, and
-unlimited memlock. Restart Ollama after changing the drop-in. A successful Gemma
+Confirm `OLLAMA_IGPU_ENABLE=1`, a working RADV device, and
+unlimited memlock. Restart Ollama after changing the drop-in. A successful
 load logs `offloaded 36/36 layers to GPU`.
 
 The iGPU uses shared system memory. A small firmware VRAM aperture does not by
@@ -131,11 +140,11 @@ journalctl -k --since '-15 minutes' --no-pager | \
 Stop the failing model and return to `qwen3.5:9b` at context `4096`. Do not
 increase `amdgpu.lockup_timeout` merely to hide a repeatable model workload
 failure. The Qwen 30B sustained 8K experiment produced this condition; the
-accepted Gemma profile did not.
+accepted profile did not.
 
 ```bash
-ollama stop qwen3-coder-caspian
-ollama stop qwen3-coder-caspian-dev
+ollama stop gpt-oss:20b
+ollama stop qwen3.5:9b
 ollama run qwen3.5:9b "Reply exactly: model ready"
 ```
 
@@ -148,7 +157,7 @@ ollama ps
 ```
 
 An unloaded Ollama model consumes disk only. Stop optional runners before
-changing VM settings. On `caspian`, Gemma normally leaves more than 50 GiB
+changing VM settings. On `caspian` the model normally left more than 50 GiB
 available and does not use swap.
 
 ## Benchmark results look impossibly fast
@@ -162,7 +171,7 @@ ollama stop MODEL_NAME
 
 Stop the runner between cold candidates and record cold/warm state in the
 report name. Use the full protocol in
-[PERFORMANCE_TUNING.md](PERFORMANCE_TUNING.md).
+[Performance tuning](history/PERFORMANCE_TUNING.md).
 
 ## Escalation order
 

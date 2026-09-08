@@ -1,0 +1,13 @@
+# The facet-runtime commit this checkout of Facet Hawkes Assistant is built and
+# tested against. Facet owns exact solving and solver routing, and this
+# repository imports it as a path dependency at ../facet-runtime, so an older
+# runtime is not a slower system -- it is a missing symbol at import time.
+#
+# This file is the single source of truth. CI reads it, and
+# tests/test_runtime_pin.py fails if any document quotes a different commit.
+#
+# Raise it in the same change that starts depending on something newer. This
+# commit is the one that introduced `ANSWER_FORMS`; the tip of that repository
+# may be ahead of it, and that is fine -- the pin is a floor, and the test
+# checks the sibling is not below it.
+6a337c40eb0b1a17dffac37f443d846089611689

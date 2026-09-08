@@ -1,5 +1,12 @@
 # Hawkes Live Findings
 
+> **Historical.** Recorded on 2026-09-03 against temporary add-on
+> `0.39.0-unsigned`. Every defect named below was fixed across 0.39.0-0.41.3
+> and the fixes are in [the changelog](../../extension/CHANGELOG.md); the
+> severities and "still open" notes describe that build, not this one. Failures
+> now leave a bounded record instead -- see
+> [Retained failure ledger](../FAILURE_LEDGER.md).
+
 **Date:** 2026-09-03
 **Environment:** owner's normal Firefox, direct Hawkes login, mode A
 (`scripts/inspect_live_firefox.py`); temporary add-on `0.39.0-unsigned`
@@ -384,7 +391,7 @@ template containing `2`.
 
 ## Session Record, 6 September 2026 — Lesson 3.3 Quadratic Functions
 
-The first session run under the [Live Hawkes Observatory](LIVE_OBSERVATORY.md).
+The first session run under the [Live Hawkes Observatory](../LIVE_OBSERVATORY.md).
 Every conclusion below came from a bundle and a run id rather than from
 correlating a screenshot against a ring by eye, and one of them could not have
 been reached at all before the instrument reported what the page publishes.

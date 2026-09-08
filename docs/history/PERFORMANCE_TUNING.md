@@ -3,19 +3,20 @@
 > **Superseded.** This records the baseline measured on the HP t740 named
 > `caspian`, against a model alias that exists only on that machine. Every
 > figure below was measured there and none of it describes the current host
-> `casbox` or its models — see the README's *Current supported baseline*.
+> `casbox` or its models — see
+> [Runtime, models and deployment](../RUNTIME_AND_DEPLOYMENT.md).
 > Nothing here is reattributed to a different model, because a measurement
 > belongs to the thing that produced it.
 
 This document records the current measured decisions and the protocol for
-changing them. Machine facts belong in [hosts/caspian.md](hosts/caspian.md),
+changing them. Machine facts belong in [the Caspian host profile](CASPIAN_HOST.md),
 and the accepted result belongs in [CURRENT_BASELINE.md](CURRENT_BASELINE.md).
 
 ## Current decisions
 
 The general-purpose table below remains the accepted baseline. Screenshot OCR
 has a separate staged 2026-09-02 profile documented in
-[VISION_MATH_ARCHITECTURE.md](VISION_MATH_ARCHITECTURE.md). The user requested
+[VISION_MATH_ARCHITECTURE.md](../VISION_MATH_ARCHITECTURE.md). The user requested
 setup based on primary-source recommendations without a new comparative model
 benchmark; only functional screenshot smokes and regression tests are part of
 that rollout.
@@ -50,7 +51,7 @@ current Ollama version proves otherwise.
 ## Ollama service profile
 
 The exact accepted drop-in, path, application commands, and persistence notes
-live in [hosts/caspian.md](hosts/caspian.md#vulkan-and-ollama). Benchmarking
+live in [the Caspian host profile](CASPIAN_HOST.md#vulkan-and-ollama). Benchmarking
 depends on flash attention, iGPU enablement, mlock, unlimited memlock, and the
 24-hour keepalive remaining active.
 

@@ -1,5 +1,12 @@
 # Hawkes End-to-End Proof
 
+> **Historical.** This proves the path as it stood on 2026-09-02, in an
+> isolated Marionette profile, on add-on 0.4x. It is kept as the first
+> end-to-end evidence, not as a statement about what works now. What is proven
+> today, and by what kind of evidence, is
+> [Answer capabilities](../ANSWER_CAPABILITIES.md); the live workflow is
+> [Hawkes development flow](../HAWKES_DEVELOPMENT_FLOW.md).
+
 **Date:** 2026-09-02; release evidence updated 2026-09-03
 **Environment:** throwaway Firefox profile at `/tmp/ethnos-live-browser`
 **Lesson:** 1.3 Polynomials and Factoring
@@ -100,7 +107,7 @@ input, so a model-only answer cannot silently enter the verified path.
 The commands in this section control the dedicated throwaway profile; they do
 not attach to the owner's normal Firefox. Do not start them during a normal
 signed-extension test. For the existing normal session, follow
-[`HAWKES_DEVELOPMENT_FLOW.md`](HAWKES_DEVELOPMENT_FLOW.md) and use
+[`HAWKES_DEVELOPMENT_FLOW.md`](../HAWKES_DEVELOPMENT_FLOW.md) and use
 `scripts/inspect_live_firefox.py`.
 
 From the repository root, with the isolated browser already running:

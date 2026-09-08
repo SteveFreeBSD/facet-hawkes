@@ -1,5 +1,8 @@
 # Quiz Grounding And Key Audit Workflow
 
+> **Scope: the local study engine.** Quiz import, grounding and key audit over
+> ingested PDFs. It is not part of a Hawkes solve.
+
 ## Summary
 
 Ethnos treats imported quiz content, answer keys, source grounding, model

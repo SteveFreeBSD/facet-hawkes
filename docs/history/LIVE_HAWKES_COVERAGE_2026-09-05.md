@@ -1,5 +1,11 @@
 # Live Hawkes coverage sweep — 2026-09-05
 
+> **Historical.** A dated sweep against add-on 0.45.0, before the drawn-box
+> fraction, labelled-pair, radio-group and point-plotting routes landed. The
+> coverage gaps it lists have moved; read
+> [Answer capabilities](../ANSWER_CAPABILITIES.md) for what is entered today
+> and [Current state](../CURRENT_STATE.md) for where the system is.
+
 Observation-only sweep of the owner's normal Firefox while he works lesson 3.3.
 He moves between questions, submits, and advances; nothing here presses Submit,
 Check, Next, Skip or Try Similar, and nothing navigates Hawkes.

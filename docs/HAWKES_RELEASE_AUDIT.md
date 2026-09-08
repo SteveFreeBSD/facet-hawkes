@@ -16,23 +16,31 @@ locally, external publication actions not yet authorized.**
 | Record | Value |
 |---|---|
 | Product name | Facet Hawkes Assistant |
-| Packaged-source baseline | `fc3f5e4aa5dc2793136116887741eed8b0014ec2` |
-| Required Facet runtime | `f2e09071415907cbbe1b4b905af9af6473098e8b` |
+| Packaged-source baseline | recorded as `fc3f5e4a…`, which resolves to no object in this repository. Treat the audit as anchored to its date, not to that name |
+| Required Facet runtime | `6a337c40eb0b1a17dffac37f443d846089611689` |
 | Candidate artifact | `dist/facet-hawkes-0.46.0-unsigned.xpi` |
-| Candidate SHA-256 | `6bf24fb9744da4b375171530cee9d0c2069a0e7c4be3536161ad6bd983215d64` |
-| Packaged members | 33 |
+| Candidate SHA-256 | `6bf24fb9744da4b375171530cee9d0c2069a0e7c4be3536161ad6bd983215d64`, as audited on 6 September. The source line has advanced since; rebuild to get today's |
+| Packaged members | 33, as audited. A current build packages more |
 | Add-on ID | `ethnos-hawkes@local`, deliberately unchanged |
 | Native host | `ethnos_hawkes`, deliberately unchanged |
 | Reproducibility | two unchanged builds produced the same SHA-256 |
-| Hawkes repository suite | 1203 passed |
-| Facet runtime suite | 291 passed |
+| Hawkes repository suite | 1203 passed, as audited on 6 September |
+| Facet runtime suite | 291 passed, as audited on 6 September |
 | Static gates | Ruff check and format, compileall, Vulture, and 3 documentation checks passed |
 | Mozilla validator | `web-ext` 10.6.0 under Node 22.23.2: 0 errors, 0 warnings, 0 notices |
 | Archive | integrity passed; exact packaged archive linted |
 | Browser gate | unsigned XPI installed active in a clean throwaway Firefox 155.0.1 profile; Settings and popup loaded without fatal error |
 | Canonical public repository | `https://github.com/SteveFreeBSD/facet-hawkes` — to be created after explicit approval |
-| Companion topology | sibling `facet-hawkes` + `facet-runtime`; CI pins runtime `f2e0907` |
-| Remaining prerequisites | publish runtime `f2e0907`, create and populate canonical Hawkes repository, then pass a fresh public sibling clone |
+| Companion topology | sibling `facet-hawkes` + `facet-runtime`; CI pins runtime `6a337c4` |
+| Remaining prerequisites | publish runtime `6a337c4`, create and populate canonical Hawkes repository, then pass a fresh public sibling clone |
+
+> **Read this section as a dated audit, not as today's build.** Every number in
+> it belongs to 6 September 2026. Work has landed since — drawn-box fractions,
+> radio groups, point plotting, and the move from an SSH loopback to a local
+> `facet-remote` subprocess — so the digest, the file count and the suite
+> totals above are all lower than a rebuild produces. Signing requires a fresh
+> run of the gates with its own recorded evidence; see
+> [Current state](CURRENT_STATE.md) for where the system actually is.
 
 0.46.0 makes the answer a deterministic score shared by insertion timing,
 visuals, panel narration, and local music. The established Hawkes solve,
@@ -52,7 +60,7 @@ Hawkes repository, then repeat the fresh-clone proof entirely from public URLs.
 The selected strategy retains the existing sibling path dependency. The public
 README, migration checklist, manifest homepage, CI badge, and CI checkout now
 consistently name `SteveFreeBSD/facet-hawkes`; CI fixes the sibling runtime at
-`f2e09071415907cbbe1b4b905af9af6473098e8b`. The old Ethnos repository is not a
+`6a337c40eb0b1a17dffac37f443d846089611689`. The old Ethnos repository is not a
 Facet Hawkes publication target. The private `ethnos-caspian` remote remains
 useful as legacy history and need not be removed.
 
@@ -219,7 +227,7 @@ The existing Hawkes session verified the repaired structured and sidebar paths:
 - insertion remained in the `Inserted` state rather than solving twice;
 - no test action pressed Hawkes Submit.
 
-See [Hawkes E2E proof](HAWKES_E2E_PROOF.md) and
+See [Hawkes E2E proof](history/HAWKES_E2E_PROOF.md) and
 [editor findings](HAWKES_EDITOR_FINDINGS.md) for the captured reasoning and
 editor protocol.
 

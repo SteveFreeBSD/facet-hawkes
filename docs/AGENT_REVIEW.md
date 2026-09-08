@@ -1,5 +1,9 @@
 # Agent Review
 
+> **Scope: the local study engine.** Agent Review inspects quiz items against
+> local PDF evidence. It is not part of a Hawkes solve, and the model profiles
+> below were measured on `caspian`.
+
 Agent Review is the model-driven review layer for Ethnos. It lets a local or
 hybrid Ollama model inspect quiz items with deterministic Ethnos tools, cite
 PDF evidence, flag answer-key risks, and write a CTO-ready report.

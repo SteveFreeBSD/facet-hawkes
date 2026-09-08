@@ -182,6 +182,7 @@ is where a failure is actually triaged. See
 ## See also
 
 - [Retained failure ledger](FAILURE_LEDGER.md) — triaging failures after the fact
-- [Hawkes live findings](HAWKES_LIVE_FINDINGS.md) — what live testing has exposed
+- [Hawkes live findings](history/HAWKES_LIVE_FINDINGS.md) — historical: what the
+  2026-09-03 session exposed on 0.39.0
 - [Hawkes development flow](HAWKES_DEVELOPMENT_FLOW.md) — where this fits
 - [Ollama troubleshooting](OLLAMA_TROUBLESHOOTING.md) — when the runtime is the fault

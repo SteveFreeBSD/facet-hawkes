@@ -1,15 +1,24 @@
 # Migration Checklist
 
-Use this checklist to reproduce Ethnos on another machine. Git contains source,
-tests, prompts, fixtures, and documentation. The processed database, PDFs,
-reports, and Ollama model store are separate local state.
+> **Scope: the local study engine.** This reproduces the PDF study, quiz and
+> review side on another machine. It is not how the live Hawkes system is
+> deployed -- that is [Runtime, models and
+> deployment](RUNTIME_AND_DEPLOYMENT.md), and the current system runs on one
+> machine that is already set up. Sections 4 to 6 below are `caspian`-era
+> procedure for an AMD iGPU host and were last exercised there; the model
+> names in them are the current defaults, but the acceleration figures are
+> not from this host.
+
+Git contains source, tests, prompts, fixtures, and documentation. The processed
+database, PDFs, reports, and Ollama model store are separate local state.
 
 ## 1. Copy the tracked sibling repositories
 
-Requirements: Python 3.11+, `uv`, Git, SQLite with FTS5, and Ollama.
+Requirements: Python 3.12 or newer (matching `requires-python` in
+`pyproject.toml`), `uv`, Git, SQLite with FTS5, and Ollama.
 
 Facet Hawkes Assistant 0.46.0 requires Facet runtime commit
-`f2e09071415907cbbe1b4b905af9af6473098e8b`. Keep both repositories under one
+`6a337c40eb0b1a17dffac37f443d846089611689`. Keep both repositories under one
 parent directory because `pyproject.toml` deliberately resolves the runtime at
 `../facet-runtime`.
 
@@ -18,15 +27,30 @@ mkdir facet-hawkes-0.46.0
 cd facet-hawkes-0.46.0
 git clone https://github.com/SteveFreeBSD/facet-hawkes.git
 git clone https://github.com/SteveFreeBSD/facet-runtime.git
-git -C facet-runtime checkout --detach f2e09071415907cbbe1b4b905af9af6473098e8b
+git -C facet-runtime checkout --detach 6a337c40eb0b1a17dffac37f443d846089611689
 cd facet-hawkes
 uv sync --frozen --extra dev
 uv run pytest -q
 uv run ruff check .
 ```
 
-Read [CURRENT_BASELINE.md](CURRENT_BASELINE.md) before copying runtime state.
-Machine-specific differences belong under [hosts/](hosts/README.md).
+The commit above is `deploy/facet-runtime.pin`, which is the only place it is
+decided; `tests/test_runtime_pin.py` fails if this checklist drifts from it.
+
+Facet is the solver, and `facet-remote` is a separate `uv tool` installation
+rather than the working tree. Install it, or nothing can be solved:
+
+```bash
+cd ../facet-runtime
+uv tool install --force --reinstall .
+```
+
+To run the Hawkes add-on as well as the study engine, register the native
+companion — see [Runtime, models and
+deployment](RUNTIME_AND_DEPLOYMENT.md#deploying-a-change).
+
+Historical baseline figures are in
+[the historical record](history/README.md).
 
 ## 2. Copy or rebuild local data
 
@@ -58,7 +82,9 @@ uv run ethnos structure-status 1
 uv run ethnos structure-status 2
 ```
 
-Expected counts are recorded in [CURRENT_BASELINE.md](CURRENT_BASELINE.md).
+Expected counts were recorded on `caspian` in
+[the historical baseline](history/CURRENT_BASELINE.md); they describe that
+corpus, not necessarily a new one.
 
 ## 3. Configure application overrides only if needed
 
@@ -75,18 +101,19 @@ service that launches Ethnos.
 
 ## 4. Configure Ollama
 
-The only required model name is `qwen3.5:9b`. Qwen is optional and should not
-be copied to a new Ethnos host unless a separate workflow needs it.
+The only required model name is `qwen3.5:9b`. Screenshot questions
+additionally use `qwen3.5:4b` as the first of two different readers.
 
-For a Caspian-class AMD iGPU host, create:
+For a `caspian`-class AMD iGPU host, create:
 
 ```text
 /etc/systemd/system/ollama.service.d/override.conf
 ```
 
-Copy the verified drop-in from
-[hosts/caspian.md](hosts/caspian.md#vulkan-and-ollama). That host profile is the
-single source of truth for the exact service block and post-change checks.
+Copy the verified drop-in from [the Caspian host
+profile](history/CASPIAN_HOST.md#vulkan-and-ollama). That profile is historical
+but is still the recorded service block and post-change checks for that class
+of host.
 
 Apply and verify:
 
@@ -100,43 +127,32 @@ ollama --version
 On another GPU architecture, verify the appropriate Ollama backend instead of
 blindly copying `OLLAMA_IGPU_ENABLE`.
 
-## 5. Recreate the Gemma alias
+## 5. Obtain the models
 
-First check whether it already exists:
+The current models are upstream tags, not local aliases. Pull them:
 
 ```bash
+ollama pull qwen3.5:9b
+ollama pull qwen3.5:4b
+```
+
+Confirm what is present:
+
+```bash
+ollama list
 ollama show qwen3.5:9b
 ```
 
-If not, save the following as a Modelfile and create the alias:
+> **Historical.** Earlier revisions of this checklist built a local alias from
+> a Modelfile, and after the models changed the recipe survived as an
+> instruction to *create* `qwen3.5:9b` from a different base — which would
+> shadow the real tag with a small unrelated model. Do not do that. The alias
+> recipe, and the `precalc-local` math alias, exist only on `caspian`: see
+> [the historical baseline](history/CURRENT_BASELINE.md) and
+> [Pre-calculus setup](PRECALCULUS.md).
 
-```text
-FROM gemma4:e2b
-
-SYSTEM """
-You are a concise Python scripting helper for a beginner college class.
-When asked for code, give the code first.
-Keep explanations short.
-Do not create long tutorials unless asked.
-Do not add setup sections unless needed.
-Prefer simple, readable Python.
-"""
-
-PARAMETER num_ctx 4096
-PARAMETER num_predict 500
-PARAMETER temperature 0.2
-PARAMETER top_k 64
-PARAMETER top_p 0.95
-```
-
-```bash
-ollama create qwen3.5:9b -f /path/to/Modelfile
-```
-
-For exact reproduction across an upstream tag change, export the source host's
-generated Modelfile with `ollama show qwen3.5:9b --modelfile` and preserve the
-referenced Ollama store. Copying `/var/lib/ollama` requires preserving the
-Ollama service account's ownership.
+Copying `/var/lib/ollama` between hosts requires preserving the Ollama service
+account's ownership.
 
 ## 6. Verify model acceleration
 
@@ -145,7 +161,8 @@ ollama run qwen3.5:9b "Reply exactly: model ready"
 ollama ps
 ```
 
-On `caspian`, expected output is `100% GPU` and context `4096`. Then run an
+On a working iGPU host, expect `100% GPU` and context `4096` — that was the
+measured result on `caspian`. Then run an
 Ethnos smoke without mutating the database:
 
 ```bash
@@ -196,4 +213,6 @@ ollama ps
 ```
 
 Run the full model acceptance benchmark only after these checks pass. Use the
-command and pass criteria in [PERFORMANCE_TUNING.md](PERFORMANCE_TUNING.md).
+command and pass criteria in [the historical performance
+notes](history/PERFORMANCE_TUNING.md). No current acceptance figure exists for
+this host; the benchmark needs re-running before one is quoted.

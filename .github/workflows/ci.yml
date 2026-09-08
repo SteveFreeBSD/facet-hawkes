@@ -30,12 +30,18 @@ jobs:
       - uses: actions/checkout@v6
         with:
           path: facet-hawkes
+      # One pin, read rather than restated: deploy/facet-runtime.pin is the
+      # single source of truth and tests/test_runtime_pin.py holds every
+      # document that quotes it to the same commit.
+      - name: Read the required Facet runtime commit
+        id: runtime
+        run: echo "ref=$(grep -v '^#' deploy/facet-runtime.pin | tr -d '[:space:]')" >> "$GITHUB_OUTPUT"
       # The exact solvers live in Facet and are a path dependency of this
       # package, so the sibling checkout is part of installing it at all.
       - uses: actions/checkout@v6
         with:
           repository: SteveFreeBSD/facet-runtime
-          ref: f2e09071415907cbbe1b4b905af9af6473098e8b
+          ref: ${{ steps.runtime.outputs.ref }}
           path: facet-runtime
       - uses: actions/setup-python@v6
         with:

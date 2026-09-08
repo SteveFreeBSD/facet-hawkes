@@ -9,8 +9,10 @@ Last verified: 2026-07-16.
 > baseline numbers measured here and for the OS-level settings, which are still
 > the reference for reproducing them.
 
-`caspian` is the primary Ethnos workstation and the source of the current
-performance baseline.
+`caspian` *was* the primary Ethnos workstation and is the source of the
+baseline recorded in [the historical
+baseline](CURRENT_BASELINE.md). It is not the current host; see
+[Runtime, models and deployment](../RUNTIME_AND_DEPLOYMENT.md).
 
 ## Hardware and platform
 
@@ -186,7 +188,7 @@ Ollama prompt batch: model default 512
 
 Acceptance result: 20/20 correct, zero invalid responses, zero no-context
 cases, 118.1 seconds including a cold load. See
-[../PERFORMANCE_TUNING.md](../PERFORMANCE_TUNING.md) for the reproducible
+[../PERFORMANCE_TUNING.md](PERFORMANCE_TUNING.md) for the reproducible
 decision record.
 
 ## Persistence and upgrades

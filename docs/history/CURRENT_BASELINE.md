@@ -3,7 +3,8 @@
 > **Superseded.** This records the baseline measured on the HP t740 named
 > `caspian`, against a model alias that exists only on that machine. Every
 > figure below was measured there and none of it describes the current host
-> `casbox` or its models — see the README's *Current supported baseline*.
+> `casbox` or its models — see
+> [Runtime, models and deployment](../RUNTIME_AND_DEPLOYMENT.md).
 > Nothing here is reattributed to a different model, because a measurement
 > belongs to the thing that produced it.
 
@@ -12,12 +13,12 @@ Last verified on `caspian`: 2026-07-19.
 The screenshot OCR/exact-math stack is a staged candidate as of 2026-09-02;
 it does not replace the accepted general-purpose baseline below until its
 acceptance gate passes. See
-[Vision and Exact-Math Architecture](VISION_MATH_ARCHITECTURE.md).
+[Vision and Exact-Math Architecture](../VISION_MATH_ARCHITECTURE.md).
 
 This is the single source of truth for the known-good Ethnos application,
 runtime data, model, and acceptance benchmark. Hardware and persistent service
-details live in [hosts/caspian.md](hosts/caspian.md). Reproduction steps live in
-[MIGRATION.md](MIGRATION.md).
+details live in [the Caspian host profile](CASPIAN_HOST.md). Reproduction steps live in
+[MIGRATION.md](../MIGRATION.md).
 
 ## Supported configuration
 
@@ -142,7 +143,7 @@ text. The two Agent human-review verdicts are items 15 and 16: conceptual
 counterculture wording and a formal-war-declaration qualifier not stated in the
 anchored passage. Four instructor-key notes are also explicit quality findings,
 which keeps otherwise supported items 5 and 10 in the inspection queue. See the
-[Chapter 27 findings](../examples/history_ch27_e2e_findings.md) for provenance,
+[Chapter 27 findings](../../examples/history_ch27_e2e_findings.md) for provenance,
 wording notes, exact commands, and the supplied answer sequence.
 
 ## Runtime data
@@ -227,5 +228,5 @@ Run these intentionally and write reports under `data/runs/`:
 
 Start with one chunk or a small item subset. Back up `data/ethnos.sqlite` before
 re-ingestion, rechunking, or a full structured rebuild. For recovery and host
-migration, follow [MIGRATION.md](MIGRATION.md) rather than duplicating the steps
+migration, follow [MIGRATION.md](../MIGRATION.md) rather than duplicating the steps
 here.

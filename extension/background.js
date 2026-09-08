@@ -1437,9 +1437,9 @@ function provenanceNotes(certainty) {
  * Remember the reasoner Facet last actually used.
  *
  * The settings page has to describe the configured pipeline without asking
- * the network anything: waking an SSH connection and a model host to render a
- * preferences screen would be a real cost for a cosmetic line. So the last
- * observed run is kept, and the page presents it as the last observed run
+ * anything: starting the companion, the Facet helper and a model host to
+ * render a preferences screen would be a real cost for a cosmetic line. So the
+ * last observed run is kept, and the page presents it as the last observed run
  * rather than as a current fact.
  */
 async function rememberFacetRun(certainty) {

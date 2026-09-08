@@ -1,52 +1,68 @@
-# Documentation Index
+# Documentation index
 
-Use this page to find the one authoritative document for each job. Historical
-review packets and superseded host experiments are intentionally not kept in
-the active documentation; Git history remains the archive.
+Six authorities. Each answers one question, and nothing else claims to answer
+it. If two documents disagree, the authority wins and the other is a defect.
 
-## Start here
+**New here? Read [Current state](CURRENT_STATE.md) first** — the whole system
+in one page, with the names, the topology and the limits.
+
+## The six authorities
+
+| # | Question | Authority |
+|---|---|---|
+| 1 | What is the architecture, and where does everything run? | [The Ethnos-Facet boundary](FACET_BRIDGE.md) |
+| 2 | What can be answered, what can be entered, and what is proven live? | [Answer capabilities](ANSWER_CAPABILITIES.md) |
+| 3 | Which model answers, on which device, and what do I reinstall? | [Runtime, models and deployment](RUNTIME_AND_DEPLOYMENT.md) |
+| 4 | How does Answer Cadence work? | [Answer Cadence](ANSWER_CADENCE.md) |
+| 5 | How do I look at a live failure without breaking anything? | [Hawkes development flow](HAWKES_DEVELOPMENT_FLOW.md) |
+| 6 | What was true before, and what replaced it? | [Historical record](history/README.md) |
+
+## Working on the live Hawkes system
 
 | Need | Document |
 |---|---|
-| Install and common commands | [Project README](../README.md) |
-| Known-good state and verification | [Current Baseline](CURRENT_BASELINE.md) |
-| Move or rebuild the installation | [Migration Checklist](MIGRATION.md) |
-| Diagnose Ollama or Vulkan | [Ollama Troubleshooting](OLLAMA_TROUBLESHOOTING.md) |
-| Reproduce performance decisions | [Performance Tuning](PERFORMANCE_TUNING.md) |
-| Know which machine runs what | [Host profiles](hosts/README.md) |
-| Inspect the historical benchmark host | [Caspian Host Profile](hosts/caspian.md) |
-| Configure screenshot OCR and exact math | [Vision and Exact-Math Architecture](VISION_MATH_ARCHITECTURE.md) |
-| Use or develop the Hawkes add-on | [extension/README.md](../extension/README.md) |
-| Understand Answer Cadence / Semantic Cadence | [Answer Cadence](ANSWER_CADENCE.md) |
-| Sign and permanently install the Hawkes add-on | [Firefox release runbook](../extension/RELEASE.md) |
-| Review Hawkes add-on data handling | [Hawkes privacy notice](../extension/PRIVACY.md) |
-| Understand the Hawkes answer editor | [Hawkes editor findings](HAWKES_EDITOR_FINDINGS.md) |
-| Verify the live Hawkes end-to-end path | [Hawkes E2E proof](HAWKES_E2E_PROOF.md) |
-| Send work to Facet for execution | [The Ethnos-Facet boundary](FACET_BRIDGE.md) |
-| Add an exact solver family, or find out why an answer cannot be entered | [Answer capabilities](ANSWER_CAPABILITIES.md) |
-| Review what live Hawkes testing has exposed | [Hawkes live findings](HAWKES_LIVE_FINDINGS.md) |
+| Orient from nothing | [Current state](CURRENT_STATE.md) |
+| Correlate one live failure end to end, from one clock | [Live Hawkes Observatory](LIVE_OBSERVATORY.md) |
+| Triage failures recorded while nobody was watching | [Retained failure ledger](FAILURE_LEDGER.md) |
+| Understand what the Hawkes answer editor publishes | [Hawkes editor findings](HAWKES_EDITOR_FINDINGS.md) |
+| Work on structured graph answers | [Structured parabola graph answers](HAWKES_GRAPH.md) |
+| Use or develop the add-on | [`extension/README.md`](../extension/README.md) |
+| Sign, install and roll back the add-on | [Firefox release runbook](../extension/RELEASE.md) |
+| Review the add-on's data handling | [Hawkes privacy notice](../extension/PRIVACY.md) |
+| Read the release position and its evidence | [Release audit ledger](HAWKES_RELEASE_AUDIT.md) |
 | Read the add-on's diagnostic log off a profile | `python3 scripts/read_extension_log.py` |
-| Correlate one live failure end to end | [Live Hawkes Observatory](LIVE_OBSERVATORY.md) |
-| Triage failures recorded while nobody watched | [Retained failure ledger](FAILURE_LEDGER.md) |
-| Review the current Hawkes release status | [Hawkes release audit](HAWKES_RELEASE_AUDIT.md) |
 
-## Workflows
+## Working on the local study engine
+
+A separate, older product surface in the same repository: PDF ingestion,
+grounded Q&A, quiz import and audit, and model-driven review. It is not part of
+a Hawkes solve. These documents describe procedure that was measured on
+`caspian`; each says so at the top.
 
 | Workflow | Document |
 |---|---|
-| Quiz import, grounding, validation, and benchmarks | [Quiz Workflow](QUIZ_WORKFLOW.md) |
-| Model-driven answer-key review | [Agent Review](AGENT_REVIEW.md) |
-| History chapter fixture runs | [History Chapter Quizzes](../benchmarks/history_chapter_quizzes.md) |
+| Reproduce the study engine on another machine | [Migration checklist](MIGRATION.md) |
+| Quiz import, grounding, validation and benchmarks | [Quiz workflow](QUIZ_WORKFLOW.md) |
+| Model-driven answer-key review | [Agent review](AGENT_REVIEW.md) |
 | Tool-using local PDF questions | [Agentic Q&A](AGENTIC_QA.md) |
-| Inspect saved answer traces | [Trace Debugging](TRACE_DEBUGGING.md) |
-| Set up Precalculus | [Precalculus Setup](PRECALCULUS.md) |
+| Inspect saved answer traces | [Trace debugging](TRACE_DEBUGGING.md) |
+| Screenshot OCR and exact-math rollout | [Vision and exact-math architecture](VISION_MATH_ARCHITECTURE.md) |
+| Set up pre-calculus | [Pre-calculus setup](PRECALCULUS.md) |
+| Diagnose Ollama or Vulkan | [Ollama troubleshooting](OLLAMA_TROUBLESHOOTING.md) |
+| History chapter fixture runs | [History chapter quizzes](../benchmarks/history_chapter_quizzes.md) |
 
 ## Source-of-truth rules
 
-- App defaults come from `src/ethnos/config.py` and `.env.example`.
-- Current measured results live in `CURRENT_BASELINE.md`.
-- Benchmark method and rejected candidates live in `PERFORMANCE_TUNING.md`.
-- Machine-specific service, kernel, and hardware facts live under `hosts/`.
+- Application defaults come from `src/ethnos/config.py` and `.env.example`.
+- Facet's model assignment comes from `facet-runtime/src/facet_runtime/models.py`;
+  `facet models` prints it.
+- The required Facet runtime commit comes from `deploy/facet-runtime.pin`, and
+  from nowhere else.
+- The answer-shape and entry coverage map is `ANSWER_CAPABILITIES.md`, and
+  `tests/test_answer_capabilities.py` fails when a new answer form has no row.
 - Runtime reports under `data/runs/` are local evidence, not documentation.
-- Update the relevant source-of-truth document in the same change as a default,
-  service setting, model, or benchmark decision.
+- Update the relevant authority in the same change as a default, service
+  setting, model, transport or protocol decision.
+- A document that stops being instruction and becomes evidence moves to
+  [`history/`](history/README.md) with a header saying what replaced it. It is
+  not deleted.

@@ -214,5 +214,6 @@ at.
 
 - [Live Hawkes Observatory](LIVE_OBSERVATORY.md) — one correlated look at the
   session as it is now
-- [Hawkes live findings](HAWKES_LIVE_FINDINGS.md) — what live testing exposed
+- [Hawkes live findings](history/HAWKES_LIVE_FINDINGS.md) — historical: what the
+  2026-09-03 session exposed on 0.39.0
 - [Hawkes privacy notice](../extension/PRIVACY.md) — what is stored, and where

@@ -495,9 +495,12 @@ is Ethnos's alone.
 
 Anything else is refused where the client is loaded, before a request is built.
 
-`FACET_SSH_TARGET` defaults to `steve@192.168.0.247` and is read only on the
-SSH transport. It is how another host is named -- casbox's Tailscale address,
-`steve@100.105.86.101`, reaches this one that way. Facet itself is
+`FACET_SSH_TARGET` is read **only** on the SSH transport and is how another
+host is named. Its default, `steve@192.168.0.247`, is casbox's own LAN address
+and is left over from the arrangement this replaced -- it is not a second
+machine, and on the default transport nothing reads it at all. Set it
+deliberately if SSH is ever wanted; casbox's Tailscale address,
+`steve@100.105.86.101`, reaches this machine that way. Facet itself is
 transport-agnostic: no address is part of its protocol, validation, or
 provenance contract, and an exact solve returns byte-identical provenance
 across both transports.
