@@ -702,6 +702,7 @@ def _solve_point_plot_with_facet(request, instruction, announce):
     that each lands on the grid, that none moved anywhere else -- is the
     browser's, against the live graph, and is made before a key is pressed.
     """
+    from .facet_client import safe_request_id, solve_math
     from .hawkes_graph import PointPlotPlan
     from .hawkes_mathml import mathml_to_latex
 
@@ -734,18 +735,24 @@ def _solve_point_plot_with_facet(request, instruction, announce):
         status="ready",
         problem_text=instruction,
         answer=AnswerPayload(graph_plan=plan),
+        # Facet's own account of the run, read off the solution it returned.
+        # Stated here rather than through `_plan_certainty` because this route
+        # engaged no model and no processor: `answered_by` says "exact", and a
+        # helper that reports "facet" would be claiming a reasoner ran.
         certainty=Certainty(
             prompt_seen=True,
-            source=solution.provenance.source,
+            source=solution.source,
             transcription="verified",
             insertable=True,
             answered_by="exact",
             facet_invoked=True,
-            router="solved",
-            reading="markup",
-            method=solution.provenance.method,
-            runtime=solution.provenance.runtime,
-            elapsed_ms=solution.provenance.elapsed_ms,
+            router=solution.router,
+            # The pairs were read off the page's own MathML, which is the same
+            # reading a value question gets from the same source.
+            reading="mathml",
+            method=solution.method,
+            runtime=solution.runtime,
+            elapsed_ms=solution.elapsed_ms,
         ),
     )
 

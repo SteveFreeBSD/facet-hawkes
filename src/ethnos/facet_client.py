@@ -68,6 +68,13 @@ PLAN_KINDS: frozenset[str] = frozenset(
     {PARABOLA_PLAN, QUADRATIC_REGRESSION, POINT_PLOT_PLAN}
 )
 
+#: What the exact route may return. A value, obviously -- and a plotting plan,
+#: because a question that states its own pairs has already written the plan
+#: down: reading them engages no model and nothing is proposed. Every other
+#: plan is a proposal about geometry nobody wrote out, which the exact solvers
+#: cannot make, so claiming one was exact would be a false provenance.
+EXACTLY_SOLVED_KINDS: frozenset[str] = frozenset({VALUE, POINT_PLOT_PLAN})
+
 #: What the deterministic stage may report having done. `not-run` belongs only
 #: to a plan: the exact solvers answer expressions, not geometry, so they were
 #: never asked -- which is a different claim from having tried and declined.
@@ -599,8 +606,10 @@ def _solution(
             raise FacetProtocolError(
                 "Facet claimed an exact answer but named a model or a processor"
             )
-        if answer.kind != VALUE:
-            raise FacetProtocolError("the exact solvers answer values, not plans")
+        if answer.kind not in EXACTLY_SOLVED_KINDS:
+            raise FacetProtocolError(
+                f"a {answer.kind} is proposed, not solved, so it cannot be exact"
+            )
     else:
         if not solution.model or not solution.actual_backend:
             raise FacetProtocolError(

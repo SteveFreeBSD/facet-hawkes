@@ -23,7 +23,7 @@
   // every decision, and the observatory applies the same normalization to the
   // tree. Unlike the event-page marker, this proves which Hawkes reader was
   // injected into the authoritative page DOM.
-  const HAWKES_READER_BUILD = "0508af773f05";
+  const HAWKES_READER_BUILD = "c34c39037c54";
 
   const ANSWER_CONTROLS =
     'input.qbaseCSS, input[id^="txtAns"], input.boxStyle, input[id$="_optchk"], '
@@ -734,9 +734,19 @@
     }
   }
 
-  /** Verbs that mark a line as the question's own instruction. */
+  /**
+   * Verbs that mark a line as the question's own instruction.
+   *
+   * "plot" was missing, and lesson 2.1 question 1 is the whole reason it is
+   * here: "Plot the following points in the Cartesian plane." matched no verb,
+   * so the instruction was never found and the prompt fell back to the
+   * eleven-character "Step 1 of 1" -- the same failure the note below records
+   * for the regression question, reached by a different road. The companion
+   * then refused the plan it could otherwise have written down, because
+   * nothing it was sent was a request to plot anything.
+   */
   const INSTRUCTION =
-    /graph|simplify|evaluate|determine|convert|factor|express|rationaliz|find|add|subtract|multiply|expand|identify|write|state|name|list|select|choose|arrange|round|solve/i;
+    /graph|plot|simplify|evaluate|determine|convert|factor|express|rationaliz|find|add|subtract|multiply|expand|identify|write|state|name|list|select|choose|arrange|round|solve/i;
 
   /**
    * An element's own words: the text directly inside it, with the text of any
