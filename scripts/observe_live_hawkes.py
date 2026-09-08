@@ -107,9 +107,9 @@ def _stamp(epoch_ms, reference: dict) -> dict | None:
         "utc": datetime.fromtimestamp(seconds, timezone.utc).isoformat(
             timespec="milliseconds"
         ),
-        "local": datetime.fromtimestamp(seconds).astimezone().isoformat(
-            timespec="milliseconds"
-        ),
+        "local": datetime.fromtimestamp(seconds)
+        .astimezone()
+        .isoformat(timespec="milliseconds"),
         "ago_seconds": round(reference["epoch_ms"] / 1000 - seconds, 1),
     }
 
@@ -289,15 +289,22 @@ def working_tree_marker() -> dict:
     try:
         import quickjs
     except ImportError:
-        return {"computed": False, "why": "quickjs is not installed in this environment"}
+        return {
+            "computed": False,
+            "why": "quickjs is not installed in this environment",
+        }
 
     background = background_path.read_text(encoding="utf-8")
     parts = _marked_parts(background)
     if not parts:
         return {"computed": False, "why": "markedCode() could not be read"}
 
-    module_parts = [(name, expr) for name, expr in parts if not name.startswith("background.js")]
-    own_parts = [(name, expr) for name, expr in parts if name.startswith("background.js")]
+    module_parts = [
+        (name, expr) for name, expr in parts if not name.startswith("background.js")
+    ]
+    own_parts = [
+        (name, expr) for name, expr in parts if name.startswith("background.js")
+    ]
 
     modules = sorted({name.split("#", 1)[0] for name, _ in module_parts if "/" in name})
     context = quickjs.Context()
@@ -306,7 +313,9 @@ def working_tree_marker() -> dict:
         for name in _module_order([*modules, "common/build-marker.js"]):
             source = (EXTENSION_DIR / name).read_text(encoding="utf-8")
             context.eval(IMPORT_LINE.sub("", source).replace("export ", ""))
-        literal = ", ".join(f"{json.dumps(name)}: {expr}" for name, expr in module_parts)
+        literal = ", ".join(
+            f"{json.dumps(name)}: {expr}" for name, expr in module_parts
+        )
         collected = json.loads(
             context.eval(f"JSON.stringify(collectSources({{{literal}}}))")
         )
@@ -419,36 +428,44 @@ FAILURE_RULES = (
     ),
     (
         "lifecycle",
-        lambda run: run["error_key"] in {"errorTabMoved", "errorInsertionAbandoned"}
-        or "insertion-target-changed" in run["events_seen"],
+        lambda run: (
+            run["error_key"] in {"errorTabMoved", "errorInsertionAbandoned"}
+            or "insertion-target-changed" in run["events_seen"]
+        ),
         "the target moved between pinning and writing",
     ),
     (
         "safety",
-        lambda run: run["error_key"]
-        in {"errorQuestionChanged", "errorAnswerChanged", "errorQuestionUnverified"},
+        lambda run: (
+            run["error_key"]
+            in {"errorQuestionChanged", "errorAnswerChanged", "errorQuestionUnverified"}
+        ),
         "a guard refused to write: the question or the answer was no longer the one reviewed",
     ),
     (
         "browser",
-        lambda run: run["error_key"]
-        in {
-            "errorNoTab",
-            "errorWrongSite",
-            "errorTabAccessLost",
-            "errorFrameUnreachable",
-            "errorFrameUnreachableAt",
-            "errorFrameAmbiguous",
-            "errorNoFocusedField",
-            "errorEditorDialogOpen",
-            "errorNoBridge",
-        },
+        lambda run: (
+            run["error_key"]
+            in {
+                "errorNoTab",
+                "errorWrongSite",
+                "errorTabAccessLost",
+                "errorFrameUnreachable",
+                "errorFrameUnreachableAt",
+                "errorFrameAmbiguous",
+                "errorNoFocusedField",
+                "errorEditorDialogOpen",
+                "errorNoBridge",
+            }
+        ),
         "the add-on could not reach the page, the frame or the field",
     ),
     (
         "evidence",
-        lambda run: run["error_key"] in {"errorNoCapture", "errorQuestionRegion"}
-        or (run["error_key"] == "errorSolveRefused" and run["evidence_refused"]),
+        lambda run: (
+            run["error_key"] in {"errorNoCapture", "errorQuestionRegion"}
+            or (run["error_key"] == "errorSolveRefused" and run["evidence_refused"])
+        ),
         "the question could not be read exactly and the picture path did not rescue it",
     ),
     (
@@ -458,8 +475,10 @@ FAILURE_RULES = (
     ),
     (
         "runtime",
-        lambda run: run["error_key"] in {"errorEthnosUnreachable", "errorEthnosVersion"}
-        or "health-failed" in run["events_seen"],
+        lambda run: (
+            run["error_key"] in {"errorEthnosUnreachable", "errorEthnosVersion"}
+            or "health-failed" in run["events_seen"]
+        ),
         "the native companion did not answer",
     ),
     (
@@ -474,21 +493,23 @@ FAILURE_RULES = (
     ),
     (
         "answer-shape",
-        lambda run: run["error_key"]
-        in {
-            "errorAnswerInvalid",
-            "errorAnswerNeedsTemplate",
-            "errorAnswerNeedsAbsoluteValue",
-            "errorTemplateRefused",
-            "errorOptionAnswer",
-            "errorAnswerRejected",
-            "errorUnsupportedField",
-            "errorFieldNotEditable",
-            "errorEditorUnknown",
-            "errorInsertRejected",
-        }
-        or "answer-not-insertable" in run["events_seen"]
-        or "answer-parts-unplaceable" in run["events_seen"],
+        lambda run: (
+            run["error_key"]
+            in {
+                "errorAnswerInvalid",
+                "errorAnswerNeedsTemplate",
+                "errorAnswerNeedsAbsoluteValue",
+                "errorTemplateRefused",
+                "errorOptionAnswer",
+                "errorAnswerRejected",
+                "errorUnsupportedField",
+                "errorFieldNotEditable",
+                "errorEditorUnknown",
+                "errorInsertRejected",
+            }
+            or "answer-not-insertable" in run["events_seen"]
+            or "answer-parts-unplaceable" in run["events_seen"]
+        ),
         "an answer was produced that this editor will not take",
     ),
 )
@@ -542,7 +563,11 @@ def group_runs(entries: list[dict]) -> list[dict]:
             or (event in RUN_OPENERS and (settled or repeated))
         ):
             groups.append(
-                {"run": f"~adjacent-{len(groups) + 1}", "correlated": False, "entries": []}
+                {
+                    "run": f"~adjacent-{len(groups) + 1}",
+                    "correlated": False,
+                    "entries": [],
+                }
             )
         groups[-1]["entries"].append(entry)
     return [group for group in groups if group["entries"]]
@@ -805,7 +830,11 @@ def classify(run: dict) -> dict | None:
                 return {"class": name, "why": why, "error_key": run["error_key"]}
         except (KeyError, TypeError):
             continue
-    return {"class": "unclassified", "why": "no rule matched", "error_key": run["error_key"]}
+    return {
+        "class": "unclassified",
+        "why": "no rule matched",
+        "error_key": run["error_key"],
+    }
 
 
 # --- the machines behind the browser --------------------------------------
@@ -813,7 +842,9 @@ def classify(run: dict) -> dict | None:
 
 def _ollama(path: str) -> dict | None:
     try:
-        with urllib.request.urlopen(f"{OLLAMA_ROOT}{path}", timeout=OLLAMA_TIMEOUT) as reply:
+        with urllib.request.urlopen(
+            f"{OLLAMA_ROOT}{path}", timeout=OLLAMA_TIMEOUT
+        ) as reply:
             return json.load(reply)
     except (OSError, urllib.error.URLError, json.JSONDecodeError, ValueError):
         return None
@@ -889,7 +920,11 @@ def facet_summary(runs: list[dict], extension_store: dict) -> dict:
         "observed": [
             {
                 "run": run["run"],
-                **{key: value for key, value in run["runtime"].items() if value not in (None, "")},
+                **{
+                    key: value
+                    for key, value in run["runtime"].items()
+                    if value not in (None, "")
+                },
                 "answered_by": (run.get("route") or {}).get("answered_by"),
                 "source": (run.get("route") or {}).get("source"),
             }
@@ -984,7 +1019,9 @@ def observe(
             "log_note": log_note,
             "generations": sorted({e["gen"] for e in entries if e.get("gen")}),
             "event_page_loads": len(loads),
-            "last_event_page_load": _stamp(last_load.get("t"), reference) if last_load else None,
+            "last_event_page_load": _stamp(last_load.get("t"), reference)
+            if last_load
+            else None,
             "last_load_settings": _data(last_load) if last_load else None,
         }
     )
@@ -1012,7 +1049,8 @@ def observe(
     # answered exactly, in under a second, without a model being involved at
     # all; probing on those would add a section that says nothing.
     reached_a_runtime = any(
-        (run.get("runtime") or {}).get("model") or (run.get("runtime") or {}).get("backend")
+        (run.get("runtime") or {}).get("model")
+        or (run.get("runtime") or {}).get("backend")
         for run in runs
     )
     records.append(ollama_state(reached_a_runtime))
@@ -1110,7 +1148,9 @@ def failure_ledger(store: dict, reference: dict) -> dict:
     }
 
 
-def code_verdict(running: dict, tree: dict, last_load: dict | None, install: dict) -> dict:
+def code_verdict(
+    running: dict, tree: dict, last_load: dict | None, install: dict
+) -> dict:
     """Whether the code Firefox is running is the code in this tree.
 
     Two independent checks, because neither alone is enough. The marker says
@@ -1162,7 +1202,9 @@ def code_verdict(running: dict, tree: dict, last_load: dict | None, install: dic
     }
 
 
-def _screenshot(inspector, wanted: bool, bundle: Path | None, match: str | None, runs) -> dict:
+def _screenshot(
+    inspector, wanted: bool, bundle: Path | None, match: str | None, runs
+) -> dict:
     """Capture only when asked, only into a bundle, and say it must be deleted."""
     failing = [run for run in runs if run.get("failure")]
     if not wanted:
@@ -1170,7 +1212,11 @@ def _screenshot(inspector, wanted: bool, bundle: Path | None, match: str | None,
             "record": "screenshot",
             "taken": False,
             "why": "not requested"
-            + ("; a failing run is present, --screenshot would capture it" if failing else ""),
+            + (
+                "; a failing run is present, --screenshot would capture it"
+                if failing
+                else ""
+            ),
         }
     if bundle is None:
         return {
@@ -1182,7 +1228,11 @@ def _screenshot(inspector, wanted: bool, bundle: Path | None, match: str | None,
     try:
         path = inspector.shot(bundle / "firefox-window.png", match)
     except Exception as error:  # noqa: BLE001 - never fail an observation over a picture
-        return {"record": "screenshot", "taken": False, "why": f"{type(error).__name__}: {error}"}
+        return {
+            "record": "screenshot",
+            "taken": False,
+            "why": f"{type(error).__name__}: {error}",
+        }
     return {
         "record": "screenshot",
         "taken": True,
@@ -1243,7 +1293,9 @@ def summarize(records: list[dict]) -> str:
             out.append(f"               {path}")
     last_load = extension.get("last_event_page_load")
     if last_load:
-        out.append(f"  loaded at  {last_load['local']}  ({last_load['ago_seconds']}s ago)")
+        out.append(
+            f"  loaded at  {last_load['local']}  ({last_load['ago_seconds']}s ago)"
+        )
     if extension.get("log_note"):
         out.append(f"  log        {extension['log_note']}")
 
@@ -1254,7 +1306,9 @@ def summarize(records: list[dict]) -> str:
     for window in windows.get("firefox_windows", []):
         mark = "->" if window.get("chosen") else "  "
         flags = "active" if window.get("active") else ""
-        out.append(f"  {mark} pid {window.get('pid')} {flags:<7} {str(window.get('caption'))[:70]}")
+        out.append(
+            f"  {mark} pid {window.get('pid')} {flags:<7} {str(window.get('caption'))[:70]}"
+        )
 
     out.append("")
     out.append(f"RUNS ({len(runs)}) — newest last")
@@ -1297,14 +1351,16 @@ def _run_lines(run: dict) -> list[str]:
         if isinstance(reader, dict):
             lines.append(
                 "     reader     "
-                + _compact({
-                    "decision": reader.get("decision"),
-                    "branch": reader.get("branch"),
-                    "reason": reader.get("reason"),
-                    "build": reader.get("build"),
-                    "tree": reader.get("tree_build"),
-                    "matches": "yes" if reader.get("build_matches_tree") else "no",
-                })
+                + _compact(
+                    {
+                        "decision": reader.get("decision"),
+                        "branch": reader.get("branch"),
+                        "reason": reader.get("reason"),
+                        "build": reader.get("build"),
+                        "tree": reader.get("tree_build"),
+                        "matches": "yes" if reader.get("build_matches_tree") else "no",
+                    }
+                )
             )
             if reader.get("candidates"):
                 lines.append(f"     candidates {_compact(reader['candidates'])}")
@@ -1313,8 +1369,12 @@ def _run_lines(run: dict) -> list[str]:
             cell = reader.get("cell")
             if isinstance(cell, dict):
                 owners = cell.get("textOwners") or []
-                shape = {key: value for key, value in cell.items() if key != "textOwners"}
-                lines.append(f"     cell       {_compact(shape)} text_owners={len(owners)}")
+                shape = {
+                    key: value for key, value in cell.items() if key != "textOwners"
+                }
+                lines.append(
+                    f"     cell       {_compact(shape)} text_owners={len(owners)}"
+                )
                 for index, owner in enumerate(owners, 1):
                     lines.append(f"       owner {index}  {_compact(owner)}")
     if run.get("editor"):
@@ -1385,7 +1445,9 @@ def _record_lines(name: str, record: dict) -> list[str]:
         if not record.get("observed"):
             lines.append("no run in this window reached a runtime")
         if record.get("last_seen_by_settings_page"):
-            lines.append(f"last observed: {_compact(record['last_seen_by_settings_page'])}")
+            lines.append(
+                f"last observed: {_compact(record['last_seen_by_settings_page'])}"
+            )
         return lines
     if name == "ollama":
         if not record.get("asked"):
@@ -1412,7 +1474,9 @@ def _compact(value: dict) -> str:
     for key, inner in value.items():
         if inner in (None, "", [], {}, False) or key == "record":
             continue
-        parts.append(f"{key}={json.dumps(inner, default=str) if isinstance(inner, (dict, list)) else inner}")
+        parts.append(
+            f"{key}={json.dumps(inner, default=str) if isinstance(inner, (dict, list)) else inner}"
+        )
     return " ".join(parts) or "-"
 
 
@@ -1467,10 +1531,16 @@ def main() -> int:
         print(f"observation refused: {error}", file=sys.stderr)
         return 1
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--match", help="Substring of the Firefox window title to mean.")
-    parser.add_argument("--last", type=int, default=400, help="Log entries to consider.")
+    parser.add_argument(
+        "--match", help="Substring of the Firefox window title to mean."
+    )
+    parser.add_argument(
+        "--last", type=int, default=400, help="Log entries to consider."
+    )
     parser.add_argument("--run", help="Only this run id.")
-    parser.add_argument("--json", action="store_true", help="JSONL to stdout, no summary.")
+    parser.add_argument(
+        "--json", action="store_true", help="JSONL to stdout, no summary."
+    )
     parser.add_argument(
         "--bundle",
         nargs="?",

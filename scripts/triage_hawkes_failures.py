@@ -70,9 +70,13 @@ def _load(name: str):
 
 def _js_string_array(source: str, name: str) -> list[str]:
     """The contents of a `const NAME = Object.freeze([...])` in a module."""
-    match = re.search(rf"{re.escape(name)}\s*=\s*Object\.freeze\(\s*\[(.*?)\]", source, re.S)
+    match = re.search(
+        rf"{re.escape(name)}\s*=\s*Object\.freeze\(\s*\[(.*?)\]", source, re.S
+    )
     if match is None:
-        match = re.search(rf"{re.escape(name)}\s*=\s*new Set\(\s*\[(.*?)\]", source, re.S)
+        match = re.search(
+            rf"{re.escape(name)}\s*=\s*new Set\(\s*\[(.*?)\]", source, re.S
+        )
     if match is None:
         return []
     return re.findall(r'"([^"]+)"', match.group(1))
@@ -109,7 +113,9 @@ def contract() -> dict:
     safe = _js_string_array(record_source, "SAFE_RECORD_KEYS")
     sensitive = _js_string_array(log_source, "SENSITIVE")
     if not safe or not sensitive:
-        raise TriageError("the add-on's allowlists could not be read; refusing to export")
+        raise TriageError(
+            "the add-on's allowlists could not be read; refusing to export"
+        )
     return {
         "safe_record_keys": safe,
         "sensitive_keys": sensitive,
@@ -123,7 +129,8 @@ def contract() -> dict:
             or [None, "f1"]
         )[1],
         "storage_key": (
-            re.search(r'FAILURE_STORAGE_KEY\s*=\s*"([^"]+)"', record_source) or [None, "failures"]
+            re.search(r'FAILURE_STORAGE_KEY\s*=\s*"([^"]+)"', record_source)
+            or [None, "failures"]
         )[1],
         "ledger_version": _js_number(record_source, "LEDGER_VERSION"),
     }
@@ -164,7 +171,9 @@ def _as_ledger(value) -> dict:
         "version": value.get("version", 0),
         "records": [r for r in value.get("records") or [] if isinstance(r, dict)],
         "groups": [g for g in value.get("groups") or [] if isinstance(g, dict)],
-        "dropped": value.get("dropped") if isinstance(value.get("dropped"), dict) else {},
+        "dropped": value.get("dropped")
+        if isinstance(value.get("dropped"), dict)
+        else {},
     }
 
 
@@ -201,7 +210,9 @@ def _scrub(value, key: str, terms: dict):
     if isinstance(value, list):
         return [_scrub(item, "", terms) for item in value[:32]]
     if isinstance(value, dict):
-        return {name: _scrub(inner, name, terms) for name, inner in list(value.items())[:32]}
+        return {
+            name: _scrub(inner, name, terms) for name, inner in list(value.items())[:32]
+        }
     return str(value)[: terms["max_string"] or 160]
 
 
@@ -218,7 +229,9 @@ def sanitize_entry(entry: dict, terms: dict) -> dict:
 # --- classification, borrowed rather than restated -------------------------
 
 
-def classify(observatory, record_or_group: dict, generations: list[str] | None = None) -> dict:
+def classify(
+    observatory, record_or_group: dict, generations: list[str] | None = None
+) -> dict:
     """The failure class of one group, named by the observatory's own rules.
 
     The eight classes are declared once, in `observe_live_hawkes.py`, with the
@@ -268,7 +281,9 @@ def triage(read: dict) -> dict:
             if spans:
                 ring_generations[run] = spans
                 seen_generations.extend(spans)
-        spanning = sorted(run for run, spans in ring_generations.items() if len(spans) > 1)
+        spanning = sorted(
+            run for run, spans in ring_generations.items() if len(spans) > 1
+        )
         # Classified from what the group itself recorded, never from the ring.
         # One run of six having outlived its event page does not make the other
         # five lifecycle failures, and a record is always written by exactly one
@@ -307,7 +322,11 @@ def triage(read: dict) -> dict:
     # would silently report one problem as two. The prefix is what says which.
     era = f"{terms['fingerprint_version']}:"
     foreign = sorted(
-        {group["fingerprint"] for group in groups if not group["fingerprint"].startswith(era)}
+        {
+            group["fingerprint"]
+            for group in groups
+            if not group["fingerprint"].startswith(era)
+        }
     )
     classes: dict[str, dict] = {}
     for group in groups:
@@ -356,7 +375,11 @@ def _age(when_ms, now_ms: int):
 def _when(when_ms) -> str:
     if not isinstance(when_ms, (int, float)) or not when_ms:
         return "-"
-    return datetime.fromtimestamp(when_ms / 1000).astimezone().isoformat(timespec="seconds")
+    return (
+        datetime.fromtimestamp(when_ms / 1000)
+        .astimezone()
+        .isoformat(timespec="seconds")
+    )
 
 
 def _ago(seconds) -> str:
@@ -389,7 +412,9 @@ def report(view: dict, *, detail: str | None = None) -> str:
     out.append("HAWKES FAILURE TRIAGE")
     out.append(f"  read       {_when(view['read_at'])}   {view['source']}")
     if view["records"] == 0 and not view["groups"]:
-        out.append("  ledger     empty -- nothing has failed, or the ledger was cleared")
+        out.append(
+            "  ledger     empty -- nothing has failed, or the ledger was cleared"
+        )
         if view["ledger_version"] not in (0, view["expected_version"]):
             out.append(
                 f"  version    stored {view['ledger_version']}, this build writes "
@@ -430,11 +455,15 @@ def report(view: dict, *, detail: str | None = None) -> str:
             "appear under two names"
         )
 
-    shown = view["groups"] if detail is None else [
-        group
-        for group in view["groups"]
-        if group["fingerprint"] == detail or detail in group["runs"]
-    ]
+    shown = (
+        view["groups"]
+        if detail is None
+        else [
+            group
+            for group in view["groups"]
+            if group["fingerprint"] == detail or detail in group["runs"]
+        ]
+    )
     if detail is not None and not shown:
         out.append("")
         out.append(f"No group or run matches {detail!r}.")
@@ -465,8 +494,12 @@ def report(view: dict, *, detail: str | None = None) -> str:
         )
         if first["runs"]:
             run = first["runs"][-1]
-            out.append(f"  ring       python3 scripts/read_extension_log.py --grep {run}")
-            out.append(f"  live       python3 scripts/observe_live_hawkes.py --run {run}")
+            out.append(
+                f"  ring       python3 scripts/read_extension_log.py --grep {run}"
+            )
+            out.append(
+                f"  live       python3 scripts/observe_live_hawkes.py --run {run}"
+            )
     return "\n".join(out)
 
 
@@ -527,7 +560,9 @@ def _record_lines(record: dict, *, full: bool) -> list[str]:
     if editor:
         lines.append(
             "editor     "
-            + _pairs(editor, ("kind", "ok", "count", "enabled", "maxLength", "templates"))
+            + _pairs(
+                editor, ("kind", "ok", "count", "enabled", "maxLength", "templates")
+            )
         )
         if editor.get("allowed"):
             lines.append(f"allowed    {editor['allowed']!r}")
@@ -536,14 +571,18 @@ def _record_lines(record: dict, *, full: bool) -> list[str]:
         for index, control in enumerate(editor.get("controls") or []):
             lines.append(
                 f"field {index}    "
-                + _pairs(control, ("kind", "enabled", "maxLength", "templates", "allowed"))
+                + _pairs(
+                    control, ("kind", "enabled", "maxLength", "templates", "allowed")
+                )
             )
     traits = record.get("traits") or {}
     if traits.get("notInsertable"):
         lines.append(f"refused    {_pairs(traits['notInsertable'])}")
     answer = record.get("answerShape") or {}
     if answer.get("parts") or answer.get("directFit") or answer.get("plannedFit"):
-        lines.append(f"answer     {_pairs(answer, ('parts', 'directFit', 'plannedFit'))}")
+        lines.append(
+            f"answer     {_pairs(answer, ('parts', 'directFit', 'plannedFit'))}"
+        )
     if record.get("refusal"):
         lines.append(f"refusal    {record['refusal']}")
     evidence = record.get("evidence") or {}
@@ -555,12 +594,14 @@ def _record_lines(record: dict, *, full: bool) -> list[str]:
     route = record.get("route") or {}
     if route and any(route.values()):
         lines.append(
-            "route      " + _pairs(route, ("source", "answeredBy", "router", "method", "reading"))
+            "route      "
+            + _pairs(route, ("source", "answeredBy", "router", "method", "reading"))
         )
     runtime = record.get("runtime") or {}
     if runtime and any(runtime.values()):
         lines.append(
-            "ran on     " + _pairs(runtime, ("runtime", "model", "backend", "device", "fallback"))
+            "ran on     "
+            + _pairs(runtime, ("runtime", "model", "backend", "device", "fallback"))
         )
     host = record.get("host") or {}
     if host.get("ids"):
@@ -662,11 +703,15 @@ def export(view: dict, read: dict, selector: str, out_dir: Path) -> dict:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--profile", help="Profile directory; default is the newest.")
-    parser.add_argument("--file", help="A ledger JSON file, e.g. from an earlier export.")
+    parser.add_argument(
+        "--file", help="A ledger JSON file, e.g. from an earlier export."
+    )
     parser.add_argument("--group", help="Show one fingerprint in full.")
     parser.add_argument("--run", help="Show the group containing one run id, in full.")
     parser.add_argument("--export", dest="export_to", help="Bundle one group or run.")
-    parser.add_argument("--out", help="Where to write the bundle; default is a temp dir.")
+    parser.add_argument(
+        "--out", help="Where to write the bundle; default is a temp dir."
+    )
     parser.add_argument("--json", action="store_true", help="The whole triage as JSON.")
     args = parser.parse_args(argv)
 
@@ -677,7 +722,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"triage refused: {error}", file=sys.stderr)
         return 1
     except Exception as error:  # noqa: BLE001 - an unreadable profile is a finding
-        print(f"cannot read the ledger: {type(error).__name__}: {error}", file=sys.stderr)
+        print(
+            f"cannot read the ledger: {type(error).__name__}: {error}", file=sys.stderr
+        )
         return 1
 
     if args.json:
@@ -688,8 +735,10 @@ def main(argv: list[str] | None = None) -> int:
         print(report(view, detail=args.group or args.run or args.export_to))
 
     if args.export_to:
-        out = Path(args.out).expanduser() if args.out else Path(
-            tempfile.mkdtemp(prefix="hawkes-failure-")
+        out = (
+            Path(args.out).expanduser()
+            if args.out
+            else Path(tempfile.mkdtemp(prefix="hawkes-failure-"))
         )
         try:
             written = export(view, read, args.export_to, out)
@@ -697,7 +746,9 @@ def main(argv: list[str] | None = None) -> int:
             print(f"export refused: {error}", file=sys.stderr)
             return 1
         print(f"\nbundle     {written['path']}")
-        print(f"           {written['records']} record(s), {written['ring']} ring entries")
+        print(
+            f"           {written['records']} record(s), {written['ring']} ring entries"
+        )
         print(f"delete     rm -rf {written['path']}")
     return 0
 

@@ -106,7 +106,11 @@ def test_the_rejected_characters_are_counted_and_never_written(describe):
     """
     report = describe(
         {"ok": True, "kind": "dynamic", "allowedCharacters": "0123456789"},
-        {"insertable": False, "code": "answer-has-rejected-characters", "detail": "x y"},
+        {
+            "insertable": False,
+            "code": "answer-has-rejected-characters",
+            "detail": "x y",
+        },
         {"ok": False, "code": "answer-has-rejected-characters", "detail": "x y"},
     )
 
@@ -120,7 +124,9 @@ def test_the_rejected_characters_are_counted_and_never_written(describe):
 
 
 def test_an_unreadable_editor_still_produces_a_report(describe):
-    report = describe(None, {"code": "editor-unknown"}, {"ok": False, "code": "editor-unknown"})
+    report = describe(
+        None, {"code": "editor-unknown"}, {"ok": False, "code": "editor-unknown"}
+    )
 
     assert report["editorKind"] == "none"
     assert report["editorOk"] is False

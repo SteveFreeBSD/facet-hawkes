@@ -56,25 +56,56 @@ def record(**overrides):
         "fingerprint": "f1:aaaaaaaaaaaaaaaa",
         "target": {"window": 3, "tab": 9, "frame": 0, "fields": 1},
         "editor": {
-            "kind": "dynamic", "ok": True, "code": "described", "name": "box",
-            "enabled": True, "maxLength": 40, "allowed": "0-9+-/()",
-            "templates": "fraction", "slots": {"base": "0-9"}, "count": 1, "controls": [],
+            "kind": "dynamic",
+            "ok": True,
+            "code": "described",
+            "name": "box",
+            "enabled": True,
+            "maxLength": 40,
+            "allowed": "0-9+-/()",
+            "templates": "fraction",
+            "slots": {"base": "0-9"},
+            "count": 1,
+            "controls": [],
         },
-        "evidence": {"read": "markup", "expressions": 2, "graph": "", "table": "",
-                     "promptChars": 88, "signature": "fld|abcdef|120"},
-        "route": {"source": "facet", "answeredBy": "facet", "facetInvoked": True,
-                  "router": "exact", "method": "solve", "reading": "", "insertable": False},
-        "runtime": {"runtime": "", "model": "", "requestedBackend": "", "backend": "",
-                    "device": "", "fallback": False},
+        "evidence": {
+            "read": "markup",
+            "expressions": 2,
+            "graph": "",
+            "table": "",
+            "promptChars": 88,
+            "signature": "fld|abcdef|120",
+        },
+        "route": {
+            "source": "facet",
+            "answeredBy": "facet",
+            "facetInvoked": True,
+            "router": "exact",
+            "method": "solve",
+            "reading": "",
+            "insertable": False,
+        },
+        "runtime": {
+            "runtime": "",
+            "model": "",
+            "requestedBackend": "",
+            "backend": "",
+            "device": "",
+            "fallback": False,
+        },
         "answerShape": {"length": 9, "parts": 0, "directFit": [], "plannedFit": []},
         "host": {"requests": 1, "ids": ["r1.1"]},
         "solve": None,
         "build": {"marker": "3d9a1f77aa21", "version": "0.46.0"},
         "traits": {
-            "outcome": "not-insertable", "errorKey": "",
-            "events": ["answer-not-insertable"], "evidenceRefused": False,
-            "notInsertable": {"editor": "answer-needs-template",
-                              "plan": "template-refused-by-question"},
+            "outcome": "not-insertable",
+            "errorKey": "",
+            "events": ["answer-not-insertable"],
+            "evidenceRefused": False,
+            "notInsertable": {
+                "editor": "answer-needs-template",
+                "plan": "template-refused-by-question",
+            },
         },
     }
     base.update(overrides)
@@ -103,25 +134,42 @@ def group(records, **overrides):
 
 
 RUNTIME_TRAITS = {
-    "outcome": "failed", "errorKey": "errorEthnosUnreachable", "events": [],
-    "evidenceRefused": False, "notInsertable": None,
+    "outcome": "failed",
+    "errorKey": "errorEthnosUnreachable",
+    "events": [],
+    "evidenceRefused": False,
+    "notInsertable": None,
 }
 
 
 @pytest.fixture()
 def ledger_file(tmp_path):
     shape = [
-        record(run=f"rA{i}", at=1_757_000_000_000 + i * 60_000,
-               generation="g1" if i < 2 else "g4",
-               build={"marker": "3d9a1f77aa21" if i < 2 else "9c11aa22bb33",
-                      "version": "0.46.0"})
+        record(
+            run=f"rA{i}",
+            at=1_757_000_000_000 + i * 60_000,
+            generation="g1" if i < 2 else "g4",
+            build={
+                "marker": "3d9a1f77aa21" if i < 2 else "9c11aa22bb33",
+                "version": "0.46.0",
+            },
+        )
         for i in range(4)
     ]
     runtime = [
-        record(run=f"rB{i}", at=1_757_000_500_000 + i * 60_000, generation="g2",
-               outcome="failed", errorKey="errorEthnosUnreachable",
-               fingerprint="f1:bbbbbbbbbbbbbbbb", stage="connect", stoppedIn="connect",
-               stages=["reading", "solving"], editor=None, traits=RUNTIME_TRAITS)
+        record(
+            run=f"rB{i}",
+            at=1_757_000_500_000 + i * 60_000,
+            generation="g2",
+            outcome="failed",
+            errorKey="errorEthnosUnreachable",
+            fingerprint="f1:bbbbbbbbbbbbbbbb",
+            stage="connect",
+            stoppedIn="connect",
+            stages=["reading", "solving"],
+            editor=None,
+            traits=RUNTIME_TRAITS,
+        )
         for i in range(2)
     ]
     ledger = {
@@ -131,12 +179,30 @@ def ledger_file(tmp_path):
         "dropped": {"age": 1, "count": 2, "bytes": 0},
     }
     ring = [
-        {"t": 1_757_000_000_100, "seq": 2, "level": "warn", "scope": "background",
-         "gen": "g1", "run": "rA3", "event": "answer-not-insertable",
-         "data": {"editor": "answer-needs-template",
-                  "answer": "x = 3/4", "problemText": "Find the vertex"}},
-        {"t": 1_757_000_000_200, "seq": 3, "level": "info", "scope": "background",
-         "gen": "g9", "run": "rA3", "event": "editor-described", "data": {"kind": "dynamic"}},
+        {
+            "t": 1_757_000_000_100,
+            "seq": 2,
+            "level": "warn",
+            "scope": "background",
+            "gen": "g1",
+            "run": "rA3",
+            "event": "answer-not-insertable",
+            "data": {
+                "editor": "answer-needs-template",
+                "answer": "x = 3/4",
+                "problemText": "Find the vertex",
+            },
+        },
+        {
+            "t": 1_757_000_000_200,
+            "seq": 3,
+            "level": "info",
+            "scope": "background",
+            "gen": "g9",
+            "run": "rA3",
+            "event": "editor-described",
+            "data": {"kind": "dynamic"},
+        },
     ]
     path = tmp_path / "ledger.json"
     path.write_text(json.dumps({"ledger": ledger, "ring": ring}), encoding="utf-8")
@@ -175,9 +241,16 @@ def test_the_class_is_the_observatorys_own_verdict_not_a_second_opinion(view):
     assert classes["f1:aaaaaaaaaaaaaaaa"] == "answer-shape"
     assert classes["f1:bbbbbbbbbbbbbbbb"] == "runtime"
     assert {name for name, _, _ in observatory.FAILURE_RULES} >= set(classes.values())
-    # And the adapter lives with the rules, not here.
+    # And the adapter lives with the rules, not here. Asserted against the
+    # parsed signature rather than the source text, so wrapping the line does
+    # not read as the adapter having moved.
     assert "FAILURE_RULES" not in SOURCE
-    assert "def classify(observatory" in SOURCE
+    signature = next(
+        node
+        for node in ast.parse(SOURCE).body
+        if isinstance(node, ast.FunctionDef) and node.name == "classify"
+    )
+    assert signature.args.args[0].arg == "observatory"
 
 
 def test_the_report_carries_the_editor_evidence_a_diagnosis_needs(view):
@@ -199,7 +272,9 @@ def test_the_report_says_what_it_no_longer_has(view):
 
 def test_an_empty_ledger_is_a_finding_not_an_error(tmp_path):
     path = tmp_path / "empty.json"
-    path.write_text(json.dumps({"version": 1, "records": [], "groups": []}), encoding="utf-8")
+    path.write_text(
+        json.dumps({"version": 1, "records": [], "groups": []}), encoding="utf-8"
+    )
 
     printed = TRIAGE.report(TRIAGE.triage(TRIAGE.read_ledger(path=str(path))))
 
@@ -210,8 +285,14 @@ def test_an_empty_ledger_is_a_finding_not_an_error(tmp_path):
 def test_a_ledger_written_by_another_build_says_so(tmp_path):
     path = tmp_path / "old.json"
     path.write_text(
-        json.dumps({"version": 99, "records": [record()],
-                    "groups": [group([record()])], "dropped": {}}),
+        json.dumps(
+            {
+                "version": 99,
+                "records": [record()],
+                "groups": [group([record()])],
+                "dropped": {},
+            }
+        ),
         encoding="utf-8",
     )
 
@@ -226,8 +307,14 @@ def test_a_fingerprint_from_another_era_of_the_rules_is_flagged(tmp_path):
     stale = record(fingerprint="f0:1234567812345678")
     path = tmp_path / "era.json"
     path.write_text(
-        json.dumps({"version": 1, "records": [stale], "groups": [group([stale])],
-                    "dropped": {}}),
+        json.dumps(
+            {
+                "version": 1,
+                "records": [stale],
+                "groups": [group([stale])],
+                "dropped": {},
+            }
+        ),
         encoding="utf-8",
     )
 
@@ -244,7 +331,9 @@ def test_a_group_names_every_build_and_lifetime_it_has_happened_in(view):
 
     assert shape["markers"] == ["3d9a1f77aa21", "9c11aa22bb33"]
     assert shape["generations"][:2] == ["g1", "g4"]
-    assert "2 event pages" in TRIAGE.report(view) or "3 event pages" in TRIAGE.report(view)
+    assert "2 event pages" in TRIAGE.report(view) or "3 event pages" in TRIAGE.report(
+        view
+    )
 
 
 def test_a_run_that_outlived_its_event_page_is_named_from_the_ring(view):
@@ -291,7 +380,9 @@ def test_one_run_can_be_asked_about_by_name(view):
 # --- the export ------------------------------------------------------------
 
 
-def test_a_bundle_carries_the_group_its_records_and_its_ring(view, ledger_file, tmp_path):
+def test_a_bundle_carries_the_group_its_records_and_its_ring(
+    view, ledger_file, tmp_path
+):
     read = TRIAGE.read_ledger(path=str(ledger_file))
     written = TRIAGE.export(view, read, "f1:aaaaaaaaaaaaaaaa", tmp_path / "bundle")
     bundle = json.loads((written["path"] / "failure-bundle.json").read_text())
@@ -350,7 +441,9 @@ def test_a_ring_entry_is_redacted_a_second_time_on_the_way_into_a_bundle(
     assert poisoned["data"]["editor"] == "answer-needs-template"
 
 
-def test_the_allowlist_is_the_add_ons_own_and_is_never_guessed_at(monkeypatch, tmp_path):
+def test_the_allowlist_is_the_add_ons_own_and_is_never_guessed_at(
+    monkeypatch, tmp_path
+):
     """Two copies of an allowlist is one copy that can fall behind, and the
     failure it produces -- a field let through rather than dropped -- is the
     kind nobody notices until it matters."""
@@ -379,7 +472,9 @@ def test_a_bundle_is_written_for_its_owner_only(view, ledger_file, tmp_path):
         assert stat.S_IMODE(child.stat().st_mode) == 0o600
 
 
-def test_exporting_something_that_is_not_there_is_refused_not_invented(view, ledger_file, tmp_path):
+def test_exporting_something_that_is_not_there_is_refused_not_invented(
+    view, ledger_file, tmp_path
+):
     read = TRIAGE.read_ledger(path=str(ledger_file))
 
     with pytest.raises(TRIAGE.TriageError, match="no failure group or run matches"):
@@ -394,7 +489,9 @@ def _code_only(text: str) -> str:
     stripped = re.sub(r"^\s*#.*$", "", text, flags=re.MULTILINE)
     module = ast.parse(stripped)
     for node in ast.walk(module):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Module)):
+        if isinstance(
+            node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Module)
+        ):
             if (
                 node.body
                 and isinstance(node.body[0], ast.Expr)
@@ -425,8 +522,17 @@ def test_it_runs_no_command_at_all():
 def test_it_reaches_no_network_and_no_browser():
     code = _code_only(SOURCE)
 
-    for forbidden in ("urllib", "http", "socket", "requests", "marionette",
-                      "webdriver", "qdbus", "spectacle", "inspect_live_firefox"):
+    for forbidden in (
+        "urllib",
+        "http",
+        "socket",
+        "requests",
+        "marionette",
+        "webdriver",
+        "qdbus",
+        "spectacle",
+        "inspect_live_firefox",
+    ):
         assert forbidden not in code, forbidden
 
 
@@ -436,8 +542,17 @@ def test_it_never_captures_the_screen():
     demands a bundle and prints the command that deletes it."""
     code = _code_only(SOURCE)
 
-    for forbidden in ("captureVisibleTab", "Spectacle", "spectacle", "grim", "scrot",
-                      "pyautogui", "mss", "ImageGrab", "shot("):
+    for forbidden in (
+        "captureVisibleTab",
+        "Spectacle",
+        "spectacle",
+        "grim",
+        "scrot",
+        "pyautogui",
+        "mss",
+        "ImageGrab",
+        "shot(",
+    ):
         assert forbidden not in code, forbidden
     # And with no way to run a command, there is nothing left to capture with.
     assert "subprocess" not in code
@@ -446,7 +561,9 @@ def test_it_never_captures_the_screen():
 def test_it_reads_the_profile_database_through_a_copy():
     """Firefox may be running and holding that file."""
     code = _code_only(SOURCE)
-    reader = (PROJECT_ROOT / "scripts" / "read_extension_log.py").read_text(encoding="utf-8")
+    reader = (PROJECT_ROOT / "scripts" / "read_extension_log.py").read_text(
+        encoding="utf-8"
+    )
 
     assert "shutil.copy(store, copy)" in reader
     assert "reader.read_storage(store)" in code
@@ -462,7 +579,11 @@ def test_it_writes_only_into_the_bundle_it_was_asked_for():
         if called in {"os.chmod", "os.mkdir", "os.makedirs"}:
             roots.add(ast.unparse(node.args[0]).split(" ")[0])
         elif isinstance(node.func, ast.Attribute) and node.func.attr in {
-            "write_text", "write_bytes", "mkdir", "touch", "chmod"
+            "write_text",
+            "write_bytes",
+            "mkdir",
+            "touch",
+            "chmod",
         }:
             roots.add(ast.unparse(node.func.value).split(" ")[0])
 
@@ -478,6 +599,11 @@ def test_it_never_speaks_to_the_extension():
     suspended event page are none of them available here."""
     code = _code_only(SOURCE)
 
-    for forbidden in ("connectNative", "sendNativeMessage", "runtime.connect",
-                      "storage.local.set", "postMessage"):
+    for forbidden in (
+        "connectNative",
+        "sendNativeMessage",
+        "runtime.connect",
+        "storage.local.set",
+        "postMessage",
+    ):
         assert forbidden not in code, forbidden

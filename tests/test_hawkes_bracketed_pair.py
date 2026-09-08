@@ -104,7 +104,7 @@ def test_a_box_that_takes_no_comma_is_still_refused(plan):
 
 
 def test_a_plain_textbox_is_left_alone(plan):
-    """"Parentheses can only come from a template" is the dynamic editor's
+    """ "Parentheses can only come from a template" is the dynamic editor's
     rule. A plain box states its own pattern and may simply accept them."""
     editor = {
         "kind": "textbox",

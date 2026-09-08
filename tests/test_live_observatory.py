@@ -113,7 +113,9 @@ def test_a_run_that_outlives_its_event_page_is_visible_as_one_run():
     entries = [
         entry("solve-started", t=1000, run="rA", gen="g1"),
         entry("event-page-loaded", t=1500, run=None, gen="g2"),
-        entry("failed", t=2000, run="rA", gen="g2", level="warn", errorKey="errorNoBridge"),
+        entry(
+            "failed", t=2000, run="rA", gen="g2", level="warn", errorKey="errorNoBridge"
+        ),
     ]
     reference = OBS.clock(1_700_000_000.0)
 
@@ -235,15 +237,17 @@ def test_structural_reader_evidence_survives_the_run_and_prints(monkeypatch):
             "logicalRow": 2,
             "logicalColumn": 1,
             "controls": 1,
-            "textOwners": [{
-                "tag": "label",
-                "classes": ["sr-only"],
-                "path": ["label.sr-only", "span.QFractionBox"],
-                "textNodes": 1,
-                "textChars": 14,
-                "ignored": False,
-                "containsControl": True,
-            }],
+            "textOwners": [
+                {
+                    "tag": "label",
+                    "classes": ["sr-only"],
+                    "path": ["label.sr-only", "span.QFractionBox"],
+                    "textNodes": 1,
+                    "textChars": 14,
+                    "ignored": False,
+                    "containsControl": True,
+                }
+            ],
         },
     }
     monkeypatch.setattr(
@@ -251,16 +255,18 @@ def test_structural_reader_evidence_survives_the_run_and_prints(monkeypatch):
         "working_tree_reader_marker",
         lambda: {"computed": True, "marker": "abcdef123456", "valid": True},
     )
-    summary = run_of([
-        entry(
-            "question-read",
-            run="rA",
-            expressions=1,
-            answerTable="blank-not-empty",
-            answerTableDetail=detail,
-        ),
-        entry("failed", t=1100, run="rA", errorKey="errorQuestionRegion"),
-    ])
+    summary = run_of(
+        [
+            entry(
+                "question-read",
+                run="rA",
+                expressions=1,
+                answerTable="blank-not-empty",
+                answerTableDetail=detail,
+            ),
+            entry("failed", t=1100, run="rA", errorKey="errorQuestionRegion"),
+        ]
+    )
 
     kept = summary["question"]["answer_table_detail"]
     assert kept["build_matches_tree"] is True
@@ -272,22 +278,37 @@ def test_structural_reader_evidence_survives_the_run_and_prints(monkeypatch):
 
 
 def test_one_run_reports_each_five_part_boundary():
-    summary = run_of([
-        entry(
-            "host-request-shaped", run="rA", answerTable=True,
-            tableRows=5, tableColumns=2, tableBlanks=5,
-            answerShape="multi", answerParts=5,
-        ),
-        entry(
-            "solved", t=1100, run="rA", answerLength=13,
-            answerParts=5, hostAnswerParts=5,
-        ),
-        entry("answer-retained", t=1101, run="rA", answerParts=5, panels=1),
-        entry(
-            "panel-rendered", t=1102, run="rA", answerParts=5,
-            answerLength=13, answerEmpty=False,
-        ),
-    ])
+    summary = run_of(
+        [
+            entry(
+                "host-request-shaped",
+                run="rA",
+                answerTable=True,
+                tableRows=5,
+                tableColumns=2,
+                tableBlanks=5,
+                answerShape="multi",
+                answerParts=5,
+            ),
+            entry(
+                "solved",
+                t=1100,
+                run="rA",
+                answerLength=13,
+                answerParts=5,
+                hostAnswerParts=5,
+            ),
+            entry("answer-retained", t=1101, run="rA", answerParts=5, panels=1),
+            entry(
+                "panel-rendered",
+                t=1102,
+                run="rA",
+                answerParts=5,
+                answerLength=13,
+                answerEmpty=False,
+            ),
+        ]
+    )
 
     assert summary["host_request"]["answer_parts"] == 5
     assert summary["answer_parts"] == 5
@@ -410,13 +431,22 @@ def test_an_undisturbed_insertion_records_its_snapshot_and_no_change():
         ([entry("failed", errorKey="errorWrongSite", level="warn")], "browser"),
         ([entry("failed", errorKey="errorNoFocusedField", level="warn")], "browser"),
         ([entry("failed", errorKey="errorQuestionRegion", level="warn")], "evidence"),
-        ([entry("failed", errorKey="errorTranscriptionDisputed", level="warn")], "evidence"),
+        (
+            [entry("failed", errorKey="errorTranscriptionDisputed", level="warn")],
+            "evidence",
+        ),
         ([entry("failed", errorKey="errorSolveRefused", level="warn")], "capability"),
-        ([entry("failed", errorKey="errorAnswerNeedsTemplate", level="warn")], "answer-shape"),
+        (
+            [entry("failed", errorKey="errorAnswerNeedsTemplate", level="warn")],
+            "answer-shape",
+        ),
         ([entry("failed", errorKey="errorEthnosUnreachable", level="warn")], "runtime"),
         ([entry("failed", errorKey="errorEthnosTimeout", level="warn")], "timing"),
         ([entry("failed", errorKey="errorQuestionChanged", level="warn")], "safety"),
-        ([entry("failed", errorKey="errorInsertionAbandoned", level="warn")], "lifecycle"),
+        (
+            [entry("failed", errorKey="errorInsertionAbandoned", level="warn")],
+            "lifecycle",
+        ),
     ],
 )
 def test_every_failure_lands_in_exactly_one_named_class(events, expected):
@@ -452,7 +482,9 @@ def test_a_refused_reading_that_then_fails_is_evidence_not_capability():
         [
             entry("solve-started", t=1000, run="rA"),
             entry("evidence-refused", t=1100, run="rA", expressions=0, promptChars=0),
-            entry("failed", t=2000, run="rA", level="warn", errorKey="errorSolveRefused"),
+            entry(
+                "failed", t=2000, run="rA", level="warn", errorKey="errorSolveRefused"
+            ),
         ]
     )
 
@@ -460,9 +492,10 @@ def test_a_refused_reading_that_then_fails_is_evidence_not_capability():
 
 
 def test_a_clean_run_is_not_given_a_failure_class():
-    assert run_of([entry("solved", answerLength=4), entry("inserted", t=1100)])[
-        "failure"
-    ] is None
+    assert (
+        run_of([entry("solved", answerLength=4), entry("inserted", t=1100)])["failure"]
+        is None
+    )
 
 
 # --- one clock -------------------------------------------------------------
@@ -513,7 +546,11 @@ def _subprocess_programs(tree: ast.AST) -> set[str]:
         if not isinstance(node, ast.Call):
             continue
         target = node.func
-        name = target.attr if isinstance(target, ast.Attribute) else getattr(target, "id", "")
+        name = (
+            target.attr
+            if isinstance(target, ast.Attribute)
+            else getattr(target, "id", "")
+        )
         if name not in {"run", "Popen", "check_output", "call", "check_call"}:
             continue
         for argument in node.args:
@@ -584,14 +621,23 @@ def test_it_never_launches_or_drives_the_browser():
 
 def test_it_presses_nothing_on_the_page():
     """Submit, Check, Next, Skip and Try Similar each spend a graded attempt."""
-    for forbidden in ("Submit", "Skip", "click", "keypress", "sendKeys", "dispatchEvent"):
+    for forbidden in (
+        "Submit",
+        "Skip",
+        "click",
+        "keypress",
+        "sendKeys",
+        "dispatchEvent",
+    ):
         assert forbidden not in CODE, forbidden
 
 
 def test_it_reaches_no_network_except_the_local_runner():
     """A local Ollama probe is the one socket, and it is a loopback address."""
     urls = re.findall(r"https?://[^\s\"']+", SOURCE)
-    reachable = {url for url in urls if "://" in url and not url.startswith("http://127.0.0.1")}
+    reachable = {
+        url for url in urls if "://" in url and not url.startswith("http://127.0.0.1")
+    }
 
     # Only the loopback runner. Anything else in the file is prose.
     assert {url for url in reachable if url in CODE} == set()
@@ -637,6 +683,7 @@ def test_it_writes_nothing_into_the_profile_or_the_extension():
 
 def test_a_coursework_screenshot_is_never_left_loose():
     """It goes into a bundle whose deletion command is printed, or not at all."""
+
     class _Inspector:
         def shot(self, *_args):  # pragma: no cover - must not be reached
             raise AssertionError("a screenshot was taken without a bundle")
@@ -690,7 +737,12 @@ def test_the_observer_polls_nothing():
     assert "sleep" not in CODE
     assert "--watch" not in SOURCE
     assert "--follow" not in SOURCE
-    probes = ("_kwin_windows", "_extension_status", "read_entries", "_matching_processes")
+    probes = (
+        "_kwin_windows",
+        "_extension_status",
+        "read_entries",
+        "_matching_processes",
+    )
     for probe in probes:
         assert CODE.count(probe) == 1, probe
 
@@ -700,15 +752,19 @@ def test_the_documented_command_reexecs_through_the_project_runtime(monkeypatch)
     monkeypatch.setattr(OBS.importlib.util, "find_spec", lambda name: None)
     monkeypatch.setattr(OBS.sys, "executable", "/usr/bin/python3")
     monkeypatch.setattr(OBS.sys, "argv", [str(SCRIPT), "--run", "rA"])
-    monkeypatch.setattr(OBS.os, "execv", lambda program, argv: calls.append((program, argv)))
+    monkeypatch.setattr(
+        OBS.os, "execv", lambda program, argv: calls.append((program, argv))
+    )
 
     OBS.ensure_marker_runtime()
 
     project_python = str(PROJECT_ROOT / ".venv" / "bin" / "python")
-    assert calls == [(
-        project_python,
-        [project_python, str(SCRIPT), "--run", "rA"],
-    )]
+    assert calls == [
+        (
+            project_python,
+            [project_python, str(SCRIPT), "--run", "rA"],
+        )
+    ]
 
 
 def test_the_marker_touches_no_browser_api_that_could_hold_a_context_open():
@@ -722,7 +778,8 @@ def test_the_marker_touches_no_browser_api_that_could_hold_a_context_open():
     quickjs = pytest.importorskip("quickjs", reason="pip install quickjs")
     context = quickjs.Context()
     context.add_callable(
-        "__sha256", lambda text: json.dumps(list(hashlib.sha256(text.encode()).digest()))
+        "__sha256",
+        lambda text: json.dumps(list(hashlib.sha256(text.encode()).digest())),
     )
     context.eval(
         """
@@ -738,7 +795,9 @@ def test_the_marker_touches_no_browser_api_that_could_hold_a_context_open():
         """
     )
     source = (EXTENSION / "common" / "build-marker.js").read_text(encoding="utf-8")
-    context.eval(re.sub(r"^import\s[\s\S]*?;\s*$", "", source, flags=re.M).replace("export ", ""))
+    context.eval(
+        re.sub(r"^import\s[\s\S]*?;\s*$", "", source, flags=re.M).replace("export ", "")
+    )
     context.eval(
         """
         var folded;

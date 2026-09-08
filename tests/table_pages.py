@@ -133,7 +133,10 @@ def random_grid(seed: int):
     blanks = rng.sample(positions, rng.randint(2, min(5, len(positions))))
     # Ids Hawkes' own numbering never makes contiguous, shuffled so nothing
     # downstream can recover the order by sorting or by arithmetic.
-    names = [f"MatrixTextBoxes{number}_num" for number in rng.sample(range(0, 40), len(blanks))]
+    names = [
+        f"MatrixTextBoxes{number}_num"
+        for number in rng.sample(range(0, 40), len(blanks))
+    ]
 
     cells = [[rng.randint(-99, 99) for _ in range(pairs)] for _ in range(2)]
     for row, column in blanks:

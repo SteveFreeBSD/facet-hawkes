@@ -168,10 +168,7 @@ def test_the_four_shapes_are_told_apart() -> None:
         f"{{focusedElementIndex: 0, controlsCollection: {{{keyed_controls}}},"
         f" controlsCollectionData: {{{keyed_data}}}}}"
     )
-    seen = [
-        describe(model)
-        for model in (dense(5), dense(5, enabled=1), sparse, keyed)
-    ]
+    seen = [describe(model) for model in (dense(5), dense(5, enabled=1), sparse, keyed)]
 
     # Three of the four describe a single textbox, which is what the live run
     # reported and could not explain.
@@ -185,7 +182,7 @@ def test_the_four_shapes_are_told_apart() -> None:
 def test_no_control_content_reaches_the_collection_report() -> None:
     """It is read back off a live page and stored in a bounded ledger."""
     described = describe(
-        '{focusedElementIndex: 0,'
+        "{focusedElementIndex: 0,"
         ' controlsCollection: [{enabled: true, boxValue: "SECRET"}],'
         ' controlsCollectionData: [{Name: "SECRET", isQDy: false,'
         ' boxValue: "SECRET", validString: "[0-9-]", maxLength: 4,'

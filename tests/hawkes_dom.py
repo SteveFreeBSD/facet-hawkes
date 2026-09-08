@@ -53,7 +53,11 @@ class _Tree(HTMLParser):
         # `getAttribute` returns for one. Keeping `None` made `disabled` and
         # `readonly` indistinguishable from absent to any probe that compares
         # against null -- true of the reader, and of nothing in a browser.
-        node = {"tag": tag, "attrs": {n: v if v is not None else "" for n, v in attrs}, "children": []}
+        node = {
+            "tag": tag,
+            "attrs": {n: v if v is not None else "" for n, v in attrs},
+            "children": [],
+        }
         self._stack[-1]["children"].append(node)
         if tag not in VOID:
             self._stack.append(node)
@@ -99,12 +103,13 @@ def _place(root: dict) -> None:
             node["rect"] = dict(inherited)
         elif node["tag"] == "table":
             node["rect"] = {
-                "top": order[0] * 10, "left": 0, "width": 400, "height": 200
+                "top": order[0] * 10,
+                "left": 0,
+                "width": 400,
+                "height": 200,
             }
         else:
-            node["rect"] = {
-                "top": order[0] * 10, "left": 0, "width": 200, "height": 20
-            }
+            node["rect"] = {"top": order[0] * 10, "left": 0, "width": 200, "height": 20}
         if "hidden" in node.get("attrs", {}):
             node["rect"] = {"top": 0, "left": 0, "width": 0, "height": 0}
         if node["tag"] == "table" and inherited is None:

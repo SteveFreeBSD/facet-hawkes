@@ -1548,7 +1548,9 @@ def test_the_log_records_which_build_is_running():
     # And that constant is the manifest's own version, read once. A retained
     # failure record names the same build, so this is now the one place both
     # the ring and the ledger get their answer from.
-    assert "const MANIFEST_VERSION = browser.runtime.getManifest().version;" in background
+    assert (
+        "const MANIFEST_VERSION = browser.runtime.getManifest().version;" in background
+    )
 
 
 def test_moving_between_tabs_re_checks_what_is_in_front():

@@ -330,9 +330,10 @@ def test_the_live_fractions_are_placeable_in_the_cells_that_hold_them(table_fits
 
 def test_a_whole_integer_table_is_judged_exactly_as_before(table_fits):
     """Plain numeric entry is what already worked live. It must not move."""
-    assert table_fits(["3", "-8", "12", "-4"], LIVE_CELLS, CELL_EDITOR) == [
-        {"insertable": True}
-    ] * 4
+    assert (
+        table_fits(["3", "-8", "12", "-4"], LIVE_CELLS, CELL_EDITOR)
+        == [{"insertable": True}] * 4
+    )
 
 
 def test_each_half_is_bounded_by_its_own_box(table_fits):
@@ -509,7 +510,9 @@ def test_the_prompts_own_instruction_never_reaches_the_answer_card(displayable):
     sat behind it.
     """
     assert displayable("all answers as they would ordinarily be written") is False
-    assert displayable("Reply with exactly two labelled lines and nothing else") is False
+    assert (
+        displayable("Reply with exactly two labelled lines and nothing else") is False
+    )
 
 
 def test_the_answers_a_person_should_see_are_all_displayable(displayable) -> None:
@@ -533,7 +536,10 @@ def test_the_event_page_publishes_notation_and_never_unchecked_prose() -> None:
     # The readable form is notation, by the rule the entry planner shares.
     assert "return mathNotation(" in background
     # And it reaches the card only when it is an answer at all.
-    assert "displayText: displayableAnswer(displayText) ? displayText : answer," in background
+    assert (
+        "displayText: displayableAnswer(displayText) ? displayText : answer,"
+        in background
+    )
     # A refusal is stamped with the answer it was raised for, and a changed
     # question drops it rather than carrying it onto the next one.
     assert "errorAnswer: state.entryText || state.answer" in background

@@ -385,7 +385,9 @@ globalThis.oldWriter = async (parts, ids) => {
 """
 
 WRITER = re.sub(
-    r"^export ", "", (EXTENSION / "common" / "table-actions.js").read_text(encoding="utf-8"),
+    r"^export ",
+    "",
+    (EXTENSION / "common" / "table-actions.js").read_text(encoding="utf-8"),
     flags=re.MULTILINE,
 )
 
@@ -442,9 +444,7 @@ def cellsNow(context):
 def inputsNow(context):
     """Every physical text input the page is showing, in document order."""
     return json.loads(
-        context.eval(
-            "JSON.stringify(fields.filter(f => f.visible).map(f => f.id))"
-        )
+        context.eval("JSON.stringify(fields.filter(f => f.visible).map(f => f.id))")
     )
 
 
@@ -928,8 +928,15 @@ def test_the_writer_reports_how_it_reached_the_page() -> None:
     reported = write(live)
 
     assert set(reported) == {
-        "ok", "code", "cells", "settled", "models", "expanded", "ownership",
-        "selected", "timing",
+        "ok",
+        "code",
+        "cells",
+        "settled",
+        "models",
+        "expanded",
+        "ownership",
+        "selected",
+        "timing",
     }
     assert reported["selected"] == ["focus"] * 5
     assert reported["timing"]["notes"] == 5
@@ -1081,7 +1088,9 @@ def test_a_cell_that_will_not_open_its_other_half_refuses() -> None:
 
     assert reported["ok"] is False
     assert reported["code"] in {
-        "table-cell-not-expandable", "table-cell-not-selected", "table-cell-not-settled",
+        "table-cell-not-expandable",
+        "table-cell-not-selected",
+        "table-cell-not-settled",
     }
     assert set(cellsNow(live).values()) == {""}
 
@@ -1091,8 +1100,9 @@ def test_a_part_whose_halves_cannot_fit_their_boxes_refuses() -> None:
     live = fraction_page()
     live.eval("document.getElementById('MatrixTextBoxes9_num').maxLength = 2;")
 
-    reported = write(live, parts=["16/9", "-8/3", "100/3", "34/9"],
-                     cells=FRACTION_CELLS)
+    reported = write(
+        live, parts=["16/9", "-8/3", "100/3", "34/9"], cells=FRACTION_CELLS
+    )
 
     assert reported == {"ok": False, "code": "answer-invalid", "blank": 3}
     assert set(cellsNow(live).values()) == {""}
@@ -1140,7 +1150,9 @@ def test_the_page_still_holds_the_expanded_cells_halves_throughout() -> None:
     """The references are furniture. They are not a selection and never were."""
     live = fraction_page(showing=["MatrixTextBoxes5_num"])
 
-    assert live.eval("window.quant_wp_UI.fractionNumerator.id") == "MatrixTextBoxes5_num"
+    assert (
+        live.eval("window.quant_wp_UI.fractionNumerator.id") == "MatrixTextBoxes5_num"
+    )
     reported = write(live, parts=FRACTION_PARTS, cells=FRACTION_CELLS)
 
     assert reported["ok"] is True
@@ -1159,9 +1171,7 @@ def test_a_mixed_table_of_fractions_and_whole_numbers_is_placed() -> None:
     assert reported["ok"] is True
     assert cellsNow(live) == dict(zip(FRACTION_CELLS, parts))
     # One of the four is a whole number and must not have opened a pair.
-    assert live.eval(
-        "document.getElementById('MatrixTextBoxes8_den').visible"
-    ) is False
+    assert live.eval("document.getElementById('MatrixTextBoxes8_den').visible") is False
 
 
 def test_every_cell_expanded_before_the_run_is_still_four_blanks() -> None:
@@ -1226,10 +1236,13 @@ def test_the_page_publishes_no_router_and_the_mirror_is_on_the_denominator():
     """Both halves of what the live refusal reported."""
     live = live_page()
 
-    assert live.eval(
-        "Object.keys(window.quant_wp_UI).filter("
-        " k => window.quant_wp_UI[k] && window.quant_wp_UI[k].nodeType === 1).length"
-    ) == 0
+    assert (
+        live.eval(
+            "Object.keys(window.quant_wp_UI).filter("
+            " k => window.quant_wp_UI[k] && window.quant_wp_UI[k].nodeType === 1).length"
+        )
+        == 0
+    )
     assert live.eval("window.quant_wp_UI.focusedElement.id") == "MatrixTextBoxes2_den"
     assert live.eval("window.quant_wp_UI.focusedElementIndex") == 1
 

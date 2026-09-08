@@ -48,7 +48,9 @@ EXPECTED_PARTS = ["0", "8", "8", "5", "3"]
 
 def shared_constant(name: str) -> str:
     """One constant's value as `common/config.js` declares it."""
-    found = re.search(rf"\b{name} = (.+);", (EXTENSION / "common" / "config.js").read_text())
+    found = re.search(
+        rf"\b{name} = (.+);", (EXTENSION / "common" / "config.js").read_text()
+    )
     assert found is not None, f"{name} is not declared in common/config.js"
     return found.group(1)
 
@@ -85,7 +87,11 @@ def background(*names: str):
     """`background.js` functions, over the add-on's own answer rules."""
     quickjs = pytest.importorskip("quickjs", reason="pip install quickjs")
     context = quickjs.Context()
-    for module in ("common/config.js", "common/editor-rules.js", "common/editor-plan.js"):
+    for module in (
+        "common/config.js",
+        "common/editor-rules.js",
+        "common/editor-plan.js",
+    ):
         context.eval(_flatten(module))
     source = (EXTENSION / "background.js").read_text(encoding="utf-8")
     for name in names:
@@ -329,7 +335,11 @@ def test_five_published_controls_are_one_multi_answer() -> None:
     assert described["code"] == "described-multi"
     assert described["kind"] == "multi"
     assert [one["name"] for one in described["editors"]] == [
-        "cell1", "cell2", "cell3", "cell4", "cell5",
+        "cell1",
+        "cell2",
+        "cell3",
+        "cell4",
+        "cell5",
     ]
     assert all(one["allowedCharacters"] == "[0-9-]" for one in described["editors"])
     assert all(one["maxLength"] == 4 for one in described["editors"])
@@ -377,11 +387,14 @@ def test_five_agreeing_readings_place_the_answer() -> None:
     """Five boxes found, five enabled editors published: the ids are adopted."""
     adopt = background("answerFieldIds")
 
-    assert adopt(
-        {"fieldId": "MatrixTextBoxes3_num"},
-        {"fields": 5, "separators": 0, "fieldIds": FIELD_IDS},
-        {"kind": "multi", "editors": [{}, {}, {}, {}, {}]},
-    ) == FIELD_IDS
+    assert (
+        adopt(
+            {"fieldId": "MatrixTextBoxes3_num"},
+            {"fields": 5, "separators": 0, "fieldIds": FIELD_IDS},
+            {"kind": "multi", "editors": [{}, {}, {}, {}, {}]},
+        )
+        == FIELD_IDS
+    )
 
 
 def test_a_model_counting_differently_is_still_not_adopted() -> None:
@@ -445,7 +458,10 @@ def test_an_ambiguous_table_never_overrides_the_editor(blanks) -> None:
     """Only two-to-five sequential blanks can alter answer cardinality."""
     table = {
         "columns": ["x", "y"],
-        "rows": [[{"text": str(index)}, {"blank": blank}] for index, blank in enumerate(blanks)],
+        "rows": [
+            [{"text": str(index)}, {"blank": blank}]
+            for index, blank in enumerate(blanks)
+        ],
     }
 
     assert background("answerShapeOf")(describe_editor(10), table) == {
@@ -458,15 +474,19 @@ def test_five_parts_are_planned_against_their_own_editors() -> None:
     """Each answer is preflighted against the box it is going into."""
     fits = background("multiEntryPlans", "multiAnswerFits")
 
-    assert fits(
-        EXPECTED_PARTS,
-        {
-            "kind": "multi",
-            "editors": [
-                {"kind": "textbox", "allowedCharacters": "[0-9-]", "maxLength": 4}
-            ] * 5,
-        },
-    ) is True
+    assert (
+        fits(
+            EXPECTED_PARTS,
+            {
+                "kind": "multi",
+                "editors": [
+                    {"kind": "textbox", "allowedCharacters": "[0-9-]", "maxLength": 4}
+                ]
+                * 5,
+            },
+        )
+        is True
+    )
 
 
 # --- the wire the host answers on -------------------------------------------

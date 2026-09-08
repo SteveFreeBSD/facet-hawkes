@@ -254,7 +254,10 @@ def test_the_settled_value_is_read_back_from_both_boxes() -> None:
     reported = run(live, SLASH_PLAN)
 
     assert reported["ok"] is False
-    assert reported["code"] in {"fraction-not-settled", "answer-has-rejected-characters"}
+    assert reported["code"] in {
+        "fraction-not-settled",
+        "answer-has-rejected-characters",
+    }
 
 
 #: The same box, with the Fraction template this question does not publish.
@@ -278,8 +281,7 @@ def planner():
     def call(answer, editor):
         return json.loads(
             ctx.eval(
-                "JSON.stringify(planEntry("
-                f"{json.dumps(answer)}, {json.dumps(editor)}))"
+                f"JSON.stringify(planEntry({json.dumps(answer)}, {json.dumps(editor)}))"
             )
         )
 

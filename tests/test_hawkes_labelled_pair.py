@@ -154,7 +154,8 @@ def adopt(choice, evidence, editor):
     # The bound on how many parts one answer may have, read from the module the
     # event page imports it from rather than repeated here.
     context.eval(
-        (EXTENSION / "common" / "config.js").read_text(encoding="utf-8")
+        (EXTENSION / "common" / "config.js")
+        .read_text(encoding="utf-8")
         .replace("export ", "")
     )
     context.eval(_lift(source, "answerFieldIds"))

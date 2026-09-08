@@ -193,11 +193,12 @@ def test_the_observed_hawkes_accessibility_labels_are_not_table_values(
 
 def test_a_student_text_mirror_is_not_ignored_or_transmitted() -> None:
     """Only accessibility labels are decoration, not arbitrary hidden mirrors."""
-    read = variant(**{
-        '<input__class="qbaseCSS"__id="MatrixTextBoxes3_num"__maxlength="4">':
-        '<span name="NotAnObject" style="visibility:hidden">SECRET</span>'
-        '<input class="qbaseCSS" id="MatrixTextBoxes3_num" maxlength="4">'
-    })
+    read = variant(
+        **{
+            '<input__class="qbaseCSS"__id="MatrixTextBoxes3_num"__maxlength="4">': '<span name="NotAnObject" style="visibility:hidden">SECRET</span>'
+            '<input class="qbaseCSS" id="MatrixTextBoxes3_num" maxlength="4">'
+        }
+    )
 
     assert read["evidence"]["answerTable"] == "blank-not-empty"
     assert "answerTable" not in read
@@ -211,9 +212,7 @@ def test_a_student_text_mirror_is_not_ignored_or_transmitted() -> None:
 
 def test_an_accessibility_label_targeting_another_control_is_refused() -> None:
     """A nearby screen-reader label is not automatically part of this editor."""
-    read = variant(**{
-        'for="MatrixTextBoxes3_num"': 'for="AnotherControl"'
-    })
+    read = variant(**{'for="MatrixTextBoxes3_num"': 'for="AnotherControl"'})
 
     assert read["evidence"]["answerTable"] == "blank-not-empty"
     assert "answerTable" not in read
@@ -227,9 +226,7 @@ def test_an_accessibility_label_targeting_another_control_is_refused() -> None:
 
 def test_an_unassociated_sr_only_label_is_still_refused() -> None:
     """`sr-only` alone is not enough to erase page text from a blank."""
-    read = variant(**{
-        'for="MatrixTextBoxes3_opt"': ''
-    })
+    read = variant(**{'for="MatrixTextBoxes3_opt"': ""})
 
     assert read["evidence"]["answerTable"] == "blank-not-empty"
     culprit = read["evidence"]["answerTableDetail"]["cell"]["textOwners"][1]
@@ -240,9 +237,7 @@ def test_an_unassociated_sr_only_label_is_still_refused() -> None:
 
 def test_a_label_targeting_a_control_in_another_cell_is_refused() -> None:
     """Association is local to this mathematical blank, never table-wide."""
-    read = variant(**{
-        'for="MatrixTextBoxes3_opt"': 'for="MatrixTextBoxes6_opt"'
-    })
+    read = variant(**{'for="MatrixTextBoxes3_opt"': 'for="MatrixTextBoxes6_opt"'})
 
     assert read["evidence"]["answerTable"] == "blank-not-empty"
     culprit = read["evidence"]["answerTableDetail"]["cell"]["textOwners"][1]
@@ -253,9 +248,9 @@ def test_a_label_targeting_a_control_in_another_cell_is_refused() -> None:
 
 def test_the_accessibility_label_wrapper_must_match_exactly() -> None:
     """A similarly named label outside the observed chain remains cell text."""
-    read = variant(**{
-        '<span__class="FractionBoxStyle">': '<span class="OtherBoxStyle">'
-    })
+    read = variant(
+        **{'<span__class="FractionBoxStyle">': '<span class="OtherBoxStyle">'}
+    )
 
     assert read["evidence"]["answerTable"] == "blank-not-empty"
     assert "answerTable" not in read
@@ -263,11 +258,12 @@ def test_the_accessibility_label_wrapper_must_match_exactly() -> None:
 
 def test_math_beside_the_control_is_still_refused() -> None:
     """A Hawkes label does not license an actual mathematical value beside it."""
-    read = variant(**{
-        '<input__class="qbaseCSS"__id="MatrixTextBoxes3_num"__maxlength="4">':
-        '<input class="qbaseCSS" id="MatrixTextBoxes3_num" maxlength="4">'
-        '<math><mn>7</mn></math>'
-    })
+    read = variant(
+        **{
+            '<input__class="qbaseCSS"__id="MatrixTextBoxes3_num"__maxlength="4">': '<input class="qbaseCSS" id="MatrixTextBoxes3_num" maxlength="4">'
+            "<math><mn>7</mn></math>"
+        }
+    )
 
     assert read["evidence"]["answerTable"] == "blank-not-empty"
     assert "answerTable" not in read
@@ -278,10 +274,11 @@ def test_math_beside_the_control_is_still_refused() -> None:
 
 def test_a_box_with_words_beside_it_is_refused() -> None:
     """A cell is a blank or a value. One that is both is not read as either."""
-    read = variant(**{
-        '<input class="qbaseCSS" id="MatrixTextBoxes3_num" maxlength="4">':
-        '<input class="qbaseCSS" id="MatrixTextBoxes3_num" maxlength="4">or 0'
-    })
+    read = variant(
+        **{
+            '<input class="qbaseCSS" id="MatrixTextBoxes3_num" maxlength="4">': '<input class="qbaseCSS" id="MatrixTextBoxes3_num" maxlength="4">or 0'
+        }
+    )
 
     assert read["evidence"]["answerTable"] == "blank-not-empty"
     assert "answerTable" not in read
@@ -314,7 +311,7 @@ def test_a_second_candidate_table_is_refused() -> None:
     markup = FIXTURE.read_text(encoding="utf-8")
     read = read_question(
         markup
-        + '<table><thead><tr><th>u</th><th>v</th></tr></thead><tbody>'
+        + "<table><thead><tr><th>u</th><th>v</th></tr></thead><tbody>"
         + '<tr><td>1</td><td><input class="qbaseCSS" id="Other1_num"></td></tr>'
         + '<tr><td>2</td><td><input class="qbaseCSS" id="Other2_num"></td></tr>'
         + "</tbody></table>"
@@ -355,15 +352,15 @@ def test_more_blanks_than_the_answer_bound_are_refused() -> None:
     markup = FIXTURE.read_text(encoding="utf-8")
     markup = markup.replace(
         '<input type="radio" class="opt" id="MatrixTextBoxes6_opt" hidden>'
-        '</span></span></span></span></td></tr>',
+        "</span></span></span></span></td></tr>",
         '<input type="radio" class="opt" id="MatrixTextBoxes6_opt" hidden>'
-        '</span></span></span></span></td>'
-        '<td>9</td></tr>',
+        "</span></span></span></span></td>"
+        "<td>9</td></tr>",
     ).replace(
-        '</mjx-assistive-mml></mjx-container></td></tr>\n</tbody></table>',
-        '</mjx-assistive-mml></mjx-container></td>'
+        "</mjx-assistive-mml></mjx-container></td></tr>\n</tbody></table>",
+        "</mjx-assistive-mml></mjx-container></td>"
         '<td><input class="qbaseCSS" id="MatrixTextBoxes12_num"></td></tr>\n'
-        '</tbody></table>',
+        "</tbody></table>",
     )
     read = read_question(markup)
 
@@ -373,13 +370,14 @@ def test_more_blanks_than_the_answer_bound_are_refused() -> None:
 
 def test_a_ragged_row_headed_table_is_refused() -> None:
     """Unequal x/y rows are not recognized as the live answer-table shape."""
-    read = variant(**{
-        '<input__type="radio"__class="opt"__id="MatrixTextBoxes6_opt"__hidden>'
-        '</span></span></span></span></td></tr>':
-        '<input type="radio" class="opt" id="MatrixTextBoxes6_opt" hidden>'
-        '</span></span></span></span></td>'
-        '<td>spare</td></tr>'
-    })
+    read = variant(
+        **{
+            '<input__type="radio"__class="opt"__id="MatrixTextBoxes6_opt"__hidden>'
+            "</span></span></span></span></td></tr>": '<input type="radio" class="opt" id="MatrixTextBoxes6_opt" hidden>'
+            "</span></span></span></span></td>"
+            "<td>spare</td></tr>"
+        }
+    )
 
     assert read["evidence"]["answerTable"] == "held-1-kept-0-header-1"
     assert "answerTable" not in read
@@ -426,7 +424,11 @@ def test_the_protocol_carries_the_grid() -> None:
     table = AnswerTable(columns=["x", "y"], rows=EXPECTED_ROWS)
 
     assert [cell.blank for row in table.rows for cell in row if cell.blank] == [
-        1, 2, 3, 4, 5
+        1,
+        2,
+        3,
+        4,
+        5,
     ]
     assert table.rows[1][1].mathml.endswith("</math>")
 
@@ -435,10 +437,15 @@ def test_the_protocol_carries_the_grid() -> None:
     "rows,why",
     [
         ([[{"text": "0"}, {"text": "1"}], [{"text": "2"}, {"text": "3"}]], "no blank"),
-        ([[{"text": "0"}, {"blank": 2}], [{"text": "1"}, {"blank": 3}]], "not from one"),
+        (
+            [[{"text": "0"}, {"blank": 2}], [{"text": "1"}, {"blank": 3}]],
+            "not from one",
+        ),
         ([[{"text": "0"}, {"blank": 1}], [{"text": "1"}, {"blank": 3}]], "a gap"),
-        ([[{"text": "0"}, {"blank": 1, "text": "8"}], [{"text": "1"}, {"blank": 2}]],
-         "both at once"),
+        (
+            [[{"text": "0"}, {"blank": 1, "text": "8"}], [{"text": "1"}, {"blank": 2}]],
+            "both at once",
+        ),
         ([[{}, {"blank": 1}], [{"text": "1"}, {"blank": 2}]], "neither"),
     ],
     ids=["no-blank", "not-from-one", "gap", "both", "neither"],
@@ -570,18 +577,20 @@ def test_only_the_refusal_code_reaches_the_retained_ledger() -> None:
             "cell": {
                 "logicalRow": 2,
                 "logicalColumn": 1,
-                "textOwners": [{
-                    "tag": "label",
-                    "classes": ["sr-only", "SECRET-CLASS"],
-                    "path": ["label.sr-only", "span.QFractionBox"],
-                    "textNodes": 1,
-                    "textChars": 999,
-                    "ignored": False,
-                    "forCellControl": True,
-                    "target": "input.qbaseCSS",
-                    "rawText": "SECRET",
-                    "value": "999",
-                }],
+                "textOwners": [
+                    {
+                        "tag": "label",
+                        "classes": ["sr-only", "SECRET-CLASS"],
+                        "path": ["label.sr-only", "span.QFractionBox"],
+                        "textNodes": 1,
+                        "textChars": 999,
+                        "ignored": False,
+                        "forCellControl": True,
+                        "target": "input.qbaseCSS",
+                        "rawText": "SECRET",
+                        "value": "999",
+                    }
+                ],
                 "rawDom": "<label>SECRET</label>",
             },
             "rawQuestion": "SECRET",
@@ -629,11 +638,11 @@ def test_every_refusal_code_is_a_shape_and_never_a_cell() -> None:
     for code in codes:
         # A placeholder in a code is a count of nodes or a tally of refusals,
         # never a cell: `${blanks.length}` and `${why}` and nothing else.
-        assert re.fullmatch(
-            r"[a-z-]+(-?\$\{[a-z]+(\.length)?\}|[a-z0-9-]+)*", code
-        ), code
+        assert re.fullmatch(r"[a-z-]+(-?\$\{[a-z]+(\.length)?\}|[a-z0-9-]+)*", code), (
+            code
+        )
     # And `why` itself is built only from the tally's own names and counts.
-    assert '.map(([name, count]) => `-${name}-${count}`)' in reader
+    assert ".map(([name, count]) => `-${name}-${count}`)" in reader
 
 
 # --- through the real Facet router ------------------------------------------
@@ -651,7 +660,10 @@ def solve_request(read: dict, parts: int) -> dict:
         "problem": {
             "prompt_text": read["promptText"],
             "mathml": read["expressions"],
-            "answer_table": {"columns": table["columns"], "rows": table["rows"][:parts]},
+            "answer_table": {
+                "columns": table["columns"],
+                "rows": table["rows"][:parts],
+            },
             "answer_shape": {
                 "kind": "multi",
                 "count": parts,
@@ -737,8 +749,10 @@ def rounding_request(parts: int = 1) -> dict:
             "answer_table": {
                 "columns": ["x", "y"],
                 "rows": [
-                    [{"mathml": "<math><mfrac><mn>1</mn><mn>3</mn></mfrac></math>"},
-                     {"blank": 1}],
+                    [
+                        {"mathml": "<math><mfrac><mn>1</mn><mn>3</mn></mfrac></math>"},
+                        {"blank": 1},
+                    ],
                     [{"text": "2"}, {"text": "2"}],
                 ],
             },

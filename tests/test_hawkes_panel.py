@@ -688,8 +688,12 @@ def test_a_multi_field_answer_is_numbered_rather_than_run_together(view) -> None
             answerParts=["-1", "5"],
             answer="-1 or 5",
             displayText="-1 or 5",
-            editor={"ok": True, "code": "described-multi", "kind": "multi",
-                    "editors": [TABLE_EDITOR, TABLE_EDITOR]},
+            editor={
+                "ok": True,
+                "code": "described-multi",
+                "kind": "multi",
+                "editors": [TABLE_EDITOR, TABLE_EDITOR],
+            },
         )
     )
 
@@ -727,7 +731,9 @@ def test_a_value_too_long_for_its_own_cell_is_not_offered(view) -> None:
     targets = table_mapping()
     targets[2] = {**targets[2], "maxLength": 1}
 
-    shown = view(panel_state(tableTargets=targets, answerParts=["0", "8", "88", "5", "3"]))
+    shown = view(
+        panel_state(tableTargets=targets, answerParts=["0", "8", "88", "5", "3"])
+    )
 
     assert shown["insert"]["enabled"] is False
 

@@ -424,7 +424,9 @@ def _check_table_writer(problems: list[str]) -> None:
     )
     for pattern, what in forbidden:
         if re.search(pattern, text):
-            problems.append(f"{MAIN_WORLD_TABLE}: {what}; it may only enter table cells")
+            problems.append(
+                f"{MAIN_WORLD_TABLE}: {what}; it may only enter table cells"
+            )
 
     # Selection is made by the page, never asserted to it. The index is a
     # mirror of Hawkes' real selection, so assigning it proves only that the
@@ -439,7 +441,9 @@ def _check_table_writer(problems: list[str]) -> None:
     if "func: enterTableCells" not in (EXTENSION_DIR / "background.js").read_text(
         encoding="utf-8"
     ):
-        problems.append("background.js must pass enterTableCells as the injected function")
+        problems.append(
+            "background.js must pass enterTableCells as the injected function"
+        )
 
     # And nothing writes the mirror -- not even this file.
     for other in packaged_files():
@@ -742,7 +746,9 @@ def _check_import_paths(problems: list[str]) -> None:
         source = path.read_text(encoding="utf-8")
         for target in IMPORT_TARGET.findall(source):
             if "://" in target:
-                problems.append(f"{relative}: import from outside the package: {target}")
+                problems.append(
+                    f"{relative}: import from outside the package: {target}"
+                )
                 continue
             resolved = (
                 Path(target.lstrip("/"))
@@ -751,7 +757,9 @@ def _check_import_paths(problems: list[str]) -> None:
             )
             wanted = Path(os.path.normpath(resolved)).as_posix()
             if wanted not in shipped:
-                problems.append(f"{relative}: imports {target}, which is not a shipped file")
+                problems.append(
+                    f"{relative}: imports {target}, which is not a shipped file"
+                )
 
 
 def _check_undefined_constants(problems: list[str]) -> None:

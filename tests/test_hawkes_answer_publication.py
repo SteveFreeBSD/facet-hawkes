@@ -330,8 +330,14 @@ def test_a_completion_table_holds_its_answer_to_the_blanks_it_published(page):
     them to their contract.
     """
     targets = [
-        {"blank": index, "id": f"cell{index}", "row": index, "column": 2,
-         "maxLength": 4, "label": f"row {index}"}
+        {
+            "blank": index,
+            "id": f"cell{index}",
+            "row": index,
+            "column": 2,
+            "maxLength": 4,
+            "label": f"row {index}",
+        }
         for index in range(1, 4)
     ]
     page.run(
@@ -350,8 +356,10 @@ def test_a_completion_table_holds_its_answer_to_the_blanks_it_published(page):
     assert page.json("state.answerParts") == []
     assert page.json("state.phase") != "solved"
 
-    reply(page, {"display_text": "1, 2, 3", "keyboard_entry": "",
-                 "parts": ["1", "2", "3"]})
+    reply(
+        page,
+        {"display_text": "1, 2, 3", "keyboard_entry": "", "parts": ["1", "2", "3"]},
+    )
 
     assert page.json("state.answerParts") == ["1", "2", "3"]
     assert page.json("state.phase") == "solved"

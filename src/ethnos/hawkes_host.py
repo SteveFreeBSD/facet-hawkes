@@ -358,11 +358,7 @@ def instruction_with_answer_representation(instruction: str, shape) -> str:
     if reading is None:
         return instruction
     _, limit = reading
-    subject = (
-        "Each separate answer"
-        if len(shape.representations) > 1
-        else "The answer"
-    )
+    subject = "Each separate answer" if len(shape.representations) > 1 else "The answer"
     return (
         f"{instruction}\n{subject} must use only digits and an optional leading "
         f"minus sign, with at most {limit} characters. Do not use a fraction, "
@@ -974,9 +970,7 @@ def _solve_with_facet(
             # from these and checks a reasoned answer against them; neither is
             # possible against a sentence.
             answer_table=answer_table_payload(problem.answer_table, parts_required),
-            answer_representation=answer_representation_payload(
-                problem.answer_shape
-            ),
+            answer_representation=answer_representation_payload(problem.answer_shape),
             # The alternatives a choice question published, as the page wrote
             # them. Facet answers with one of them exactly; nothing here has
             # to recognise what the choices mean.

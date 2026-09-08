@@ -302,14 +302,18 @@ def decode_rows(store: Path) -> list[tuple[str, object]]:
         copy = Path(work) / "store.sqlite"
         shutil.copy(store, copy)
         rows = (
-            sqlite3.connect(copy).execute("select key, data from object_data").fetchall()
+            sqlite3.connect(copy)
+            .execute("select key, data from object_data")
+            .fetchall()
         )
 
     decoded: list[tuple[str, object]] = []
     for key, blob in rows:
         if not blob:
             continue
-        decoded.append((decode_key(bytes(key)), Clone(snappy_decompress(bytes(blob))).read()))
+        decoded.append(
+            (decode_key(bytes(key)), Clone(snappy_decompress(bytes(blob))).read())
+        )
     return decoded
 
 

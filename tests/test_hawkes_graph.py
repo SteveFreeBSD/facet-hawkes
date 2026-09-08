@@ -119,7 +119,7 @@ def test_stale_graph_snapshot_refuses_before_actuation(page):  # noqa: F811
     # them. Seeding the value fields and then overlaying a plan was a state the
     # event page never reaches.
     page.run(
-        f'update({{editor: {json.dumps(editor)}, graphPlan: {json.dumps(PLAN)}, '
+        f"update({{editor: {json.dumps(editor)}, graphPlan: {json.dumps(PLAN)}, "
         f'graphCoefficients: ["1","-6","8"], answer: "", displayText: "", '
         f'entryText: "", answerParts: []}}); insert();'
     )
@@ -222,8 +222,9 @@ def graph_page(*, anchors: int, fields: str = "[]", width: int = 410):
       }};
     """)
     context.eval(
-        (pathlib.Path(__file__).parents[1] / "extension/content/hawkes-editor.js")
-        .read_text()
+        (
+            pathlib.Path(__file__).parents[1] / "extension/content/hawkes-editor.js"
+        ).read_text()
     )
     return json.loads(context.eval("JSON.stringify(ethnosHawkes.inspectField())"))
 
@@ -272,8 +273,9 @@ def test_the_graph_recovery_never_tells_anyone_to_click_a_box():
     follow. The graph refusal has its own words.
     """
     messages = json.loads(
-        (pathlib.Path(__file__).parents[1] / "extension/_locales/en/messages.json")
-        .read_text()
+        (
+            pathlib.Path(__file__).parents[1] / "extension/_locales/en/messages.json"
+        ).read_text()
     )
     background = (
         pathlib.Path(__file__).parents[1] / "extension/background.js"

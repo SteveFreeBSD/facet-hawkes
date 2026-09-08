@@ -208,7 +208,8 @@ def test_each_value_gets_its_own_table():
 
     with pytest.raises(reader.Unreadable):
         reader.Clone(
-            _pair(3, 0xFFF10000) + _pair(0, reader.TAG_OBJECT)
+            _pair(3, 0xFFF10000)
+            + _pair(0, reader.TAG_OBJECT)
             + _string("borrowed")
             + _backref(1)
             + _pair(0, reader.TAG_END_OF_KEYS)

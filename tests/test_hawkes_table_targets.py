@@ -128,14 +128,14 @@ def test_a_randomized_grid_maps_every_blank_to_the_box_in_that_cell(seed) -> Non
 
 def test_blanks_in_one_row_agree_with_reading_order_and_are_still_mapped() -> None:
     """The easy arrangement must not be a special case: same mapping, same rule."""
-    markup = row_headed_page(
-        [[1, 4, 9], [None, None, None]], ["boxA", "boxB", "boxC"]
-    )
+    markup = row_headed_page([[1, 4, 9], [None, None, None]], ["boxA", "boxB", "boxC"])
 
     read = read_question(markup)
 
     assert [blank["id"] for blank in read["answerTargets"]["blanks"]] == [
-        "boxA", "boxB", "boxC"
+        "boxA",
+        "boxB",
+        "boxC",
     ]
     assert read["answerTargets"]["domOrderMatches"] is True
 
@@ -162,20 +162,25 @@ def test_a_cell_showing_a_fraction_is_still_one_blank() -> None:
     assert read["evidence"]["answerTable"] == ""
     assert mapping["count"] == 3
     assert [blank["id"] for blank in mapping["blanks"]] == [
-        "boxA_num", "boxB_num", "boxC_num"
+        "boxA_num",
+        "boxB_num",
+        "boxC_num",
     ]
     # The cell is named by its numerator, which is the id every earlier reading
     # of this table already used, and it says where its other half is.
     assert [blank["denominator"] for blank in mapping["blanks"]] == [
-        None, "boxB_den", None
+        None,
+        "boxB_den",
+        None,
     ]
 
 
 def test_a_table_with_every_cell_expanded_still_has_its_own_blank_count() -> None:
     """The finished fraction table: four blanks, eight inputs."""
     ids = ["boxA_num", "boxB_num", "boxC_num", "boxD_num"]
-    markup = row_headed_page([[1, 4, 9, 16], [None, None, None, None]], ids,
-                             expanded=ids)
+    markup = row_headed_page(
+        [[1, 4, 9, 16], [None, None, None, None]], ids, expanded=ids
+    )
 
     read = read_question(markup)
 
@@ -407,7 +412,9 @@ def test_prepare_reacquires_the_mapping_and_drops_the_sweep() -> None:
     """
     page = make_page()
     question = table_question()
-    stale = [{**blank, "id": f"stale{blank['blank']}"} for blank in mapping_of(question)]
+    stale = [
+        {**blank, "id": f"stale{blank['blank']}"} for blank in mapping_of(question)
+    ]
     solved_table_state(page, question, targets=stale)
 
     page.run("prepare(1);")
@@ -467,8 +474,15 @@ def test_the_insertion_writes_to_the_cells_the_mapping_names() -> None:
     page.pump()
     page.answer(TABLE_EDITOR)  # the editor, re-read
     page.answer(question)  # the signature and the mapping, from one read
-    page.answer({"ok": True, "code": "entered-table-cells", "settled": 5, "models": 5,
-                 "cells": [one["id"] for one in mapping_of(question)]})
+    page.answer(
+        {
+            "ok": True,
+            "code": "entered-table-cells",
+            "settled": 5,
+            "models": 5,
+            "cells": [one["id"] for one in mapping_of(question)],
+        }
+    )
     page.answer(question)  # finishInsertion's rebase read
 
     [write] = entries(page, "enterTableCells")
@@ -562,7 +576,9 @@ def test_the_mapping_is_an_ownership_component() -> None:
 
     assert entries(page, "enterTableCells") == []
     assert page.said("insertion-target-changed")
-    assert "tableTargets" in page.said("insertion-target-changed")[-1]["data"]["changed"]
+    assert (
+        "tableTargets" in page.said("insertion-target-changed")[-1]["data"]["changed"]
+    )
 
 
 def test_the_mapping_is_never_named_in_a_host_request() -> None:
@@ -574,7 +590,6 @@ def test_the_mapping_is_never_named_in_a_host_request() -> None:
     assert "answer_table: question.answerTable" in shaped
     assert "answerTargets" not in shaped
     assert "tableTargets" not in shaped
-
 
 
 # --- the answer's lifecycle against the owner's own clicking -----------------
@@ -714,8 +729,15 @@ def test_the_writer_is_reached_after_a_clicked_cell_is_revalidated() -> None:
     page.answer(TABLE_EDITOR)  # the editor, re-read
     page.answer(clicked_read(question))  # the live read: no mapping to state
     page.answer(CLICKED_INSPECT)  # the boxes the page is showing
-    page.answer({"ok": True, "code": "entered-table-cells", "settled": 5,
-                 "models": 5, "cells": cells})
+    page.answer(
+        {
+            "ok": True,
+            "code": "entered-table-cells",
+            "settled": 5,
+            "models": 5,
+            "cells": cells,
+        }
+    )
     page.answer(clicked_read(question))  # finishInsertion's rebase read
 
     [write] = entries(page, "enterTableCells")
@@ -765,8 +787,16 @@ def test_a_cell_that_expanded_after_the_review_still_takes_its_answer() -> None:
     page.pump()
     page.answer(TABLE_EDITOR)
     page.answer(expanded_read(question))
-    page.answer({"ok": True, "code": "entered-table-cells", "settled": 5,
-                 "models": 5, "expanded": 5, "cells": cells})
+    page.answer(
+        {
+            "ok": True,
+            "code": "entered-table-cells",
+            "settled": 5,
+            "models": 5,
+            "expanded": 5,
+            "cells": cells,
+        }
+    )
     page.answer(expanded_read(question))
 
     [write] = entries(page, "enterTableCells")

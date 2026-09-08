@@ -163,7 +163,7 @@ def test_an_unknown_refusal_is_named_as_unknown_not_quoted():
 
 def test_the_status_the_browser_records_is_a_closed_set():
     protocol = PROTOCOL.read_text(encoding="utf-8")
-    declared = re.search(r'status:\s*Literal\[([^\]]+)\]', protocol)
+    declared = re.search(r"status:\s*Literal\[([^\]]+)\]", protocol)
 
     assert declared is not None
     values = set(re.findall(r'"([a-z]+)"', declared.group(1)))
@@ -178,4 +178,6 @@ def test_the_refusal_is_still_reported_as_a_failure():
 
     assert 'log.warn("solve-refused"' in block
     assert 'fail("errorSolveRefused"' in block
-    assert block.index('log.warn("solve-refused"') < block.index('fail("errorSolveRefused"')
+    assert block.index('log.warn("solve-refused"') < block.index(
+        'fail("errorSolveRefused"'
+    )

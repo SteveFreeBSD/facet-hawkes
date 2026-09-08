@@ -42,7 +42,8 @@ def marker_context():
     quickjs = pytest.importorskip("quickjs", reason="pip install quickjs")
     context = quickjs.Context()
     context.add_callable(
-        "__sha256", lambda text: json.dumps(list(hashlib.sha256(text.encode()).digest()))
+        "__sha256",
+        lambda text: json.dumps(list(hashlib.sha256(text.encode()).digest())),
     )
     context.eval(
         """
@@ -71,10 +72,7 @@ def fold_in_js(context, literal: str) -> dict:
 
 def test_the_browser_and_the_observer_fold_to_the_same_marker(marker_context):
     """The one property the whole comparison rests on."""
-    literal = (
-        'alpha: function alpha(a) { return a + 1; }, '
-        'beta: { one: 1, two: "x" }'
-    )
+    literal = 'alpha: function alpha(a) { return a + 1; }, beta: { one: 1, two: "x" }'
     in_browser = fold_in_js(marker_context, literal)
 
     entries = json.loads(
@@ -187,13 +185,13 @@ def test_the_extracted_source_is_exactly_what_the_browser_would_stringify():
     has to reproduce it character for character -- braces inside strings and
     comments included."""
     sample = (
-        'const before = 1;\n'
+        "const before = 1;\n"
         'async function target(a = "}") {\n'
-        '  // a } in a comment\n'
-        '  /* and a } in a block */\n'
-        '  return `${a}}`;\n'
-        '}\n'
-        'const after = 2;\n'
+        "  // a } in a comment\n"
+        "  /* and a } in a block */\n"
+        "  return `${a}}`;\n"
+        "}\n"
+        "const after = 2;\n"
     )
     quickjs = pytest.importorskip("quickjs", reason="pip install quickjs")
     context = quickjs.Context()
@@ -236,13 +234,18 @@ def test_a_marker_that_does_not_match_the_tree_is_reported_as_stale_code():
 
 def test_a_build_from_before_this_tooling_says_so_rather_than_guessing():
     verdict = OBS.code_verdict(
-        {}, {"computed": True, "marker": "ffffffffffff"}, {"t": 10**13}, {"temporary": True}
+        {},
+        {"computed": True, "marker": "ffffffffffff"},
+        {"t": 10**13},
+        {"temporary": True},
     )
 
     assert verdict["verdict"] == "unmarked-build"
 
 
-def test_a_matching_marker_is_still_qualified_when_the_tree_moved_on(tmp_path, monkeypatch):
+def test_a_matching_marker_is_still_qualified_when_the_tree_moved_on(
+    tmp_path, monkeypatch
+):
     """The case the marker alone cannot catch: files edited after the add-on
     was loaded are files whose current content Firefox has not read."""
     tree = tmp_path / "extension"
@@ -285,14 +288,16 @@ def test_the_event_page_and_the_observer_mark_this_tree_identically():
     """
     quickjs = pytest.importorskip("quickjs", reason="pip install quickjs")
     harness = importlib.util.spec_from_file_location(
-        "ownership_harness", PROJECT_ROOT / "tests" / "test_hawkes_insertion_ownership.py"
+        "ownership_harness",
+        PROJECT_ROOT / "tests" / "test_hawkes_insertion_ownership.py",
     )
     module = importlib.util.module_from_spec(harness)
     harness.loader.exec_module(module)
 
     context = quickjs.Context()
     context.add_callable(
-        "__sha256", lambda text: json.dumps(list(hashlib.sha256(text.encode()).digest()))
+        "__sha256",
+        lambda text: json.dumps(list(hashlib.sha256(text.encode()).digest())),
     )
     context.eval(module.HARNESS)
     context.eval("__H.sessionStored = {};")
@@ -311,7 +316,9 @@ def test_the_event_page_and_the_observer_mark_this_tree_identically():
             for name in module.MODULES
         )
     )
-    context.eval("var out; foldSources(collectSources(markedCode())).then(v => { out = v; });")
+    context.eval(
+        "var out; foldSources(collectSources(markedCode())).then(v => { out = v; });"
+    )
     for _ in range(5000):
         if not context.execute_pending_job():
             break

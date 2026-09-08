@@ -169,9 +169,7 @@ def test_the_ring_is_still_bounded() -> None:
     js.eval("globalThis.done = A.flushLog();")
     drain(js)
 
-    limit = int(
-        re.search(r"RING_LIMIT = (\d+)", LOG_JS.read_text()).group(1)
-    )
+    limit = int(re.search(r"RING_LIMIT = (\d+)", LOG_JS.read_text()).group(1))
     assert len(stored_events(js)) == limit
 
 

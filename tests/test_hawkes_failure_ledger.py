@@ -57,7 +57,9 @@ var browser = {
 def js():
     context = quickjs.Context()
     context.eval(PRELUDE)
-    context.eval(IMPORT_LINE.sub("", MODULE.read_text(encoding="utf-8")).replace("export ", ""))
+    context.eval(
+        IMPORT_LINE.sub("", MODULE.read_text(encoding="utf-8")).replace("export ", "")
+    )
     return context
 
 
@@ -71,7 +73,9 @@ def settle(context, expression):
     for _ in range(200):
         if not context.execute_pending_job():
             break
-    return json.loads(context.eval("JSON.stringify(settled === undefined ? null : settled)"))
+    return json.loads(
+        context.eval("JSON.stringify(settled === undefined ? null : settled)")
+    )
 
 
 #: One ordinary insertion failure, as the event page would report it.
@@ -99,17 +103,28 @@ FAILURE = {
         "templates": {"fraction": True, "radical": False, "exponent": False},
         "slots": {"base": "0-9", "numerator": "0-9"},
     },
-    "evidence": {"read": "markup", "expressions": 2, "promptChars": 88,
-                 "signature": "fld|abcdef|120"},
-    "certainty": {"source": "facet", "answered_by": "facet", "facet_invoked": True,
-                  "router": "exact", "method": "solve"},
+    "evidence": {
+        "read": "markup",
+        "expressions": 2,
+        "promptChars": 88,
+        "signature": "fld|abcdef|120",
+    },
+    "certainty": {
+        "source": "facet",
+        "answered_by": "facet",
+        "facet_invoked": True,
+        "router": "exact",
+        "method": "solve",
+    },
     "answerLength": 9,
     "answerParts": 0,
     "hostRequests": 1,
     "marker": "3d9a1f77aa21",
     "version": "0.46.0",
-    "notInsertable": {"editor": "answer-needs-template",
-                      "plan": "template-refused-by-question"},
+    "notInsertable": {
+        "editor": "answer-needs-template",
+        "plan": "template-refused-by-question",
+    },
     "events": ["answer-not-insertable"],
 }
 
@@ -121,7 +136,9 @@ def build(context, **overrides):
 
 def merge(context, ledger, record, now=None):
     when = record["at"] if now is None else now
-    return value(context, f"mergeFailure({json.dumps(ledger)}, {json.dumps(record)}, {when})")
+    return value(
+        context, f"mergeFailure({json.dumps(ledger)}, {json.dumps(record)}, {when})"
+    )
 
 
 # --- never the work --------------------------------------------------------
@@ -148,15 +165,25 @@ def test_no_amount_of_coursework_offered_to_a_record_reaches_one(js):
     )
     flat = json.dumps(poisoned)
 
-    for leaked in ("3/4", "¾", "parabola", "AAAA", "hunter2", "ghp_secret",
-                   "session=abc", "what the student typed"):
+    for leaked in (
+        "3/4",
+        "¾",
+        "parabola",
+        "AAAA",
+        "hunter2",
+        "ghp_secret",
+        "session=abc",
+        "what the student typed",
+    ):
         assert leaked not in flat, leaked
     assert set(poisoned) <= set(value(js, "SAFE_RECORD_KEYS"))
 
 
 def test_what_the_student_typed_into_the_box_is_not_part_of_describing_the_box(js):
     """`text` on a described editor is the answer so far, not the editor."""
-    described = value(js, f"editorEvidence({json.dumps({**FAILURE['editor'], 'text': 'sqrt(2)'})})")
+    described = value(
+        js, f"editorEvidence({json.dumps({**FAILURE['editor'], 'text': 'sqrt(2)'})})"
+    )
 
     assert "text" not in described
     assert described["allowed"] == "0-9+-/()"
@@ -189,71 +216,111 @@ def test_the_complete_editor_description_is_kept_by_default(js):
 
 
 def test_every_control_of_a_multi_field_question_is_described(js):
-    record = build(js, editor={
-        "ok": True, "kind": "multi", "code": "described-multi",
-        "editors": [
-            {"ok": True, "kind": "dynamic", "enabled": True, "allowedCharacters": "0-9.-",
-             "templates": {"fraction": False}, "name": "x", "maxLength": 12},
-            {"ok": True, "kind": "option", "enabled": False, "allowedCharacters": "",
-             "templates": {}, "name": "notReal", "maxLength": None},
-        ],
-    })
+    record = build(
+        js,
+        editor={
+            "ok": True,
+            "kind": "multi",
+            "code": "described-multi",
+            "editors": [
+                {
+                    "ok": True,
+                    "kind": "dynamic",
+                    "enabled": True,
+                    "allowedCharacters": "0-9.-",
+                    "templates": {"fraction": False},
+                    "name": "x",
+                    "maxLength": 12,
+                },
+                {
+                    "ok": True,
+                    "kind": "option",
+                    "enabled": False,
+                    "allowedCharacters": "",
+                    "templates": {},
+                    "name": "notReal",
+                    "maxLength": None,
+                },
+            ],
+        },
+    )
 
     assert record["editor"]["count"] == 2
-    assert [one["kind"] for one in record["editor"]["controls"]] == ["dynamic", "option"]
+    assert [one["kind"] for one in record["editor"]["controls"]] == [
+        "dynamic",
+        "option",
+    ]
     # A control nobody can type into is the thing that made a two-part answer
     # into a three-part one live; whether each is enabled has to be in here.
     assert [one["enabled"] for one in record["editor"]["controls"]] == [True, False]
 
 
 def test_the_evidence_the_route_and_the_runtime_all_survive_into_one_record(js):
-    record = build(js, certainty={
-        "source": "facet", "answered_by": "facet", "facet_invoked": True,
-        "router": "regression", "method": "fit", "runtime": "ollama",
-        "model": "qwen", "actual_backend": "cuda", "device": "gpu",
-    })
+    record = build(
+        js,
+        certainty={
+            "source": "facet",
+            "answered_by": "facet",
+            "facet_invoked": True,
+            "router": "regression",
+            "method": "fit",
+            "runtime": "ollama",
+            "model": "qwen",
+            "actual_backend": "cuda",
+            "device": "gpu",
+        },
+    )
 
     assert record["evidence"]["read"] == "markup"
     assert record["route"]["router"] == "regression"
     assert record["runtime"] == {
-        "runtime": "ollama", "model": "qwen", "requestedBackend": "",
-        "backend": "cuda", "device": "gpu", "fallback": False,
+        "runtime": "ollama",
+        "model": "qwen",
+        "requestedBackend": "",
+        "backend": "cuda",
+        "device": "gpu",
+        "fallback": False,
     }
 
 
 def test_the_sanitized_dom_cause_survives_event_page_failure_storage(js):
     """A suspension loses JS objects; the stored projection keeps the cause."""
-    record = build(js, evidence={
-        **FAILURE["evidence"],
-        "answerTable": "blank-not-empty",
-        "answerTableDetail": {
-            "reader": "answer-table",
-            "schema": 1,
-            "build": "abcdef123456",
-            "decision": "refused",
-            "branch": "row-headed",
-            "reason": "blank-not-empty",
-            "candidates": {"controls": 5, "holding": 1, "kept": 1},
-            "table": {"logicalRows": 5, "logicalColumns": 2, "blanks": 1},
-            "cell": {
-                "logicalRow": 2,
-                "logicalColumn": 1,
-                "textOwners": [{
-                    "tag": "label",
-                    "classes": ["sr-only"],
-                    "path": ["label.sr-only", "span.QFractionBox"],
-                    "textNodes": 1,
-                    "textChars": 14,
-                    "ignored": False,
-                    "containsControl": True,
-                    "forCellControl": True,
-                    "target": "input.opt",
-                    "value": "NEVER",
-                    "rawText": "COURSEWORK",
-                }],
+    record = build(
+        js,
+        evidence={
+            **FAILURE["evidence"],
+            "answerTable": "blank-not-empty",
+            "answerTableDetail": {
+                "reader": "answer-table",
+                "schema": 1,
+                "build": "abcdef123456",
+                "decision": "refused",
+                "branch": "row-headed",
+                "reason": "blank-not-empty",
+                "candidates": {"controls": 5, "holding": 1, "kept": 1},
+                "table": {"logicalRows": 5, "logicalColumns": 2, "blanks": 1},
+                "cell": {
+                    "logicalRow": 2,
+                    "logicalColumn": 1,
+                    "textOwners": [
+                        {
+                            "tag": "label",
+                            "classes": ["sr-only"],
+                            "path": ["label.sr-only", "span.QFractionBox"],
+                            "textNodes": 1,
+                            "textChars": 14,
+                            "ignored": False,
+                            "containsControl": True,
+                            "forCellControl": True,
+                            "target": "input.opt",
+                            "value": "NEVER",
+                            "rawText": "COURSEWORK",
+                        }
+                    ],
+                },
             },
         },
-    })
+    )
 
     detail = record["evidence"]["answerTableDetail"]
     assert detail["reason"] == "blank-not-empty"
@@ -281,8 +348,15 @@ def test_an_insertion_failure_still_names_the_solve_that_produced_the_answer(js)
         run="r2",
         outcome="failed",
         errorKey="errorAnswerRejected",
-        solve={"run": "r1", "answerLength": 9,
-               "certainty": {"runtime": "ollama", "model": "qwen", "actual_backend": "cuda"}},
+        solve={
+            "run": "r1",
+            "answerLength": 9,
+            "certainty": {
+                "runtime": "ollama",
+                "model": "qwen",
+                "actual_backend": "cuda",
+            },
+        },
     )
 
     assert record["solve"]["run"] == "r1"
@@ -295,12 +369,24 @@ def test_an_insertion_failure_still_names_the_solve_that_produced_the_answer(js)
 def test_the_same_fault_on_different_questions_is_one_fingerprint(js):
     """Grouping is the whole point: a ledger of forty groups of one tells the
     next agent nothing about which root cause is worth their afternoon."""
-    first = build(js, run="r1", at=1_000_000, generation="g1",
-                  evidence={**FAILURE["evidence"], "signature": "a|111|10", "promptChars": 40},
-                  answerLength=4, marker="aaaa11112222")
-    second = build(js, run="r2", at=9_000_000, generation="g7",
-                   evidence={**FAILURE["evidence"], "signature": "b|222|90", "promptChars": 300},
-                   answerLength=31, marker="bbbb33334444")
+    first = build(
+        js,
+        run="r1",
+        at=1_000_000,
+        generation="g1",
+        evidence={**FAILURE["evidence"], "signature": "a|111|10", "promptChars": 40},
+        answerLength=4,
+        marker="aaaa11112222",
+    )
+    second = build(
+        js,
+        run="r2",
+        at=9_000_000,
+        generation="g7",
+        evidence={**FAILURE["evidence"], "signature": "b|222|90", "promptChars": 300},
+        answerLength=31,
+        marker="bbbb33334444",
+    )
 
     assert first["fingerprint"] == second["fingerprint"]
     assert first["fingerprint"].startswith("f1:")
@@ -312,10 +398,20 @@ def test_the_same_fault_on_different_questions_is_one_fingerprint(js):
     [
         {"errorKey": "errorEthnosTimeout"},
         {"stages": ["reading", "solving"]},
-        {"notInsertable": {"editor": "answer-has-rejected-characters", "plan": "no-plan"}},
+        {
+            "notInsertable": {
+                "editor": "answer-has-rejected-characters",
+                "plan": "no-plan",
+            }
+        },
         {"editor": {**FAILURE["editor"], "allowedCharacters": "0-9"}},
         {"editor": {**FAILURE["editor"], "enabled": False}},
-        {"editor": {**FAILURE["editor"], "templates": {"fraction": True, "radical": True}}},
+        {
+            "editor": {
+                **FAILURE["editor"],
+                "templates": {"fraction": True, "radical": True},
+            }
+        },
         {"certainty": {**FAILURE["certainty"], "router": "reasoning"}},
         {"outcome": "failed"},
     ],
@@ -332,20 +428,41 @@ def test_the_fingerprint_folds_no_field_derived_from_the_coursework(js):
     # Every one of these differs between two instances of one fault, and any
     # of them in here would produce a ledger of groups of one -- which is the
     # thing the ledger exists to stop.
-    assert names.isdisjoint({
-        "run", "generation", "at", "marker", "version", "elapsed",
-        "evidenceSignature", "evidenceExpressions", "evidencePromptChars",
-        "answerLength", "window", "tab", "frame",
-    })
+    assert names.isdisjoint(
+        {
+            "run",
+            "generation",
+            "at",
+            "marker",
+            "version",
+            "elapsed",
+            "evidenceSignature",
+            "evidenceExpressions",
+            "evidencePromptChars",
+            "answerLength",
+            "window",
+            "tab",
+            "frame",
+        }
+    )
     # And these are what actually separates one fault from another.
-    assert {"errorKey", "stages", "editorAllowed", "editorTemplates",
-            "editorEnabled", "notInsertableEditor", "routeRouter"} <= names
+    assert {
+        "errorKey",
+        "stages",
+        "editorAllowed",
+        "editorTemplates",
+        "editorEnabled",
+        "notInsertableEditor",
+        "routeRouter",
+    } <= names
 
 
 def test_repeated_occurrences_become_one_group_with_a_count(js):
     ledger = value(js, "blankLedger()")
     for index in range(7):
-        ledger = merge(js, ledger, build(js, run=f"r{index}", at=1_000_000 + index * 1000))
+        ledger = merge(
+            js, ledger, build(js, run=f"r{index}", at=1_000_000 + index * 1000)
+        )
 
     assert len(ledger["groups"]) == 1
     group = ledger["groups"][0]
@@ -357,7 +474,7 @@ def test_repeated_occurrences_become_one_group_with_a_count(js):
 
 
 def test_a_group_records_every_build_it_has_happened_on(js):
-    """"Still happening after the fix" is the question a ledger has to answer."""
+    """ "Still happening after the fix" is the question a ledger has to answer."""
     ledger = value(js, "blankLedger()")
     ledger = merge(js, ledger, build(js, run="r1", at=1_000_000, marker="beforethefix"))
     ledger = merge(js, ledger, build(js, run="r2", at=2_000_000, marker="afterthefix1"))
@@ -372,8 +489,16 @@ def test_records_are_capped_and_the_oldest_go_first(js):
     limit = value(js, "MAX_RECORDS")
     ledger = value(js, "blankLedger()")
     for index in range(limit + 12):
-        ledger = merge(js, ledger, build(js, run=f"r{index}", at=1_000_000 + index * 1000,
-                                         errorKey=f"errorSynthetic{index}"))
+        ledger = merge(
+            js,
+            ledger,
+            build(
+                js,
+                run=f"r{index}",
+                at=1_000_000 + index * 1000,
+                errorKey=f"errorSynthetic{index}",
+            ),
+        )
 
     assert len(ledger["records"]) == limit
     assert ledger["records"][0]["run"] == "r12"
@@ -387,25 +512,45 @@ def test_a_count_outlives_every_record_that_produced_it(js):
     for index in range(5):
         # One recurring fault, then a run of distinct ones that pushes its
         # records out of the ledger without pushing out its group.
-        ledger = merge(js, ledger, build(js, run=f"old{index}", at=1_000_000 + index * 10))
+        ledger = merge(
+            js, ledger, build(js, run=f"old{index}", at=1_000_000 + index * 10)
+        )
     for index in range(limit):
-        ledger = merge(js, ledger, build(js, run=f"new{index}", at=2_000_000 + index * 10,
-                                         errorKey=f"errorDistinct{index}"))
+        ledger = merge(
+            js,
+            ledger,
+            build(
+                js,
+                run=f"new{index}",
+                at=2_000_000 + index * 10,
+                errorKey=f"errorDistinct{index}",
+            ),
+        )
 
     recurring = next(g for g in ledger["groups"] if g["count"] > 1)
     assert recurring["count"] == 5
     assert recurring["runs"] == ["old0", "old1", "old2", "old3", "old4"]
     # Groups are capped higher than records exactly so this can be true.
     assert value(js, "MAX_GROUPS") > limit
-    assert not [r for r in ledger["records"] if r["fingerprint"] == recurring["fingerprint"]]
+    assert not [
+        r for r in ledger["records"] if r["fingerprint"] == recurring["fingerprint"]
+    ]
 
 
 def test_groups_are_capped_too(js):
     limit = value(js, "MAX_GROUPS")
     ledger = value(js, "blankLedger()")
     for index in range(limit + 6):
-        ledger = merge(js, ledger, build(js, run=f"r{index}", at=1_000_000 + index * 1000,
-                                         errorKey=f"errorSynthetic{index}"))
+        ledger = merge(
+            js,
+            ledger,
+            build(
+                js,
+                run=f"r{index}",
+                at=1_000_000 + index * 1000,
+                errorKey=f"errorSynthetic{index}",
+            ),
+        )
 
     assert len(ledger["groups"]) == limit
 
@@ -415,7 +560,8 @@ def test_anything_older_than_the_retention_window_is_dropped(js):
     ledger = value(js, "blankLedger()")
     ledger = merge(js, ledger, build(js, run="ancient", at=1_000_000), now=1_000_000)
     ledger = merge(
-        js, ledger,
+        js,
+        ledger,
         build(js, run="recent", at=1_000_000 + window + 5000, errorKey="errorOther"),
         now=1_000_000 + window + 5000,
     )
@@ -432,11 +578,17 @@ def test_the_ledger_stays_under_its_own_size_bound(js):
     ledger = value(js, "blankLedger()")
     wide = {f"slot{index}": "0123456789" * 4 for index in range(24)}
     for index in range(value(js, "MAX_RECORDS")):
-        ledger = merge(js, ledger, build(
-            js, run=f"r{index}", at=1_000_000 + index * 1000,
-            errorKey=f"errorSynthetic{index}",
-            editor={**FAILURE["editor"], "slots": wide},
-        ))
+        ledger = merge(
+            js,
+            ledger,
+            build(
+                js,
+                run=f"r{index}",
+                at=1_000_000 + index * 1000,
+                errorKey=f"errorSynthetic{index}",
+                editor={**FAILURE["editor"], "slots": wide},
+            ),
+        )
 
     # Measured the way the module measures it: `JSON.stringify` is compact,
     # and a bound checked against a differently-spaced serialization is not
@@ -446,8 +598,11 @@ def test_the_ledger_stays_under_its_own_size_bound(js):
 
 
 def test_a_ledger_written_by_another_version_is_started_over_not_misread(js):
-    merged = merge(js, {"version": 99, "records": [{"run": "alien"}], "groups": [1]},
-                   build(js, run="r1"))
+    merged = merge(
+        js,
+        {"version": 99, "records": [{"run": "alien"}], "groups": [1]},
+        build(js, run="r1"),
+    )
 
     assert [record["run"] for record in merged["records"]] == ["r1"]
     assert merged["version"] == value(js, "LEDGER_VERSION")
@@ -455,7 +610,9 @@ def test_a_ledger_written_by_another_version_is_started_over_not_misread(js):
 
 def test_garbage_in_storage_cannot_stop_a_failure_being_recorded(js):
     for junk in ('"not a ledger"', "42", "null", '{"records": "nope", "groups": 7}'):
-        merged = value(js, f"mergeFailure({junk}, buildFailureRecord({json.dumps(FAILURE)}), 1)")
+        merged = value(
+            js, f"mergeFailure({junk}, buildFailureRecord({json.dumps(FAILURE)}), 1)"
+        )
         assert len(merged["records"]) == 1
 
 
@@ -465,8 +622,11 @@ def test_garbage_in_storage_cannot_stop_a_failure_being_recorded(js):
 def test_a_later_event_page_adds_to_the_ledger_rather_than_replacing_it(js):
     """The page is non-persistent. A ledger that started fresh on every load
     would hold only whatever failed since the last time Firefox got bored."""
-    first = merge(js, value(js, "blankLedger()"),
-                  build(js, run="r1", at=1_000_000, generation="g1"))
+    first = merge(
+        js,
+        value(js, "blankLedger()"),
+        build(js, run="r1", at=1_000_000, generation="g1"),
+    )
     second = merge(js, first, build(js, run="r2", at=2_000_000, generation="g2"))
 
     assert [record["generation"] for record in second["records"]] == ["g1", "g2"]
@@ -490,14 +650,18 @@ def test_two_failures_a_moment_apart_do_not_lose_one_another(js):
     js.eval("stored = {};")
     js.eval(
         "var one = buildFailureRecord(%s);" % json.dumps({**FAILURE, "run": "rA"})
-        + "var two = buildFailureRecord(%s);" % json.dumps({**FAILURE, "run": "rB", "at": 1_000_100})
+        + "var two = buildFailureRecord(%s);"
+        % json.dumps({**FAILURE, "run": "rB", "at": 1_000_100})
     )
     js.eval("recordFailure(one); recordFailure(two);")
     for _ in range(200):
         if not js.execute_pending_job():
             break
 
-    assert [record["run"] for record in value(js, "stored.failures.records")] == ["rA", "rB"]
+    assert [record["run"] for record in value(js, "stored.failures.records")] == [
+        "rA",
+        "rB",
+    ]
 
 
 def test_storage_being_unavailable_costs_the_record_and_nothing_else(js):
@@ -531,9 +695,20 @@ def test_the_recorder_starts_nothing_that_could_hold_an_event_page_open(js):
     timing of the session it was meant to observe."""
     source = MODULE.read_text(encoding="utf-8")
 
-    for held in ("setTimeout", "setInterval", "requestIdleCallback", "alarms",
-                 "connectNative", "runtime.connect", "sendMessage", "onMessage",
-                 "addListener", "captureVisibleTab", "scripting", "tabs."):
+    for held in (
+        "setTimeout",
+        "setInterval",
+        "requestIdleCallback",
+        "alarms",
+        "connectNative",
+        "runtime.connect",
+        "sendMessage",
+        "onMessage",
+        "addListener",
+        "captureVisibleTab",
+        "scripting",
+        "tabs.",
+    ):
         assert held not in source, held
 
 
@@ -560,7 +735,8 @@ def page():
     import importlib.util
 
     spec = importlib.util.spec_from_file_location(
-        "ownership_harness", PROJECT_ROOT / "tests" / "test_hawkes_insertion_ownership.py"
+        "ownership_harness",
+        PROJECT_ROOT / "tests" / "test_hawkes_insertion_ownership.py",
     )
     harness = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(harness)
