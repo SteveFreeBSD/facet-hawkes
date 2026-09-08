@@ -730,11 +730,16 @@ def _solve_point_plot_with_facet(request, instruction, announce):
         return error_response(
             request.request_id, f"Point plot refused: {error}", "unsupported"
         )
+    # The panel showed an empty card for every plotting question: a graph plan
+    # carries no writable value, and the card reads `display_text`. The places
+    # the controls are about to go are exactly what a reader is being asked to
+    # review before pressing Insert, so they are what the card now says.
+    placed = ", ".join(f"({point.x},{point.y})" for point in plan.points)
     return SolveResponse(
         request_id=request.request_id,
         status="ready",
         problem_text=instruction,
-        answer=AnswerPayload(graph_plan=plan),
+        answer=AnswerPayload(graph_plan=plan, display_text=placed),
         # Facet's own account of the run, read off the solution it returned.
         # Stated here rather than through `_plan_certainty` because this route
         # engaged no model and no processor: `answered_by` says "exact", and a

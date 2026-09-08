@@ -202,6 +202,17 @@ export function graphOperation(offered = null) {
             expect = next;
           }
         }
+        // Hawkes takes a point when focus leaves it, not when it moves. Live,
+        // that cost exactly one point every time: the first three controls
+        // were committed by the focus() that moved to the next one, and the
+        // last -- the only one focus never left -- stayed on the graph but
+        // outside the answer, so Hawkes called the answer incomplete and
+        // dropped that point on submit. Blurring each control once it is
+        // placed makes the last one no different from the rest. The answer the
+        // page now holds is re-read below, so a blur that disturbed anything
+        // is refused rather than typed over.
+        paired[i].blur();
+        expect = shot();
       }
       // Every control on a stated point, and every stated point covered. The
       // question asks for a set, so the set is what is checked.
@@ -210,7 +221,16 @@ export function graphOperation(offered = null) {
         || !landed.every(([x, y], i) => near(x, targets[i][0]) && near(y, targets[i][1]))) {
         return refuse("graph-points-not-settled");
       }
-      return { ok: true, code: "graph-plotted", points: spots.length, events: struck };
+      // Whether the page took the answer at all, as a yes or no. The answer
+      // itself is the student's coursework and does not leave the page: what
+      // is reported is that it stopped being the empty one it started as.
+      const taken = JSON.stringify(shot().answer) !== JSON.stringify(first.answer);
+      // Only when something actually moved. A graph already carrying the
+      // stated points has nothing to commit, and refusing that would be
+      // refusing a correct answer for not having been written twice.
+      if (struck > 0 && !taken) return refuse("graph-points-not-taken");
+      return { ok: true, code: "graph-plotted", points: spots.length, events: struck,
+        taken };
     }
 
     if (!renderedCurve) return refuse("graph-renderer-unsupported");
