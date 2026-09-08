@@ -475,6 +475,11 @@ uv run python -m compileall -q src tests
 uv run vulture src tests --min-confidence 80
 ```
 
+Those are the CI steps. For the complete offline pass — both repositories, the
+runtime pin, the documentation, the package, solver coverage, the installed
+helper and the transport — follow the
+[verification checklist](docs/VERIFICATION_CHECKLIST.md).
+
 ## Documentation
 
 Start with [Current state](docs/CURRENT_STATE.md), then

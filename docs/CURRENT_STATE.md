@@ -56,12 +56,28 @@ so the two repositories move together — see [the pin](#the-runtime-pin).
 
 The product is **Facet Hawkes Assistant**. Nothing a user reads says Ethnos.
 
-`ethnos` survives as an *internal compatibility identifier* — the Python
-package, the add-on ID, the native-messaging host, the launcher directory, the
-`ethnos:*` internal messages and one wire value. Those are current, deliberate,
-and load-bearing: renaming the add-on ID orphans an installed profile, and
-renaming the package means a coordinated reinstall of the manifest and the
-launcher. **Do not rename them as a tidy-up.** The full list with reasons is in
+`ethnos` survives as a set of *internal compatibility identifiers*. Every one
+below was checked against the running installation during this consolidation
+and is deliberately retained. **Do not rename them as a tidy-up**; each is a
+coordinated reinstall or a data loss, and none is shown anywhere a user reads.
+
+| Identifier | Where it is | Why it stays |
+|---|---|---|
+| `ethnos-hawkes@local` | `extension/manifest.json` | Firefox keys the installation *and its `storage.local`* to this. Changing it orphans the profile: settings, the diagnostic ring and the failure ledger all go with it. |
+| `ethnos_hawkes` | `extension/background.js`, `~/.mozilla/native-messaging-hosts/ethnos_hawkes.json` | The registered native-messaging host, already written to disk. Renaming means every install re-runs the installer before the add-on can reach anything. |
+| `~/.local/share/ethnos-hawkes/` | written by `deploy/firefox/install_native_host.py` | The launcher directory the manifest above points at. It moves only with that manifest. |
+| `src/ethnos/`, `python -m ethnos.hawkes_host` | the package, and the installed launcher's exec line | The launcher runs this module by name. Renaming the package is a coordinated change to the launcher and the manifest, and belongs in a change of its own. |
+| `ethnos:panel`, `ethnos:state`, `ethnos:solve`, `ethnos:diagnostics`, … | `extension/popup/`, `options/`, `background.js`, `common/log.js` | Internal port names, message types and a Web Locks name. Private to the add-on, and `ethnos:diagnostics` is the lock the whole origin shares. |
+| `solve_engine="ethnos"` | `src/ethnos/hawkes_protocol.py` | A native-protocol wire value naming the companion's own image path, beside `"facet"`. Changing it is a protocol change on both sides for no reader's benefit. |
+| `ETHNOS_*` environment variables | `src/ethnos/config.py`, `.env.example` | The study engine's configuration surface. Facet's own variables are `FACET_*` and are separate. |
+| `errorEthnosUnreachable`, `errorEthnosTimeout`, `errorEthnosVersion` | `extension/_locales/en/messages.json` | Message *keys*, not message text. Every string they resolve to says "Facet". |
+| `ethnos-caspian` git remote | `git remote -v` | Legacy history on the old host. Kept as an archive; not a publication target. |
+
+`ethnos` in `facet_runtime/prompts.py`'s `CONSUMER_VOCABULARY` is the opposite
+case: it is a *forbidden* word there, one of the terms a prompt may not contain.
+It must stay for that reason.
+
+The full list with the release rationale is also in
 [`extension/RELEASE.md`](../extension/RELEASE.md).
 
 Facet is the solver. Old Ethnos/caspian/two-machine/SSH-default descriptions
@@ -166,6 +182,11 @@ external gates.
   that exists only on `caspian`. Pass `--model` explicitly on this host.
 - No current multiple-choice acceptance figure exists. The old one belongs to
   `caspian`'s model alias and is not restated anywhere as current.
+
+## Checking all of this
+
+Everything above is confirmable offline, in about a minute, with no browser and
+no model call: [Verification checklist](VERIFICATION_CHECKLIST.md).
 
 ## The whole map
 

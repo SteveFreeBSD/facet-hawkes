@@ -144,7 +144,9 @@ def test_active_documents_do_not_assert_a_superseded_topology():
         text = source.read_text(encoding="utf-8")
         if any(marker in text[:2000] for marker in ("**Superseded", "**Historical")):
             continue
-        for paragraph in text.split("\n\n"):
+        # A phrase inside a command is an argument, not a claim: the sweep in
+        # the verification checklist greps for exactly these words.
+        for paragraph in _prose(text).split("\n\n"):
             lowered = paragraph.lower()
             if any(cue in lowered for cue in RETIREMENT_CUES):
                 continue

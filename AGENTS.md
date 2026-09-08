@@ -25,6 +25,12 @@ authorities and nothing else claims to answer their questions:
 | Looking at a live failure safely | [Hawkes development flow](docs/HAWKES_DEVELOPMENT_FLOW.md) |
 | What was true before | [Historical record](docs/history/README.md) |
 
+Before handing work on, run the
+[verification checklist](docs/VERIFICATION_CHECKLIST.md): both repositories'
+gates, the runtime pin, the documentation checks, the package, the offline
+solver sweep, the installed helper and the transport, in about a minute and
+with no browser.
+
 Anything under `docs/history/` is evidence, not instruction, and says so in its
 own first lines. If an active document contradicts one of the six, the
 authority wins and the other is a defect worth fixing in the same change.

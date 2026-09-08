@@ -31,6 +31,7 @@ in one page, with the names, the topology and the limits.
 | Review the add-on's data handling | [Hawkes privacy notice](../extension/PRIVACY.md) |
 | Read the release position and its evidence | [Release audit ledger](HAWKES_RELEASE_AUDIT.md) |
 | Read the add-on's diagnostic log off a profile | `python3 scripts/read_extension_log.py` |
+| Confirm both repositories are consistent and buildable | [Verification checklist](VERIFICATION_CHECKLIST.md) |
 
 ## Working on the local study engine
 
