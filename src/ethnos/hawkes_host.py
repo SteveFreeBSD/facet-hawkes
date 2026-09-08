@@ -703,6 +703,7 @@ def _solve_point_plot_with_facet(request, instruction, announce):
     browser's, against the live graph, and is made before a key is pressed.
     """
     from .hawkes_graph import PointPlotPlan
+    from .hawkes_mathml import mathml_to_latex
 
     problem = request.problem
     try:
@@ -710,7 +711,9 @@ def _solve_point_plot_with_facet(request, instruction, announce):
         solution = solve_math(
             instruction=instruction,
             request_id=safe_request_id(request.request_id),
-            expressions=[],
+            # The pairs are the page's own mathematics and reach us as MathML;
+            # the prompt text around them can be a dozen characters.
+            expressions=[mathml_to_latex(item) for item in (problem.mathml or [])],
             result_kind="point_plot_plan",
             accelerator_required=False,
             allow_fallback=False,
@@ -722,7 +725,7 @@ def _solve_point_plot_with_facet(request, instruction, announce):
                 f"the graph offers {offered} controls and the question states "
                 f"{len(plan.points)} points"
             )
-    except (FacetError, ValueError, TypeError) as error:
+    except Exception as error:  # noqa: BLE001 - a refusal, never a host fault
         return error_response(
             request.request_id, f"Point plot refused: {error}", "unsupported"
         )

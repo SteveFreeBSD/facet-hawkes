@@ -60,10 +60,13 @@ FACET_ENTRY_MODES: frozenset[str] = frozenset({"verbatim", "math", "auto"})
 VALUE = "value"
 PARABOLA_PLAN = "parabola_plan"
 QUADRATIC_REGRESSION = "quadratic_regression"
+POINT_PLOT_PLAN = "point_plot_plan"
 FACET_RESULT_KINDS: frozenset[str] = frozenset(
-    {VALUE, PARABOLA_PLAN, QUADRATIC_REGRESSION}
+    {VALUE, PARABOLA_PLAN, QUADRATIC_REGRESSION, POINT_PLOT_PLAN}
 )
-PLAN_KINDS: frozenset[str] = frozenset({PARABOLA_PLAN, QUADRATIC_REGRESSION})
+PLAN_KINDS: frozenset[str] = frozenset(
+    {PARABOLA_PLAN, QUADRATIC_REGRESSION, POINT_PLOT_PLAN}
+)
 
 #: What the deterministic stage may report having done. `not-run` belongs only
 #: to a plan: the exact solvers answer expressions, not geometry, so they were
@@ -677,6 +680,8 @@ def solve_math(
             "a value question is about expressions or about points, not both "
             "and not neither"
         )
+    if result_kind == POINT_PLOT_PLAN and expressions:
+        problem["expressions"] = expressions
     if result_kind == PARABOLA_PLAN or (result_kind == VALUE and not points):
         if not expressions or any(not item.strip() for item in expressions):
             raise FacetProtocolError("every expression must be non-empty")
