@@ -88,14 +88,15 @@ uv run --frozen pytest -q
 
 ```bash
 cd /home/steve/apps/facet-hawkes
-uv run pytest -q tests/test_documentation.py tests/test_runtime_pin.py tests/test_answer_capabilities.py
+uv run pytest -q tests/test_documentation.py tests/test_runtime_pin.py
 cd /home/steve/apps/facet-runtime && uv run --frozen pytest -q tests/test_documentation.py
 ```
 
 That covers, in both repositories: every local Markdown link and heading
 anchor; one top-level heading per file; no active document asserting a
 superseded topology or product name; no active document referencing a removed
-legacy packet; every `answer.form` having a row in `ANSWER_CAPABILITIES.md`.
+legacy packet. The answer-capability authority and rendering have their own
+executable check immediately below.
 
 The tests judge topology and product wording. They do not judge **model
 aliases**, because whether a name exists is a fact about a machine rather than
@@ -127,7 +128,8 @@ you to run is a name this machine does not have.
 ## 4b. The answer-capability gate
 
 The executable boundary between what Facet emits and what this repository can
-enter. Offline, about a third of a second.
+enter. It observes the exact answers built by the runtime's own test suite and
+also keeps the 37-question live-course sweep. Offline, about five seconds.
 
 ```bash
 cd /home/steve/apps/facet-hawkes
@@ -136,7 +138,7 @@ python3 scripts/render_answer_capabilities.py
 cd /home/steve/apps/facet-runtime && uv run --frozen pytest -q tests/test_answer_forms.py
 ```
 
-**Expect:** 33 or more passing here, `ANSWER_CAPABILITIES.md is up to date`, and
+**Expect:** 38 or more passing here, `ANSWER_CAPABILITIES.md is up to date`, and
 the runtime's own form tests clean.
 
 Two failures mean specific things. `undeclared compositions reached the

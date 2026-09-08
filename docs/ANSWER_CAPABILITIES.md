@@ -46,9 +46,12 @@ templates for exponents, radicals, groups and absolute values.
 Every declared composition is produced by a real solver, rendered by the host's
 own entry rule, and handed to the shipped planner under QuickJS against the page
 topology its row names. Every *unsupported* row is driven the same way and has
-to be refused by the code it declares. And thirty-seven real lesson questions
-are swept for a composition nothing has declared, which is the check a new
-solver trips.
+to be refused by the code it declares. For closure, the gate observes every
+exact answer constructed by `facet-runtime`'s own test suite, using those tests
+as the maintained emitter probes rather than copying their mathematics here.
+It also keeps the sweep of thirty-seven real lesson questions as independent
+live-course coverage. Either source fails on a composition nothing has
+declared.
 
 Edit the JSON, then:
 
@@ -71,6 +74,7 @@ function that does the typing.
 | symbolic with an exponent | `scalar` | exponent | `-x^13+2*x^12-3*x^11+5` | one box, Exponent template | `planRun` | yes | no | yes | `scalar-exponent` |
 | factored product | `scalar` | group | `(x+3)*(x+4)` | one box, parentheses template | `planRun` | yes | no | yes | `scalar-group` |
 | rational exponent | `scalar` | fraction+exponent+group | `y^(23/20)` | one box, Exponent over a bracketed rational | `planRun` | yes | no | yes | `scalar-fraction-exponent-group` |
+| linear function with a rational coefficient | `scalar` | fraction+group | `(1/2)*x+8` | one full-keypad box, Fraction inside parentheses | `planEntry` → `planRun` → `planCommaList` → `planFractionTemplate` | yes | no | no | `scalar-fraction-group` |
 | rationalized radical | `scalar` | fraction+radical | `sqrt(5)/5` | one box, Fraction over a Radical | `planEntry` → `planFractionTemplate` → `planRun` | yes | no | yes | `scalar-fraction-radical` |
 | radical with an exponent | `scalar` | radical+exponent | `2*i*x^4*sqrt(2*x)` | one box, Radical inside a run of templates | `planRun` | yes | no | yes | `scalar-radical-exponent` |
 | named phrase, typed | `scalar` | phrase | `trinomial` | one box accepting letters | `planEntry` → `enterPlan` | yes | no | no | `scalar-phrase` |
@@ -78,6 +82,9 @@ function that does the typing.
 | ordered pair, rational components | `ordered-pair` | fraction+group+comma | `(17/2,-1/2)` | one box, PBrace and Fraction | `planCommaList` → `planFractionTemplate` | yes | no | yes | `ordered-pair-fraction-group-comma` |
 | multipart scalars | `parts` | plain | `-3` | several drawn boxes, one per value | `planAnswerParts` → `enterPlainAnswerParts` | yes | yes | yes | `parts-plain` |
 | multipart rationals over radicals | `parts` | fraction+radical+group | `(-3+sqrt(17))/2` | one control per value, each planned on its own | `planAnswerParts` → `planFractionTemplate` → `planRun` | yes | no | yes | `parts-fraction-radical-group` |
+| multipart rational roots | `parts` | fraction | `-4/3` | one comma-answer box offering the Fraction template | `commaAnswerPlan` → `planAnswerParts` → `planFractionTemplate` | yes | no | no | `parts-fraction` |
+| multipart ordered pairs with integer components | `parts` | group+comma | `(1,-3)` | several full-keypad boxes, one per ordered pair | `multiEntryPlans` → `planEntry` → `planRun` → `planCommaList` | yes | no | no | `parts-group-comma` |
+| multipart ordered pairs with rational components | `parts` | fraction+group+comma | `(0,-1/6)` | several full-keypad boxes, one per rational ordered pair | `multiEntryPlans` → `planEntry` → `planRun` → `planCommaList` → `planFractionTemplate` | yes | no | no | `parts-fraction-group-comma` |
 | named alternative | `choice` | phrase | `Quadrant IV` | one radio group, N buttons | `answerFitsEditor` | yes | no | yes | `choice-phrase` |
 | parabola graph plan | `parabola_plan` | *plan* | `plan, no value` | vertex and two symmetric controls | `graphOperation` | yes | no | yes | `plan-parabola` |
 | literal points graph plan | `point_plot_plan` | *plan* | `plan, no value` | one draggable control per point | `graphOperation` | yes | no | yes | `plan-point-plot` |
@@ -117,8 +124,8 @@ names; none is silently mis-entered.
    `refusal` code it is actually refused by. That is a finished state. What is
    not a finished state is discovering it live.
 4. `tests/test_answer_compatibility.py` will run it: the probe against the real
-   solver, the example against the shipped planner, and the whole lesson corpus
-   against your new declaration.
+   solver, the example against the shipped planner, the runtime's own exact
+   emitter tests, and the whole lesson corpus against your new declaration.
 
 ## See also
 

@@ -21,8 +21,12 @@ were invisible to every test on either side.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import re
+import subprocess
+import sys
+from types import SimpleNamespace
 
 import pytest
 
@@ -39,6 +43,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 COMMON = PROJECT_ROOT / "extension" / "common"
 IMPORT_LINE = re.compile(r"^import\s[\s\S]*?;\s*$", re.MULTILINE)
 CAPABILITIES_MD = PROJECT_ROOT / "docs" / "ANSWER_CAPABILITIES.md"
+RUNTIME_ROOT = PROJECT_ROOT.parent / "facet-runtime"
 
 #: Plan kinds are proposals rather than values: nothing is typed, so they have
 #: no notation and no planner route to exercise.
@@ -78,6 +83,45 @@ def entered(solution):
     """What the host would actually hand the planner, per value."""
     values = list(solution.parts) or [solution.entry or solution.display]
     return [entry_for(value, solution.entry_mode) for value in values]
+
+
+@pytest.fixture(scope="module")
+def runtime_emissions(tmp_path_factory):
+    """Exact answers reached by facet-runtime's own solver test corpus.
+
+    The runtime tests are the maintained probes for its emitters. Observing
+    their real ``ExactSolution`` objects keeps this closure source independent
+    of Hawkes lessons and avoids copying their mathematical cases here.
+    """
+    record = tmp_path_factory.mktemp("runtime-emissions") / "answers.json"
+    environment = os.environ.copy()
+    environment["FACET_EXACT_EMISSION_RECORD"] = str(record)
+    plugin_path = str(PROJECT_ROOT / "tests")
+    old_path = environment.get("PYTHONPATH", "")
+    environment["PYTHONPATH"] = os.pathsep.join(
+        part for part in (plugin_path, old_path) if part
+    )
+    finished = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-q",
+            str(RUNTIME_ROOT / "tests"),
+            "--rootdir",
+            str(RUNTIME_ROOT),
+            "-p",
+            "runtime_emission_recorder",
+        ],
+        cwd=PROJECT_ROOT,
+        env=environment,
+        capture_output=True,
+        text=True,
+    )
+
+    assert finished.returncode == 0, finished.stdout + finished.stderr
+    assert record.exists(), "facet-runtime's exact-emission recorder wrote no result"
+    return json.loads(record.read_text(encoding="utf-8"))
 
 
 # --- the authority is well formed ------------------------------------------
@@ -120,6 +164,19 @@ def test_every_entry_names_a_mechanism_that_exists(authority):
 # --- what Facet emits ------------------------------------------------------
 
 
+def undeclared_compositions(authority, emissions, source_key):
+    """Group undeclared emitted compositions by the probe that reached them."""
+    undeclared = {}
+    for emission in emissions:
+        rendered = entered(SimpleNamespace(**emission))
+        for key in {
+            composition(emission["form"], notation_of(text)) for text in rendered
+        }:
+            if key not in authority.declared_compositions():
+                undeclared.setdefault(key, []).append(emission[source_key])
+    return undeclared
+
+
 def test_every_probe_emits_the_composition_it_is_declared_under(authority):
     """The emitter half. A declared composition that no question produces is a
     claim about Facet that nothing checked."""
@@ -143,7 +200,7 @@ def test_every_probe_emits_the_composition_it_is_declared_under(authority):
 
 
 def test_every_composition_the_lesson_corpus_emits_is_declared(authority):
-    """The closure assertion, and the one a new solver trips.
+    """Keep the live-course closure beside the broader runtime closure.
 
     Thirty-seven real lesson questions, answered by the real router and
     classified on what the host would type. A composition arriving here that
@@ -164,6 +221,26 @@ def test_every_composition_the_lesson_corpus_emits_is_declared(authority):
         for key in {composition(solution.form, notation_of(text)) for text in rendered}:
             if key not in authority.declared_compositions():
                 undeclared.setdefault(key, []).append(case["id"])
+
+    assert undeclared == {}, (
+        f"undeclared compositions reached the consumer: {undeclared}. Add a row "
+        "to docs/answer-capabilities.json saying how each is entered, or saying "
+        "plainly that it is not."
+    )
+
+
+def test_every_composition_the_runtime_exact_tests_emit_is_declared(
+    authority, runtime_emissions
+):
+    """Close over the runtime's emitter probes, not only Hawkes lessons.
+
+    facet-runtime's own suite exercises exact branches and value variants that
+    no current lesson-corpus question happens to reach. The recorder observes
+    the real answer objects those tests construct; a new composition therefore
+    has to be declared even when live-course coverage has not met it yet.
+    """
+    assert runtime_emissions, "facet-runtime's tests constructed no exact answers"
+    undeclared = undeclared_compositions(authority, runtime_emissions, "test")
 
     assert undeclared == {}, (
         f"undeclared compositions reached the consumer: {undeclared}. Add a row "
