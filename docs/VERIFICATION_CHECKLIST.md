@@ -124,6 +124,32 @@ paste — is a regression. `ollama list` on this host shows `qwen3.5:2b`,
 `qwen3.5:4b`, `qwen3.5:9b` and `gpt-oss:20b`; anything else a document tells
 you to run is a name this machine does not have.
 
+## 4b. The answer-capability gate
+
+The executable boundary between what Facet emits and what this repository can
+enter. Offline, about a third of a second.
+
+```bash
+cd /home/steve/apps/facet-hawkes
+uv run pytest -q tests/test_answer_compatibility.py
+python3 scripts/render_answer_capabilities.py
+cd /home/steve/apps/facet-runtime && uv run --frozen pytest -q tests/test_answer_forms.py
+```
+
+**Expect:** 33 or more passing here, `ANSWER_CAPABILITIES.md is up to date`, and
+the runtime's own form tests clean.
+
+Two failures mean specific things. `undeclared compositions reached the
+consumer` means a solver now emits an answer shape nothing has agreed to enter
+— add an entry to `docs/answer-capabilities.json`, or declare it unsupported
+with the code it is really refused by. `has drifted from
+answer-capabilities.json` means the prose table was hand-edited; the JSON is
+the authority, so re-render rather than reconciling by hand:
+
+```bash
+python3 scripts/render_answer_capabilities.py --write
+```
+
 ## 5. The package
 
 ```bash
