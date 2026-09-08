@@ -38,7 +38,7 @@ was recorded as a fix that did not work.
 | Browser | Every normal Firefox window, which one was chosen, which was active |
 | Runs | One block per user operation: target, question, editor, stages, route, runtime, ownership, outcome, failure class |
 | Native host | Host processes now, and how a run id maps to a host request |
-| Facet | Route, model, backend and device for every run that reached a runtime |
+| Facet | The transport a solve would actually take -- `local` or `ssh`, its target and the whole argv -- then route, model, backend and device for every run that reached a runtime |
 | Ollama | Service and runner state, asked only when a run named a runtime |
 | Cadence | Timing measurements, only for runs where Cadence performed |
 | Retained failures | The bounded ledger of runs that ended badly while nobody was watching |
@@ -172,9 +172,11 @@ is where a failure is actually triaged. See
   reported once, on the entry that ends the run, and a run that never ends
   leaves none — but a run that *ends badly* now carries its whole trail into a
   retained record, whatever the log level.
-- Nothing correlates a Facet run on the far side of the SSH boundary beyond the
+- Nothing correlates a Facet run on the far side of `facet-remote` beyond the
   request id. The observer reports what the host said it did, not an independent
-  reading of the remote.
+  reading of the helper -- which is a process boundary on the default local
+  transport and a machine boundary on the SSH one. The `FACET` record names
+  which, with the argv, so at least the topology is not left to be assumed.
 - A screenshot is of the window, not of the frame the run targeted.
 
 ## See also

@@ -13,7 +13,8 @@ the active documentation; Git history remains the archive.
 | Move or rebuild the installation | [Migration Checklist](MIGRATION.md) |
 | Diagnose Ollama or Vulkan | [Ollama Troubleshooting](OLLAMA_TROUBLESHOOTING.md) |
 | Reproduce performance decisions | [Performance Tuning](PERFORMANCE_TUNING.md) |
-| Inspect the primary host | [Caspian Host Profile](hosts/caspian.md) |
+| Know which machine runs what | [Host profiles](hosts/README.md) |
+| Inspect the historical benchmark host | [Caspian Host Profile](hosts/caspian.md) |
 | Configure screenshot OCR and exact math | [Vision and Exact-Math Architecture](VISION_MATH_ARCHITECTURE.md) |
 | Use or develop the Hawkes add-on | [extension/README.md](../extension/README.md) |
 | Understand Answer Cadence / Semantic Cadence | [Answer Cadence](ANSWER_CADENCE.md) |

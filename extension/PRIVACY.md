@@ -32,10 +32,11 @@ category.
   Firefox. SVG regression requests send the instruction and exact point
   coordinates instead of a MathML expression. The browser chooses no
   destination, model, or device.
-- The companion reaches Facet over SSH to the one host it is configured for.
-  With the default configuration that host is this computer, so the material
-  does not leave it. A configuration pointing elsewhere sends the question
-  material to that host.
+- The companion reaches Facet by running `facet-remote` as a local subprocess.
+  With the default configuration nothing leaves this computer, and no network
+  is involved in a solve at all. An operator can configure an SSH transport to
+  another host instead; that has to be asked for by name, is never fallen back
+  to, and sends the question material to the host it names.
 - Only a question the page draws as a picture rather than stating as
   mathematics falls back to image transcription, which uses the Ollama endpoint
   the companion is configured for. With the default loopback endpoint,

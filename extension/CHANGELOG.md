@@ -6,6 +6,20 @@ name the add-on as it was called at the time.
 
 ## Unreleased
 
+- **A solve no longer leaves the computer and comes back.** The companion
+  reached Facet with `ssh steve@192.168.0.247 facet-remote` -- this machine's
+  own address -- so every question went out to the network, through sshd and a
+  login shell, and arrived back where it started. It now runs `facet-remote` as
+  a local subprocess. `facet-remote` is still the boundary, still its own
+  isolated `uv tool` installation, and still speaks the same protocol on
+  standard input; an exact solve returns byte-identical provenance either way,
+  and a median of about 160 ms sooner (202 ms against 363 ms, measured over
+  seven runs each). SSH is retained as an explicit transport for a Facet that
+  genuinely runs on another machine, and is never fallen back to in either
+  direction. The privacy notice is updated: in the default configuration a solve
+  now involves no network at all. Nothing about solving, routing, insertion, or
+  Answer Cadence changed.
+
 - **The answer card shows the answer, not the spelling it travelled in.** The
   distance between `(7,0)` and `(-3,-1)` was solved exactly and reached the
   panel as `sqrt101`, beside "This question's answer box does not accept: s" --

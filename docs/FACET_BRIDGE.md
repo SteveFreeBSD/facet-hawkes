@@ -4,22 +4,46 @@ Ethnos owns the page. Facet owns the answering. That is the whole relationship,
 and it is not the relationship it started as.
 
 ```text
-Ethnos (caspian)                            Facet (currently casbox)
+Ethnos                                      Facet
   Hawkes/browser logic
   MathML capture and conversion
   window/tab/frame ownership
   answer-shape discovery
-  retrieval                --- typed solve request over SSH stdin --->
+  retrieval                --- typed solve request on facet-remote stdin --->
                                               solver routing
                                               exact deterministic mathematics
                                               reasoning model for the rest
                                               parabola / regression plans
                                               CPU / GPU / NPU selection
-  structured result        <-- structured answer + provenance ---------
+  structured result        <-- structured answer + provenance -------------
   validation
   keyboard entry, insertion policy,
   Answer Cadence, never-submit
 ```
+
+## Where these run
+
+Both sides are `casbox`. It is the browser machine, the native-host machine and
+the Facet runtime host at once: Firefox, the add-on, the `ethnos` companion,
+`facet-remote`, Ollama and the accelerators are all on the one computer.
+
+That is worth stating plainly because the arrangement this replaced said
+otherwise. The companion reached Facet with `ssh steve@192.168.0.247
+facet-remote` -- casbox's own LAN address -- so every question left casbox for
+the network and came back to casbox, through sshd and a login shell. Nothing
+was isolated by it; the process boundary that matters is `facet-remote` itself,
+and that is a boundary a subprocess draws just as well. The cost was a round
+trip and a key per question -- an exact solve measured 363 ms over SSH against
+202 ms locally, median of seven -- and a topology that read like evidence of a
+second machine. Two documents and a status line described that second machine.
+
+`caspian`, an HP t740, was the earlier host and is where the older baseline
+numbers were measured. It is not in this path.
+
+The boundary is unchanged by any of it. Ethnos still hands Facet a question and
+reads back an answer with provenance; Facet still decides the route. Where the
+helper runs is a deployment fact, and it is [configured in one
+place](#where-the-transport-is-configured).
 
 Ethnos used to run the exact solvers itself and ask Facet only about what they
 declined. That put the routing decision -- exact mathematics or a reasoning
@@ -47,6 +71,15 @@ internal messages, and the wire value `solve_engine="ethnos"` that names the
 companion's own image path. Those are identifiers, not branding. Where this
 document says Ethnos it is naming a side of a boundary; where it says Facet
 Hawkes Assistant it is naming the product.
+
+**`src/ethnos/` is a legacy internal package name, and renaming it is not a
+tidy-up.** It is the import path the installed native-messaging launcher names
+(`python -m ethnos.hawkes_host`), so a rename is a reinstall of the host
+manifest and the launcher, in step, or the add-on stops being able to reach the
+companion at all -- and it silently invalidates every reference in these
+documents. If it is ever worth doing it is worth doing on its own, deliberately,
+with the installer and the manifest in the same change. Do not fold it into
+unrelated work.
 
 ## One solver, not two
 
@@ -403,15 +436,30 @@ is Ethnos's alone.
 
 ## Security properties
 
-- **Constrained SSH.** One fixed argv: `BatchMode` refuses to prompt for a
+- **A fixed argv, whichever transport.** Local is `facet-remote` and nothing
+  else. SSH adds one fixed prefix: `BatchMode` refuses to prompt for a
   credential, `ClearAllForwardings` refuses agent, X11, port and socket
   forwarding, `-T` refuses a terminal.
-- **A fixed remote helper.** The argv names `facet-remote` absolutely. It
-  contains no shell metacharacters and takes no arguments, so although SSH runs
-  a remote command through the login shell, there is nothing there to interpret.
-- **The prompt never enters argv.** It travels on standard input on both
-  machines, and `facet-remote` executes Facet in-process rather than shelling
-  out to a command line.
+- **A fixed helper.** The argv names `facet-remote` absolutely. It contains no
+  shell metacharacters and takes no arguments, so even on the SSH transport --
+  where the remote command is run through a login shell -- there is nothing
+  there to interpret. Locally there is no shell in the path at all.
+- **One transport per process, chosen before any request exists, and no
+  promotion between them.** A local helper that is missing or fails is a
+  failure; it never becomes an SSH attempt, and SSH never quietly becomes a
+  local run. An answer that crossed a machine boundary nobody chose would carry
+  a provenance describing hardware the request was never routed to. An
+  unrecognised `FACET_TRANSPORT` is refused rather than defaulted, so a
+  misspelled `ssh` cannot silently mean `local`.
+- **The same configuration surface either way.** SSH handed the far side a
+  fresh login environment, so Facet always ran on its own configured models and
+  endpoint. A local subprocess would inherit whatever the browser was started
+  with, so every `FACET_*` name is stripped from the child environment. This is
+  not cosmetic: an inherited `FACET_OLLAMA_URL` alone is enough to move a solve
+  from the GPU to the NPU, changing the provenance without changing a request.
+- **The prompt never enters argv.** It travels on standard input, and
+  `facet-remote` executes Facet in-process rather than shelling out to a
+  command line.
 - **`shell=False`, always.**
 - **A closed set of operations.** `generate_text` and `solve_math`, and nothing
   else. No shell command, path, URL, environment, runtime, model, or device can
@@ -436,18 +484,42 @@ is Ethnos's alone.
   becomes a local Ethnos answer, because a substituted answer would carry a
   provenance nobody asked for.
 
-## Where the host is configured
+## Where the transport is configured
 
-Ethnos uses `steve@192.168.0.247` as the default LAN SSH target. Set the
-`FACET_SSH_TARGET` environment variable to use an optional transport target;
-for example, the current `casbox` Tailscale address is `100.105.86.101`, so its
-target is `steve@100.105.86.101`. Facet itself is transport-agnostic: neither
-address is part of its protocol, validation, or provenance contract.
+`FACET_TRANSPORT` selects one of two, and there is no third:
 
-The Facet side is `src/facet_runtime/remote.py` in the `facet-runtime`
-repository, installed as the `facet-remote` executable, with the routing in
+| value | what runs | when to use it |
+|---|---|---|
+| unset, or `local` | `/home/steve/.local/bin/facet-remote` as a subprocess | the normal path, and the default |
+| `ssh` | that same helper over `ssh` to `FACET_SSH_TARGET` | Facet genuinely runs on another machine |
+
+Anything else is refused where the client is loaded, before a request is built.
+
+`FACET_SSH_TARGET` defaults to `steve@192.168.0.247` and is read only on the
+SSH transport. It is how another host is named -- casbox's Tailscale address,
+`steve@100.105.86.101`, reaches this one that way. Facet itself is
+transport-agnostic: no address is part of its protocol, validation, or
+provenance contract, and an exact solve returns byte-identical provenance
+across both transports.
+
+Ask the code rather than this table when it matters. `python3
+scripts/observe_live_hawkes.py` prints the chosen transport, its target and the
+whole argv under `FACET`, and the companion's `health` operation answers with
+it in a moment without loading a model.
+
+Both transports run the same one program, and it is the boundary that counts.
+`facet-remote` is installed by `uv tool install` from the `facet-runtime`
+repository, into its own isolated environment at
+`~/.local/share/uv/tools/facet-runtime/`, with its own interpreter. Ethnos
+never imports `facet_runtime.remote` into the companion process to shortcut the
+hop: the runtime, process and protocol boundary stays exactly where it was, and
+Facet keeps its own dependency set rather than sharing the companion's. (Ethnos
+*does* depend on the same repository as a sibling checkout, `../facet-runtime`,
+for `facet_runtime.exact` -- one exact solver, not two. That is a library
+import, not the solve path.)
+
+The Facet side is `src/facet_runtime/remote.py`, with the routing in
 `src/facet_runtime/solve.py` and the deterministic solvers in
-`src/facet_runtime/exact/`. Ethnos depends on that repository as a sibling
-checkout (`../facet-runtime`), so a deployment that updates one must update
-both: protocol 2 refuses a protocol 1 helper outright rather than silently
-ignoring the fields it does not know.
+`src/facet_runtime/exact/`. A deployment that updates one repository must update
+both, and must reinstall the uv tool: protocol 2 refuses a protocol 1 helper
+outright rather than silently ignoring the fields it does not know.

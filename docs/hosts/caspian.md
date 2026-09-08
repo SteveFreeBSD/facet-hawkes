@@ -2,6 +2,13 @@
 
 Last verified: 2026-07-16.
 
+> **Historical.** `caspian` is not in the live path. The whole live system --
+> browser, add-on, native host, `facet-remote`, Ollama and the accelerators --
+> runs on `casbox`; see [the Ethnos-Facet
+> boundary](../FACET_BRIDGE.md#where-these-run). This profile is kept for the
+> baseline numbers measured here and for the OS-level settings, which are still
+> the reference for reproducing them.
+
 `caspian` is the primary Ethnos workstation and the source of the current
 performance baseline.
 

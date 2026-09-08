@@ -11,6 +11,41 @@ These rules are written to get you to the evidence quickly. Everything that is
 still forbidden below is forbidden for a stated reason; if a reason no longer
 applies, say so rather than working around it silently.
 
+## Where things run, and what things are called
+
+**One machine: `casbox`.** Firefox, the add-on, the `ethnos` native host,
+`facet-remote`, Ollama and the accelerators are all on the computer you are
+sitting at. There is no second host in the live path, and a solve crosses no
+network.
+
+The companion reaches Facet by running `/home/steve/.local/bin/facet-remote`
+as a local subprocess and writing one request to its standard input. That
+helper is the runtime, process and protocol boundary, and it stays one: it is
+its own `uv tool` installation with its own interpreter, and the companion
+never imports `facet_runtime.remote` to skip the hop.
+
+Until 2026-09-08 this went `ssh steve@192.168.0.247 facet-remote` -- casbox's
+own address -- so every question left the machine and came straight back to it.
+SSH is still there, as `FACET_TRANSPORT=ssh`, for a Facet that genuinely runs
+elsewhere. It is never fallen back to, in either direction. If you find
+yourself reasoning about "the remote machine", check first:
+
+```console
+$ python3 scripts/observe_live_hawkes.py --bundle    # the FACET record names the transport
+```
+
+`caspian` is a *historical* host. Documents that describe it as the primary
+workstation are describing the past.
+
+**`src/ethnos/` is a legacy internal package name.** So are the add-on ID
+`ethnos-hawkes@local`, the native-messaging host `ethnos_hawkes`, and the
+`ethnos:*` internal messages. The product is Facet Hawkes Assistant; nothing a
+user reads says Ethnos. Do not rename the package as a tidy-up -- the installed
+launcher runs `python -m ethnos.hawkes_host`, so it is a coordinated reinstall
+of the manifest and the launcher, and it belongs in a change of its own.
+[The Ethnos-Facet boundary](docs/FACET_BRIDGE.md) is the reference for all of
+this.
+
 ## Looking at the live session
 
 **Start here, before forming a theory.**

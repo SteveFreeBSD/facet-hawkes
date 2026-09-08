@@ -192,6 +192,8 @@ The host is `casbox` (Ryzen AI HX 370, Radeon 890M), with Ollama on loopback:
 - Ethnos context: `4096` tokens, thinking disabled, thread count unset.
 - Exact mathematics and solver routing are Facet's, not a model's; see
   [docs/FACET_BRIDGE.md](docs/FACET_BRIDGE.md).
+- Facet runs on this same machine, reached by running `facet-remote` as a local
+  subprocess. Nothing in a solve crosses a network.
 
 The earlier baseline ran on the HP t740 named `caspian`, against a model alias
 that exists only on that machine and predates this setup. Its fixed MC
@@ -462,10 +464,13 @@ documents are:
   ingestion workflow.
 - [Performance Tuning](docs/PERFORMANCE_TUNING.md): benchmark protocol,
   measured decisions, and rejected experiments.
-- [Caspian](docs/hosts/caspian.md): live hardware and persistent host settings.
+- [Host profiles](docs/hosts/README.md): which machine runs what. One does:
+  `casbox` is the browser machine, the native-host machine and the Facet
+  runtime host at once. [Caspian](docs/hosts/caspian.md) is the historical
+  benchmark host and its hardware notes.
 - [Migration Checklist](docs/MIGRATION.md): reproduce the system elsewhere.
-- [The Ethnos-Facet boundary](docs/FACET_BRIDGE.md): the remote protocol, its
-  security properties, and where the Facet host is configured.
+- [The Ethnos-Facet boundary](docs/FACET_BRIDGE.md): the protocol, its
+  security properties, and how the transport is configured.
 - [Ollama Troubleshooting](docs/OLLAMA_TROUBLESHOOTING.md): model, Vulkan,
   response, and stability failures.
 - [Live Hawkes Observatory](docs/LIVE_OBSERVATORY.md): one correlated look at
