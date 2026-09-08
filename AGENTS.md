@@ -62,6 +62,13 @@ $ python3 scripts/observe_live_hawkes.py --bundle    # the FACET record names th
 [`docs/history/`](docs/history/README.md) and describes neither this machine nor
 its models. So does the `ethnos-caspian` git remote.
 
+**Both repositories keep `main` frozen at a release baseline**, and the current
+system on `feature/live-hawkes-next-slice`. That is the opposite of the usual
+convention, so a default clone lands on neither the code these documents
+describe nor, for `facet-runtime`, a tree this checkout can import. Check out
+the branch, and detach the runtime at `deploy/facet-runtime.pin`. See [Where
+the code is published](docs/CURRENT_STATE.md#where-the-code-is-published).
+
 **`src/ethnos/` is a legacy internal package name.** So are the add-on ID
 `ethnos-hawkes@local`, the native-messaging host `ethnos_hawkes`, and the
 `ethnos:*` internal messages. The product is Facet Hawkes Assistant; nothing a

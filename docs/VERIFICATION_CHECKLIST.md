@@ -35,7 +35,10 @@ git branch -r --contains "$PIN"
 **Expect:** at least one `origin/…` line. As of 2026-09-08 that is
 `origin/feature/live-hawkes-next-slice`; `origin/main` is deliberately still
 `f2e0907`, which predates `ANSWER_FORMS`. Nothing here should say `main`
-until someone decides to advance it.
+until someone decides to advance it — in both repositories `main` is a frozen
+release baseline and the current system is on the branch, so a default clone
+lands on neither. See [Where the code is
+published](CURRENT_STATE.md#where-the-code-is-published).
 
 The strongest form of this check is the clone itself, which is what a new
 machine actually does:
@@ -178,6 +181,40 @@ default and every live solve should use it.
 
 This command reads only. It never drives the browser and cannot wake a
 suspended event page.
+
+## 9. The fresh paired clone (needs network, takes a few minutes)
+
+The strongest check there is, and the one the release audit calls for: build
+the system from public URLs and nothing else.
+
+```bash
+cd "$(mktemp -d)"
+git clone -q https://github.com/SteveFreeBSD/facet-hawkes.git
+git clone -q https://github.com/SteveFreeBSD/facet-runtime.git
+git -C facet-hawkes checkout -q feature/live-hawkes-next-slice
+git -C facet-runtime checkout -q --detach \
+  "$(grep -v '^#' facet-hawkes/deploy/facet-runtime.pin | tr -d '[:space:]')"
+cd facet-hawkes
+uv sync --frozen --extra dev
+uv run ruff check . && uv run ruff format --check .
+uv run python -m compileall -q src tests
+uv run vulture src tests --min-confidence 80
+uv run pytest -q
+uv run python scripts/build_extension.py --check
+uv run ethnos hawkes-coverage
+```
+
+**Expect** the same results as sections 2, 5 and 6 above: everything clean,
+1720 or more tests passing, 37 validated packaged files, and 36/36 answered
+exactly with 1 correctly declined. Passed on 2026-09-08.
+
+Note the two checkout lines. Without them the clone lands on `main` in both
+repositories, which is a frozen release baseline in one and a pre-`ANSWER_FORMS`
+tree in the other — and the `uv sync` fails at import rather than at checkout,
+which is a confusing place to learn it.
+
+Delete the temporary directory afterwards; it holds a full second copy of both
+repositories.
 
 ## What this checklist does not cover
 

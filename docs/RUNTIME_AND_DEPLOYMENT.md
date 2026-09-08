@@ -197,16 +197,18 @@ of those is held to this file by the test.
 **Publication note.** The pinned commit **is** published, as of 2026-09-08. It
 is reachable from `SteveFreeBSD/facet-runtime`'s
 `feature/live-hawkes-next-slice` branch, so the clone-and-detach above works
-from public URLs and CI's checkout by object name resolves. That branch is also
-what publishes it: `main` there is still `f2e0907`, which predates
-`ANSWER_FORMS`, so a clone that stops at the default branch gets a runtime this
-checkout cannot import. **Detaching at the pin is not optional.**
+from public URLs and CI's checkout by object name resolves.
 
-The *pair* is still not publicly reproducible: `SteveFreeBSD/facet-hawkes`'s
-`main` is well behind this work, so the fresh-clone proof in the [audit
-ledger](HAWKES_RELEASE_AUDIT.md) cannot be run end to end from public URLs yet.
-Publishing the runtime was the first step of that sequence and is done; the
-Hawkes side is not.
+That branch is also what publishes it. `main` there is a frozen release
+baseline still at `f2e0907`, which predates `ANSWER_FORMS`, so a clone that
+stops at the default branch gets a runtime this checkout cannot import.
+**Detaching at the pin is not optional.** `facet-hawkes` follows the same rule
+— see [Where the code is
+published](CURRENT_STATE.md#where-the-code-is-published).
+
+The pair has been rebuilt from public URLs and passes the whole CI sequence,
+which was the [audit ledger](HAWKES_RELEASE_AUDIT.md)'s last outstanding
+fresh-clone gate.
 
 ## Foundation checks
 

@@ -32,7 +32,7 @@ locally, external publication actions not yet authorized.**
 | Browser gate | unsigned XPI installed active in a clean throwaway Firefox 155.0.1 profile; Settings and popup loaded without fatal error |
 | Canonical public repository | `https://github.com/SteveFreeBSD/facet-hawkes` — to be created after explicit approval |
 | Companion topology | sibling `facet-hawkes` + `facet-runtime`; CI pins runtime `6a337c4` |
-| Remaining prerequisites | runtime `6a337c4` **published 2026-09-08** on `feature/live-hawkes-next-slice`; still to do: create and populate the canonical Hawkes repository, then pass a fresh public sibling clone |
+| Remaining prerequisites | all three publication prerequisites met 2026-09-08: runtime `6a337c4` published, canonical Hawkes repository populated, fresh public sibling clone passed. What remains is external and is not a repository state: Mozilla signing, then signed-artifact physical acceptance |
 
 > **Read this section as a dated audit, not as today's build.** Every number in
 > it belongs to 6 September 2026. Work has landed since — drawn-box fractions,
@@ -56,13 +56,22 @@ was `b6ffa6b0acbb036cacbdcc8ceed879f7de1c6e78` when this was audited and is
 `f2e09071415907cbbe1b4b905af9af6473098e8b` now, and both predate the symbols
 this checkout imports. Publication therefore had to push the runtime first.
 
-**That step is done.** On 2026-09-08 the runtime's `feature/live-hawkes-next-slice`
-branch was pushed, which makes the pinned commit publicly reachable and the
-clone-and-detach instruction work from public URLs; the runtime's `main` was
-deliberately left where it was. What remains is to create and populate the
-canonical Hawkes repository, then repeat the fresh-clone proof entirely from
-public URLs — which cannot be done while `SteveFreeBSD/facet-hawkes`'s `main`
-is behind this work.
+**All three steps are done, as of 2026-09-08.** Both repositories published
+their `feature/live-hawkes-next-slice` branch, which is where the current
+system lives; both `main` branches were deliberately left frozen at their
+release baselines, so a default clone still lands on neither. The install and
+migration instructions name the branch for that reason.
+
+The fresh-clone proof was then run as specified — both repositories cloned from
+their public URLs and nothing else, `facet-hawkes` on the branch,
+`facet-runtime` detached at the pin, `uv sync --frozen --extra dev`, and the
+whole CI sequence: ruff check, ruff format, compileall, vulture, 1720 tests,
+the package build at 37 validated files, and the offline solver sweep at 36/36
+answered with 1 correctly declined. All passing.
+
+What remains is external and is not a repository state: Mozilla signing, and
+then signed-artifact physical acceptance in the owner's normal profile, which
+only mode A can support.
 
 The selected strategy retains the existing sibling path dependency. The public
 README, migration checklist, manifest homepage, CI badge, and CI checkout now

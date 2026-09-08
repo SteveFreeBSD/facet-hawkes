@@ -27,6 +27,8 @@ mkdir facet-hawkes-0.46.0
 cd facet-hawkes-0.46.0
 git clone https://github.com/SteveFreeBSD/facet-hawkes.git
 git clone https://github.com/SteveFreeBSD/facet-runtime.git
+# `main` is a frozen release baseline in both. The current system is here:
+git -C facet-hawkes checkout feature/live-hawkes-next-slice
 git -C facet-runtime checkout --detach 6a337c40eb0b1a17dffac37f443d846089611689
 cd facet-hawkes
 uv sync --frozen --extra dev

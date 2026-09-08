@@ -153,15 +153,33 @@ requires, and is the only place it is decided. CI reads it;
 `tests/test_runtime_pin.py` holds every document that quotes it to the same
 value and fails if the sibling checkout is behind.
 
-The pinned commit is **published** as of 2026-09-08, on
-`SteveFreeBSD/facet-runtime`'s `feature/live-hawkes-next-slice` branch — that
-repository's `main` is still `f2e0907` and predates `ANSWER_FORMS`, so a clone
-that stops at the default branch cannot import what this checkout needs.
-Detaching at the pin is not optional. `SteveFreeBSD/facet-hawkes` is a separate
-matter: its `main` is well behind this work, so the pair still cannot be
-rebuilt end to end from public URLs.
+The pinned commit is **published** as of 2026-09-08. See *Where the code is
+published* below for which branch, and why the default one is not it.
 
 → [Runtime, models and deployment](RUNTIME_AND_DEPLOYMENT.md#the-runtime-pin)
+
+## Where the code is published
+
+Both repositories follow the same rule, and it is the opposite of the usual
+one:
+
+| Branch | What it is |
+|---|---|
+| `main` | **frozen release baseline.** `facet-hawkes` `66c2325`, `facet-runtime` `f2e0907`. Kept as the last published checkpoint; not advanced by ordinary work |
+| `feature/live-hawkes-next-slice` | **the current hardened system**, in both. This is what every document here describes |
+
+So a default clone lands on neither the code these documents describe nor, in
+`facet-runtime`'s case, a tree this checkout can import — `f2e0907` predates
+`ANSWER_FORMS`. **Check out the branch, and detach the runtime at the pin.**
+The install instructions in the [README](../README.md) and the [migration
+checklist](MIGRATION.md) both do this; following them by hand and skipping the
+checkout step is the one way to get a broken pair.
+
+Verified on 2026-09-08 by doing it: both repositories cloned from their public
+URLs, `facet-hawkes` on the branch, `facet-runtime` detached at the pin, then
+`uv sync --frozen --extra dev` and the whole CI sequence — 1720 tests, lint,
+format, compileall, vulture, the package build and the offline solver sweep,
+all passing. That was the audit ledger's last outstanding fresh-clone gate.
 
 ## Release position
 
