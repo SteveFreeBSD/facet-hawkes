@@ -602,14 +602,16 @@ def test_the_reasoning_prompt_never_offers_an_action() -> None:
     assert leaks(prompt) == ()
 
 
-def test_the_suite_cannot_reach_the_real_facet_host() -> None:
+def test_the_suite_cannot_reach_the_real_facet_helper() -> None:
     """The guard that would have caught the stale seam, kept honest itself.
 
-    A test that patches a seam the code no longer calls goes out over SSH to
-    the real machine, and one of these passed for exactly that reason: the call
-    failed, and a failed call was what it asserted.
+    A test that patches a seam the code no longer calls runs the real helper,
+    and one of these passed for exactly that reason: the call failed, and a
+    failed call was what it asserted. The default transport starts that helper
+    locally, where it would succeed rather than fail, so the guard matters more
+    now than it did when the only way out was a network the tests could not use.
     """
     from ethnos import facet_client
 
-    with pytest.raises(AssertionError, match="real Facet host"):
+    with pytest.raises(AssertionError, match="real Facet helper"):
         facet_client.generate_text("Reply with one word.", request_id="guard-1")

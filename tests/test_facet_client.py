@@ -1,17 +1,18 @@
-"""The Facet remote protocol as Ethnos speaks it: the whole of the boundary."""
+"""The Facet remote protocol as Ethnos speaks it: the whole of the boundary.
+
+Which transport carries it -- a local `facet-remote` subprocess by default, SSH
+only when asked for by name -- is `test_facet_transport.py`'s subject."""
 
 from __future__ import annotations
 
 import json
-import os
 import subprocess
-import sys
 
 import pytest
 
 from ethnos.facet_client import (
+    FACET_COMMAND,
     FACET_PROTOCOL_VERSION,
-    FACET_SSH_COMMAND,
     FacetExecutionError,
     FacetProtocolError,
     FacetTransportError,
@@ -149,44 +150,10 @@ def test_the_prompt_never_enters_argv_and_no_shell_is_used(monkeypatch) -> None:
 
     ask(prompt=prompt)
 
-    assert tuple(seen["argv"]) == FACET_SSH_COMMAND
+    assert tuple(seen["argv"]) == FACET_COMMAND
     assert prompt not in " ".join(seen["argv"])
     assert json.loads(seen["kwargs"]["input"])["prompt"] == prompt
     assert seen["kwargs"]["shell"] is False
-
-
-def test_the_ssh_argv_is_a_constant_that_forwards_nothing() -> None:
-    argv = list(FACET_SSH_COMMAND)
-
-    assert argv[0] == "ssh"
-    assert "-o" in argv and "BatchMode=yes" in argv
-    assert "ClearAllForwardings=yes" in argv
-    assert "-T" in argv
-    # One fixed remote program, named absolutely, with no shell metacharacters
-    # and no arguments of its own for anything to smuggle a request into.
-    helper = argv[-1]
-    assert helper.startswith("/") and " " not in helper
-    assert not any(character in helper for character in ";|&$`<>()")
-
-
-def test_the_transport_target_may_be_overridden_by_the_environment() -> None:
-    environment = os.environ.copy()
-    environment["FACET_SSH_TARGET"] = "steve@100.105.86.101"
-
-    completed = subprocess.run(
-        [
-            sys.executable,
-            "-c",
-            "from ethnos.facet_client import FACET_SSH_COMMAND; "
-            "print(FACET_SSH_COMMAND[-2])",
-        ],
-        text=True,
-        capture_output=True,
-        check=True,
-        env=environment,
-    )
-
-    assert completed.stdout.strip() == "steve@100.105.86.101"
 
 
 @pytest.mark.parametrize(

@@ -25,11 +25,20 @@ A request that cannot be met raises. It never degrades into a local answer:
 a silent substitution would leave a Facet-shaped provenance on work Facet never
 did, which is worse than no answer at all.
 
-The transport is one SSH invocation of a fixed remote helper with the request
-on standard input. The argv is a constant. No part of a prompt, a host, a path,
-a model, or a device is ever assembled from caller input, so there is nothing
-in a request for a shell to interpret and no way for one to ask for a different
-program.
+The transport runs one fixed remote helper with the request on standard input.
+Normally that helper is a local subprocess: the browser, this native host and
+the Facet runtime all live on the same machine, so the arrangement this
+replaced -- SSH from that machine back into itself -- bought no isolation and
+cost a network hop, a login shell and a key. SSH remains, as an *explicit*
+choice for the day Facet genuinely runs somewhere else. It is never reached for
+on its own: a local transport that fails is reported as a failure, because
+silently crossing a machine boundary nobody asked to cross would put a solve on
+hardware the provenance does not describe.
+
+Either way the argv is a constant and `facet-remote` is the process boundary.
+No part of a prompt, a host, a path, a model, or a device is ever assembled from
+caller input, so there is nothing in a request for a shell to interpret and no
+way for one to ask for a different program.
 """
 
 from __future__ import annotations
@@ -90,10 +99,27 @@ MAX_ANSWER_PARTS = 5
 MAX_REGRESSION_POINTS = 32
 
 # Deployment configuration. Nothing in the protocol or in any caller depends
-# on where Facet runs; an alternate transport address can be selected before
-# this client starts without changing the fixed SSH command during its run.
-FACET_SSH_TARGET = os.environ.get("FACET_SSH_TARGET", "steve@192.168.0.247")
+# on where Facet runs; the transport and, for SSH, its address are selected
+# before this client starts and are fixed for the whole of its run.
+
+#: The one program either transport executes. It is the runtime, process and
+#: protocol boundary: it owns Facet's uv-tool environment, and Ethnos reaches
+#: Facet by starting it and writing one request to its standard input --
+#: never by importing `facet_runtime` into this process and calling it.
 FACET_REMOTE_HELPER = "/home/steve/.local/bin/facet-remote"
+
+#: How that helper is reached. `local` is the normal path and the default;
+#: `ssh` is the explicit choice for a Facet that genuinely runs elsewhere.
+#: There is no third state and no automatic promotion between these two.
+FACET_TRANSPORT_LOCAL = "local"
+FACET_TRANSPORT_SSH = "ssh"
+FACET_TRANSPORTS: tuple[str, ...] = (FACET_TRANSPORT_LOCAL, FACET_TRANSPORT_SSH)
+
+FACET_SSH_TARGET = os.environ.get("FACET_SSH_TARGET", "steve@192.168.0.247")
+
+#: A fixed argv, in full: the helper's absolute path and nothing else. It is a
+#: process on this machine, so there is no login shell in the path at all.
+FACET_LOCAL_COMMAND: tuple[str, ...] = (FACET_REMOTE_HELPER,)
 
 #: A fixed argv, in full. `BatchMode` refuses to prompt for a credential,
 #: `ClearAllForwardings` refuses agent, X11, port and socket forwarding, and
@@ -110,6 +136,17 @@ FACET_SSH_COMMAND: tuple[str, ...] = (
     FACET_SSH_TARGET,
     FACET_REMOTE_HELPER,
 )
+
+
+#: Environment names the Facet runtime reads for itself -- which model each
+#: backend uses, and where Ollama is. SSH never carried them: the far side got
+#: a fresh login environment, so Facet ran on its own configured defaults. A
+#: local subprocess inherits everything this process was started with, which
+#: would silently hand Facet whatever `FACET_*` happened to be set in the
+#: browser's environment and change an answer without changing a request. The
+#: local transport therefore strips them, so both transports present Facet with
+#: the same configuration surface.
+FACET_ENVIRONMENT_PREFIX = "FACET_"
 
 DEFAULT_TIMEOUT_SECONDS = 190.0
 MAX_PROMPT_BYTES = 12 * 1024
@@ -148,6 +185,67 @@ class FacetExecutionError(FacetError):
         super().__init__(f"{kind}: {detail}")
         self.kind = kind
         self.detail = detail
+
+
+def _selected_transport() -> str:
+    """Read the transport once, and refuse a name that is not one of the two.
+
+    Defaulting an unrecognised name to `local` would turn a misspelled `ssh`
+    into a silent local run, which is exactly the substitution this transport
+    is not allowed to make. An unset variable is not a misspelling, so it takes
+    the default; anything else fails before a request is ever built.
+    """
+    name = os.environ.get("FACET_TRANSPORT", "").strip().lower()
+    if not name:
+        return FACET_TRANSPORT_LOCAL
+    if name not in FACET_TRANSPORTS:
+        raise FacetTransportError(
+            f"FACET_TRANSPORT={name!r} is not a Facet transport; "
+            f"use one of {', '.join(FACET_TRANSPORTS)}"
+        )
+    return name
+
+
+#: The transport and the argv this process will use, decided once, before any
+#: request exists. A local transport that fails raises; it never becomes an SSH
+#: attempt, and SSH never quietly becomes a local one.
+FACET_TRANSPORT = _selected_transport()
+FACET_COMMAND: tuple[str, ...] = (
+    FACET_SSH_COMMAND if FACET_TRANSPORT == FACET_TRANSPORT_SSH else FACET_LOCAL_COMMAND
+)
+
+
+def transport_report() -> dict[str, Any]:
+    """What this process would actually run, for a status or an observation.
+
+    A reader of a status line needs the transport that was chosen, not the one
+    the documentation assumed: the whole failure this replaced was a topology
+    everyone had stopped checking.
+    """
+    return {
+        "transport": FACET_TRANSPORT,
+        "helper": FACET_REMOTE_HELPER,
+        "command": list(FACET_COMMAND),
+        "target": (
+            FACET_SSH_TARGET
+            if FACET_TRANSPORT == FACET_TRANSPORT_SSH
+            else "this machine"
+        ),
+    }
+
+
+def _child_environment() -> dict[str, str]:
+    """The environment the helper is started with.
+
+    Everything this process holds, less every `FACET_*` name -- see
+    `FACET_ENVIRONMENT_PREFIX`. Applied to both transports so that the one
+    difference between them stays *where* Facet runs.
+    """
+    return {
+        name: value
+        for name, value in os.environ.items()
+        if not name.startswith(FACET_ENVIRONMENT_PREFIX)
+    }
 
 
 @dataclass(frozen=True)
@@ -352,16 +450,24 @@ def _exchange(
     )
     try:
         completed = subprocess.run(
-            FACET_SSH_COMMAND,
+            FACET_COMMAND,
             input=payload,
             text=True,
             capture_output=True,
             timeout=timeout,
             check=False,
             shell=False,
+            env=_child_environment(),
         )
+    # A missing helper, an unreachable host and a helper that never answered
+    # all arrive here, and all of them stop here. There is no second attempt
+    # over the other transport: an answer that came from a machine the caller
+    # did not choose would carry a provenance describing hardware the request
+    # was never routed to.
     except (OSError, subprocess.SubprocessError) as error:
-        raise FacetTransportError(f"Facet SSH transport failed: {error}") from error
+        raise FacetTransportError(
+            f"Facet {FACET_TRANSPORT} transport failed: {error}"
+        ) from error
     return _result_object(completed, operation=operation, request_id=request_id)
 
 
