@@ -194,11 +194,19 @@ literal commit is repeated in the README, the migration checklist and the
 release runbook, because a first clone needs a command it can paste; every one
 of those is held to this file by the test.
 
-**Publication note.** The pinned commit is currently ahead of what
-`SteveFreeBSD/facet-runtime` publishes on `main`. A clean clone built from
-public URLs will therefore fail the required import until the runtime is
-pushed, which is why publishing the runtime is the first step of the release
-sequence in the [audit ledger](HAWKES_RELEASE_AUDIT.md).
+**Publication note.** The pinned commit **is** published, as of 2026-09-08. It
+is reachable from `SteveFreeBSD/facet-runtime`'s
+`feature/live-hawkes-next-slice` branch, so the clone-and-detach above works
+from public URLs and CI's checkout by object name resolves. That branch is also
+what publishes it: `main` there is still `f2e0907`, which predates
+`ANSWER_FORMS`, so a clone that stops at the default branch gets a runtime this
+checkout cannot import. **Detaching at the pin is not optional.**
+
+The *pair* is still not publicly reproducible: `SteveFreeBSD/facet-hawkes`'s
+`main` is well behind this work, so the fresh-clone proof in the [audit
+ledger](HAWKES_RELEASE_AUDIT.md) cannot be run end to end from public URLs yet.
+Publishing the runtime was the first step of that sequence and is done; the
+Hawkes side is not.
 
 ## Foundation checks
 

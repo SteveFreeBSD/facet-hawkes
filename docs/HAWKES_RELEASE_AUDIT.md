@@ -32,7 +32,7 @@ locally, external publication actions not yet authorized.**
 | Browser gate | unsigned XPI installed active in a clean throwaway Firefox 155.0.1 profile; Settings and popup loaded without fatal error |
 | Canonical public repository | `https://github.com/SteveFreeBSD/facet-hawkes` — to be created after explicit approval |
 | Companion topology | sibling `facet-hawkes` + `facet-runtime`; CI pins runtime `6a337c4` |
-| Remaining prerequisites | publish runtime `6a337c4`, create and populate canonical Hawkes repository, then pass a fresh public sibling clone |
+| Remaining prerequisites | runtime `6a337c4` **published 2026-09-08** on `feature/live-hawkes-next-slice`; still to do: create and populate the canonical Hawkes repository, then pass a fresh public sibling clone |
 
 > **Read this section as a dated audit, not as today's build.** Every number in
 > it belongs to 6 September 2026. Work has landed since — drawn-box fractions,
@@ -51,11 +51,18 @@ re-soaked here.
 
 The candidate itself is reproducible. A fresh sibling checkout using the local
 runtime checkpoint imports `facet_runtime.solve` and passes extension
-validation. The same Hawkes checkpoint paired with the currently public runtime
-installs successfully from the lock but fails that required import because
-public `main` is still `b6ffa6b0acbb036cacbdcc8ceed879f7de1c6e78`. Publication
-must therefore push the runtime first, then create and populate the canonical
-Hawkes repository, then repeat the fresh-clone proof entirely from public URLs.
+validation. Paired with the runtime's *default* branch it does not: that branch
+was `b6ffa6b0acbb036cacbdcc8ceed879f7de1c6e78` when this was audited and is
+`f2e09071415907cbbe1b4b905af9af6473098e8b` now, and both predate the symbols
+this checkout imports. Publication therefore had to push the runtime first.
+
+**That step is done.** On 2026-09-08 the runtime's `feature/live-hawkes-next-slice`
+branch was pushed, which makes the pinned commit publicly reachable and the
+clone-and-detach instruction work from public URLs; the runtime's `main` was
+deliberately left where it was. What remains is to create and populate the
+canonical Hawkes repository, then repeat the fresh-clone proof entirely from
+public URLs — which cannot be done while `SteveFreeBSD/facet-hawkes`'s `main`
+is behind this work.
 
 The selected strategy retains the existing sibling path dependency. The public
 README, migration checklist, manifest homepage, CI badge, and CI checkout now

@@ -153,9 +153,13 @@ requires, and is the only place it is decided. CI reads it;
 `tests/test_runtime_pin.py` holds every document that quotes it to the same
 value and fails if the sibling checkout is behind.
 
-The pin is currently **ahead of what `SteveFreeBSD/facet-runtime` publishes**,
-so a clone built from public URLs cannot yet pass. Publishing the runtime is
-the first step of the release sequence.
+The pinned commit is **published** as of 2026-09-08, on
+`SteveFreeBSD/facet-runtime`'s `feature/live-hawkes-next-slice` branch — that
+repository's `main` is still `f2e0907` and predates `ANSWER_FORMS`, so a clone
+that stops at the default branch cannot import what this checkout needs.
+Detaching at the pin is not optional. `SteveFreeBSD/facet-hawkes` is a separate
+matter: its `main` is well behind this work, so the pair still cannot be
+rebuilt end to end from public URLs.
 
 → [Runtime, models and deployment](RUNTIME_AND_DEPLOYMENT.md#the-runtime-pin)
 

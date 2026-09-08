@@ -20,6 +20,37 @@ git -C ../facet-runtime merge-base --is-ancestor "$(grep -v '^#' deploy/facet-ru
 migration checklist, the release runbook and the audit ledger all quote it and
 that CI reads the file rather than restating a commit.
 
+### 1b. The pin is published (needs network)
+
+CI checks the runtime out by object name, so the pin has to be reachable from
+some pushed ref — not merely present in a local checkout.
+
+```bash
+cd /home/steve/apps/facet-runtime
+PIN=$(grep -v '^#' ../facet-hawkes/deploy/facet-runtime.pin | tr -d '[:space:]')
+git fetch -q origin
+git branch -r --contains "$PIN"
+```
+
+**Expect:** at least one `origin/…` line. As of 2026-09-08 that is
+`origin/feature/live-hawkes-next-slice`; `origin/main` is deliberately still
+`f2e0907`, which predates `ANSWER_FORMS`. Nothing here should say `main`
+until someone decides to advance it.
+
+The strongest form of this check is the clone itself, which is what a new
+machine actually does:
+
+```bash
+cd "$(mktemp -d)"
+git clone -q https://github.com/SteveFreeBSD/facet-runtime.git
+git -C facet-runtime checkout --detach "$PIN"
+grep -c ANSWER_FORMS facet-runtime/src/facet_runtime/exact/__init__.py
+```
+
+**Expect:** the checkout succeeds and the grep reports at least 1. A failure
+here means the published instructions cannot build a working system, which is
+the exact defect the pin file exists to prevent.
+
 ## 2. Facet-hawkes gates
 
 These are exactly the CI steps, in CI's order.
