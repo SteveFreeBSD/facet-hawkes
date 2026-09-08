@@ -6,6 +6,35 @@ name the add-on as it was called at the time.
 
 ## Unreleased
 
+- **A question with five choices is one answer, not five.** A quadrant question
+  publishes one radio group of five buttons. The editor probe counted five
+  *controls* and reported five answers; the host asked Facet for five separate
+  values to a question that has one; a reasoning model on a GPU produced five,
+  none of them placeable, and the panel refused every one. Eleven times in an
+  hour on the same question, at about fourteen seconds each.
+
+  The count of an option group is the number of things to choose *between*. A
+  group of option controls is now described as the one choice it is -- decided
+  on what the controls are rather than on how many, so it holds for a
+  two-option "Real Number / Not a Real Number" question as well -- and the
+  shape reader refuses to take a count from option controls even if an older
+  build's probe still reports a group of them.
+
+  The choices themselves are the answer contract, because a radio is selected
+  by the words printed beside it: an answer meaning the right thing in some
+  other wording selects nothing. The add-on reads them through the ordinary
+  accessible-name chain and sends them with the question; Facet answers with
+  one of them exactly, and the publication guard refuses an answer that is not
+  one of them. All or none -- a group that cannot be read whole publishes no
+  contract, because four choices reported for a page showing five would let an
+  answer be checked against the wrong list.
+
+  Quadrant questions are answered exactly now and reach no model at all: the
+  sign of x and the sign of y, over the four quadrants, both axes and the
+  origin. A point on an axis is refused rather than approximated where the page
+  offers no choice that names one. Five of them answered in two seconds
+  together, against fourteen seconds each before.
+
 - **Nothing reaches the answer card unless it is an answer to the question on
   screen.** A quadrant question showed "all answers as they would ordinarily be
   written" -- Facet's own description of the line it asks a model to write,

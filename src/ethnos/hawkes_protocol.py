@@ -78,6 +78,11 @@ class AnswerRepresentation(BaseModel):
 #: refusal with nobody's name on it.
 MAX_ANSWER_PARTS = 5
 
+#: How many alternatives one choice question may publish, and how long each
+#: may be. Bounded here because the page decides both and this is the boundary.
+MAX_ANSWER_CHOICES = 12
+MAX_CHOICE_CHARS = 120
+
 
 class AnswerShape(BaseModel):
     """How the page takes an answer, as the add-on observed it.
@@ -107,6 +112,16 @@ class AnswerShape(BaseModel):
     representations: list[AnswerRepresentation] = Field(
         default_factory=list, max_length=MAX_ANSWER_PARTS
     )
+    #: What an option question may be answered with, in the page's own words.
+    #:
+    #: The question's own alternatives, which is a property of the question in
+    #: the same way its expressions are -- not a description of the page. A
+    #: choice answer is *matched* against these rather than typed, so they are
+    #: the whole contract: an answer that is not one of them selects nothing.
+    #: Absent unless the add-on could read the whole group; a partial list
+    #: would let a solver answer with one of four choices on a page showing
+    #: five.
+    choices: list[str] = Field(default_factory=list, max_length=MAX_ANSWER_CHOICES)
 
     @model_validator(mode="after")
     def count_matches_kind(self) -> AnswerShape:
@@ -120,6 +135,17 @@ class AnswerShape(BaseModel):
             raise ValueError("answer representations must match the answer count")
         if self.kind in {"option", "graph"} and self.representations:
             raise ValueError("only written answers may name representations")
+        if self.choices and self.kind != "option":
+            raise ValueError("only an option answer is chosen from alternatives")
+        if self.choices:
+            if len(self.choices) < 2:
+                raise ValueError("a choice is made between at least two alternatives")
+            if any(not choice.strip() for choice in self.choices):
+                raise ValueError("every alternative must carry words")
+            if any(len(choice) > MAX_CHOICE_CHARS for choice in self.choices):
+                raise ValueError("an alternative exceeds the size limit")
+            if len(set(self.choices)) != len(self.choices):
+                raise ValueError("the alternatives must be distinct")
         return self
 
 

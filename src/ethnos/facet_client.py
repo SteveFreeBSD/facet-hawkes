@@ -746,6 +746,7 @@ def solve_math(
     points: list[dict[str, str]] | None = None,
     answer_table: dict[str, Any] | None = None,
     answer_representation: dict[str, Any] | None = None,
+    answer_choices: list[str] | None = None,
     accelerator_required: bool = True,
     allow_fallback: bool = False,
     timeout: float = DEFAULT_TIMEOUT_SECONDS,
@@ -776,6 +777,14 @@ def solve_math(
     the same sense `answer_parts` is, and both cross as structure so that the
     side which answers can compute from them and check against them. Neither
     describes a page: there is no field, no control and no character set here.
+
+    `answer_choices` is the same kind of thing again, for a question answered
+    by *choosing*: the alternatives the question publishes, in its own words.
+    They are the whole contract for such an answer, because a choice is matched
+    against them rather than typed -- an answer that is not one of them selects
+    nothing. Like a table, they cross as structure: flattened into the
+    instruction they could be read by a model and by nothing else, and could
+    not be checked against at all.
     """
     if result_kind not in FACET_RESULT_KINDS:
         raise FacetProtocolError(f"{result_kind} is not a Facet result kind")
@@ -829,6 +838,25 @@ def solve_math(
                 "match answer_parts"
             )
         problem["answer_table"] = answer_table
+    if result_kind == VALUE and answer_choices:
+        if len(answer_choices) < 2 or any(
+            not isinstance(choice, str) or not choice.strip()
+            for choice in answer_choices
+        ):
+            raise FacetProtocolError(
+                "a choice is made between at least two published alternatives"
+            )
+        # A question answered by choosing has one answer. Facet refuses the
+        # pair too; checked here so a caller's mistake fails locally rather
+        # than over a transport -- and this is the pair that produced the
+        # defect: five alternatives read as five answers.
+        if answer_parts != 1:
+            raise FacetProtocolError(
+                f"a question answered by choosing has one answer, not {answer_parts}"
+            )
+        problem["answer_choices"] = list(answer_choices)
+    if result_kind != VALUE and answer_choices:
+        raise FacetProtocolError("only a value question is answered by choosing")
     if result_kind == VALUE and answer_representation is not None:
         if not isinstance(answer_representation, dict) or set(
             answer_representation

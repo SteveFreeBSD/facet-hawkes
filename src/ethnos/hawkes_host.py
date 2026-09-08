@@ -299,6 +299,11 @@ def required_answer_parts(shape, instruction: str) -> int:
     """
     if shape is not None and shape.kind == "multi":
         return shape.count
+    # A question answered by choosing has one answer: the choice. Not even a
+    # "separate multiple answers with a comma" instruction changes that -- an
+    # option group offers alternatives, and nothing is typed into it.
+    if shape is not None and shape.kind == "option":
+        return 1
     if COMMA_SEPARATED.search(instruction):
         return 2
     return 1
@@ -363,6 +368,19 @@ def instruction_with_answer_representation(instruction: str, shape) -> str:
         f"minus sign, with at most {limit} characters. Do not use a fraction, "
         "radical, exponent notation, parentheses, or any other characters."
     )
+
+
+def answer_choices_payload(shape) -> list[str] | None:
+    """The alternatives a choice question publishes, in Facet's terms.
+
+    Only for a question that is answered by choosing, and only when the whole
+    group was read. A partial list is worse than none: Facet would answer with
+    one of four alternatives on a page showing five, and the answer would be
+    wrong for a reason nothing downstream could see.
+    """
+    if shape is None or shape.kind != "option" or len(shape.choices) < 2:
+        return None
+    return list(shape.choices)
 
 
 def answer_table_payload(table, parts_required: int = 0) -> dict[str, object] | None:
@@ -959,6 +977,10 @@ def _solve_with_facet(
             answer_representation=answer_representation_payload(
                 problem.answer_shape
             ),
+            # The alternatives a choice question published, as the page wrote
+            # them. Facet answers with one of them exactly; nothing here has
+            # to recognise what the choices mean.
+            answer_choices=answer_choices_payload(problem.answer_shape),
             label=problem.question_label,
             accelerator_required=True,
             allow_fallback=False,

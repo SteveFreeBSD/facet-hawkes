@@ -269,6 +269,10 @@ function blankState() {
     // across the solve, and re-read and compared before anything is written.
     // Never sent to the host, which is told the grid and nothing about boxes.
     tableTargets: [],
+    // What a choice question published, in the page's own words. The answer
+    // contract for a radio group: the answer to one is one of these strings
+    // and is matched against them, never a form anybody writes.
+    answerChoices: [],
     editor: null,
     problemText: "",
     answer: "",
@@ -417,7 +421,7 @@ async function seedRememberedAnswer(windowId) {
  */
 function publicationShape(next) {
   const targets = next.tableTargets ?? [];
-  const shape = answerShapeOf(next.editor, null, targets);
+  const shape = answerShapeOf(next.editor, null, targets, next.answerChoices ?? []);
   return shape.kind === "field" && isTableMapping(targets)
     ? { kind: "multi", count: targets.length }
     : shape;
@@ -1224,7 +1228,27 @@ function commaAnswerPlan(parts, editor, problemText) {
  * version before this one implied and what the host still assumes when the
  * field is absent.
  */
-function answerShapeOf(editor, answerTable = null, tableTargets = []) {
+/**
+ * One radio group, as an answer shape.
+ *
+ * One answer, and the alternatives it may be. The choices are carried on the
+ * shape rather than looked up again later, so every reader of it -- the host
+ * request, the publication guard -- is holding the same contract. Fewer than
+ * two readable ones is no contract at all: a partial list would let an answer
+ * be checked against four alternatives on a page showing five.
+ */
+function optionShape(choices) {
+  const published = Array.isArray(choices)
+    ? choices.filter((text) => typeof text === "string" && text.trim())
+    : [];
+  return {
+    kind: "option",
+    count: 1,
+    ...(published.length >= 2 ? { choices: published } : {}),
+  };
+}
+
+function answerShapeOf(editor, answerTable = null, tableTargets = [], choices = []) {
   // A validated completion table numbers its blanks in the order the
   // mathematics is read. Hawkes' live row-headed table publishes ten control
   // models (one for every value cell) even though the DOM has five answer
@@ -1264,6 +1288,20 @@ function answerShapeOf(editor, answerTable = null, tableTargets = []) {
     return blanks.length;
   })();
   if (editor?.kind === "graph") return { kind: "graph", graph: editor.context };
+  // A group of option controls is one question's alternatives, not one
+  // question's answers. The probe reports such a group as a single `option`
+  // editor now; this is the same rule stated where the count is actually
+  // taken, so a build whose probe still reports five controls -- an older one,
+  // or one reloaded from a stale directory -- cannot reintroduce a five-part
+  // contract for a five-button radio group.
+  if (
+    editor?.kind === "multi"
+    && Array.isArray(editor.editors)
+    && editor.editors.length >= 2
+    && editor.editors.every((one) => one?.kind === "option")
+  ) {
+    return optionShape(choices);
+  }
   if (
     editor?.kind === "multi"
     && Array.isArray(editor.editors)
@@ -1285,7 +1323,7 @@ function answerShapeOf(editor, answerTable = null, tableTargets = []) {
   }
   if (tableParts > 0) return { kind: "multi", count: tableParts };
   if (editor?.kind === "option") {
-    return { kind: "option" };
+    return optionShape(choices);
   }
   const representation = editor?.kind === "textbox"
     && editor.allowedCharacters === "[0-9-]"
@@ -1947,6 +1985,13 @@ async function prepare(windowId = state.windowId) {
     // Where a table has been accepted, its mapping is the answer surface and
     // the sweep is dropped rather than reconciled.
     const fieldIds = tableTargets.length >= 2 ? [] : swept;
+    // The alternatives this question publishes, as the frame that owns the
+    // answer reported them. Read fresh with the question and never carried:
+    // last question's choices are not this one's, and a stale list is worse
+    // than none because a solver would answer with one of its members.
+    const answerChoices = Array.isArray(chosenReport?.choices)
+      ? chosenReport.choices.filter((text) => typeof text === "string" && text)
+      : [];
     // What the other reading saw at the same moment, so a disagreement between
     // the two is visible without another run: the boxes the geometric sweep
     // found, and whichever of them it was willing to adopt.
@@ -1974,6 +2019,7 @@ async function prepare(windowId = state.windowId) {
       fieldId: choice.fieldId ?? "",
       fieldIds,
       tableTargets,
+      answerChoices,
       editor: hasAnswer && previous.graphPlan ? previous.editor : editor,
       signature,
       // Carried over only while the question is unchanged, so a previous
@@ -2184,7 +2230,9 @@ async function solve(windowId = state.windowId) {
     }
 
     const solveDeadline = Date.now() + settings.solveTimeoutSeconds * 1000;
-    const shape = answerShapeOf(state.editor, question.answerTable, tableTargets);
+    const shape = answerShapeOf(
+      state.editor, question.answerTable, tableTargets, state.answerChoices ?? []
+    );
     const askToSolve = (image, pipeline) => {
       log.info("host-request-shaped", {
         pipeline,
@@ -2195,6 +2243,11 @@ async function solve(windowId = state.windowId) {
           .filter((cell) => Number.isInteger(cell?.blank)).length ?? 0,
         answerShape: shape.kind,
         answerParts: shape.count ?? 0,
+        // How many alternatives a choice question published. Zero on a choice
+        // question means its group could not be read whole, which is why the
+        // solve is about to be refused rather than answered from a partial
+        // list -- the one line that says so.
+        answerChoices: shape.choices?.length ?? 0,
         // How many cells this browser can place an answer in. Asking for five
         // values while holding no mapping is a solve that could never be
         // inserted, and the two counts belong in the same line.

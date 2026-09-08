@@ -443,6 +443,35 @@ export function publishableAnswer(published, shape) {
     return { ok: true };
   }
 
+  // A choice question is answered with one of its own alternatives, in the
+  // page's own words, because that is what a control is selected by. An answer
+  // that merely means the same thing selects nothing, and one that is not on
+  // the list at all is an answer to some other question.
+  //
+  // Decided before the rules below and not after them. Those ask whether text
+  // could be an answer somebody wrote; this text is the page's own, printed
+  // beside a radio button, and "The point is on an axis" is a sentence by
+  // every test there is. What makes it publishable is not its shape -- it is
+  // that the question offered it.
+  //
+  // Held only where the group could be read whole. A page whose choices could
+  // not be collected publishes no contract, and inventing one from a partial
+  // list is the failure this exists to prevent rather than a weaker form of
+  // it: such a question falls through to the ordinary rules below.
+  const alternatives = kind === "option" && Array.isArray(shape.choices)
+    && shape.choices.length >= 2
+    ? shape.choices
+    : null;
+  if (alternatives) {
+    if (parts.length > 0 || plan !== null) {
+      // Several typed values, or proved geometry, is not a choice.
+      return { ok: false, code: "answer-shape-option" };
+    }
+    return alternatives.includes(answer) || alternatives.includes(displayText)
+      ? { ok: true }
+      : { ok: false, code: "answer-not-a-published-choice" };
+  }
+
   // Whichever field carries it, what reaches a reader has to read as an
   // answer. Checked before anything else, because it is the only rule that
   // applies to every shape and it is the one that was missing.

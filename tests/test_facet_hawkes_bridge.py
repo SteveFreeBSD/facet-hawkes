@@ -52,6 +52,7 @@ def request(
     shape=None,
     shape_count=1,
     representations=None,
+    choices=None,
 ):
     problem = {
         "prompt_text": instruction,
@@ -61,6 +62,8 @@ def request(
         problem["answer_shape"] = {"kind": shape, "count": shape_count}
         if representations is not None:
             problem["answer_shape"]["representations"] = representations
+        if choices is not None:
+            problem["answer_shape"]["choices"] = choices
     return {
         "protocol_version": 1,
         "operation": "solve_hawkes_problem",
@@ -786,6 +789,10 @@ def _normaliser():
     )
     context.eval(re.sub(r"^import .*\n", "", rules, flags=re.MULTILINE))
     source = (EXTENSION / "background.js").read_text(encoding="utf-8")
+    # `optionShape` too: a radio group's shape is stated once and read from
+    # both the option branch and the group-of-options branch, so lifting only
+    # the caller would leave the one shape this file most needs undefined.
+    context.eval(_lift(source, "optionShape"))
     context.eval(_lift(source, "answerShapeOf"))
     return context
 
@@ -836,6 +843,11 @@ def test_the_browser_normalises_every_editor_into_one_shape_word(
     expected_shape = {"kind": expected}
     if expected == "multi":
         expected_shape["count"] = 2
+    # An option question states its count too: one answer, whatever the size of
+    # the group it is chosen from. Saying it is what keeps a five-button radio
+    # group from being read as five answers.
+    if expected == "option":
+        expected_shape["count"] = 1
     assert shape == expected_shape
     # Whatever the browser reports, the protocol must accept it.
     assert (
@@ -953,3 +965,91 @@ def test_prose_on_a_single_value_question_is_refused(monkeypatch) -> None:
     assert response.status == "ambiguous"
     assert response.answer is None
     assert ECHOED_CONTRACT not in response.model_dump_json()
+
+
+#: The live question: one radio group, five choices, one answer.
+QUADRANT_POINT = (
+    "<math><mrow><mo>(</mo><mn>3</mn><mo>,</mo><mo>-</mo><mn>4</mn><mo>)</mo>"
+    "</mrow></math>"
+)
+QUADRANT_CHOICES = [
+    "Quadrant I",
+    "Quadrant II",
+    "Quadrant III",
+    "Quadrant IV",
+    "The point is on an axis",
+]
+
+
+def test_a_choice_question_crosses_as_one_answer_and_its_alternatives(
+    monkeypatch,
+) -> None:
+    """The live defect, end to end.
+
+    A five-button radio group was crossing as `answer_parts: 5`, and a model
+    was asked for five separate values to a question with one. What crosses now
+    is one answer and the words the page printed beside each button.
+    """
+    loopback = answering(monkeypatch)
+
+    response = handle(
+        request(
+            mathml=[QUADRANT_POINT],
+            instruction="In which quadrant does the point lie?",
+            shape="option",
+            choices=QUADRANT_CHOICES,
+        )
+    )
+
+    problem = loopback.problems[0]
+    assert problem["answer_parts"] == 1
+    assert problem["answer_choices"] == QUADRANT_CHOICES
+    # Still a question and nothing about a page: no control, no field, no group.
+    assert set(problem) == {
+        "instruction",
+        "expressions",
+        "answer_parts",
+        "answer_choices",
+    }
+    assert response.status == "ready"
+    assert response.answer.display_text == "Quadrant IV"
+    assert response.answer.parts == []
+
+
+def test_the_family_engages_no_model_at_all(monkeypatch) -> None:
+    """Two comparisons against zero. There is nothing here to reason about."""
+    loopback = answering(monkeypatch)
+
+    response = handle(
+        request(
+            mathml=[QUADRANT_POINT],
+            instruction="In which quadrant does the point lie?",
+            shape="option",
+            choices=QUADRANT_CHOICES,
+        )
+    )
+
+    assert loopback.prompts == []
+    assert response.certainty.answered_by == "exact"
+    assert response.certainty.router == "solved"
+    assert response.certainty.model is None
+    assert response.certainty.method == "exact quadrant classification"
+
+
+def test_the_answer_is_one_of_the_pages_own_choices(monkeypatch) -> None:
+    answering(monkeypatch)
+
+    response = handle(
+        request(
+            mathml=[
+                "<math><mrow><mo>(</mo><mn>0</mn><mo>,</mo><mn>5</mn><mo>)</mo>"
+                "</mrow></math>"
+            ],
+            instruction="In which quadrant does the point lie?",
+            shape="option",
+            choices=QUADRANT_CHOICES,
+        )
+    )
+
+    assert response.answer.display_text == "The point is on an axis"
+    assert response.answer.display_text in QUADRANT_CHOICES

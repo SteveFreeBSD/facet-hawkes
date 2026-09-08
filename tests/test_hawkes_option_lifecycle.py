@@ -68,6 +68,10 @@ def option_page():
             type: "radio",
           });
           if (number === 2) radio.attributes["aria-controls"] = "txt1_num";
+          // What the page prints beside each button. These are the answer
+          // contract for a choice question: the answer is one of them, and it
+          // is matched by these exact words.
+          radio.attributes["aria-label"] = `Quadrant ${"I".repeat(number)}`;
           return radio;
         });
 
@@ -115,7 +119,39 @@ def test_new_radio_group_is_found_even_when_navigation_kept_button_focus(option_
         "ready": True,
         "code": "option-answer",
         "fieldId": "answer_opt",
+        # One radio group, one answer, and the alternatives it is chosen from.
+        "choices": ["Quadrant I", "Quadrant II", "Quadrant III"],
     }
+
+
+def test_the_published_choices_are_the_words_the_page_prints(option_page):
+    """A choice answer is selected by matching these, so they are the contract.
+
+    Read through the ordinary accessible-name chain rather than through
+    anything Hawkes-specific: the page is free to mark its radios up
+    differently on the next question, and a reader that knew one layout would
+    return nothing on the others.
+    """
+    assert inspect(option_page)["choices"] == [
+        "Quadrant I",
+        "Quadrant II",
+        "Quadrant III",
+    ]
+
+
+def test_a_group_that_cannot_be_read_whole_offers_no_contract(option_page):
+    """Four choices reported for a page showing five is worse than none: a
+    solver would answer with one of the four."""
+    option_page.eval('delete radios[1].attributes["aria-label"];')
+
+    assert inspect(option_page)["choices"] == []
+
+
+def test_two_choices_reading_the_same_offer_no_contract(option_page):
+    """Two choices reading the same way: "the one that says X" names both."""
+    option_page.eval('radios[2].attributes["aria-label"] = "Quadrant I";')
+
+    assert inspect(option_page)["choices"] == []
 
 
 def test_selected_one_solution_hands_off_to_its_controlled_textbox(option_page):

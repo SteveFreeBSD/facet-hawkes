@@ -36,6 +36,11 @@ var ethnosHawkes = (function () {
   // Kept in step with `common/config.js` by the build's shared-constant check;
   // this file is injected as a classic script and imports nothing.
   const MAX_ANSWER_PARTS = 5;
+  // One published choice, bounded. Longer than an answer because a choice is
+  // written as a sentence on some questions -- "The point is on an axis" --
+  // and it is read and matched, never typed.
+  const MAX_CHOICE_LENGTH = 120;
+  const MAX_CHOICES = 12;
   const ANSWER_PATTERN = /^[0-9A-Za-z+\-*/^().,√π ]+$/;
 
   const FIELD_SELECTOR = [
@@ -288,6 +293,67 @@ var ethnosHawkes = (function () {
     return controlled.length === 1 ? controlled[0] : null;
   }
 
+  /**
+   * What each option in the group says, in the page's own words.
+   *
+   * These are the answer contract for a choice question. The answer to one is
+   * not a value anybody computes a written form for -- it is one of these
+   * strings, and the control is selected by matching it, so a solver that
+   * returns its own wording for the right idea has answered nothing.
+   *
+   * The accessible name, by the ordinary chain and nothing Hawkes-specific:
+   * an explicit `aria-label`, then whatever `aria-labelledby` points at, then
+   * the `<label for>` that owns it, then a label wrapped around it, then the
+   * control's own value. Generic on purpose -- the page is free to mark its
+   * radios up differently on the next question, and a reader that knew one
+   * layout would silently return nothing on the others.
+   *
+   * All or none. A group where any option cannot be read has no contract to
+   * offer: a partial list would let a solver be told about four choices when
+   * the page is showing five, and answer with one of the four.
+   */
+  function optionChoices() {
+    const named = (radio) => {
+      const attribute = String(radio.getAttribute("aria-label") ?? "").trim();
+      if (attribute) return attribute;
+      const owner = String(radio.getAttribute("aria-labelledby") ?? "")
+        .split(/\s+/)
+        .filter((id) => id.length > 0)
+        .map((id) => document.getElementById(id))
+        .filter(Boolean)
+        .map((node) => String(node.textContent ?? "").trim())
+        .filter((text) => text.length > 0)
+        .join(" ");
+      if (owner) return owner;
+      // `CSS.escape` is how an id becomes a selector safely, and a host
+      // without it must not silently disable the whole chain -- the wrapped
+      // label and the value below it are still readable.
+      const escape = globalThis.CSS?.escape;
+      const explicit = radio.id && escape
+        ? document.querySelector?.(`label[for="${escape(radio.id)}"]`)
+        : null;
+      const wrapped = radio.closest?.("label") ?? null;
+      const label = String((explicit ?? wrapped)?.textContent ?? "").trim();
+      if (label) return label;
+      return String(radio.value ?? "").trim();
+    };
+    const options = optionGroup();
+    if (options.length < 2 || options.length > MAX_CHOICES) return [];
+    const choices = options.map((radio) => {
+      try {
+        return named(radio).replace(/\s+/g, " ").slice(0, MAX_CHOICE_LENGTH);
+      } catch {
+        return "";
+      }
+    });
+    // Distinct as well as complete: two choices reading the same is a group
+    // this cannot describe, and "the one that says X" would name both.
+    return choices.every((text) => text.length > 0)
+      && new Set(choices).size === choices.length
+      ? choices
+      : [];
+  }
+
   /** One member of the page's single unambiguous Hawkes option group. */
   function focusedOption() {
     const options = optionGroup();
@@ -406,7 +472,14 @@ var ethnosHawkes = (function () {
     // worked out and shown; only the selecting stays the user's.
     const option = focusedOption();
     if (option) {
-      return { ready: true, code: "option-answer", fieldId: option.name || option.id || "" };
+      return {
+        ready: true,
+        code: "option-answer",
+        fieldId: option.name || option.id || "",
+        // The alternatives themselves, which are what an answer to this
+        // question has to be one of.
+        choices: optionChoices(),
+      };
     }
     const target = focusedAnswerField();
     if (!target) {

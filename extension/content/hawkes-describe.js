@@ -250,6 +250,38 @@
       };
     }
   }
+  // A radio group is one answer, however many buttons are in it.
+  //
+  // Live, on 2026-09-08: a question offering five choices published five
+  // option controls, this branch called them five answers, and the host asked
+  // Facet for five separate values to a question that has one. A model duly
+  // produced five, none of them placeable -- the same question failed this way
+  // eleven times in an hour. The count of an option group is the number of
+  // things to choose *between*, and a choice is one answer by construction.
+  //
+  // Decided on what the controls are, not on how many there are, so it holds
+  // for a two-option "Real Number / Not a Real Number" question and for a
+  // ten-option one alike. A group mixing options with typeable boxes is left
+  // to the branch below: that is a question with an option *and* a field, and
+  // guessing which of them is the answer is not this probe's to do.
+  if (usable.length >= 2 && usable.every((editor) => editor.kind === "option")) {
+    return {
+      ok: true,
+      code: "described-option-group",
+      kind: "option",
+      // Named as the group, from the controls' own names, so a reader can see
+      // which group was described. The choices a person actually reads are
+      // published in the DOM and are collected there, by `inspectField`.
+      name: String(usable[0].name ?? ""),
+      enabled: true,
+      text: "",
+      allowedCharacters: "",
+      maxLength: null,
+      templates: { fraction: false, radical: false, exponent: false },
+      options: usable.length,
+      collection: { ...collection, branch: "option-group" },
+    };
+  }
   if (usable.length >= 2 && usable.length <= MAX_ANSWER_PARTS) {
     return described.every(Boolean)
       ? {
