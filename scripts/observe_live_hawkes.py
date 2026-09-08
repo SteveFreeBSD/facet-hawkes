@@ -862,12 +862,29 @@ def ollama_state(needed: bool) -> dict:
     return state
 
 
+def facet_transport() -> dict:
+    """How this machine would actually reach Facet, asked of the code itself.
+
+    Not read off the environment here. `FACET_SSH_TARGET` used to be reported
+    as "the target" whether or not SSH was the transport, and for a while it
+    named this very machine -- an observation that agreed with the documentation
+    and with nothing else. The client decides; this asks it.
+    """
+    try:
+        sys.path.insert(0, str(PROJECT_ROOT / "src"))
+        from ethnos.facet_client import transport_report  # noqa: PLC0415
+
+        return transport_report()
+    except Exception as error:  # noqa: BLE001 - a status line, not a solve
+        return {"transport": f"unreadable: {type(error).__name__}: {error}"}
+
+
 def facet_summary(runs: list[dict], extension_store: dict) -> dict:
     """Route, backend, model and device, from the runs and the last observed."""
     routed = [run for run in runs if run.get("runtime") and run["runtime"].get("model")]
     return {
         "record": "facet",
-        "target": os.environ.get("FACET_SSH_TARGET", "steve@192.168.0.247"),
+        **facet_transport(),
         "runs_that_reached_a_runtime": len(routed),
         "observed": [
             {
@@ -1358,7 +1375,11 @@ def _record_lines(name: str, record: dict) -> list[str]:
             return ["no host process running (it exits between solves; this is normal)"]
         return [f"pid {p['pid']}  {p['command'][:80]}" for p in processes]
     if name == "facet":
-        lines = [f"target {record.get('target')}"]
+        lines = [
+            f"transport {record.get('transport')}"
+            f"  -> {record.get('target')}"
+            f"  {' '.join(record.get('command') or [])}"
+        ]
         for seen in record.get("observed", []):
             lines.append(_compact(seen))
         if not record.get("observed"):

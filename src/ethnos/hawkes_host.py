@@ -1118,6 +1118,38 @@ def _shaped(solution) -> AnswerPayload | None:
     )
 
 
+def _health(request_id: str) -> SolveResponse:
+    """Answer `health`, and say which transport a solve would actually use.
+
+    A health check that only says "ready" cannot distinguish a companion that
+    would run Facet here from one that would reach for a machine across the
+    room, and for a while the documentation and the code disagreed about which.
+    Naming the transport costs one stdlib import -- no model, no Facet process
+    -- and is the fastest honest answer to "where would this solve run?".
+
+    A transport that cannot be resolved is a refusal rather than a "ready" with
+    a caveat: a solve would fail on it, so health should not read as green.
+    """
+    try:
+        from .facet_client import transport_report  # noqa: PLC0415
+
+        transport = transport_report()
+    # The import is inside the guard on purpose: an unrecognised transport is
+    # refused where the client is loaded, and `health` is answered before the
+    # try/except that protects a solve. A misconfiguration must be a refusal
+    # this host reports, not one that takes the host down with it.
+    except Exception as error:  # noqa: BLE001 - health must always answer
+        return error_response(
+            request_id,
+            f"Facet transport misconfigured: {type(error).__name__}: {error}",
+        )
+    return SolveResponse(
+        request_id=request_id,
+        status="ok",
+        message=f"ethnos ready; facet transport {transport['transport']}",
+    )
+
+
 def handle(raw: dict, report=None) -> SolveResponse:
     """Validate one message and route it to its operation."""
     try:
@@ -1128,9 +1160,7 @@ def handle(raw: dict, report=None) -> SolveResponse:
         )
 
     if request.operation == "health":
-        return SolveResponse(
-            request_id=request.request_id, status="ok", message="ethnos ready"
-        )
+        return _health(request.request_id)
     if request.origin != "https://learn.hawkeslearning.com":
         return error_response(
             request.request_id, "The requesting origin is not allowed."

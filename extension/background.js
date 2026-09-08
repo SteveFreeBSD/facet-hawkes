@@ -2254,6 +2254,7 @@ const REFUSAL_REASONS = Object.freeze([
   ["facet-did-not-answer", /^Facet did not answer/i],
   ["facet-answer-unusable", /^Facet returned no usable answer/i],
   ["no-mathematics-on-the-page", /^Facet needs mathematics read from the page/i],
+  ["facet-transport-misconfigured", /^Facet transport misconfigured/i],
   ["no-final-answer", /^Ethnos produced no final answer/i],
   ["table-question-refused", /^Table question refused/i],
   ["regression-refused", /^Regression refused/i],
