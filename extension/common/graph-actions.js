@@ -27,6 +27,34 @@ export function graphOperation(offered = null) {
     const roots = [...document.querySelectorAll('#QGraph[role="application"]')];
     if (roots.length !== 1 || roots[0].getBoundingClientRect().width <= 0) return refuse("graph-missing");
     const root = roots[0];
+    // Read before any gate. A refusal that stops at the renderer knows nothing
+    // about the family it refused, and "unsupported" then names no gap anybody
+    // could close -- which is exactly what the first live plotting question
+    // reported. All of this is read-only, and none of it is the student's work.
+    try {
+      const seenModels = Object.values(window.quant_wp_UI?.controlsCollection ?? {});
+      const seenObjects = seenModels[0]?.isGraph === true
+        ? Object.values(seenModels[0].allGraphObjects())
+        : [];
+      note({
+        models: seenModels.length,
+        isGraph: seenModels[0]?.isGraph === true,
+        objects: seenObjects.length,
+        // The page's own name for what it is drawing, which is the one fact
+        // that says which graph question this is.
+        titles: seenObjects
+          .map((one) => String(one?.title ?? "").slice(0, 32)).slice(0, 8),
+        children: seenObjects
+          .map((one) => (Array.isArray(one?.children) ? one.children.length : -1))
+          .slice(0, 8),
+        plotted: seenObjects.map((one) =>
+          (Array.isArray(one?.children)
+            ? one.children.filter((child) => child?.plotted === true).length
+            : -1)).slice(0, 8),
+        enabled: seenModels[0]?.getEnableState?.() === true,
+      });
+    } catch { /* a model that will not be read is its own answer */ }
+
     const plotRect = root.querySelector("svg defs clipPath rect");
     const renderedCurve = root.querySelector("svg g.parabola > path");
     note({
@@ -44,19 +72,9 @@ export function graphOperation(offered = null) {
     const plotHeight = Number(plotRect.getAttribute("height"));
     if (!(plotWidth > 0 && plotHeight > 0)) return refuse("graph-renderer-unsupported");
     const models = Object.values(window.quant_wp_UI?.controlsCollection ?? {});
-    note({ models: models.length, isGraph: models[0]?.isGraph === true });
     if (models.length !== 1 || models[0].isGraph !== true) return refuse("graph-model-missing");
     const model = models[0];
     const objects = Object.values(model.allGraphObjects());
-    note({
-      objects: objects.length,
-      // The page's own name for what it is drawing. This is the one fact that
-      // says which graph question this is.
-      titles: objects.map((one) => String(one?.title ?? "").slice(0, 32)).slice(0, 8),
-      children: objects.map((one) =>
-        Array.isArray(one?.children) ? one.children.length : -1).slice(0, 8),
-      enabled: model.getEnableState() === true,
-    });
     if (objects.length !== 1 || objects[0].title !== "Parabola") return refuse("graph-family-unsupported");
     const curve = objects[0];
     const points = curve.children;
