@@ -879,13 +879,10 @@ def answer_payload(
     implicit multiplication are facts about the Hawkes editor, not about the
     mathematics, so Facet is never told about any of it.
     """
-    from facet_runtime.exact import entry_text
-
-    from .answer_image import keyboard_entry_for_math
+    from .answer_image import entry_for
 
     def render(value: str) -> str:
-        literal = entry_text(value, entry_mode)
-        return literal if literal is not None else keyboard_entry_for_math(value)
+        return entry_for(value, entry_mode)
 
     return AnswerPayload(
         display_text=display,

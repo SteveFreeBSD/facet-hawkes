@@ -17,7 +17,7 @@ locally, external publication actions not yet authorized.**
 |---|---|
 | Product name | Facet Hawkes Assistant |
 | Packaged-source baseline | recorded as `fc3f5e4a…`, which resolves to no object in this repository. Treat the audit as anchored to its date, not to that name |
-| Required Facet runtime | `6a337c40eb0b1a17dffac37f443d846089611689` |
+| Required Facet runtime | `defbc0756b52575d24d5e92ab20c350b37ac1cc2` |
 | Candidate artifact | `dist/facet-hawkes-0.46.0-unsigned.xpi` |
 | Candidate SHA-256 | `6bf24fb9744da4b375171530cee9d0c2069a0e7c4be3536161ad6bd983215d64`, as audited on 6 September. The source line has advanced since; rebuild to get today's |
 | Packaged members | 33, as audited. A current build packages more |
@@ -31,8 +31,8 @@ locally, external publication actions not yet authorized.**
 | Archive | integrity passed; exact packaged archive linted |
 | Browser gate | unsigned XPI installed active in a clean throwaway Firefox 155.0.1 profile; Settings and popup loaded without fatal error |
 | Canonical public repository | `https://github.com/SteveFreeBSD/facet-hawkes` — to be created after explicit approval |
-| Companion topology | sibling `facet-hawkes` + `facet-runtime`; CI pins runtime `6a337c4` |
-| Remaining prerequisites | all three publication prerequisites met 2026-09-08: runtime `6a337c4` published, canonical Hawkes repository populated, fresh public sibling clone passed. What remains is external and is not a repository state: Mozilla signing, then signed-artifact physical acceptance |
+| Companion topology | sibling `facet-hawkes` + `facet-runtime`; CI pins runtime `defbc07` |
+| Remaining prerequisites | all three publication prerequisites met 2026-09-08: runtime `defbc07` published, canonical Hawkes repository populated, fresh public sibling clone passed. What remains is external and is not a repository state: Mozilla signing, then signed-artifact physical acceptance |
 
 > **Read this section as a dated audit, not as today's build.** Every number in
 > it belongs to 6 September 2026. Work has landed since — drawn-box fractions,
@@ -76,7 +76,7 @@ only mode A can support.
 The selected strategy retains the existing sibling path dependency. The public
 README, migration checklist, manifest homepage, CI badge, and CI checkout now
 consistently name `SteveFreeBSD/facet-hawkes`; CI fixes the sibling runtime at
-`6a337c40eb0b1a17dffac37f443d846089611689`. The old Ethnos repository is not a
+`defbc0756b52575d24d5e92ab20c350b37ac1cc2`. The old Ethnos repository is not a
 Facet Hawkes publication target. The private `ethnos-caspian` remote remains
 useful as legacy history and need not be removed.
 

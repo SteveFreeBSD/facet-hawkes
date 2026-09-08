@@ -19,74 +19,106 @@ that it cannot be.
 
 ## The wire
 
-Every exact answer now carries `answer.form` -- one of `scalar`,
-`ordered-pair`, `parts`, `choice` -- beside `entry_mode`. It is deliberately the
-*family* and not a description of the value: what notation a value is written in
-stays readable from the value, and what a consumer cannot cheaply recover is
-which of these it is holding. Plans are not values and keep their own `kind`
+Every exact answer carries `answer.form` -- one of `scalar`, `ordered-pair`,
+`parts`, `choice` -- beside `entry_mode`. It is deliberately the *family* and
+not a description of the value: what notation a value is written in stays
+readable from the value, and what a consumer cannot cheaply recover is which of
+these it is holding. Plans are not values and keep their own `kind`
 (`parabola_plan`, `point_plot_plan`, `quadratic_regression`).
 
-`ANSWER_FORMS` in `facet_runtime.exact.router` is the closed set. Growing it is a
-protocol change, and `tests/test_answer_capabilities.py` here fails until this
-table has a row for the new member.
+`ANSWER_FORMS` in `facet_runtime.exact.router` is the closed set, and growing it
+is a protocol change.
+
+## The authority
+
+**`docs/answer-capabilities.json` is the authority, and this page is rendered
+from it.** Four `form` values were never fine-grained enough to be a gate: a new
+solver rarely adds a form, it adds a *notation* under one that already has a
+row, and `ordered-pair` having a row said nothing about whether an
+`ordered-pair` of rationals could be typed.
+
+So the unit is the **composition** -- the form, plus the structural features of
+the value that decide which planning route it takes. `planEntry` branches on
+exactly those: a bracketed pair, then a top-level fraction, then a run of
+templates for exponents, radicals, groups and absolute values.
+
+`tests/test_answer_compatibility.py` runs the authority rather than reading it.
+Every declared composition is produced by a real solver, rendered by the host's
+own entry rule, and handed to the shipped planner under QuickJS against the page
+topology its row names. Every *unsupported* row is driven the same way and has
+to be refused by the code it declares. And thirty-seven real lesson questions
+are swept for a composition nothing has declared, which is the check a new
+solver trips.
+
+Edit the JSON, then:
+
+```console
+$ python3 scripts/render_answer_capabilities.py --write
+```
 
 ## The map
 
 Physical topology is what the page publishes; the insertion mechanism is the
 function that does the typing.
 
-| Semantic answer | Canonical form | `form` | Hawkes logical shape | Physical topology | Insertion mechanism | Unit-tested | Harness | Live-proven |
-|---|---|---|---|---|---|---|---|---|
-| scalar integer | `42` | `scalar` | field | one dynamic or plain box | `planEntry` → `enterPlan` | yes | yes | yes |
-| scalar rational | `17/2` | `scalar` | field | one box, Fraction template | `planEntry` → Fraction template | yes | no | yes |
-| scalar rational, no template | `17/2` | `scalar` | field | one drawn box, `pairedControl` | `planFractionBySlash` → `slash` step | yes | no | yes |
-| radical | `sqrt(101)`, `10*sqrt(2)` | `scalar` | field | one box, Radical template | `planRun` → `Radical` / `IndexedRadical` | yes | no | yes |
-| symbolic / exponent | `y^(23/20)` | `scalar` | field | one box, Exponent template | `planRun` → `Exponent` | yes | no | yes |
-| named phrase | `Not a Real Number` | `choice` | option | radio group | **not typed** — the reader selects | yes | no | yes |
-| ordered pair, integer components | `(1,-4)` | `ordered-pair` | field | page draws `( [box] )`, no PBrace | `pageBracketedPair` → `planAnswerParts` | yes | no | yes |
-| ordered pair, integer components | `(2,3)` | `ordered-pair` | field | one box, PBrace template | `planRun` → `PBrace` group | yes | no | yes |
-| **ordered pair, rational components** | `(17/2,-1/2)` | `ordered-pair` | field | one box, PBrace **and** Fraction | `planCommaList` → `PBrace` + `Fraction` per component | yes | no | yes |
-| multipart scalars | `-3`, `3` | `parts` | multi | several drawn boxes | `planAnswerParts` → `enterPlainAnswerParts` | yes | yes | yes |
-| multipart, one box, comma | `-3, 3` | `parts` | field | one box accepting `,` | `commaAnswerPlan` → `enterPlan` | yes | no | yes |
-| table integer | `0`, `64` | `parts` | multi (table) | one control per blank cell | `enterTableCells` | yes | yes | yes |
-| table rational / fraction | `2\sqrt{2}`, `-3/2` | `parts` | multi (table) | cell expands to numerator + denominator | `enterTableCells` → native `/` expansion | yes | yes | yes |
-| choice / radio | `Quadrant IV` | `choice` | option | one radio group, N buttons | **not typed** — matched to a published label, the reader clicks | yes | no | yes |
-| graph parabola | plan, no value | *plan* | graph | vertex + two symmetric controls | `graphOperation` | yes | no | yes |
-| graph literal points | plan, no value | *plan* | graph | one draggable control per point | `graphOperation` (space plots) | yes | no | yes |
+<!-- generated:supported -->
+| Semantic answer | `form` | Notation | Example | Physical topology | Insertion mechanism | Unit | Harness | Live | Entry id |
+|---|---|---|---|---|---|---|---|---|---|
+| scalar integer | `scalar` | plain | `42` | one dynamic or plain box | `planEntry` → `enterPlan` | yes | yes | yes | `scalar-plain` |
+| scalar rational | `scalar` | fraction | `1/2` | one box, Fraction template | `planEntry` → `planFractionTemplate` | yes | no | yes | `scalar-fraction` |
+| scalar rational, no template | `scalar` | fraction | `1/2` | one drawn box whose character set holds the slash | `planFractionBySlash` | yes | no | yes | `scalar-fraction-slash` |
+| radical | `scalar` | radical | `sqrt(101)` | one box, Radical template | `planRun` | yes | no | yes | `scalar-radical` |
+| symbolic with an exponent | `scalar` | exponent | `-x^13+2*x^12-3*x^11+5` | one box, Exponent template | `planRun` | yes | no | yes | `scalar-exponent` |
+| factored product | `scalar` | group | `(x+3)*(x+4)` | one box, parentheses template | `planRun` | yes | no | yes | `scalar-group` |
+| rational exponent | `scalar` | fraction+exponent+group | `y^(23/20)` | one box, Exponent over a bracketed rational | `planRun` | yes | no | yes | `scalar-fraction-exponent-group` |
+| rationalized radical | `scalar` | fraction+radical | `sqrt(5)/5` | one box, Fraction over a Radical | `planEntry` → `planFractionTemplate` → `planRun` | yes | no | yes | `scalar-fraction-radical` |
+| radical with an exponent | `scalar` | radical+exponent | `2*i*x^4*sqrt(2*x)` | one box, Radical inside a run of templates | `planRun` | yes | no | yes | `scalar-radical-exponent` |
+| named phrase, typed | `scalar` | phrase | `trinomial` | one box accepting letters | `planEntry` → `enterPlan` | yes | no | no | `scalar-phrase` |
+| ordered pair, integer components | `ordered-pair` | group+comma | `(3,-1)` | page draws ( [box] ), no parentheses template | `pageBracketedPair` → `planAnswerParts` | yes | no | yes | `ordered-pair-group-comma` |
+| ordered pair, rational components | `ordered-pair` | fraction+group+comma | `(17/2,-1/2)` | one box, PBrace and Fraction | `planCommaList` → `planFractionTemplate` | yes | no | yes | `ordered-pair-fraction-group-comma` |
+| multipart scalars | `parts` | plain | `-3` | several drawn boxes, one per value | `planAnswerParts` → `enterPlainAnswerParts` | yes | yes | yes | `parts-plain` |
+| multipart rationals over radicals | `parts` | fraction+radical+group | `(-3+sqrt(17))/2` | one control per value, each planned on its own | `planAnswerParts` → `planFractionTemplate` → `planRun` | yes | no | yes | `parts-fraction-radical-group` |
+| named alternative | `choice` | phrase | `Quadrant IV` | one radio group, N buttons | `answerFitsEditor` | yes | no | yes | `choice-phrase` |
+| parabola graph plan | `parabola_plan` | *plan* | `plan, no value` | vertex and two symmetric controls | `graphOperation` | yes | no | yes | `plan-parabola` |
+| literal points graph plan | `point_plot_plan` | *plan* | `plan, no value` | one draggable control per point | `graphOperation` | yes | no | yes | `plan-point-plot` |
+| quadratic regression plan | `quadratic_regression` | *plan* | `plan, no value` | coefficients checked, then read | `graphOperation` | yes | no | yes | `plan-quadratic-regression` |
+| factored form with an exponent | `scalar` | exponent+group | `-5*x*(2*y^2+3*y-5)` | one box, Exponent inside a parentheses template | `planRun` | yes | no | yes | `scalar-exponent-group` |
+| multipart complex rationals | `parts` | fraction+group | `(-4-6*i)/7` | one control per value, each a fraction over a bracketed sum | `planAnswerParts` → `planFractionTemplate` → `planRun` | yes | no | yes | `parts-fraction-group` |
+<!-- /generated:supported -->
 
-**Unit-tested** means a QuickJS or Python test drives the real module.
-**Harness** means `scripts/run_extension_harness.py` exercises it in a real
-Firefox — it has no native host, so it proves injection and reading, never a
-solve. **Live-proven** means it has been observed working in the owner's own
-session, through the retained ledger or the observatory.
+**Unit** means a QuickJS or Python test drives the real module. **Harness**
+means `scripts/run_extension_harness.py` exercises it in a real Firefox -- it
+has no native host, so it proves injection and reading, never a solve. **Live**
+means it has been observed working in the owner's own session, through the
+retained ledger or the observatory.
 
 ## Unsupported compositions
 
-Named rather than discovered. Each is refused cleanly today; none is silently
-mis-entered.
+Named rather than discovered. Each is refused cleanly today, by the code its row
+names; none is silently mis-entered.
 
-| Composition | Why | What happens now |
-|---|---|---|
-| `parts` of ordered pairs | Several coordinate pairs, one per box. `planAnswerParts` plans each part with `planEntry`, so each pair needs its own bracketing route; nothing has verified the pairing against a multi-control page. | Planned per part; unproven live. Treat as unsupported until observed. |
-| ordered pair with a radical component | `(sqrt(2),1)` needs Radical inside PBrace. `planRun` supports it structurally; no question has asked for it. | Plans; unproven. |
-| nested fraction | `(1/2)/3` | `splitFraction` refuses more than one top-level slash. |
-| decimal anything | `(8.5,-0.5)` | Refused: `.` is in no observed answer box's character set. This is the correct refusal — the exact form is the answer. |
-| choice answer typed into a field | — | `answerFitsEditor` returns `editor-option-answer`; selecting stays the reader's action, always. |
-| plan carrying a value | — | Refused at the protocol: a plan result carries only a plan. |
-| interval notation with ∞ / ∪ | `(-∞,-3)∪(3,∞)` | `validateAnswer` refuses the characters; publishable as a reading, not insertable. |
+<!-- generated:unsupported -->
+| Composition | Example | Why | What happens now | Entry id |
+|---|---|---|---|---|
+| decimal anything | `8.5` | The exact form is the answer. Rounding one to fit a box is how a wrong answer gets typed in confidently. | Refused as `answer-has-rejected-characters` | `scalar-decimal` |
+| interval notation | `(-∞,-3)∪(3,∞)` | Publishable as a reading, never insertable. | Refused as `answer-invalid` | `scalar-interval` |
+| a choice typed into a field | `Quadrant IV` | Selecting stays the reader's action, always. | Refused as `editor-option-answer` | `choice-typed` |
+<!-- /generated:unsupported -->
 
 ## Adding a family
 
 1. Emit the answer with the right `form`. Add a row to
    `facet-runtime/tests/test_answer_forms.py`.
-2. Add a row here: the canonical form, the topology, the mechanism.
-3. If there is no mechanism, add a row to *Unsupported compositions* instead and
-   say what happens when the answer arrives.
-4. `tests/test_answer_capabilities.py` reads this file and fails if a `form`
-   has no row in either table.
-
-The point of step 3 is that "unsupported" is a finished state. What is not a
-finished state is discovering it live.
+2. Add an entry to **`docs/answer-capabilities.json`**: the composition, the
+   page topology, the mechanism, and a `probe` -- a real question that makes the
+   solver emit it. Then
+   `python3 scripts/render_answer_capabilities.py --write`.
+3. If there is no mechanism, give the entry `"status": "unsupported"` and the
+   `refusal` code it is actually refused by. That is a finished state. What is
+   not a finished state is discovering it live.
+4. `tests/test_answer_compatibility.py` will run it: the probe against the real
+   solver, the example against the shipped planner, and the whole lesson corpus
+   against your new declaration.
 
 ## See also
 

@@ -158,6 +158,22 @@ def build_key_command_text(answer_text: str) -> str:
     return "\n".join(lines)
 
 
+def entry_for(value: str, entry_mode: str) -> str:
+    """What has to be typed to produce one value, given how literally to take it.
+
+    Facet reports the value and the mode; deciding what a Hawkes maths keyboard
+    needs in order to produce it is this side's business. Lifted out of
+    `hawkes_host` so there is exactly one definition of it: the compatibility
+    gate in `tests/test_answer_compatibility.py` plans against what the host
+    would really send, and a second copy of this rule would let the gate pass
+    while live entry failed.
+    """
+    from facet_runtime.exact import entry_text
+
+    literal = entry_text(value, entry_mode)
+    return literal if literal is not None else keyboard_entry_for_math(value)
+
+
 def keyboard_entry_for_math(math_text: str) -> str:
     """Convert common displayed math into explicit ASCII homework syntax."""
     # The display linearizer writes ``\frac{a+b}{c}`` as ``a+b/(c)`` for

@@ -11,7 +11,7 @@ in one page, with the names, the topology and the limits.
 | # | Question | Authority |
 |---|---|---|
 | 1 | What is the architecture, and where does everything run? | [The Ethnos-Facet boundary](FACET_BRIDGE.md) |
-| 2 | What can be answered, what can be entered, and what is proven live? | [Answer capabilities](ANSWER_CAPABILITIES.md) |
+| 2 | What can be answered, what can be entered, and what is proven live? | [Answer capabilities](ANSWER_CAPABILITIES.md), rendered from `answer-capabilities.json` |
 | 3 | Which model answers, on which device, and what do I reinstall? | [Runtime, models and deployment](RUNTIME_AND_DEPLOYMENT.md) |
 | 4 | How does Answer Cadence work? | [Answer Cadence](ANSWER_CADENCE.md) |
 | 5 | How do I look at a live failure without breaking anything? | [Hawkes development flow](HAWKES_DEVELOPMENT_FLOW.md) |

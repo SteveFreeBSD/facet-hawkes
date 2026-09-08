@@ -1,0 +1,836 @@
+{
+  "schema_version": "answer-capabilities-v2",
+  "note": "The authority. docs/ANSWER_CAPABILITIES.md is rendered from this file; edit here.",
+  "forms": [
+    "scalar",
+    "ordered-pair",
+    "parts",
+    "choice"
+  ],
+  "plan_kinds": [
+    "parabola_plan",
+    "point_plot_plan",
+    "quadratic_regression"
+  ],
+  "editors": {
+    "integer-box": {
+      "note": "A plain dynamic box for a signed integer. Lesson 1.3's degree and coefficient questions.",
+      "description": {
+        "kind": "dynamic",
+        "enabled": true,
+        "allowedCharacters": "0123456789-",
+        "maxLength": 32,
+        "templates": {
+          "fraction": false,
+          "radical": false,
+          "exponent": false,
+          "parentheses": false,
+          "absoluteValue": false
+        },
+        "slots": {
+          "base": "0123456789-",
+          "numerator": "0123456789-",
+          "denominator": "0123456789-",
+          "exponent": "0123456789-",
+          "exponentBase": "0123456789-",
+          "radicand": "0123456789-",
+          "index": "23456789"
+        }
+      }
+    },
+    "fraction-box": {
+      "note": "One box offering the Fraction template. The live midpoint control, ledger f1:808590338caf54c8.",
+      "description": {
+        "kind": "dynamic",
+        "enabled": true,
+        "allowedCharacters": "0123456789-,",
+        "maxLength": 16,
+        "templates": {
+          "fraction": true,
+          "radical": false,
+          "exponent": false,
+          "parentheses": true,
+          "absoluteValue": false
+        },
+        "slots": {
+          "base": "0123456789-,",
+          "numerator": "0123456789-",
+          "denominator": "0123456789",
+          "exponent": "0123456789",
+          "exponentBase": "0123456789xy",
+          "radicand": "0123456789",
+          "index": "23456789"
+        }
+      }
+    },
+    "slash-box": {
+      "note": "A drawn box with no Fraction template that publishes `pairedControl`: the slash is a gesture that splits the box in two, not a character it accepts.",
+      "description": {
+        "kind": "dynamic",
+        "enabled": true,
+        "allowedCharacters": "0123456789-/",
+        "maxLength": 32,
+        "templates": {
+          "fraction": false,
+          "radical": false,
+          "exponent": false,
+          "parentheses": false,
+          "absoluteValue": false
+        },
+        "slots": {
+          "base": "0123456789-/",
+          "numerator": "0123456789-/",
+          "denominator": "0123456789-/",
+          "exponent": "0123456789-/",
+          "exponentBase": "0123456789-/",
+          "radicand": "0123456789-/",
+          "index": "23456789"
+        },
+        "pairedControl": true
+      }
+    },
+    "maths-box": {
+      "note": "A box offering the whole keypad: fraction, radical, exponent, parentheses and absolute value. The general algebra control.",
+      "description": {
+        "kind": "dynamic",
+        "enabled": true,
+        "allowedCharacters": "0123456789abcxyzri-+/^\u221a()|,",
+        "maxLength": 32,
+        "templates": {
+          "fraction": true,
+          "radical": true,
+          "exponent": true,
+          "parentheses": true,
+          "absoluteValue": true
+        },
+        "slots": {
+          "base": "0123456789abcxyzri-+/^\u221a()|,",
+          "numerator": "0123456789abcxyzri-+/^\u221a()|,",
+          "denominator": "0123456789abcxyzri-+/^\u221a()|,",
+          "exponent": "0123456789abcxyzri-+/^\u221a()|,",
+          "exponentBase": "0123456789abcxyzri-+/^\u221a()|,",
+          "radicand": "0123456789abcxyzri-+/^\u221a()|,",
+          "index": "23456789"
+        }
+      }
+    },
+    "page-bracketed-pair": {
+      "note": "The page draws ( [box] ) itself and offers no parentheses template, so the box takes the interior. Lesson 3.3's vertex control.",
+      "description": {
+        "kind": "dynamic",
+        "enabled": true,
+        "allowedCharacters": "1234567890-+,",
+        "maxLength": 16,
+        "templates": {
+          "fraction": true,
+          "radical": false,
+          "exponent": false,
+          "parentheses": false,
+          "absoluteValue": false
+        },
+        "slots": {
+          "base": "1234567890-+,",
+          "numerator": "1234567890-+,",
+          "denominator": "1234567890-+,",
+          "exponent": "1234567890-+,",
+          "exponentBase": "1234567890-+,",
+          "radicand": "1234567890-+,",
+          "index": "23456789"
+        }
+      }
+    },
+    "comma-box": {
+      "note": "One box whose published character set contains a comma, for a question that says to separate multiple answers with one.",
+      "description": {
+        "kind": "dynamic",
+        "enabled": true,
+        "allowedCharacters": "0123456789-,/\u221a()",
+        "maxLength": 32,
+        "templates": {
+          "fraction": true,
+          "radical": true,
+          "exponent": false,
+          "parentheses": true,
+          "absoluteValue": false
+        },
+        "slots": {
+          "base": "0123456789-,/\u221a()",
+          "numerator": "0123456789-,/\u221a()",
+          "denominator": "0123456789-,/\u221a()",
+          "exponent": "0123456789-,/\u221a()",
+          "exponentBase": "0123456789-,/\u221a()",
+          "radicand": "0123456789-,/\u221a()",
+          "index": "23456789"
+        }
+      }
+    },
+    "phrase-box": {
+      "note": "A box that accepts letters, for an answer that is a named phrase rather than mathematics.",
+      "description": {
+        "kind": "dynamic",
+        "enabled": true,
+        "allowedCharacters": "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ ",
+        "maxLength": 32,
+        "templates": {
+          "fraction": false,
+          "radical": false,
+          "exponent": false,
+          "parentheses": false,
+          "absoluteValue": false
+        },
+        "slots": {
+          "base": "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ ",
+          "numerator": "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ ",
+          "denominator": "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ ",
+          "exponent": "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ ",
+          "exponentBase": "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ ",
+          "radicand": "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ ",
+          "index": "23456789"
+        }
+      }
+    },
+    "radio-group": {
+      "note": "A radio group. The add-on never clicks one: a choice is published and the reader selects it.",
+      "description": {
+        "kind": "option",
+        "enabled": true,
+        "allowedCharacters": "",
+        "templates": {}
+      }
+    },
+    "table-cells": {
+      "note": "One control per blank cell of a grid. Each cell is planned on its own, against its own published rules.",
+      "description": {
+        "kind": "dynamic",
+        "enabled": true,
+        "allowedCharacters": "0123456789-/",
+        "maxLength": 32,
+        "templates": {
+          "fraction": true,
+          "radical": false,
+          "exponent": false,
+          "parentheses": false,
+          "absoluteValue": false
+        },
+        "slots": {
+          "base": "0123456789-/",
+          "numerator": "0123456789-/",
+          "denominator": "0123456789-/",
+          "exponent": "0123456789-/",
+          "exponentBase": "0123456789-/",
+          "radicand": "0123456789-/",
+          "index": "23456789"
+        }
+      }
+    },
+    "graph-surface": {
+      "note": "A QGraphEngine Cartesian SVG. Nothing is typed; controls are dragged to stated coordinates.",
+      "description": {
+        "kind": "graph",
+        "enabled": true,
+        "allowedCharacters": "",
+        "templates": {}
+      }
+    }
+  },
+  "entries": [
+    {
+      "id": "scalar-plain",
+      "semantic": "scalar integer",
+      "form": "scalar",
+      "notation": [
+        "plain"
+      ],
+      "example": "42",
+      "editor": "integer-box",
+      "topology": "one dynamic or plain box",
+      "mechanism": [
+        "planEntry",
+        "enterPlan"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "yes",
+        "live": "yes"
+      },
+      "probe": {
+        "instruction": "Determine the degree of the polynomial.",
+        "expressions": [
+          "-3x^11 - x^13 + 5 + 2x^12"
+        ]
+      }
+    },
+    {
+      "id": "scalar-fraction",
+      "semantic": "scalar rational",
+      "form": "scalar",
+      "notation": [
+        "fraction"
+      ],
+      "example": "1/2",
+      "editor": "fraction-box",
+      "topology": "one box, Fraction template",
+      "mechanism": [
+        "planEntry",
+        "planFractionTemplate"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "yes"
+      },
+      "probe": {
+        "instruction": "Solve the equation.",
+        "expressions": [
+          "2x-1=0"
+        ]
+      }
+    },
+    {
+      "id": "scalar-fraction-slash",
+      "semantic": "scalar rational, no template",
+      "form": "scalar",
+      "notation": [
+        "fraction"
+      ],
+      "example": "1/2",
+      "editor": "slash-box",
+      "topology": "one drawn box whose character set holds the slash",
+      "mechanism": [
+        "planFractionBySlash"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "yes"
+      },
+      "probe": {
+        "instruction": "Solve the equation.",
+        "expressions": [
+          "2x-1=0"
+        ]
+      }
+    },
+    {
+      "id": "scalar-radical",
+      "semantic": "radical",
+      "form": "scalar",
+      "notation": [
+        "radical"
+      ],
+      "example": "sqrt(101)",
+      "editor": "maths-box",
+      "topology": "one box, Radical template",
+      "mechanism": [
+        "planRun"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "yes"
+      },
+      "probe": {
+        "instruction": "Find the distance between the following pair of points.",
+        "expressions": [
+          "(7,0)",
+          "(-3,-1)"
+        ]
+      }
+    },
+    {
+      "id": "scalar-exponent",
+      "semantic": "symbolic with an exponent",
+      "form": "scalar",
+      "notation": [
+        "exponent"
+      ],
+      "example": "-x^13+2*x^12-3*x^11+5",
+      "editor": "maths-box",
+      "topology": "one box, Exponent template",
+      "mechanism": [
+        "planRun"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "yes"
+      },
+      "probe": {
+        "instruction": "Express the polynomial in descending order.",
+        "expressions": [
+          "-3x^11 - x^13 + 5 + 2x^12"
+        ]
+      }
+    },
+    {
+      "id": "scalar-group",
+      "semantic": "factored product",
+      "form": "scalar",
+      "notation": [
+        "group"
+      ],
+      "example": "(x+3)*(x+4)",
+      "editor": "maths-box",
+      "topology": "one box, parentheses template",
+      "mechanism": [
+        "planRun"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "yes"
+      },
+      "probe": {
+        "instruction": "Factor the following trinomial completely.",
+        "expressions": [
+          "x^2 + 7x + 12"
+        ]
+      }
+    },
+    {
+      "id": "scalar-fraction-exponent-group",
+      "semantic": "rational exponent",
+      "form": "scalar",
+      "notation": [
+        "fraction",
+        "exponent",
+        "group"
+      ],
+      "example": "y^(23/20)",
+      "editor": "maths-box",
+      "topology": "one box, Exponent over a bracketed rational",
+      "mechanism": [
+        "planRun"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "yes"
+      },
+      "probe": {
+        "instruction": "Simplify. Express your answer using rational exponents.",
+        "expressions": [
+          "y^{3/4} \\cdot y^{2/5}"
+        ]
+      }
+    },
+    {
+      "id": "scalar-fraction-radical",
+      "semantic": "rationalized radical",
+      "form": "scalar",
+      "notation": [
+        "fraction",
+        "radical"
+      ],
+      "example": "sqrt(5)/5",
+      "editor": "maths-box",
+      "topology": "one box, Fraction over a Radical",
+      "mechanism": [
+        "planEntry",
+        "planFractionTemplate",
+        "planRun"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "yes"
+      },
+      "probe": {
+        "instruction": "Simplify by rationalizing the denominator.",
+        "expressions": [
+          "1/\\sqrt{5}"
+        ]
+      }
+    },
+    {
+      "id": "scalar-radical-exponent",
+      "semantic": "radical with an exponent",
+      "form": "scalar",
+      "notation": [
+        "radical",
+        "exponent"
+      ],
+      "example": "2*i*x^4*sqrt(2*x)",
+      "editor": "maths-box",
+      "topology": "one box, Radical inside a run of templates",
+      "mechanism": [
+        "planRun"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "yes"
+      },
+      "probe": {
+        "instruction": "Evaluate the following square root expression. Assume x > 0.",
+        "expressions": [
+          "\\sqrt{-8x^{9}}"
+        ]
+      }
+    },
+    {
+      "id": "scalar-phrase",
+      "semantic": "named phrase, typed",
+      "form": "scalar",
+      "notation": [
+        "phrase"
+      ],
+      "example": "trinomial",
+      "editor": "phrase-box",
+      "topology": "one box accepting letters",
+      "mechanism": [
+        "planEntry",
+        "enterPlan"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "no"
+      },
+      "probe": {
+        "instruction": "Classify the polynomial as a monomial, binomial, or trinomial.",
+        "expressions": [
+          "x^2 + 3x + 2"
+        ]
+      }
+    },
+    {
+      "id": "ordered-pair-group-comma",
+      "semantic": "ordered pair, integer components",
+      "form": "ordered-pair",
+      "notation": [
+        "group",
+        "comma"
+      ],
+      "example": "(3,-1)",
+      "editor": "page-bracketed-pair",
+      "topology": "page draws ( [box] ), no parentheses template",
+      "mechanism": [
+        "pageBracketedPair",
+        "planAnswerParts"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "yes"
+      },
+      "probe": {
+        "instruction": "Find the vertex of the parabola.",
+        "expressions": [
+          "f(x)=(x-3)^2-1"
+        ]
+      }
+    },
+    {
+      "id": "ordered-pair-fraction-group-comma",
+      "semantic": "ordered pair, rational components",
+      "form": "ordered-pair",
+      "notation": [
+        "fraction",
+        "group",
+        "comma"
+      ],
+      "example": "(17/2,-1/2)",
+      "editor": "fraction-box",
+      "topology": "one box, PBrace and Fraction",
+      "mechanism": [
+        "planCommaList",
+        "planFractionTemplate"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "yes"
+      },
+      "probe": {
+        "instruction": "Find the midpoint between the following pair of points.",
+        "expressions": [
+          "(7,-4)",
+          "(10,3)"
+        ]
+      }
+    },
+    {
+      "id": "parts-plain",
+      "semantic": "multipart scalars",
+      "form": "parts",
+      "notation": [
+        "plain"
+      ],
+      "example": "-3",
+      "editor": "integer-box",
+      "topology": "several drawn boxes, one per value",
+      "mechanism": [
+        "planAnswerParts",
+        "enterPlainAnswerParts"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "yes",
+        "live": "yes"
+      },
+      "probe": {
+        "instruction": "Solve the equation.",
+        "expressions": [
+          "x^2-9=0"
+        ],
+        "answer_parts": 2
+      }
+    },
+    {
+      "id": "parts-fraction-radical-group",
+      "semantic": "multipart rationals over radicals",
+      "form": "parts",
+      "notation": [
+        "fraction",
+        "radical",
+        "group"
+      ],
+      "example": "(-3+sqrt(17))/2",
+      "editor": "maths-box",
+      "topology": "one control per value, each planned on its own",
+      "mechanism": [
+        "planAnswerParts",
+        "planFractionTemplate",
+        "planRun"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "yes"
+      },
+      "probe": {
+        "instruction": "Solve the following quadratic equation using the quadratic formula. Separate multiple answers with a comma if necessary.",
+        "expressions": [
+          "y^2 + 3y - 2 = 0"
+        ],
+        "answer_parts": 2
+      }
+    },
+    {
+      "id": "choice-phrase",
+      "semantic": "named alternative",
+      "form": "choice",
+      "notation": [
+        "phrase"
+      ],
+      "example": "Quadrant IV",
+      "editor": "radio-group",
+      "topology": "one radio group, N buttons",
+      "mechanism": [
+        "answerFitsEditor"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "yes"
+      },
+      "probe": {
+        "instruction": "In which quadrant does the point lie?",
+        "expressions": [
+          "(3,-4)"
+        ],
+        "choices": [
+          "Quadrant I",
+          "Quadrant II",
+          "Quadrant III",
+          "Quadrant IV"
+        ]
+      }
+    },
+    {
+      "id": "plan-parabola",
+      "semantic": "parabola graph plan",
+      "form": "parabola_plan",
+      "notation": [],
+      "example": "plan, no value",
+      "editor": "graph-surface",
+      "topology": "vertex and two symmetric controls",
+      "mechanism": [
+        "graphOperation"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "yes"
+      }
+    },
+    {
+      "id": "plan-point-plot",
+      "semantic": "literal points graph plan",
+      "form": "point_plot_plan",
+      "notation": [],
+      "example": "plan, no value",
+      "editor": "graph-surface",
+      "topology": "one draggable control per point",
+      "mechanism": [
+        "graphOperation"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "yes"
+      }
+    },
+    {
+      "id": "plan-quadratic-regression",
+      "semantic": "quadratic regression plan",
+      "form": "quadratic_regression",
+      "notation": [],
+      "example": "plan, no value",
+      "editor": "graph-surface",
+      "topology": "coefficients checked, then read",
+      "mechanism": [
+        "graphOperation"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "yes"
+      }
+    },
+    {
+      "id": "scalar-exponent-group",
+      "semantic": "factored form with an exponent",
+      "form": "scalar",
+      "notation": [
+        "exponent",
+        "group"
+      ],
+      "example": "-5*x*(2*y^2+3*y-5)",
+      "editor": "maths-box",
+      "topology": "one box, Exponent inside a parentheses template",
+      "mechanism": [
+        "planRun"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "yes"
+      },
+      "probe": {
+        "instruction": "Factor out the greatest common factor.",
+        "expressions": [
+          "-10x y^2 - 15x y + 25x"
+        ]
+      }
+    },
+    {
+      "id": "parts-fraction-group",
+      "semantic": "multipart complex rationals",
+      "form": "parts",
+      "notation": [
+        "fraction",
+        "group"
+      ],
+      "example": "(-4-6*i)/7",
+      "editor": "maths-box",
+      "topology": "one control per value, each a fraction over a bracketed sum",
+      "mechanism": [
+        "planAnswerParts",
+        "planFractionTemplate",
+        "planRun"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "yes"
+      },
+      "probe": {
+        "instruction": "Solve the following quadratic equation by the square root method. If needed, write your answer as a fraction reduced to lowest terms.",
+        "expressions": [
+          "(7z + 4)^2 + 36 = 0"
+        ],
+        "answer_parts": 2
+      }
+    },
+    {
+      "id": "scalar-decimal",
+      "semantic": "decimal anything",
+      "form": "scalar",
+      "notation": [
+        "decimal"
+      ],
+      "example": "8.5",
+      "editor": "maths-box",
+      "topology": "no observed answer box accepts a decimal point",
+      "mechanism": [
+        "planEntry"
+      ],
+      "status": "unsupported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "n/a"
+      },
+      "refusal": "answer-has-rejected-characters",
+      "why": "The exact form is the answer. Rounding one to fit a box is how a wrong answer gets typed in confidently."
+    },
+    {
+      "id": "scalar-interval",
+      "semantic": "interval notation",
+      "form": "scalar",
+      "notation": [
+        "group",
+        "comma"
+      ],
+      "example": "(-\u221e,-3)\u222a(3,\u221e)",
+      "editor": "maths-box",
+      "topology": "the characters are in no published set",
+      "mechanism": [
+        "validateAnswer"
+      ],
+      "status": "unsupported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "n/a"
+      },
+      "refusal": "answer-invalid",
+      "why": "Publishable as a reading, never insertable."
+    },
+    {
+      "id": "choice-typed",
+      "semantic": "a choice typed into a field",
+      "form": "choice",
+      "notation": [
+        "phrase"
+      ],
+      "example": "Quadrant IV",
+      "editor": "radio-group",
+      "topology": "a radio group, where the answer would have to be typed",
+      "mechanism": [
+        "answerFitsEditor",
+        "planEntry"
+      ],
+      "status": "unsupported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "n/a"
+      },
+      "refusal": "editor-option-answer",
+      "why": "Selecting stays the reader's action, always."
+    }
+  ]
+}
