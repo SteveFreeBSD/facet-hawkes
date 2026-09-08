@@ -30,6 +30,19 @@ class GraphPlan(BaseModel):
     points: list[GraphPoint] = Field(min_length=2, max_length=2)
 
 
+class PointPlotPlan(BaseModel):
+    """Where each stated point goes. No curve, and no coefficients to prove.
+
+    The question writes its own answer down, so this carries the points it
+    named and nothing derived: what proves it is the browser, against the live
+    graph's own bounds and snap, before a key is pressed.
+    """
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+    kind: Literal["points"]
+    points: list[GraphPoint] = Field(min_length=1, max_length=12)
+
+
 def _strict_json(text: str):
     def unique(pairs):
         result = {}

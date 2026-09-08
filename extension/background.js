@@ -2254,6 +2254,7 @@ const REFUSAL_REASONS = Object.freeze([
   ["table-question-refused", /^Table question refused/i],
   ["regression-refused", /^Regression refused/i],
   ["graph-plan-refused", /^Graph plan refused/i],
+  ["point-plot-refused", /^Point plot refused/i],
   ["invalid-request", /^Invalid request/i],
   ["malformed-message", /^Malformed message/i],
   ["not-an-object", /^Message was not an object/i],
@@ -2318,15 +2319,26 @@ async function acceptReply(reply) {
 
 
   if (reply.answer.graph_plan) {
-    if (state.editor?.kind !== "graph" || certainty.answered_by !== "facet" || !certainty.facet_invoked || !certainty.insertable
-      || reply.answer.graph_coefficients?.length !== 3) {
+    // Two graph plans, proved differently. A parabola is derived and carries
+    // the coefficients its geometry is checked against; a set of stated points
+    // is the question's own words and has nothing to derive, so what stands in
+    // for that proof is the live graph itself -- one control per stated point,
+    // every one landing on the grid, checked in the page before a key moves.
+    const plotting = reply.answer.graph_plan.kind === "points";
+    const wrong = plotting
+      ? state.editor?.context?.family !== "points"
+      : certainty.answered_by !== "facet"
+        || !certainty.facet_invoked
+        || reply.answer.graph_coefficients?.length !== 3;
+    if (state.editor?.kind !== "graph" || !certainty.insertable || wrong) {
       fail("errorAnswerInvalid");
       return;
     }
     update({ phase: "solved", stage: "done", solveRun: currentRun(),
       answer: reply.answer.display_text,
       displayText: reply.answer.display_text, entryText: "", answerParts: [],
-      graphPlan: reply.answer.graph_plan, graphCoefficients: reply.answer.graph_coefficients,
+      graphPlan: reply.answer.graph_plan,
+      graphCoefficients: reply.answer.graph_coefficients ?? [],
       problemText: reply.problem_text, source: [answeredByBadge(certainty), certainty.model, certainty.device].filter(Boolean).join(" · "), detail: notes.join("\n"), errorKey: "" });
     log.info("graph-plan-validated", { facetInvoked: true, facetModel: certainty.model, backend: certainty.actual_backend, device: certainty.device, elapsedMs: certainty.elapsed_ms });
     lastSolve = { run: currentRun(), certainty, answerLength: reply.answer.display_text.length };

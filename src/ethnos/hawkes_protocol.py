@@ -12,7 +12,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from .hawkes_graph import GraphPlan, GraphPoint
+from .hawkes_graph import GraphPlan, PointPlotPlan, GraphPoint
 
 PROTOCOL_VERSION = 1
 
@@ -24,11 +24,14 @@ MAX_MESSAGE_BYTES = 1024 * 1024
 
 class GraphContext(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)
-    family: Literal["parabola"]
-    orientation: Literal["vertical"]
+    family: Literal["parabola", "points"]
+    #: A parabola states which way it opens. A set of points has no orientation.
+    orientation: Literal["vertical"] | None = None
     bounds: list[float] = Field(min_length=4, max_length=4)
     snap: list[float] = Field(min_length=2, max_length=2)
-    controls: Literal["vertex-and-symmetric-points"]
+    controls: Literal["vertex-and-symmetric-points", "draggable-points"]
+    #: How many draggable controls a plotting graph offers, one per point.
+    count: int | None = None
 
     @model_validator(mode="after")
     def valid_grid(self) -> GraphContext:
@@ -38,6 +41,18 @@ class GraphContext(BaseModel):
             or min(self.snap) <= 0
         ):
             raise ValueError("graph requires ordered bounds and positive snap")
+        # Each family states its own controls, and neither may borrow the
+        # other's: a plan is proved against the geometry named here.
+        if self.family == "parabola" and (
+            self.orientation is None or self.controls != "vertex-and-symmetric-points"
+        ):
+            raise ValueError("a parabola states an orientation and its own controls")
+        if self.family == "points" and (
+            self.controls != "draggable-points"
+            or self.count is None
+            or not 1 <= self.count <= 12
+        ):
+            raise ValueError("a plotting graph states one control per stated point")
         return self
 
 
@@ -257,7 +272,7 @@ class SolveRequest(BaseModel):
 class AnswerPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    graph_plan: GraphPlan | None = None
+    graph_plan: GraphPlan | PointPlotPlan | None = None
     graph_coefficients: list[str] = Field(default_factory=list, max_length=3)
     display_text: str = ""
     keyboard_entry: str = ""

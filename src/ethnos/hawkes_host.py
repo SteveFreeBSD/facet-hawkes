@@ -124,6 +124,11 @@ def solve(request: SolveRequest, report=None) -> SolveResponse:
         return _solve_regression_with_facet(request, instruction, announce)
 
     if problem.answer_shape and problem.answer_shape.kind == "graph":
+        # A graph answered by placing the points the question wrote down. Its
+        # own route, because there is nothing to derive: the answer is stated,
+        # and no model is asked.
+        if problem.answer_shape.graph and problem.answer_shape.graph.family == "points":
+            return _solve_point_plot_with_facet(request, instruction, announce)
         return _solve_graph_with_facet(request, instruction, announce)
 
     if request.solve_engine == "facet":
@@ -688,6 +693,60 @@ def _solve_regression_with_facet(request, instruction, announce):
     )
 
 
+def _solve_point_plot_with_facet(request, instruction, announce):
+    """Plot the points the question states, without asking anything.
+
+    "Plot the following points in the Cartesian plane" writes its own answer
+    down. Facet reads the pairs exactly and returns where each control must end
+    up; every check that matters -- that the graph offers one control per point,
+    that each lands on the grid, that none moved anywhere else -- is the
+    browser's, against the live graph, and is made before a key is pressed.
+    """
+    from .hawkes_graph import PointPlotPlan
+
+    problem = request.problem
+    try:
+        announce("solving", "Facet stated points")
+        solution = solve_math(
+            instruction=instruction,
+            request_id=safe_request_id(request.request_id),
+            expressions=[],
+            result_kind="point_plot_plan",
+            accelerator_required=False,
+            allow_fallback=False,
+        )
+        plan = PointPlotPlan.model_validate(solution.answer.plan)
+        offered = problem.answer_shape.graph.count
+        if offered != len(plan.points):
+            raise ValueError(
+                f"the graph offers {offered} controls and the question states "
+                f"{len(plan.points)} points"
+            )
+    except (FacetError, ValueError, TypeError) as error:
+        return error_response(
+            request.request_id, f"Point plot refused: {error}", "unsupported"
+        )
+    return SolveResponse(
+        request_id=request.request_id,
+        status="ready",
+        problem_text=instruction,
+        answer=AnswerPayload(graph_plan=plan),
+        certainty=Certainty(
+            prompt_seen=True,
+            source=solution.provenance.source,
+            transcription="verified",
+            insertable=True,
+            answered_by="exact",
+            facet_invoked=True,
+            router="solved",
+            reading="markup",
+            method=solution.provenance.method,
+            runtime=solution.provenance.runtime,
+            elapsed_ms=solution.provenance.elapsed_ms,
+        ),
+    )
+
+
 def _solve_graph_with_facet(request, instruction, announce):
     """Ask Facet for a parabola plan, and prove the geometry here.
 
@@ -716,7 +775,9 @@ def _solve_graph_with_facet(request, instruction, announce):
             result_kind="parabola_plan",
             # Normalised geometry: a family, an orientation, bounds and a snap
             # grid. No element, no handle, and no way to move anything.
-            graph=problem.answer_shape.graph.model_dump(),
+            # `exclude_none` so a parabola's request is byte-identical to
+            # what it has always been; only a plotting graph carries a count.
+            graph=problem.answer_shape.graph.model_dump(exclude_none=True),
             accelerator_required=False,
             allow_fallback=False,
         )
