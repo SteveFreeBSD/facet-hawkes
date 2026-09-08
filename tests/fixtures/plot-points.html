@@ -1,6 +1,6 @@
 <!doctype html><meta charset="utf-8"><title>plot fixture</title>
 <div id="questionDescription">Plot the following points in the Cartesian plane.</div>
-<div id="questionString">{(7,4),(-8,4),(-6,-1),(6,-10)}</div>
+<div id="questionString">a set of stated points</div>
 <div id="partInformation">Question 1 of 8, Step 1 of 1</div>
 <div id="QGraph" role="application">
   <svg width="420" height="420">
@@ -9,33 +9,47 @@
   </svg>
 </div>
 <script>
-// Four draggable point controls on a -10..10 grid, snap 1. Every one starts at
-// the origin, which is how Hawkes hands a plotting question over.
-const points = [0,1,2,3].map(i => ({ID: "P"+i, title: "Point "+(i+1), x: 0, y: 0, snapX: 1, snapY: 1}));
+/* Hawkes' own semantics, as its graph code defines them:
+   - an arrow key moves a point by one snap and redraws it, and never touches
+     the object's `plotted` flag;
+   - the space key is what sets `plotted`, at wherever the point then is, and
+     on an already-plotted point toggles the grab instead;
+   - `isAllGraphObjectsPlotted()` is what the page asks before accepting an
+     answer, and `userAnswer()` carries only what is plotted.
+   Four points at the four right coordinates with the flag unset is exactly
+   the live failure: correct on screen, "your answer seems incomplete". */
+const points = [0,1,2,3].map(i => ({ID: "P"+i, title: "Point "+(i+1),
+  x: 0, y: 0, snapX: 1, snapY: 1, plotted: false}));
 const g = document.getElementById("controls");
 const NS = "http://www.w3.org/2000/svg";
-window.graphEvents = []; window.forbiddenEvents = []; const committed = new Set();
-window.committedPoints = () => points.filter(p => committed.has(p.ID)).map(p => [p.x, p.y]);
+window.graphEvents = []; window.forbiddenEvents = [];
+window.plottedPoints = () => points.filter(p => p.plotted).map(p => [p.x, p.y]);
+const STEP = {ArrowRight:[1,0],ArrowLeft:[-1,0],ArrowUp:[0,1],ArrowDown:[0,-1]};
 points.forEach((p, i) => {
   const a = document.createElementNS(NS, "a");
   a.id = "anchor-" + p.ID;
   a.setAttribute("draggable", "true");
   a.setAttribute("role", "button");
   a.setAttribute("aria-labelledby", "label-" + i);
+  a.setAttribute("aria-grabbed", "false");
   a.setAttribute("tabindex", "0");
-  const c = document.createElementNS(NS, "circle");
-  c.setAttribute("r", "5");
-  a.appendChild(c);
+  a.appendChild(document.createElementNS(NS, "circle")).setAttribute("r", "5");
   g.appendChild(a);
   const label = document.createElement("span");
   label.id = "label-" + i; label.textContent = p.title;
   document.body.appendChild(label);
-  a.addEventListener("blur", () => { if (p.moved) committed.add(p.ID); });
   a.addEventListener("keydown", (event) => {
-    const step = ({ArrowRight:[1,0],ArrowLeft:[-1,0],ArrowUp:[0,1],ArrowDown:[0,-1]})[event.code];
-    if (["Enter","Tab"," "].includes(event.key)) window.forbiddenEvents.push(event.key);
+    if (["Enter", "Tab"].includes(event.key)) window.forbiddenEvents.push(event.key);
+    if (event.code === "Space") {
+      if (!p.plotted) p.plotted = true;
+      else a.setAttribute("aria-grabbed",
+        a.getAttribute("aria-grabbed") === "true" ? "false" : "true");
+      window.graphEvents.push({i, key: "Space"});
+      return;
+    }
+    const step = STEP[event.code];
     if (!step) return;
-    p.x += step[0] * p.snapX; p.y += step[1] * p.snapY; p.moved = true;
+    p.x += step[0] * p.snapX; p.y += step[1] * p.snapY;
     window.graphEvents.push({i, key: event.code});
     paint();
   });
@@ -51,8 +65,11 @@ window.quant_wp_UI = {controlsCollection: [{
   isGraph: true,
   getEnableState: () => true,
   allGraphObjects: () => points,
-  graphXML: () => '<graph><grid><type>cartesian</type><cartesian><xmin>-10</xmin><xmax>10</xmax><ymin>-10</ymin><ymax>10</ymax></cartesian></grid></graph>',
-  userAnswer: () => '<graph>' + points.map(p => `<point><x>${p.x}</x><y>${p.y}</y></point>`).join("") + '</graph>',
+  isAllGraphObjectsPlotted: () => points.every(p => p.plotted),
+  graphXML: () => '<graph><grid><type>cartesian</type><cartesian><xmin>-10</xmin>'
+    + '<xmax>10</xmax><ymin>-10</ymin><ymax>10</ymax></cartesian></grid></graph>',
+  userAnswer: () => '<graph>' + points.filter(p => p.plotted)
+    .map(p => `<point><x>${p.x}</x><y>${p.y}</y></point>`).join("") + '</graph>',
 }]};
 paint();
 </script>

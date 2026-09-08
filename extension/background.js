@@ -1834,6 +1834,10 @@ async function prepare(windowId = state.windowId) {
       // out of it. One textbox reported against five boxes on screen is four
       // different faults and one description without this.
       collection: editor?.collection ?? null,
+      // What a graph publishes about its own model, when it is one. Names and
+      // shapes: which tags its answer is built from, which methods it offers,
+      // what a point and an anchor carry. Null for every other editor.
+      graphProbe: editor?.probe ?? null,
     });
     if (swept.length >= 2) {
       log.info("multi-editor-described", {
@@ -2808,7 +2812,17 @@ async function insert() {
     const [entry] = await runInjection({ target: { tabId: target.tabId, frameIds: [target.frameId] },
       world: "MAIN", func: graphOperation, args: [{ plan: target.graphPlan, coefficients: target.graphCoefficients, snapshot: target.graphSnapshot }] });
     if (!ownsTarget(target)) { abandonInsertion(target, "graph-actuation"); return; }
-    if (!entry?.result?.ok) { fail("errorSolveRefused", { detail: entry?.result?.code ?? "graph-verification-failed" }); return; }
+    if (!entry?.result?.ok) {
+      // Which refusal it was, and what the page said about its own graph as it
+      // fired. Without this an actuation that declines reports only "the
+      // solver declined", which is true of every condition in the writer and
+      // names none of them -- and a graph refusal is exactly the case where
+      // the reason is the whole diagnosis.
+      const code = entry?.result?.code ?? "graph-verification-failed";
+      log.warn("graph-actuation-refused", { code, found: entry?.result?.found ?? null });
+      fail("errorSolveRefused", { detail: code });
+      return;
+    }
     log.info("graph-verified", { events: entry.result.events });
     await finishInsertion(target.detail + "\nGraph controls and coefficients verified", target);
     return;

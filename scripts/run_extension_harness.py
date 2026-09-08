@@ -871,15 +871,16 @@ def judge_scatter(marionette, site):
 
 
 def judge_plot_points(marionette, site):
-    """A plotting graph, graded the way Hawkes grades one.
+    """A plotting graph, plotted the way Hawkes requires one to be.
 
-    The fixture takes a point into its answer when focus leaves the control,
-    not when the control moves -- which is what Hawkes does, and is why a live
-    run placed four points, read four points back, reported success, and was
-    told the answer was incomplete. Every check Ethnos had was satisfied by the
-    model; the point that never left focus was missing from the answer alone.
+    The fixture sets its `plotted` flag from the space key and from nothing
+    else, exposes `isAllGraphObjectsPlotted()`, and builds its answer out of
+    what is plotted -- which is what the page's own graph code does. Driven by
+    arrows alone it reproduces the live failure exactly: four points on screen
+    at the four right coordinates, every coordinate read back correct, and an
+    answer the page calls incomplete.
 
-    So this asserts on what the page would grade, not on what the model holds.
+    So this asserts on what the page would accept, not on what the model holds.
     """
     source = (
         (PROJECT_ROOT / "extension/common/graph-actions.js")
@@ -910,7 +911,9 @@ def judge_plot_points(marionette, site):
         + """});
       const model = Object.values(window.quant_wp_UI.controlsCollection)[0];
       return {probe: probe.ok, context: probe.context, outcome,
-              graded: window.committedPoints(),
+              graded: window.plottedPoints(),
+              accepts: Object.values(window.quant_wp_UI.controlsCollection)[0]
+                .isAllGraphObjectsPlotted(),
               model: model.allGraphObjects().map(p => [p.x, p.y]),
               forbidden: window.forbiddenEvents};
     """
@@ -926,18 +929,22 @@ def judge_plot_points(marionette, site):
         problems.append(f"forbidden keys: {result['forbidden']}")
     if sorted(result.get("model", [])) != wanted:
         problems.append(f"model landed on {sorted(result.get('model', []))}")
-    # The one that matters, and the one nothing else was checking.
+    # The two that matter, and the two nothing was checking. A point can sit at
+    # the right coordinate, drawn, and still not be plotted as far as the page
+    # is concerned -- which is the whole of the live failure.
     if sorted(result.get("graded", [])) != wanted:
         problems.append(
-            f"the page took only {sorted(result.get('graded', []))}, "
-            "so a placed point never entered the answer"
+            f"the page plotted only {sorted(result.get('graded', []))}, "
+            "so a point at the right coordinate was never plotted"
         )
+    if result.get("accepts") is not True:
+        problems.append("the page does not consider every object plotted")
     if problems:
         say(f"FAIL plot-points: {'; '.join(problems)}")
         return 1
     say(
-        "ok   plot-points: four stated points stepped onto the grid, verified, "
-        "and every one of them taken into the page's own answer"
+        "ok   plot-points: four stated points stepped onto the grid, plotted "
+        "with the key the page sets its own flag from, and accepted as complete"
     )
     return 0
 

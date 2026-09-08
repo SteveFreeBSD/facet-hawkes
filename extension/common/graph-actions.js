@@ -118,8 +118,24 @@ export function graphOperation(offered = null) {
       const context = { family: "points", count: spots.length, bounds, snap,
         controls: "draggable-points" };
       if (!offered) {
+        // What Hawkes needs beyond coordinates, as counts.
+        //
+        // A graph object carries a `plotted` flag, and Hawkes asks
+        // `isAllGraphObjectsPlotted()` before it will accept an answer. Arrow
+        // keys move a point without ever setting that flag, which is how four
+        // points sat on screen at exactly the right coordinates under the
+        // message "your answer seems incomplete". Reported so a described
+        // graph says how many of its controls the page already counts as
+        // plotted, and whether it publishes the check at all.
+        const plottedControls = spots.filter((q) => q.plotted === true).length;
         return { ok: true, kind: "graph", code: "graph-described",
-          enabled: model.getEnableState(), context, snapshot: first };
+          enabled: model.getEnableState(), context, snapshot: first,
+          probe: {
+            controls: spots.length,
+            plotted: plottedControls,
+            publishesPlottedQuery:
+              typeof model.isAllGraphObjectsPlotted === "function",
+          } };
       }
       if (JSON.stringify(first) !== JSON.stringify(offered.snapshot)) return refuse("graph-target-stale");
       const plan = offered.plan;
@@ -179,6 +195,7 @@ export function graphOperation(offered = null) {
           || JSON.stringify(shot()) !== JSON.stringify(expect)) throw Error("graph-target-stale");
       };
       let struck = 0;
+      let plotKeys = 0;
       for (let i = 0; i < spots.length; i += 1) {
         for (let axis = 0; axis < 2; axis += 1) {
           let tries = 0;
@@ -202,17 +219,29 @@ export function graphOperation(offered = null) {
             expect = next;
           }
         }
-        // Hawkes takes a point when focus leaves it, not when it moves. Live,
-        // that cost exactly one point every time: the first three controls
-        // were committed by the focus() that moved to the next one, and the
-        // last -- the only one focus never left -- stayed on the graph but
-        // outside the answer, so Hawkes called the answer incomplete and
-        // dropped that point on submit. Blurring each control once it is
-        // placed makes the last one no different from the rest. The answer the
-        // page now holds is re-read below, so a blur that disturbed anything
-        // is refused rather than typed over.
-        paired[i].blur();
-        expect = shot();
+        // Arrow keys move a point. They do not plot one.
+        //
+        // Hawkes keeps a `plotted` flag on every graph object and sets it from
+        // one key: space. Arrows change the coordinate and redraw the circle
+        // and leave the flag alone, which is exactly what a live run looked
+        // like -- four points on screen at the four stated coordinates, every
+        // coordinate read back correct, and the page still answering "your
+        // answer seems incomplete", because the flag behind that message had
+        // never been set on any of them.
+        //
+        // So each control is plotted where it was stepped to, and only if the
+        // page does not already count it as plotted: on one that does, the
+        // same key toggles the grab instead, which would undo this.
+        if (spots[i].plotted !== true) {
+          pinned();
+          paired[i].focus();
+          pinned();
+          if (++struck > 400) throw Error("graph-movement-limit");
+          paired[i].dispatchEvent(new KeyboardEvent("keydown",
+            { key: " ", code: "Space", bubbles: true, cancelable: true }));
+          plotKeys += 1;
+          expect = shot();
+        }
       }
       // Every control on a stated point, and every stated point covered. The
       // question asks for a set, so the set is what is checked.
@@ -221,16 +250,17 @@ export function graphOperation(offered = null) {
         || !landed.every(([x, y], i) => near(x, targets[i][0]) && near(y, targets[i][1]))) {
         return refuse("graph-points-not-settled");
       }
-      // Whether the page took the answer at all, as a yes or no. The answer
-      // itself is the student's coursework and does not leave the page: what
-      // is reported is that it stopped being the empty one it started as.
-      const taken = JSON.stringify(shot().answer) !== JSON.stringify(first.answer);
-      // Only when something actually moved. A graph already carrying the
-      // stated points has nothing to commit, and refusing that would be
-      // refusing a correct answer for not having been written twice.
-      if (struck > 0 && !taken) return refuse("graph-points-not-taken");
-      return { ok: true, code: "graph-plotted", points: spots.length, events: struck,
-        taken };
+      // The page's own completeness check, which is the one that decides.
+      // Every check above passed on a graph Hawkes then called incomplete, so
+      // the question is put to the page rather than inferred here: this is the
+      // predicate behind that message. A model that does not publish it is
+      // held to the flag the check reads instead.
+      const complete = typeof model.isAllGraphObjectsPlotted === "function"
+        ? model.isAllGraphObjectsPlotted() === true
+        : spots.every((q) => q.plotted === true);
+      if (!complete) return refuse("graph-points-not-plotted");
+      return { ok: true, code: "graph-plotted", points: spots.length,
+        events: struck, plotKeys };
     }
 
     if (!renderedCurve) return refuse("graph-renderer-unsupported");
