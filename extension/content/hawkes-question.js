@@ -23,7 +23,7 @@
   // every decision, and the observatory applies the same normalization to the
   // tree. Unlike the event-page marker, this proves which Hawkes reader was
   // injected into the authoritative page DOM.
-  const HAWKES_READER_BUILD = "c34c39037c54";
+  const HAWKES_READER_BUILD = "c4a66dcf524f";
 
   const ANSWER_CONTROLS =
     'input.qbaseCSS, input[id^="txtAns"], input.boxStyle, input[id$="_optchk"], '
@@ -769,7 +769,7 @@
       .trim();
 
   /** Prose above the answer area, in document order. */
-  const lines = [...document.querySelectorAll("p, div, span, td")]
+  let lines = [...document.querySelectorAll("p, div, span, td")]
     .filter((element) => {
       if (!visible(element) || element.getBoundingClientRect().top >= limit) {
         return false;
@@ -791,6 +791,29 @@
         : (element.textContent || "").trim()
     )
     .filter((text) => text.length > 3 && text.length < 400);
+
+  /**
+   * One visible named-positivity condition, without MathJax's duplicate text.
+   *
+   * MathJax exposes both its drawn glyphs and its assistive MathML through
+   * `textContent`. The live line therefore reaches this reader as
+   * `Assume 𝑥>0x>0.` rather than the one condition a person sees. Read the
+   * ASCII assistive copy, rebuild the condition once, and replace the corrupt
+   * tail before either the step or the instruction is selected. Cleaning only
+   * the instruction would leave the unclean step beside it in `promptText`.
+   */
+  lines = lines.map((text) => {
+    if (!/\bassum(?:e|ing)\b/i.test(text)) return text;
+    const names = [...text.matchAll(/([a-z])\s*(?:>=|>|≥)\s*0\b/gi)]
+      .map((match) => match[1].toLowerCase());
+    const unique = [...new Set(names)];
+    if (unique.length === 0) return text;
+    const condition = unique.map((name) => `${name} > 0`).join(" and ");
+    return text.replace(
+      /\s*\bassum(?:e|ing)\b.*$/i,
+      ` Assume ${condition}.`
+    ).trim();
+  });
 
   /**
    * Which step of a multi-step question this is.
@@ -823,9 +846,25 @@
   // which named no operation at all. The question then cost a screenshot the
   // sidebar had no permission to take, and reported that it could not be
   // captured, which was true and useless.
-  const instruction = lines.find(
+  let instruction = lines.find(
     (text) => text.length > 8 && INSTRUCTION.test(text)
   ) ?? "";
+
+  /**
+   * A condition the question states on a separate rendered line.
+   *
+   * Hawkes may split a condition onto its own rendered line. Keep it with the
+   * instruction; if Hawkes also exposes a containing line, prefer that
+   * complete line instead of duplicating it.
+   */
+  const assumption = lines.find(
+    (text) => /\bassum(?:e|ing)\b/i.test(text)
+  ) ?? "";
+  if (assumption && !instruction.includes(assumption)) {
+    instruction = assumption.includes(instruction)
+      ? assumption
+      : [instruction, assumption].filter((text) => text.length > 0).join(" ");
+  }
 
   // Formula questions put the target variable after the displayed equation,
   // on a separate line: "C = 2πr; solve for r."  The generic instruction

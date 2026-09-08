@@ -6,6 +6,16 @@ name the add-on as it was called at the time.
 
 ## Unreleased
 
+- **A named positivity assumption reaches the solver in readable form.** On
+  lesson 1.5, MathJax exposed both its drawn inequality and its assistive MathML
+  through the prompt's text. The visible “Assume x > 0.” therefore crossed the
+  Facet boundary as `Assume 𝑥>0x>0.`. Facet was right not to treat that joined,
+  duplicated string as a declaration about `x`, and left `√(-108x^5)` as the
+  uninsertable `6sqrt(3(-x^5))`. The reader now reduces the two renderings to
+  the one condition the page shows before it chooses the step and instruction.
+  The exact live question is pinned both at the DOM boundary and in the solver
+  coverage corpus; it returns `6ix^2√(3x)`.
+
 - **A coordinate pair whose halves are fractions can be entered.** Facet answers
   a midpoint exactly -- `(17/2,-1/2)` -- and the plan refused it on the `/`,
   against a question publishing a Fraction template, a parentheses template, a

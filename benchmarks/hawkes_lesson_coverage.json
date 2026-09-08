@@ -192,6 +192,15 @@
       "expected": "2ix^4\u221a(2x)"
     },
     {
+      "id": "evaluate-square-root-108x5-named-positive",
+      "topic": "radicals",
+      "prompt": "Evaluate the following square root expression. Assume x > 0.",
+      "expressions": [
+        "\\sqrt{-108x^{5}}"
+      ],
+      "expected": "6ix^2\u221a(3x)"
+    },
+    {
       "id": "complex-q8",
       "topic": "complex numbers",
       "prompt": "Simplify the following expression.",

@@ -85,6 +85,22 @@ def test_live_complex_q12_is_pinned_in_the_coverage_corpus():
     assert result.answer == "34 + 12i√2"
 
 
+def test_live_square_root_108x5_is_pinned_in_the_coverage_corpus():
+    case = next(
+        case
+        for case in load_cases(CORPUS)
+        if case.id == "evaluate-square-root-108x5-named-positive"
+    )
+
+    assert case.prompt == (
+        "Evaluate the following square root expression. Assume x > 0."
+    )
+    assert case.expressions == [r"\sqrt{-108x^{5}}"]
+    result = evaluate(case)
+    assert result.verdict == "exact"
+    assert result.answer == "6ix^2√(3x)"
+
+
 def test_live_quadratics_are_exact_in_the_coverage_corpus():
     cases = {
         case.id: case for case in load_cases(CORPUS) if case.id.startswith("quadratic-")

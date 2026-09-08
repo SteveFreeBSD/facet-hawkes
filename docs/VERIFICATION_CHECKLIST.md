@@ -129,7 +129,7 @@ you to run is a name this machine does not have.
 
 The executable boundary between what Facet emits and what this repository can
 enter. It observes the exact answers built by the runtime's own test suite and
-also keeps the 37-question live-course sweep. Offline, about five seconds.
+also keeps the 38-question live-course sweep. Offline, about five seconds.
 
 ```bash
 cd /home/steve/apps/facet-hawkes
@@ -174,7 +174,7 @@ cd /home/steve/apps/facet-hawkes
 uv run ethnos hawkes-coverage
 ```
 
-**Expect:** `36/36 answered exactly, 1 correctly declined (0 wrong,
+**Expect:** `37/37 answered exactly, 1 correctly declined (0 wrong,
 0 unrecognized, 0 declined by the solver)`. No model runs; it takes about a
 second.
 
@@ -233,7 +233,7 @@ uv run ethnos hawkes-coverage
 ```
 
 **Expect** the same results as sections 2, 5 and 6 above: everything clean,
-1720 or more tests passing, 37 validated packaged files, and 36/36 answered
+1720 or more tests passing, 37 validated packaged files, and 37/37 answered
 exactly with 1 correctly declined. Passed on 2026-09-08.
 
 Note the two checkout lines. Without them the clone lands on `main` in both

@@ -146,3 +146,60 @@ def test_a_plotting_instruction_is_read_rather_than_left_as_the_step_marker():
     # The one property the companion's plotting specialist actually reads.
     assert re.search(r"\b(?:plot|graph|place|draw)\b[^.?!]*?\bpoints?\b", prompt, re.I)
     assert len(result["expressions"]) == 1
+
+
+def test_a_named_positive_assumption_on_its_own_line_reaches_facet():
+    """Live lesson 1.5: MathJax exposes both its drawn and assistive condition
+    as ``Assume 𝑥>0x>0.``. Facet could not read that as a named assumption, so
+    √(-108x^5) became the uninsertable ``6sqrt(3(-x^5))`` instead of
+    ``6ix^2√(3x)``.
+    """
+    quickjs = pytest.importorskip("quickjs")
+    source = (PROJECT_ROOT / "extension" / "content" / "hawkes-question.js").read_text(
+        encoding="utf-8"
+    )
+    context = quickjs.Context()
+    context.eval(
+        r"""
+        function node(top, text, xml = "") {
+          return {
+            textContent: text,
+            xml,
+            getBoundingClientRect() { return {top, width: 100, height: 20}; },
+            querySelector() { return null; },
+          };
+        }
+        // This is the exact instruction string captured at the Facet subprocess
+        // boundary, apart from the live radicand changing between variants.
+        const instruction = node(40,
+          "Step\u00a01\u00a0of\u00a01 Evaluate the following square root expression.  "
+          + "Assume 𝑥>0x>0.");
+        const positive = node(65, "", "<math><mi>x</mi><mo>&gt;</mo><mn>0</mn></math>");
+        const radical = node(90, "",
+          "<math><msqrt><mrow><mo>-</mo><mn>108</mn>"
+          + "<msup><mi>x</mi><mn>5</mn></msup></mrow></msqrt></math>");
+        const answer = node(160, "", "");
+        globalThis.document = {
+          querySelectorAll(selector) {
+            if (selector === "math") return [positive, radical];
+            if (selector === "p, div, span, td") {
+              return [instruction];
+            }
+            if (selector.includes("input.qbaseCSS")) return [answer];
+            return [];
+          },
+        };
+        globalThis.XMLSerializer = function XMLSerializer() {
+          this.serializeToString = element => element.xml;
+        };
+        """
+    )
+
+    result = json.loads(context.eval(source).json())
+
+    assert result["promptText"] == (
+        "Step\u00a01\u00a0of\u00a01 Evaluate the following square root expression. "
+        "Assume x > 0."
+    )
+    assert result["evidence"]["promptChars"] == 72
+    assert len(result["expressions"]) == 2

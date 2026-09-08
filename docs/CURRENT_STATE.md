@@ -97,7 +97,7 @@ phrases, ordered pairs with integer and with rational components, multipart
 scalars, comma answers in one box, table cells including fractions, radio-group
 choices, and both graph plan families.
 
-Offline, the exact solver sweep stands at **36/36 answered exactly, 1 correctly
+Offline, the exact solver sweep stands at **37/37 answered exactly, 1 correctly
 declined — 0 wrong, 0 unrecognized**:
 
 ```console
