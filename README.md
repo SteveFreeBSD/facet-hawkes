@@ -329,15 +329,19 @@ file:
 
 ```bash
 uv run ethnos ask 3 "Solve the equation shown in section 6.4" \
-  --model precalc-local \
+  --model qwen3.5:9b \
   --answer-image data/runs/precalc-answer.png
 ```
 
 This creates `precalc-answer.png` and `precalc-answer.keys.txt`. Image rendering
 uses the local `pango-view` command and does not make an additional model call.
 
-For a photographed or screenshotted question, the default pipeline uses
-Qwen3.5 and an independent Gemma verification pass before the math solver:
+`precalc-local`, which older examples and `precalc-bench`'s default still name,
+is a local alias that exists only on `caspian`. Name a model this host has.
+
+For a photographed or screenshotted question, the default pipeline uses two
+*different* Qwen3.5 readers -- `qwen3.5:4b` then `qwen3.5:9b` -- and both must
+agree before the math solver runs:
 
 ```bash
 uv run ethnos ask 3 "Solve the attached problem" \

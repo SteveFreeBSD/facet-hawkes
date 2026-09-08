@@ -4,6 +4,12 @@ These examples are small, curated review artifacts intended for GitHub readers.
 Full runtime outputs, traces, PDFs, and SQLite databases remain under `data/`
 and are intentionally ignored by git.
 
+> **Historical evidence.** These were produced on `caspian` in July 2026,
+> against the `gemma-python` alias that exists only on that machine. The
+> commands below are kept as the exact provenance of the artifacts beside them;
+> on this host, name a model it has -- see [Runtime, models and
+> deployment](../docs/RUNTIME_AND_DEPLOYMENT.md).
+
 - [`history_ch20_agent_review_summary.md`](history_ch20_agent_review_summary.md):
   a compact Agent Review summary for the History chapter 20 Canvas quiz.
 - [`history_ch20_agent_review_summary.json`](history_ch20_agent_review_summary.json):
