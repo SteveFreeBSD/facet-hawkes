@@ -781,6 +781,27 @@ def judge_one_table(marionette, site, page):
     return 0
 
 
+#: The five stated cells, in the order the page draws them, with the MathML
+#: namespace Firefox's serializer writes and the Python DOM's does not removed.
+#: These are the same values `tests/test_hawkes_answer_table.py` pins.
+#:
+#: Every one of them is MathML, the plain integers included. A cell MathJax
+#: drew is read from the MathML it left beside the glyphs or not at all,
+#: because "this one looks like an ordinary number" is exactly the judgement
+#: that reads 2√2 as 22. Until the fixture was made faithful to the real page
+#: these three integers were bare `<td>` text and this check expected them as
+#: text; the reading below is what the page has actually published since.
+COMPLETION_GIVENS = [
+    "<math><mn>0</mn></math>",
+    "<math><mn>2</mn><msqrt><mn>2</mn></msqrt></math>",
+    "<math><mn>64</mn></math>",
+    "<math><mn>25</mn></math>",
+    "<math><mo>-</mo><msqrt><mn>3</mn></msqrt></math>",
+]
+
+MATHML_NS = ' xmlns="http://www.w3.org/1998/Math/MathML"'
+
+
 def judge_table_completion(marionette, site):
     """The table a question is answered *in*, read in a real browser.
 
@@ -812,20 +833,17 @@ def judge_table_completion(marionette, site):
         if blanks != [1, 2, 3, 4, 5]:
             problems.append(f"blanks numbered {blanks}")
         given = [
-            cell.get("text") or cell.get("mathml", "")
+            (cell.get("text") or cell.get("mathml", "")).replace(MATHML_NS, "")
             for row in table["rows"]
             for cell in row
             if "blank" not in cell
         ]
-        if [value for value in given if value.startswith("<math")] and not all(
-            "msqrt" in value for value in given if value.startswith("<math")
-        ):
+        # Named separately from the comparison below, because losing a root is
+        # the specific thing this fixture exists to catch and "the values are
+        # not the values" would not say which way they were wrong.
+        if sum("msqrt" in value for value in given) != 2:
             problems.append("a radical cell lost its root")
-        if [value for value in given if not value.startswith("<math")] != [
-            "0",
-            "64",
-            "25",
-        ]:
+        if given != COMPLETION_GIVENS:
             problems.append(f"stated values read as {given}")
     marionette.execute(
         "for (const box of document.querySelectorAll('input.qbaseCSS'))"
