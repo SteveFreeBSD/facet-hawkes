@@ -95,6 +95,48 @@ export function answerFitsEditor(answer, editor) {
 }
 
 /**
+ * Whether this answer surface states the subject of an equation itself.
+ *
+ * Some answers are equations. "Find the equation of the line in slope-intercept
+ * form" is answered `y = -2x + 5`, and Hawkes takes that in two different ways:
+ * lesson 2.4 draws a bare box and wants the whole equation typed into it, while
+ * lesson 3.2 prints `f(x) =` beside its box and wants only the right side.
+ *
+ * This is the one question that decides between them, and it is asked of the
+ * *page* -- never of the answer. Two independent facts answer it, and either
+ * one is enough:
+ *
+ * 1.  The page prints a subject in front of the box. `inspectField` reads it
+ *     off the DOM where the box is, so this is what a person sees on screen.
+ * 2.  The box's own published characters have no `=` in them. A surface that
+ *     will not take an equals sign cannot hold an equation, so the side is the
+ *     only thing it can be asked for.
+ *
+ * Two signals for one fact, deliberately. Lesson 3.2's `f(x) =` question was
+ * being answered correctly before any of this existed, and a layout change
+ * that stopped the label being readable would otherwise silently start typing
+ * a whole equation into a box that already had half of it.
+ *
+ * @param {EditorDescription} editor as `hawkes-describe.js` published it
+ * @param {{suppliedSubject?: string}} page as `inspectField` reported it
+ * @returns {boolean}
+ */
+export function surfaceStatesSubject(editor, page = {}) {
+  const printed = typeof page?.suppliedSubject === "string"
+    ? page.suppliedSubject.trim()
+    : "";
+  if (printed.length > 0) {
+    return true;
+  }
+  const allowed = editor?.allowedCharacters ?? "";
+  // An unreadable character rule states nothing either way. The answer is then
+  // held to the whole equation and refused by `answerFitsEditor` on the same
+  // unreadable rule, which is one refusal with one reason rather than a quiet
+  // guess about which half the page wanted.
+  return allowed.length > 0 && !accepts(allowed, "=", editor?.kind);
+}
+
+/**
  * @typedef {object} TableTarget
  * @property {number} blank 1-based semantic blank number
  * @property {string} id the control occupying that cell, in this page

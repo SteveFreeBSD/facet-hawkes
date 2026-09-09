@@ -251,9 +251,16 @@ def test_a_linear_function_stated_as_its_properties_is_exact(monkeypatch) -> Non
         }
     ]
     assert response.status == "ready"
-    # One answer, in the box whose `f(x) =` label the page already drew.
-    assert response.answer.display_text == "-5x-3"
-    assert response.answer.keyboard_entry == "-5*x-3"
+    # The equation, and both of its sides. Which one is typed is the browser's
+    # to decide from what its page prints beside the box -- this half used to
+    # decide it silently by sending the right side and nothing else, which is
+    # an answer only on a page that draws an `f(x) =` label.
+    assert response.answer.display_text == "f(x)=-5x-3"
+    assert response.answer.keyboard_entry == "f(x)=-5*x-3"
+    assert response.answer.relation is not None
+    assert response.answer.relation.subject == "f(x)"
+    assert response.answer.relation.display_text == "-5x-3"
+    assert response.answer.relation.keyboard_entry == "-5*x-3"
     assert response.answer.parts == []
     assert response.certainty.source == "Facet Exact"
     assert response.certainty.answered_by == "exact"

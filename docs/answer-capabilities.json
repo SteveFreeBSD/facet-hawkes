@@ -5,7 +5,8 @@
     "scalar",
     "ordered-pair",
     "parts",
-    "choice"
+    "choice",
+    "relation"
   ],
   "plan_kinds": [
     "parabola_plan",
@@ -231,6 +232,31 @@
         "allowedCharacters": "",
         "templates": {}
       }
+    },
+    "equation-box": {
+      "note": "The live lesson 2.4 box: a bare answer box whose own keypad publishes `y` and `=`, so the whole equation is what goes into it. Nothing is printed in front of it. Observed 2026-09-09 on question 4 of 9, field QBase12_input.",
+      "description": {
+        "kind": "dynamic",
+        "enabled": true,
+        "allowedCharacters": "0123456789xy=+-",
+        "maxLength": 16,
+        "templates": {
+          "fraction": true,
+          "radical": false,
+          "exponent": false,
+          "parentheses": false,
+          "absoluteValue": false
+        },
+        "slots": {
+          "base": "0123456789xy=+-",
+          "numerator": "0123456789xy+-",
+          "denominator": "0123456789xy",
+          "exponent": "0123456789",
+          "exponentBase": "0123456789xy",
+          "radicand": "0123456789",
+          "index": "23456789"
+        }
+      }
     }
   },
   "entries": [
@@ -423,7 +449,7 @@
     },
     {
       "id": "scalar-fraction-group",
-      "semantic": "linear function with a rational coefficient",
+      "semantic": "line's right side, rational coefficient",
       "form": "scalar",
       "notation": [
         "fraction",
@@ -431,7 +457,7 @@
       ],
       "example": "(1/2)*x+8",
       "editor": "maths-box",
-      "topology": "one full-keypad box, Fraction inside parentheses",
+      "topology": "one full-keypad box the page prints `f(x) =` in front of, Fraction inside parentheses",
       "mechanism": [
         "planEntry",
         "planRun",
@@ -954,6 +980,83 @@
       },
       "refusal": "editor-option-answer",
       "why": "Selecting stays the reader's action, always."
+    },
+    {
+      "id": "relation-plain",
+      "semantic": "line in slope-intercept form, whole equation",
+      "form": "relation",
+      "notation": [
+        "plain"
+      ],
+      "example": "y=-2*x+5",
+      "editor": "equation-box",
+      "topology": "one box publishing `=`, with no subject printed in front",
+      "mechanism": [
+        "surfaceStatesSubject",
+        "planEntry",
+        "enterPlan"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "no"
+      },
+      "probe": {
+        "instruction": "Find the equation of the line in slope-intercept form that passes through the following point with the given slope. Simplify your answer.",
+        "expressions": [
+          "(0,5)",
+          "Slope=-2"
+        ]
+      }
+    },
+    {
+      "id": "relation-group",
+      "semantic": "named function's whole equation",
+      "form": "relation",
+      "notation": [
+        "group"
+      ],
+      "example": "f(x)=-5*x-3",
+      "editor": "equation-box",
+      "topology": "no observed box takes a function's name and its brackets",
+      "mechanism": [
+        "surfaceStatesSubject",
+        "planEntry"
+      ],
+      "status": "unsupported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "n/a"
+      },
+      "refusal": "answer-has-rejected-characters",
+      "why": "Every observed page that names a function prints `f(x) =` beside its box, so the right side alone is what it takes and this is never asked for. The one box that does take an equation publishes `xy=+-` and digits: a name and its brackets are both outside it."
+    },
+    {
+      "id": "relation-fraction-group",
+      "semantic": "equation with a rational coefficient, whole",
+      "form": "relation",
+      "notation": [
+        "fraction",
+        "group"
+      ],
+      "example": "y=(1/2)*x+8",
+      "editor": "equation-box",
+      "topology": "the observed equation box offers no parentheses template",
+      "mechanism": [
+        "surfaceStatesSubject",
+        "planEntry",
+        "planRun"
+      ],
+      "status": "unsupported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "n/a"
+      },
+      "refusal": "template-refused-by-question",
+      "why": "A rational coefficient is parenthesised so that `1/2x` cannot be read as `1/(2x)`, and parentheses can only come from a template. The observed equation box offers Fraction and no other, so this is refused by name rather than entered as a different number."
     }
   ]
 }

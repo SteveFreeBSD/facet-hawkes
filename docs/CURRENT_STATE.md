@@ -88,8 +88,15 @@ are historical.
 A family is not finished when Facet returns the right value — it is finished
 when the add-on can *enter* that value, or when the table says plainly that it
 cannot. Every exact answer carries `answer.form` (`scalar`, `ordered-pair`,
-`parts`, `choice`) beside `entry_mode`, and `tests/test_answer_capabilities.py`
-fails until a new form has a row.
+`parts`, `choice`, `relation`) beside `entry_mode`, and
+`tests/test_answer_capabilities.py` fails until a new form has a row.
+
+`relation` is the one family that is an equation rather than a value, and it
+carries both of its sides. A Hawkes page takes an equation either whole, into a
+bare box, or as its right side, into a box the page prints `f(x) =` in front of
+— so the answer crosses complete and the add-on picks, from the subject it reads
+printed beside the box and from whether that box's characters include an equals
+sign. Facet is never told there is a page.
 
 Live-proven today: scalar integers and rationals, rationals through the page's
 own slash where no template is offered, radicals, rational exponents, named

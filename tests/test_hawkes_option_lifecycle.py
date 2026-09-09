@@ -171,6 +171,11 @@ def test_selected_one_solution_hands_off_to_its_controlled_textbox(option_page):
         # And what that field is, which is what decides whether the box writer
         # or the caret writer can reach it.
         "fieldKind": "native",
+        # Whether the page prints a subject in front of this box, which decides
+        # whether an equation answer is entered whole or as its right side.
+        # Reported even when there is none: measured-and-empty and never-looked
+        # are different facts, and only one of them is safe to act on.
+        "suppliedSubject": "",
     }
 
 

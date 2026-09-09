@@ -6,6 +6,42 @@ name the add-on as it was called at the time.
 
 ## Unreleased
 
+- **An equation is entered whole, or as its right side, and the page decides
+  which.** Lesson 2.4 asks for "the equation of the line in slope-intercept
+  form" and draws a bare answer box. The answer that reached it was `-2x+5`,
+  which is an expression rather than an equation, and Hawkes refused it: "Your
+  answer is in an incorrect format."
+
+  The runtime had been returning the right-hand side of `y = mx + b` as the
+  whole answer. That is an answer only on a page that prints the left side
+  beside its box, which lesson 3.2 does and lesson 2.4 does not -- and the
+  runtime is never told there is a page at all, so it was in no position to
+  choose. The defect was in neither half: the line was derived correctly and
+  the add-on entered exactly what it was given.
+
+  Facet now answers with the equation, under a new `relation` answer form that
+  carries both of its sides, and this add-on chooses between them from what its
+  own page publishes. Two facts decide it and either is enough: the subject the
+  field probe finds printed in front of the box -- `y =`, `f(x) =`, read
+  generically off the DOM rather than by a Hawkes-specific selector -- and
+  whether the box's own published characters include an equals sign. Two
+  signals for one fact, so a layout change that stopped the label being readable
+  cannot silently start typing a whole equation into a box that already holds
+  half of it.
+
+  Not a rule about `y=`. Nothing anywhere prepends anything: the two sides
+  arrive already separated and one of them is chosen. An answer carrying no
+  equation takes the path it always did.
+
+  `validateAnswer` now admits the equals sign, which it had refused before the
+  page's own rules were ever consulted. What may reach a particular answer box
+  is still that box's `allowedCharacters`, per question, and unchanged.
+
+  Nothing about the transport moved. `common/transport.js` still takes no
+  answer and cannot be given one; this decides what is typed, never who types
+  it. Cadence is untouched: still one score per insertion, one note per
+  accepted character.
+
 - **One editor, one writer: the transport is chosen from the page, never from
   the answer.** The event page decided how to place an answer by asking whether
   the reviewed answer fitted the editor's published character set. An answer

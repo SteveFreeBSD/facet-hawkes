@@ -30,6 +30,17 @@ def pytest_configure() -> None:
                 "parts": list(self.parts),
                 "entry_mode": self.entry_mode,
                 "form": self.form,
+                # Both sides of an equation answer, when it is one. The gate
+                # classifies what the host would type, and for this family that
+                # is two different strings depending on the page.
+                "relation": (
+                    None
+                    if self.relation is None
+                    else {
+                        "subject": self.relation.subject,
+                        "value": self.relation.value,
+                    }
+                ),
                 "method": self.method,
             }
         )

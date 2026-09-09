@@ -41,7 +41,20 @@ var ethnosHawkes = (function () {
   // and it is read and matched, never typed.
   const MAX_CHOICE_LENGTH = 120;
   const MAX_CHOICES = 12;
-  const ANSWER_PATTERN = /^[0-9A-Za-z+\-*/^().,√π ]+$/;
+  const ANSWER_PATTERN = /^[0-9A-Za-z+\-*/^().,=√π ]+$/;
+  /**
+   * What an answer box's printed subject looks like: a short name, optionally
+   * applied to one variable, and an equals sign. `y =`, `f(x) =`, `C =`.
+   *
+   * Bounded to three characters of name so that a sentence ending in an equals
+   * sign is not one. "Slope =" is the question stating a property, not a label
+   * on the answer box, and the geometry below would exclude it anyway -- but
+   * the two disagreeing would be a reader that works by luck.
+   */
+  const SUBJECT_PATTERN = /^([A-Za-z][A-Za-z0-9]{0,2}(?:\s*\(\s*[A-Za-z]\s*\))?)\s*=$/;
+  const MAX_SUBJECT_LENGTH = 8;
+  //: How far to the left of the box a printed subject may sit, in CSS pixels.
+  const SUBJECT_REACH = 160;
 
   const FIELD_SELECTOR = [
     "input:not([type])",
@@ -389,6 +402,75 @@ var ethnosHawkes = (function () {
     return "other";
   }
 
+  /**
+   * A subject the page prints in front of an answer box: `y =`, `f(x) =`.
+   *
+   * Some Hawkes questions are answered with an equation. "Find the equation of
+   * the line in slope-intercept form" is answered `y = -2x + 5`, and the page
+   * takes that in one of two ways: lesson 2.4 draws a bare box and expects the
+   * whole equation typed into it, while lesson 3.2 prints `f(x) =` beside its
+   * box and expects only what follows. The same answer, and two different
+   * things to type -- so which it is has to be *read*, not assumed. Assuming
+   * is what produced `-2x+5` on a bare box and an "incorrect format" refusal.
+   *
+   * Generic, like the option-group reader above and for the same reason: the
+   * page is free to mark this up as text on one question and as MathJax on the
+   * next, and a reader that knew one layout would silently return nothing on
+   * the other. So it is decided by what is *printed* -- an element whose whole
+   * text is a name and an equals sign -- and by where it is printed, which is
+   * immediately to the left of this box and level with it.
+   *
+   * The text test comes first because it is cheap and almost always fails;
+   * only what passes it is measured, so an ordinary page costs one tree walk
+   * rather than one layout per element.
+   *
+   * @param {Element} target the answer control this subject would belong to
+   * @returns {string} the subject alone -- `y`, `f(x)` -- or "" for a bare box
+   */
+  function suppliedSubject(target) {
+    const box = rectangleOf(target);
+    if (box === null) {
+      return "";
+    }
+    for (const element of document.querySelectorAll("*")) {
+      const text = String(element.textContent ?? "")
+        .replace(/\s+/g, " ")
+        .trim();
+      if (text.length === 0 || text.length > MAX_SUBJECT_LENGTH) {
+        continue;
+      }
+      const match = SUBJECT_PATTERN.exec(text);
+      if (match === null) {
+        continue;
+      }
+      const rect = rectangleOf(element);
+      // Level with the box and ending just before it starts. An ancestor that
+      // wraps the box fails this on its own right edge, which is what keeps a
+      // container's text from being read as the box's own label.
+      if (
+        rect === null
+        || rect.right > box.left + 2
+        || rect.right < box.left - SUBJECT_REACH
+        || rect.bottom <= box.top
+        || rect.top >= box.bottom
+      ) {
+        continue;
+      }
+      return match[1].replace(/\s+/g, "");
+    }
+    return "";
+  }
+
+  /** One element's box, or null when it has none or cannot be measured. */
+  function rectangleOf(element) {
+    try {
+      const rect = element?.getBoundingClientRect?.();
+      return rect && rect.width > 0 && rect.height > 0 ? rect : null;
+    } catch {
+      return null;
+    }
+  }
+
   /** @returns {boolean} whether a value is a supported plain-text answer. */
   function answerIsSupported(value) {
     return (
@@ -478,6 +560,7 @@ var ethnosHawkes = (function () {
         via: "revealed-option",
         fieldId: revealed.id || "",
         fieldKind: fieldKindOf(revealed),
+        suppliedSubject: suppliedSubject(revealed),
       };
     }
     const fields = solutionFields();
@@ -524,6 +607,12 @@ var ethnosHawkes = (function () {
       via: "focused-field",
       fieldId: target.id || "",
       fieldKind: fieldKindOf(target),
+      // The subject the page prints in front of this box, when it prints one.
+      // An answer that is an equation is entered whole where this is empty and
+      // as its right side where it is not, and that is the page's statement of
+      // which -- read here, where the box itself is, rather than inferred later
+      // from the answer's own characters.
+      suppliedSubject: suppliedSubject(target),
       multiFieldEvidence: lastSolutionFieldEvidence,
     };
   }

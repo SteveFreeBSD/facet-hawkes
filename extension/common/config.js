@@ -38,8 +38,16 @@ export const MAX_ANSWER_PARTS = 5;
  * Characters an answer may contain. Plain mathematical notation only: no
  * angle brackets, quotes, backslashes, braces, or semicolons, so a stored
  * value cannot be mistaken for markup or code anywhere downstream.
+ *
+ * The equals sign is here because some answers are equations. "Find the
+ * equation of the line in slope-intercept form" is answered with `y = -2x + 5`
+ * and a bare Hawkes box takes exactly that -- its own keypad publishes `=` as
+ * one of the characters it accepts. Refusing it here withheld the answer
+ * before the page's own rules were ever consulted, which is the wrong place to
+ * decide it: what may reach a particular answer box is `allowedCharacters`,
+ * per question, and this is only the shape every answer has to have.
  */
-const ANSWER_PATTERN = /^[0-9A-Za-z+\-*/^().,√π ]+$/;
+const ANSWER_PATTERN = /^[0-9A-Za-z+\-*/^().,=√π ]+$/;
 
 /**
  * One answer written as mathematics, rather than as the spelling it arrived in.

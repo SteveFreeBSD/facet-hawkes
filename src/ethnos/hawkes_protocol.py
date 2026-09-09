@@ -295,6 +295,29 @@ class SolveRequest(BaseModel):
     problem: ProblemPayload | None = None
 
 
+class AnswerRelation(BaseModel):
+    """The two sides of an answer that is an equation, each one whole.
+
+    "Find the equation of the line in slope-intercept form" is answered with
+    `y = -2x + 5`, and a Hawkes page takes that in one of two ways: a bare box
+    takes the whole equation, and a box the page prints `y =` or `f(x) =` in
+    front of takes the right side alone. Both are the same answer, so both
+    cross, and the add-on chooses between them from what its page publishes.
+
+    The right side carries the same two forms the whole answer does, for the
+    same reason: one is read on the card and one is typed. The subject carries
+    only itself -- it is a name the question gave, not mathematics to be
+    rewritten into entry syntax, and `f(x)` linearized as mathematics becomes
+    `f*(x)`.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    subject: str = Field(min_length=1, max_length=16)
+    display_text: str = Field(min_length=1, max_length=200)
+    keyboard_entry: str = Field(min_length=1, max_length=200)
+
+
 class AnswerPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -305,6 +328,10 @@ class AnswerPayload(BaseModel):
     # Distinct values for a multi-value answer. Keeping these structured avoids
     # recovering mathematical boundaries from display prose later.
     parts: list[str] = Field(default_factory=list, max_length=MAX_ANSWER_PARTS)
+    #: Both sides of the answer, when the answer is an equation. Absent on
+    #: every other answer, which is what makes its presence the signal that
+    #: this one can be entered two ways.
+    relation: AnswerRelation | None = None
 
 
 class Certainty(BaseModel):

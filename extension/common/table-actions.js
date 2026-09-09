@@ -83,7 +83,7 @@ export async function enterTableCells(parts, cells, cadence = {}) {
   const ALLOWED_ORIGIN = "https://learn.hawkeslearning.com";
   const MAX_ANSWER_LENGTH = 40;
   const MAX_ANSWER_PARTS = 5;
-  const ANSWER_PATTERN = /^[0-9A-Za-z+\-*/^().,√π ]+$/;
+  const ANSWER_PATTERN = /^[0-9A-Za-z+\-*/^().,=√π ]+$/;
 
   const HAWKES_FIELD_SELECTOR = 'input.qbaseCSS, input[id^="txtAns"], input.boxStyle';
   /** How long the editor is given to finish rerendering after one part. */

@@ -75,8 +75,14 @@ FACET_ENTRY_MODES: frozenset[str] = frozenset({"verbatim", "math", "auto"})
 #: Additive, and absent on an older Facet. An answer that names no form is read
 #: exactly as it always was, so this can never fail a solve on its own.
 FACET_ANSWER_FORMS: frozenset[str] = frozenset(
-    {"scalar", "ordered-pair", "parts", "choice"}
+    {"scalar", "ordered-pair", "parts", "choice", "relation"}
 )
+
+#: The one family whose answer is an equation rather than a value, and which
+#: therefore carries both of its sides. Ethnos has two ways to enter one and
+#: has to choose between them, so the choice is named here rather than made by
+#: splitting a written form somewhere downstream.
+FACET_RELATION_FORM = "relation"
 
 #: What Facet may be asked to produce. `value` is an answer to write down. The
 #: other two are *plans*: a proposal Ethnos proves for itself before anything
@@ -553,7 +559,25 @@ class FacetAnswer:
     #: The answer's family, when Facet named one. Empty from a Facet that
     #: predates the field, which is read as "unnamed" and never as a refusal.
     form: str = ""
+    #: Both sides of the answer, on the one family that is an equation. None on
+    #: every other, which is what makes its presence the signal.
+    relation: FacetRelation | None = None
     plan: dict[str, Any] | None = None
+
+
+@dataclass(frozen=True)
+class FacetRelation:
+    """Both sides of an answer that states one quantity equals another.
+
+    `y` and `-2x+5`, never the string `y=-2x+5` alone. Which of the two Ethnos
+    types depends on what the page already prints beside its answer box, and
+    that is Ethnos's to decide -- Facet is never told there is a page. What
+    crosses is the mathematics in a form that lets either be entered without
+    anybody splitting the other out of a string.
+    """
+
+    subject: str
+    value: str
 
 
 @dataclass(frozen=True)
@@ -661,7 +685,44 @@ def _answer(payload: Any, expected_kind: str) -> FacetAnswer:
         parts=tuple(parts),
         entry_mode=mode,
         form=form,
+        relation=_relation(payload, form, entry),
     )
+
+
+def _relation(payload: dict[str, Any], form: str, entry: str) -> FacetRelation | None:
+    """Both sides of an equation answer, held to agreeing with the whole one.
+
+    The three ways this can be wrong are all refusals rather than repairs. A
+    relation without the form is an answer whose family nothing declared; the
+    form without a relation is the family with the half Ethnos needs missing;
+    and sides that do not write out as `entry` are two different answers, one
+    of which would be typed. None of the three is recoverable by choosing a
+    side, which is exactly what a consumer under time pressure would do.
+    """
+    stated = payload.get("relation")
+    if stated is None:
+        if form == FACET_RELATION_FORM:
+            raise FacetProtocolError(
+                "Facet answered with an equation and named neither of its sides"
+            )
+        return None
+    if form != FACET_RELATION_FORM:
+        raise FacetProtocolError(
+            f"Facet answer carried an equation's sides under the form {form!r}"
+        )
+    if not isinstance(stated, dict):
+        raise FacetProtocolError("Facet answer relation was not an object")
+    subject = stated.get("subject")
+    value = stated.get("value")
+    if not isinstance(subject, str) or not subject.strip():
+        raise FacetProtocolError("Facet answer relation omitted its subject")
+    if not isinstance(value, str) or not value.strip():
+        raise FacetProtocolError("Facet answer relation omitted its value")
+    if f"{subject}={value}" != entry:
+        raise FacetProtocolError(
+            "Facet answer relation does not write out as the answer it came with"
+        )
+    return FacetRelation(subject=subject, value=value)
 
 
 def _plan_answer(payload: dict[str, Any], kind: str) -> FacetAnswer:

@@ -23,19 +23,23 @@ import sys
 import tempfile
 import time
 from pathlib import Path
-from typing import BinaryIO
+from typing import TYPE_CHECKING, BinaryIO
 
 from facet_runtime.exact import EXACT_METHOD as FACET_EXACT_METHOD
 
 from .hawkes_protocol import (
     MAX_MESSAGE_BYTES,
     AnswerPayload,
+    AnswerRelation,
     Certainty,
     SolveProgress,
     SolveRequest,
     SolveResponse,
     error_response,
 )
+
+if TYPE_CHECKING:  # `facet_client` is imported lazily, inside the call sites.
+    from .facet_client import FacetRelation
 
 LENGTH_PREFIX = struct.Struct("=I")
 
@@ -869,7 +873,11 @@ def _plan_certainty(solution, *, reading: str, issues: list[str]) -> Certainty:
 
 
 def answer_payload(
-    display: str, entry: str, parts: tuple[str, ...] | list[str], entry_mode: str
+    display: str,
+    entry: str,
+    parts: tuple[str, ...] | list[str],
+    entry_mode: str,
+    relation: FacetRelation | None = None,
 ) -> AnswerPayload:
     """Turn one exactly-shaped answer into the page's answer model.
 
@@ -878,18 +886,41 @@ def answer_payload(
     typed to produce them. The maths keyboard, its function forms and its
     implicit multiplication are facts about the Hawkes editor, not about the
     mathematics, so Facet is never told about any of it.
+
+    An equation is the one answer with two sides, and each is rendered as what
+    it is. The value is mathematics and goes through the same entry rule as any
+    other; the subject is a *name* the question gave, and putting it through
+    that rule turns `f(x)` into `f*(x)` -- implicit multiplication inserted
+    into something that was never a product. So the written equation is
+    composed from the two rather than linearized as one.
     """
     from .answer_image import entry_for
 
     def render(value: str) -> str:
         return entry_for(value, entry_mode)
 
+    written = (
+        AnswerRelation(
+            subject=relation.subject,
+            display_text=relation.value,
+            keyboard_entry=render(relation.value),
+        )
+        if relation is not None
+        else None
+    )
     return AnswerPayload(
         display_text=display,
         # A multi-part answer is carried in `parts`; there is no one string
         # that can be typed into several separate boxes.
-        keyboard_entry=render(entry) if entry else "",
+        keyboard_entry=(
+            f"{written.subject}={written.keyboard_entry}"
+            if written is not None
+            else render(entry)
+            if entry
+            else ""
+        ),
         parts=[render(value) for value in parts],
+        relation=written,
     )
 
 
@@ -1019,6 +1050,7 @@ def _solve_with_facet(
             solution.answer.entry,
             solution.answer.parts,
             solution.answer.entry_mode,
+            solution.answer.relation,
         ),
         certainty=Certainty(
             prompt_seen=prompt_seen,
@@ -1095,7 +1127,11 @@ def _solve_from_markup(
     if solution is None:
         return None, decline
     return answer_payload(
-        solution.display, solution.entry, solution.parts, solution.entry_mode
+        solution.display,
+        solution.entry,
+        solution.parts,
+        solution.entry_mode,
+        solution.relation,
     ), ""
 
 
@@ -1127,7 +1163,11 @@ def _shaped(solution) -> AnswerPayload | None:
     if solution is None:
         return None
     return answer_payload(
-        solution.display, solution.entry, solution.parts, solution.entry_mode
+        solution.display,
+        solution.entry,
+        solution.parts,
+        solution.entry_mode,
+        solution.relation,
     )
 
 

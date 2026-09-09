@@ -314,6 +314,40 @@ which; Ethnos does the writing, because the maths keyboard, its function forms
 and its implicit multiplication are facts about the Hawkes editor and not about
 the mathematics.
 
+### An equation carries both its sides
+
+One family is not a value. "Find the equation of the line in slope-intercept
+form" is answered with an equation, and it crosses as one:
+
+```json
+{"route": "exact",
+ "answer": {"display": "y=-2x+5", "entry": "y=-2x+5", "parts": [],
+            "entry_mode": "math", "form": "relation",
+            "relation": {"subject": "y", "value": "-2x+5"}},
+ "provenance": {"source": "Facet Exact", "method": "SymPy exact symbolic",
+                "router": "solved", "...": "..."}}
+```
+
+`relation` is present on `form: "relation"` and on nothing else, and Ethnos
+refuses either half without the other, or sides that do not write out as
+`entry`. Facet holds the same invariants on its own side.
+
+It exists because a Hawkes page takes an equation in one of two ways, and the
+difference is a page fact. Lesson 2.4 draws a **bare** box and expects the whole
+equation typed into it; lesson 3.2 prints `f(x) =` beside its box and expects
+only what follows. Until 2026-09-09 this route sent `-2x+5` and nothing else --
+the right-hand side, which is not an equation and is an answer only on the
+second kind of page. Live, on the first kind, Hawkes refused it: "Your answer is
+in an incorrect format."
+
+Facet cannot decide it. `MathProblem` has no way to describe a page and gains
+none: what the page prints in front of its answer box is not a property of the
+question. So Facet answers the question, both sides cross, and Ethnos chooses --
+from the subject its own reader finds printed beside the box, and from whether
+the box's published characters include an equals sign. That decision, and the
+two entry paths it picks between, are in
+[Answer capabilities](ANSWER_CAPABILITIES.md).
+
 Failure carries a reason and no answer:
 
 ```json

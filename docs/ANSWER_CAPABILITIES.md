@@ -20,14 +20,43 @@ that it cannot be.
 ## The wire
 
 Every exact answer carries `answer.form` -- one of `scalar`, `ordered-pair`,
-`parts`, `choice` -- beside `entry_mode`. It is deliberately the *family* and
-not a description of the value: what notation a value is written in stays
-readable from the value, and what a consumer cannot cheaply recover is which of
-these it is holding. Plans are not values and keep their own `kind`
+`parts`, `choice`, `relation` -- beside `entry_mode`. It is deliberately the
+*family* and not a description of the value: what notation a value is written in
+stays readable from the value, and what a consumer cannot cheaply recover is
+which of these it is holding. Plans are not values and keep their own `kind`
 (`parabola_plan`, `point_plot_plan`, `quadratic_regression`).
 
 `ANSWER_FORMS` in `facet_runtime.exact.router` is the closed set, and growing it
 is a protocol change.
+
+## An equation has two entry paths, and the page picks
+
+`relation` is the one family whose answer is not a value. "Find the equation of
+the line in slope-intercept form" is answered `y = -2x + 5`, and Hawkes takes
+that two ways:
+
+| The page | What it takes | Classified as |
+|---|---|---|
+| a bare box | the whole equation, `y=-2x+5` | `relation/…` |
+| a box it prints `f(x) =` in front of | the right side, `-5x-3` | `scalar/…` |
+
+So one answer presents two compositions, and both have to have a way in. The
+right side is classified as a `scalar` because that is exactly what it is once
+the page has stated the subject: same planner route, same rows, and those rows
+already existed -- `scalar-plain` and `scalar-fraction-group` are the two it
+lands on.
+
+**Which path a page takes is read, never assumed.** `surfaceStatesSubject` in
+`common/editor-rules.js` decides it from two facts, either of which is enough:
+the subject `inspectField` finds printed in front of the box, and whether the
+box's own published characters include an equals sign. Two signals for one fact,
+so that a layout change that stopped the label being readable cannot silently
+start typing a whole equation into a box that already holds half of it.
+
+Until 2026-09-09 there was no such reading. The runtime returned the right side
+alone, which is an answer only on the second kind of page, and lesson 2.4's bare
+box refused it as an incorrect format. The defect was not in either half: Facet
+had the line right and the add-on entered what it was given.
 
 ## The authority
 
@@ -74,7 +103,7 @@ function that does the typing.
 | symbolic with an exponent | `scalar` | exponent | `-x^13+2*x^12-3*x^11+5` | one box, Exponent template | `planRun` | yes | no | yes | `scalar-exponent` |
 | factored product | `scalar` | group | `(x+3)*(x+4)` | one box, parentheses template | `planRun` | yes | no | yes | `scalar-group` |
 | rational exponent | `scalar` | fraction+exponent+group | `y^(23/20)` | one box, Exponent over a bracketed rational | `planRun` | yes | no | yes | `scalar-fraction-exponent-group` |
-| linear function with a rational coefficient | `scalar` | fraction+group | `(1/2)*x+8` | one full-keypad box, Fraction inside parentheses | `planEntry` → `planRun` → `planCommaList` → `planFractionTemplate` | yes | no | no | `scalar-fraction-group` |
+| line's right side, rational coefficient | `scalar` | fraction+group | `(1/2)*x+8` | one full-keypad box the page prints `f(x) =` in front of, Fraction inside parentheses | `planEntry` → `planRun` → `planCommaList` → `planFractionTemplate` | yes | no | no | `scalar-fraction-group` |
 | rationalized radical | `scalar` | fraction+radical | `sqrt(5)/5` | one box, Fraction over a Radical | `planEntry` → `planFractionTemplate` → `planRun` | yes | no | yes | `scalar-fraction-radical` |
 | radical with an exponent | `scalar` | radical+exponent | `2*i*x^4*sqrt(2*x)` | one box, Radical inside a run of templates | `planRun` | yes | no | yes | `scalar-radical-exponent` |
 | named phrase, typed | `scalar` | phrase | `trinomial` | one box accepting letters | `planEntry` → `enterPlan` | yes | no | no | `scalar-phrase` |
@@ -91,6 +120,7 @@ function that does the typing.
 | quadratic regression plan | `quadratic_regression` | *plan* | `plan, no value` | coefficients checked, then read | `graphOperation` | yes | no | yes | `plan-quadratic-regression` |
 | factored form with an exponent | `scalar` | exponent+group | `-5*x*(2*y^2+3*y-5)` | one box, Exponent inside a parentheses template | `planRun` | yes | no | yes | `scalar-exponent-group` |
 | multipart complex rationals | `parts` | fraction+group | `(-4-6*i)/7` | one control per value, each a fraction over a bracketed sum | `planAnswerParts` → `planFractionTemplate` → `planRun` | yes | no | yes | `parts-fraction-group` |
+| line in slope-intercept form, whole equation | `relation` | plain | `y=-2*x+5` | one box publishing `=`, with no subject printed in front | `surfaceStatesSubject` → `planEntry` → `enterPlan` | yes | no | no | `relation-plain` |
 <!-- /generated:supported -->
 
 **Unit** means a QuickJS or Python test drives the real module. **Harness**
@@ -110,6 +140,8 @@ names; none is silently mis-entered.
 | decimal anything | `8.5` | The exact form is the answer. Rounding one to fit a box is how a wrong answer gets typed in confidently. | Refused as `answer-has-rejected-characters` | `scalar-decimal` |
 | interval notation | `(-∞,-3)∪(3,∞)` | Publishable as a reading, never insertable. | Refused as `answer-invalid` | `scalar-interval` |
 | a choice typed into a field | `Quadrant IV` | Selecting stays the reader's action, always. | Refused as `editor-option-answer` | `choice-typed` |
+| named function's whole equation | `f(x)=-5*x-3` | Every observed page that names a function prints `f(x) =` beside its box, so the right side alone is what it takes and this is never asked for. The one box that does take an equation publishes `xy=+-` and digits: a name and its brackets are both outside it. | Refused as `answer-has-rejected-characters` | `relation-group` |
+| equation with a rational coefficient, whole | `y=(1/2)*x+8` | A rational coefficient is parenthesised so that `1/2x` cannot be read as `1/(2x)`, and parentheses can only come from a template. The observed equation box offers Fraction and no other, so this is refused by name rather than entered as a different number. | Refused as `template-refused-by-question` | `relation-fraction-group` |
 <!-- /generated:unsupported -->
 
 ## Adding a family

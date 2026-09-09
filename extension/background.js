@@ -33,6 +33,7 @@ import {
   isTableMapping,
   publishableAnswer,
   sameTableMapping,
+  surfaceStatesSubject,
   tableAnswerFits,
   tableAnswerVerdicts,
 } from "/common/editor-rules.js";
@@ -283,6 +284,11 @@ function blankState() {
     // contract for a radio group: the answer to one is one of these strings
     // and is matched against them, never a form anybody writes.
     answerChoices: [],
+    // What the page prints in front of its answer box, when it prints
+    // anything: `y =`, `f(x) =`. Read with the question and never carried, for
+    // the same reason the choices are not -- last question's answer surface is
+    // not this one's.
+    suppliedSubject: "",
     editor: null,
     problemText: "",
     answer: "",
@@ -2037,6 +2043,9 @@ async function prepare(windowId = state.windowId) {
       frameId: choice.frameId,
       fieldId: choice.fieldId ?? "",
       fieldKind: chosenReport?.fieldKind ?? "",
+      suppliedSubject: typeof chosenReport?.suppliedSubject === "string"
+        ? chosenReport.suppliedSubject
+        : "",
       fieldIds,
       tableTargets,
       answerChoices,
@@ -2346,6 +2355,49 @@ async function solve(windowId = state.windowId) {
 }
 
 /**
+ * One answer, as the answer surface on screen takes it.
+ *
+ * Every answer but one is the same on every page. An *equation* is not: "find
+ * the equation of the line in slope-intercept form" is answered `y = -2x + 5`,
+ * and a Hawkes page either draws a bare box that takes the whole equation or
+ * prints `f(x) =` beside a box that takes only the right side. Facet answers
+ * the question and sends both sides; which one belongs on this page is decided
+ * here, because this is the side of the boundary that has a page.
+ *
+ * Not a rewrite of the answer and not a special case for `y=`. The two sides
+ * arrive already separated, this chooses between them, and an answer carrying
+ * no equation is returned untouched — so nothing else can reach this path.
+ *
+ * @param {{display_text?: string, keyboard_entry?: string,
+ *          relation?: {subject?: string, display_text?: string,
+ *                      keyboard_entry?: string}}} answer
+ * @param {object} editor as the page's own model published it
+ * @param {string} suppliedSubject what the page prints in front of the box
+ */
+function answerForSurface(answer, editor, suppliedSubject) {
+  const relation = answer?.relation;
+  if (
+    typeof relation?.display_text !== "string"
+    || typeof relation?.keyboard_entry !== "string"
+    || !surfaceStatesSubject(editor, { suppliedSubject })
+  ) {
+    return answer;
+  }
+  log.info("answer-side-chosen", {
+    // Which of the two facts decided it, and what the answer's own subject was.
+    // Never the value: this line says which half of an equation is being typed
+    // and why, and the answer itself is already reported by `solved`.
+    printed: String(suppliedSubject ?? "").length > 0,
+    subject: String(relation.subject ?? "").slice(0, 16),
+  });
+  return {
+    ...answer,
+    display_text: relation.display_text,
+    keyboard_entry: relation.keyboard_entry,
+  };
+}
+
+/**
  * The most readable form of an answer, for the panel to show.
  *
  * Kept separate from the form that gets inserted. The readable one may contain
@@ -2491,14 +2543,19 @@ async function acceptReply(reply) {
     lastSolve = { run: currentRun(), certainty, answerLength: reply.answer.display_text.length };
     return;
   }
-  const displayText = readableAnswer(reply.answer);
+  // Decided before anything reads the answer, so that the card, the editor
+  // check, the entry plan and the retained record are all about the same one.
+  const shaped = answerForSurface(
+    reply.answer, state.editor, state.suppliedSubject ?? ""
+  );
+  const displayText = readableAnswer(shaped);
   if (displayText.length === 0) {
-    fail("errorAnswerInvalid", { detail: JSON.stringify(reply.answer).slice(0, 300) });
+    fail("errorAnswerInvalid", { detail: JSON.stringify(shaped).slice(0, 300) });
     return;
   }
 
-  const answerParts = Array.isArray(reply.answer.parts)
-    ? reply.answer.parts.filter((value) => typeof value === "string")
+  const answerParts = Array.isArray(shaped.parts)
+    ? shaped.parts.filter((value) => typeof value === "string")
     : [];
   const hasParts = answerParts.length >= 2
     && answerParts.length <= MAX_ANSWER_PARTS
@@ -2506,7 +2563,7 @@ async function acceptReply(reply) {
   // What may be typed is a narrower question than what may be shown. A
   // multi-part answer keeps the readable equality only as its reviewed
   // identity; its entry values remain separate all the way to the field writer.
-  const candidates = [reply.answer.display_text, reply.answer.keyboard_entry].filter(
+  const candidates = [shaped.display_text, shaped.keyboard_entry].filter(
     (value) => typeof value === "string" && validateAnswer(value).ok
   );
   const answer = hasParts
@@ -2526,9 +2583,9 @@ async function acceptReply(reply) {
   const entryText = hasParts
     ? ""
     :
-    typeof reply.answer.keyboard_entry === "string"
-    && validateAnswer(reply.answer.keyboard_entry).ok
-      ? reply.answer.keyboard_entry
+    typeof shaped.keyboard_entry === "string"
+    && validateAnswer(shaped.keyboard_entry).ok
+      ? shaped.keyboard_entry
       : answer;
 
   log.info("solved", {
@@ -3857,6 +3914,7 @@ function markedCode() {
     "common/editor-rules.js#isTableMapping": isTableMapping,
     "common/editor-rules.js#publishableAnswer": publishableAnswer,
     "common/editor-rules.js#sameTableMapping": sameTableMapping,
+    "common/editor-rules.js#surfaceStatesSubject": surfaceStatesSubject,
     "common/editor-rules.js#tableAnswerFits": tableAnswerFits,
     "common/editor-rules.js#tableAnswerVerdicts": tableAnswerVerdicts,
     "common/frames.js#describeResults": describeResults,

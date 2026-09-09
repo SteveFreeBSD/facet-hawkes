@@ -37,7 +37,6 @@ from ethnos.answer_capabilities import (
     load,
     notation_of,
 )
-from ethnos.answer_image import entry_for
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 COMMON = PROJECT_ROOT / "extension" / "common"
@@ -80,9 +79,38 @@ def solve(probe):
 
 
 def entered(solution):
-    """What the host would actually hand the planner, per value."""
-    values = list(solution.parts) or [solution.entry or solution.display]
-    return [entry_for(value, solution.entry_mode) for value in values]
+    """What the host would hand the planner, and the family to read each under.
+
+    Through `answer_payload`, which is the host's own single definition of it,
+    rather than through `entry_for` alone. An equation is why: the host does
+    not linearize `f(x)=-5x-3` as one expression -- that would insert implicit
+    multiplication into a name -- it renders the value and composes the two.
+    And the page decides which of the two is typed, so both are classified.
+    """
+    from ethnos.hawkes_host import answer_payload
+
+    # A recorded emission arrives as plain data; a live solution arrives as the
+    # runtime's own object. Both name the same two sides.
+    relation = getattr(solution, "relation", None)
+    payload = answer_payload(
+        solution.display,
+        solution.entry,
+        solution.parts,
+        solution.entry_mode,
+        SimpleNamespace(**relation) if isinstance(relation, dict) else relation,
+    )
+    if payload.parts:
+        return [(solution.form, value) for value in payload.parts]
+    if payload.relation is not None:
+        # Two strings, two families. The whole equation is the `relation` this
+        # answer is; its right side alone, which is what a page printing
+        # `f(x) =` takes, is entered exactly as a scalar of the same notation
+        # is -- same planner route, same rows, and those rows already exist.
+        return [
+            (solution.form, payload.keyboard_entry),
+            ("scalar", payload.relation.keyboard_entry),
+        ]
+    return [(solution.form, payload.keyboard_entry)]
 
 
 @pytest.fixture(scope="module")
@@ -168,9 +196,9 @@ def undeclared_compositions(authority, emissions, source_key):
     """Group undeclared emitted compositions by the probe that reached them."""
     undeclared = {}
     for emission in emissions:
-        rendered = entered(SimpleNamespace(**emission))
         for key in {
-            composition(emission["form"], notation_of(text)) for text in rendered
+            composition(form, notation_of(text))
+            for form, text in entered(SimpleNamespace(**emission))
         }:
             if key not in authority.declared_compositions():
                 undeclared.setdefault(key, []).append(emission[source_key])
@@ -189,7 +217,7 @@ def test_every_probe_emits_the_composition_it_is_declared_under(authority):
             wrong.append(f"{entry.id}: declined -- {decline}")
             continue
         found = {
-            composition(solution.form, notation_of(text)) for text in entered(solution)
+            composition(form, notation_of(text)) for form, text in entered(solution)
         }
         if entry.composition not in found:
             wrong.append(
@@ -217,8 +245,9 @@ def test_every_composition_the_lesson_corpus_emits_is_declared(authority):
         solution, _ = solve_exact(case["prompt"], case["expressions"])
         if solution is None:
             continue
-        rendered = entered(solution)
-        for key in {composition(solution.form, notation_of(text)) for text in rendered}:
+        for key in {
+            composition(form, notation_of(text)) for form, text in entered(solution)
+        }:
             if key not in authority.declared_compositions():
                 undeclared.setdefault(key, []).append(case["id"])
 
