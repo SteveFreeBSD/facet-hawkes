@@ -36,13 +36,21 @@ was recorded as a fix that did not work.
 | Header | Local and UTC time from a single reading; `facet-hawkes` and `facet-runtime` HEAD, branch, and uncommitted files |
 | Code Firefox is running | The running build's marker against the working tree's, plus any file written since the event page loaded |
 | Browser | Every normal Firefox window, which one was chosen, which was active |
-| Runs | One block per user operation: target, question, editor, stages, route, runtime, ownership, outcome, failure class |
+| Runs | One block per user operation: target, question, editor, stages, route, runtime, ownership, transport, insertion, outcome, failure class |
 | Native host | Host processes now, and how a run id maps to a host request |
 | Facet | The transport a solve would actually take -- `local` or `ssh`, its target and the whole argv -- then route, model, backend and device for every run that reached a runtime |
 | Ollama | Service and runner state, asked only when a run named a runtime |
 | Cadence | Timing measurements, only for runs where Cadence performed |
 | Retained failures | The bounded ledger of runs that ended badly while nobody was watching |
 | Screenshot | Present only when `--screenshot` is given with `--bundle` |
+
+`transport` is which writer the run was routed to and why — the editor kind,
+what the pinned field is, how many table blanks the page published — or the
+reason it had none. `inserted` is what actually carried the characters, as the
+writer that carried them reported it, with the count that went through the
+editor's own keypad and the count assigned into a box. The two are printed
+separately on purpose: a writer that used a different mechanism than the one it
+was routed to is the defect they exist to make visible.
 
 `--bundle` also writes machine-readable `observation.jsonl` — one JSON object
 per record, `run` records keyed by run id — beside the human `summary.txt`.

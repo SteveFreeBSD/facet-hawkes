@@ -137,12 +137,20 @@ def pump(ctx):
     pytest.fail("the writer did not terminate")
 
 
-def run(ctx, steps):
+def run(ctx, steps, transport="hawkes-plain-box"):
+    """Perform one plan on the box, by the route a plain box is written by.
+
+    A plain answer box publishes no character API -- Hawkes' own
+    `AnswerBoxKeyPadClick` assigns `.value` and lets the box's `input` handling
+    sanitise it -- so this transport is the native one for it, whatever the
+    answer turns out to contain.
+    """
     ctx.eval(
         f"var steps = {json.dumps(steps)};"
+        f" var transport = {json.dumps(transport)};"
         " var phrase = ethnosCadence.planSemanticPhrase(steps,"
         " {durationMinMs: 200, durationMaxMs: 200});"
-        " enterPlan(steps, {score: phrase}).then(r => completed = r,"
+        " enterPlan(steps, {score: phrase}, [], transport).then(r => completed = r,"
         " e => completed = {ok: false, code: 'threw', detail: String(e)});"
     )
     pump(ctx)

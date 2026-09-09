@@ -383,11 +383,29 @@ def _check_main_world_writer(problems: list[str]) -> None:
         if re.search(pattern, text):
             problems.append(f"{MAIN_WORLD_WRITER}: {what}; it may only enter answers")
 
-    # The single page method it is allowed to call.
+    # The single page method it is allowed to call. It is called for ordinary
+    # characters as well as for templates: `keyPadButtonClick` delegates to
+    # `addElement`, whose character branch validates against the slot the
+    # editor is in, updates the page-owned base and runs Hawkes' own change
+    # handler. Assigning the same character into the box reaches it and
+    # bypasses all of that.
     if "keyPadButtonClick" not in text:
         problems.append(
             f"{MAIN_WORLD_WRITER}: expected to press templates via the editor"
         )
+    if "control.keyPadButtonClick(character" not in text:
+        problems.append(
+            f"{MAIN_WORLD_WRITER}: a dynamic editor's characters must be pressed "
+            f"on its own keypad, not assigned into its box"
+        )
+    # And it performs the route it was given rather than inferring one.
+    for required, why in (
+        ('const KEYPAD = "hawkes-dynamic-keypad";', "must name the keypad route"),
+        ('const PLAIN_BOX = "hawkes-plain-box";', "must name the plain-box route"),
+        ('code: "transport-unavailable"', "must refuse a route it cannot perform"),
+    ):
+        if required not in text:
+            problems.append(f"{MAIN_WORLD_WRITER}: {why}")
     if "func: enterPlan" not in (EXTENSION_DIR / "background.js").read_text(
         encoding="utf-8"
     ):
@@ -455,6 +473,76 @@ def _check_table_writer(problems: list[str]) -> None:
                 f"{other}: assigns focusedElementIndex, which is a mirror of "
                 f"Hawkes' own selection and not the router it edits through"
             )
+
+
+#: The one file that decides which writer places an answer.
+TRANSPORT_POLICY = Path("common/transport.js")
+
+
+def _check_transport_policy(problems: list[str]) -> None:
+    """Transport is chosen from the page, and can never be chosen from the answer.
+
+    The policy this enforces replaced one sentence in the event page: if the
+    reviewed answer fitted the editor's published character set it went to the
+    isolated DOM writer, and otherwise to the page-world editor. So one
+    question's editor had two writers and the answer picked between them.
+
+    The build refuses that shape rather than trusting it to stay gone. It is a
+    cheap check of an expensive defect: the two routes have different failure
+    modes, and the one the answer happened to select was not recorded anywhere.
+    """
+    path = EXTENSION_DIR / TRANSPORT_POLICY
+    if not path.is_file():
+        problems.append(f"{TRANSPORT_POLICY} is missing")
+        return
+    text = path.read_text(encoding="utf-8")
+    if "export function chooseTransport(editor, page = {}) {" not in text:
+        problems.append(
+            f"{TRANSPORT_POLICY}: chooseTransport must take the editor and the "
+            f"page's own facts, and nothing else"
+        )
+    # Its prose quotes the policy it replaced; only the code is checked.
+    code = re.sub(r"/\*[\s\S]*?\*/|//.*", "", text)
+    for forbidden in (
+        "answerFitsEditor",
+        "insertable",
+        "planEntry",
+        "allowedCharacters",
+        "validateAnswer",
+        "import ",
+    ):
+        if forbidden in code:
+            problems.append(
+                f"{TRANSPORT_POLICY}: reads {forbidden}; the transport is "
+                f"decided from the page, never from the answer"
+            )
+
+    background = (EXTENSION_DIR / "background.js").read_text(encoding="utf-8")
+    for gone in (
+        "answerFitsEditor(reviewed, editor).insertable",
+        "plain: direct.every(Boolean)",
+    ):
+        if gone in background:
+            problems.append(
+                f"background.js: {gone} routes an answer by its own characters"
+            )
+    # Both directions. An answer writer with no transport is a route nothing
+    # decided; a transport whose writer is never injected is a route that does
+    # not exist. Answer writers are the `enter*` injections and the graph
+    # actuator; everything else injected reads, measures or observes.
+    named = set(re.findall(r'writer: "(\w+)"', text))
+    injected = set(re.findall(r"func: (\w+)", background))
+    writers = {name for name in injected if name.startswith("enter")}
+    writers.add("graphOperation")
+    for writer in sorted(writers - named):
+        problems.append(
+            f"background.js: injects {writer}, which {TRANSPORT_POLICY} "
+            f"names no transport for"
+        )
+    for writer in sorted(named - injected):
+        problems.append(
+            f"{TRANSPORT_POLICY}: names {writer}, which background.js never injects"
+        )
 
 
 def _check_injected_paths(problems: list[str]) -> None:
@@ -824,6 +912,7 @@ def validate() -> list[str]:
     _check_cadence_score(problems)
     _check_injected_paths(problems)
     _check_main_world(problems)
+    _check_transport_policy(problems)
     return problems
 
 

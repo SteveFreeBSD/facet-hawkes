@@ -168,6 +168,9 @@ def test_selected_one_solution_hands_off_to_its_controlled_textbox(option_page):
         # telling apart from a genuinely single-field question.
         "via": "revealed-option",
         "fieldId": "txt1_num",
+        # And what that field is, which is what decides whether the box writer
+        # or the caret writer can reach it.
+        "fieldKind": "native",
     }
 
 

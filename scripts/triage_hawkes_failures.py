@@ -576,6 +576,11 @@ def _record_lines(record: dict, *, full: bool) -> list[str]:
                 )
             )
     traits = record.get("traits") or {}
+    if traits.get("transport"):
+        # Which writer this run was routed to, or `none:<code>` where the page
+        # published no writer for its answer control. Read hours later, with no
+        # log ring left, this is often the whole diagnosis of a refusal.
+        lines.append(f"transport  {traits['transport']}")
     if traits.get("notInsertable"):
         lines.append(f"refused    {_pairs(traits['notInsertable'])}")
     answer = record.get("answerShape") or {}

@@ -125,6 +125,7 @@ FAILURE = {
         "editor": "answer-needs-template",
         "plan": "template-refused-by-question",
     },
+    "transport": "hawkes-dynamic-keypad",
     "events": ["answer-not-insertable"],
 }
 
@@ -281,6 +282,19 @@ def test_the_evidence_the_route_and_the_runtime_all_survive_into_one_record(js):
         "device": "gpu",
         "fallback": False,
     }
+
+
+def test_a_record_names_the_writer_the_run_was_routed_to(js):
+    """Read hours later, "which route was it on" is often the whole diagnosis.
+
+    A name from the closed set in `common/transport.js`, decided from the
+    page's own answer model. It carries nothing of the answer, and a question
+    the page published no writer for says so rather than saying nothing.
+    """
+    assert build(js)["traits"]["transport"] == "hawkes-dynamic-keypad"
+    refused = build(js, transport="none:editor-mixed-transports")
+    assert refused["traits"]["transport"] == "none:editor-mixed-transports"
+    assert build(js, transport=None)["traits"]["transport"] == ""
 
 
 def test_the_sanitized_dom_cause_survives_event_page_failure_storage(js):

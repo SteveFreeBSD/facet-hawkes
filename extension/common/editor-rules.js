@@ -379,12 +379,27 @@ export function insertErrorKey(code) {
     "answer-fields-not-empty": "errorFieldNotEditable",
     "answer-parts-incomplete": "errorInsertRejected",
     "editor-multiple-answer": "errorEditorUnknown",
+    // The transport and the writer disagreed about what this page is: a
+    // writer handed a route it does not implement, a plan carrying a step
+    // that belongs to the other editor, or an editor model made of two kinds
+    // of control at once. All three mean the route was decided against a page
+    // that is not the page being written to, and none is an answer defect.
+    "transport-unavailable": "errorEditorUnknown",
+    "transport-step-mismatch": "errorEditorUnknown",
+    "editor-mixed-transports": "errorEditorUnknown",
+    "answer-needs-template": "errorAnswerNeedsTemplate",
     "answer-invalid": "errorAnswerInvalid",
     "answer-unavailable": "errorAnswerInvalid",
     "prelude-missing": "errorNoBridge",
     "wrong-site": "errorWrongSite",
     "editor-dialog-open": "errorEditorDialogOpen",
     "editor-model-missing": "errorEditorUnknown",
+    // The page published a control this add-on has no writer for. It reached
+    // `errorNoBridge` through the fallback until transport selection had a
+    // name for it, which read as "the add-on could not reach the page" of a
+    // page it had just read.
+    "editor-unknown": "errorEditorUnknown",
+    "editor-rules-unknown": "errorEditorUnknown",
     "template-unavailable": "errorEditorUnknown",
     "template-refused-by-question": "errorAnswerNeedsTemplate",
     "answer-has-rejected-characters": "errorAnswerRejected",

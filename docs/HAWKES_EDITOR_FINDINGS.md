@@ -257,6 +257,59 @@ a freshly loaded question of a known type before drawing a conclusion.
 - **Still not planned:** nested fractions. They are declined before the page is
   touched rather than partially entered.
 
+## An ordinary character is an editor operation too
+
+Read from the bundle the live lesson loads, on 2026-09-08.
+
+`keyPadButtonClick(name)` is not a template entry point that happens to be
+reachable. It is *the* entry point: it delegates to `addElement(name, true,
+callback)`, which handles `Clear`, `BS`, the template family and the function
+family first, and then falls through to an ordinary-character branch. That
+branch validates the character against the slot the editor is currently in,
+updates the page-owned `Base`, focuses it, and runs Hawkes' own change handler.
+
+So `keyPadButtonClick("5")` is as much a dynamic-editor operation as
+`keyPadButtonClick("Fraction")`, and digits, letters and the supported
+operators are things the editor does rather than things done to it. Assigning
+the same character through the input's prototype setter reaches the same box
+and runs none of that.
+
+**Plain answer boxes have no equivalent.** `AnswerBoxKeyPadClick` builds
+structure in one by editing the value directly — `case 'Fraction':
+focusedElement.value = prevText + '/' + postText` — so a plain box's own
+`input` handling *is* its native path, and pressing a keypad at one would be
+this add-on inventing a capability the page does not have.
+
+### What the add-on does with that
+
+`common/transport.js` is the whole of the decision, and it is made from the
+page's own answer model:
+
+| Page's answer model | Transport | Characters | Structure |
+|---|---|---|---|
+| dynamic math editor | `hawkes-dynamic-keypad` | `keyPadButtonClick(character)` | `keyPadButtonClick(template)` |
+| plain answer box | `hawkes-plain-box` | the box's own `input` handling | a typed `/`, which the box splits on |
+| several plain boxes | `hawkes-plain-fields` | the same, one field at a time | — |
+| completion table | `hawkes-table-cells` | the same, through the page-selected control | — |
+| contenteditable field | `native-contenteditable` | `execCommand` at its caret | — |
+| graph | `hawkes-graph` | — | the page's own controls |
+
+Two properties are worth stating because their absence was the defect. The
+policy takes **no answer** — not the text, not the plan, not the character set
+— so one question's editor has one writer whatever it is asked to enter. And
+the branch an insertion takes is *compared* against the transport that was
+chosen rather than assumed to agree, so a page that changes shape between the
+two decisions is a refusal.
+
+Before this, the event page asked whether the reviewed answer fitted the
+editor's published character set: an answer that fitted went to the isolated
+DOM writer and anything else to the page-world editor. `5` and `1/5` went into
+the same dynamic box by different machinery, with different failure modes, and
+the log recorded which shape the answer had rather than which route it took.
+
+`scripts/build_extension.py` refuses a tree where that returns, and
+`tests/test_hawkes_transport.py` states the policy as tests.
+
 ## Footprint consequence
 
 Taken, deliberately, in 0.16.0.
@@ -275,10 +328,17 @@ through `keyPadButtonClick`. Neither a synthesized event sequence nor a
 page's world.
 
 The capability is bounded and the build enforces the bounds: the writer may
-type into answer boxes and press named templates, and may not evaluate code,
-click page elements, navigate, make requests, or write markup. Submission
-remains out of scope entirely — as does selecting a radio button, which is
-answering rather than filling in a field.
+enter characters into answer boxes and press named templates, and may not
+evaluate code, click page elements, navigate, make requests, or write markup.
+Submission remains out of scope entirely — as does selecting a radio button,
+which is answering rather than filling in a field.
+
+A dynamic editor's characters now go the same way its templates do, which
+*reduces* the synthetic-event surface rather than growing it: nothing is
+assigned into a dynamic box and no `input` event is synthesized for one. The
+bound is unchanged — `keyPadButtonClick` was already the one page method this
+writer may call — and what it is now called with is a character as well as a
+template name.
 
 ## Reproducing
 

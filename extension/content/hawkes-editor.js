@@ -368,6 +368,27 @@ var ethnosHawkes = (function () {
     );
   }
 
+  /**
+   * What kind of thing this answer field is, in the transport's own words.
+   *
+   * `common/transport.js` decides the route from the page's answer model, and
+   * this is the one page fact outside that model which changes it: a
+   * MathQuill-style editor is a contenteditable element rather than an input,
+   * and the box writer has no box to write into. Reported for every field so
+   * that the decision is made from a measurement rather than from an absence.
+   *
+   * @returns {"native" | "contenteditable" | "other"}
+   */
+  function fieldKindOf(target) {
+    if (isNativeField(target)) {
+      return "native";
+    }
+    if (target?.isContentEditable || target?.getAttribute?.("role") === "textbox") {
+      return "contenteditable";
+    }
+    return "other";
+  }
+
   /** @returns {boolean} whether a value is a supported plain-text answer. */
   function answerIsSupported(value) {
     return (
@@ -456,6 +477,7 @@ var ethnosHawkes = (function () {
         code: "focused-answer-field",
         via: "revealed-option",
         fieldId: revealed.id || "",
+        fieldKind: fieldKindOf(revealed),
       };
     }
     const fields = solutionFields();
@@ -501,6 +523,7 @@ var ethnosHawkes = (function () {
       code: "focused-answer-field",
       via: "focused-field",
       fieldId: target.id || "",
+      fieldKind: fieldKindOf(target),
       multiFieldEvidence: lastSolutionFieldEvidence,
     };
   }

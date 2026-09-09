@@ -161,11 +161,15 @@ def test_exactly_one_page_world_script_may_write():
 def test_a_structured_answer_is_built_rather_than_refused():
     background = (EXTENSION_DIR / "background.js").read_text()
 
-    # An answer that cannot be typed is now built with the keypad templates,
-    # not just displayed for the user to enter.
+    # An answer that cannot be typed is built with the keypad templates, not
+    # just displayed for the user to enter -- and so is one that can be, since
+    # a dynamic editor's characters are its own operations too. Which writer
+    # runs is `common/transport.js`'s decision and is never re-derived from the
+    # answer here; `tests/test_hawkes_transport.py` pins that policy.
     assert "buildStructured" in background
     assert "planEntry(" in background
-    assert "answerFitsEditor(reviewed, editor).insertable" in background
+    assert 'transportMatches(routed, "hawkes-dynamic-keypad")' in background
+    assert 'transportMatches(routed, "hawkes-plain-box")' in background
 
 
 def test_only_the_read_only_probe_runs_in_the_page_world():
@@ -769,13 +773,14 @@ def test_structured_insertion_executes_the_machine_entry_plan_the_panel_validate
     panel = (EXTENSION_DIR / "common" / "panel-view.js").read_text()
 
     assert (
-        "async function buildStructured(answer, cadence, target, editor)" in background
+        "async function buildStructured(answer, cadence, target, editor, routed)"
+        in background
     )
     assert "const plan = planEntry(answer, editor);" in background
     assert "state.entryText || state.answer" in panel
     assert "machineEntry: state.entryText || state.answer," in background
     assert (
-        "await buildStructured(target.machineEntry, cadence, target, editor)"
+        "await buildStructured(\n      target.machineEntry, cadence, target, editor, routed\n    )"
         in background
     )
 
@@ -1886,8 +1891,8 @@ def test_structured_keypad_entry_performs_on_the_same_cadence():
     background = (EXTENSION_DIR / "background.js").read_text()
 
     assert (
-        "export async function enterPlan(steps, cadence = {}, targetFieldIds = [])"
-        in actions
+        "export async function enterPlan(steps, cadence = {}, targetFieldIds = [],"
+        ' transport = "")' in actions
     )
     assert "const typeInto = async (id, text)" in actions
     assert "await waitForNote()" in actions
@@ -1898,9 +1903,10 @@ def test_structured_keypad_entry_performs_on_the_same_cadence():
     # window per step.
     assert 'filter((step) => step.op === "type")' in actions
     assert "const noteOffsets = cadence.score?.offsets" in actions
-    assert "args: [plan.steps, cadence]" in background
+    # The plan, the score, no multi-field target, and the route it must take.
+    assert "args: [plan.steps, cadence, [], routed.transport]" in background
     assert (
-        "await buildStructured(target.machineEntry, cadence, target, editor)"
+        "await buildStructured(\n      target.machineEntry, cadence, target, editor, routed\n    )"
         in background
     )
 

@@ -616,6 +616,10 @@ export function buildFailureRecord(input = {}) {
         ? [...new Set(input.events.map((name) => bounded(name, 48)))].sort()
         : [],
       evidenceRefused: input.evidenceRefused === true,
+      // The route this run was on, or `none:<code>` where the page published
+      // no writer for its answer control. A name from a closed set decided in
+      // `common/transport.js`; it carries nothing of the answer.
+      transport: bounded(input.transport, 48),
       notInsertable: input.notInsertable && typeof input.notInsertable === "object"
         ? {
           editor: bounded(input.notInsertable.editor, 32),

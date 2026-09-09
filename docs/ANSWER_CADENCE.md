@@ -39,13 +39,24 @@ flowchart TD
     H --> I[Equation reveal + rhythm strip + same arrangement]
 ```
 
-The event page builds the score once for the approved route. Plain native
-inputs and contenteditable fields receive it through the isolated prelude.
-Structured `enterPlan()` receives the same score as serialized data: it no
-longer contains a second copy of the rhythm algorithm. The build gate prevents
-that copy from returning. Multi-field plain answers consume successive segments
-of one score and one origin, rather than starting a new duration window in each
-box. Structured multi-field entry already used one clock and continues to do so.
+The event page builds the score once for the approved route, whichever route
+that is. `enterPlan()` — the page-world writer, which places every answer into
+a single Hawkes answer box of either kind — receives it as serialized data: it
+no longer contains a second copy of the rhythm algorithm, and the build gate
+prevents that copy from returning. Separate plain solution fields and
+contenteditable fields receive it through the isolated prelude. Multi-field
+plain answers consume successive segments of one score and one origin, rather
+than starting a new duration window in each box. Structured multi-field entry
+already used one clock and continues to do so.
+
+Which writer runs is not a Cadence decision and never was: `common/transport.js`
+makes it from the page's own answer model, before a score exists. What changed
+is that a dynamic editor's *characters* now go through that editor's own
+`keyPadButtonClick` rather than being assigned into its box — one note per
+character, on the same offsets, through one `runScoredEntry`. A template
+remains a fermata and a character remains a note; nothing here acquired a
+second clock, and `tests/test_cadence_score.py` executes both transports
+against the same score to say so.
 
 ### Structure is a fermata, not a burst
 
@@ -180,10 +191,18 @@ A short-lived isolated-world observer opens a runtime port for the performance.
 RC5 does not rely on how long the event page then lives, and the previous claim
 that an open port is not a keepalive did not survive measurement: with a silent
 port and a sixty-second oscillator scheduled, a default-policy Firefox 155 event
-page was still the same document a minute later. What it *had* done was announce
-the suspension it then did not carry out, and `runtime.onSuspend` releases every
-presentation and closes the device — so after that minute the feature was holding
-no output device and no voice, which is the property that actually matters.
+page was still the same document a minute later. After that minute the feature
+was holding no voice, and `runtime.onSuspend` releases every presentation and
+closes the device whenever Firefox does say so.
+
+*Whether* it says so is Firefox's, and it varies: the same probe has seen an
+announced suspension that was then not carried out and, on 2026-09-08, no
+announcement at all. So the smoke exercises the release rather than waiting for
+it — it idles for a minute, requires that no voice is held, then calls the exact
+listener that announcement is given, which must leave no voice and no device.
+Requiring the device to be gone *without* asking measured whether some earlier
+operation's `finish` happened to land inside the idle window, which is a fact
+about scheduling and not about this feature.
 
 Real presentation cues are activity; nothing here sends keepalive traffic. Popup
 destruction does not destroy the background instrument, and the sidebar is
@@ -228,7 +247,9 @@ structured rollback, graph actuation and never-submit behavior remain in their
 existing paths. Graph operations do not acquire a musical score.
 
 The active writer emits a transient DOM CustomEvent with a per-performance
-channel name and a string containing only note index and elapsed time. This
+channel name and a string containing only note index and elapsed time. It emits
+it after the write is accepted, which for a dynamic editor means after the
+editor's own keypad call has put the character in the box the plan meant. This
 works across Firefox's MAIN/isolated boundary without page globals, injected
 nodes, prototype modification or extension resource URLs. **Page code can
 observe or forge this presentation cue.** It is not authentication or an input

@@ -422,6 +422,74 @@ def test_an_undisturbed_insertion_records_its_snapshot_and_no_change():
     assert summary["failure"] is None
 
 
+def test_an_observation_says_which_writer_carried_the_characters():
+    """`via` names the branch; the transport names the mechanism.
+
+    A log that recorded only `via: "structured"` or `via: "plain"` was
+    recording the shape of the answer. Which writer ran, and whether the
+    characters went through the editor's own keypad or were assigned into its
+    box, is the question a route defect is diagnosed with.
+    """
+    summary = run_of(
+        [
+            entry(
+                "transport-chosen",
+                t=1000,
+                run="rA",
+                transport="hawkes-dynamic-keypad",
+                world="MAIN",
+                writer="enterPlan",
+                editorKind="dynamic",
+                fieldKind="native",
+                blanks=0,
+            ),
+            entry(
+                "inserted",
+                t=1300,
+                run="rA",
+                via="structured",
+                transport="hawkes-dynamic-keypad",
+                routedTo="hawkes-dynamic-keypad",
+                timing={"keypadWrites": 6, "nativeWrites": 0},
+                elapsedMs=200,
+            ),
+        ]
+    )
+
+    assert summary["transport"]["chosen"] == "hawkes-dynamic-keypad"
+    assert summary["transport"]["world"] == "MAIN"
+    assert summary["insertion"]["transport"] == "hawkes-dynamic-keypad"
+    assert summary["insertion"]["routed_to"] == "hawkes-dynamic-keypad"
+    assert summary["insertion"]["keypad_writes"] == 6
+    assert summary["insertion"]["native_writes"] == 0
+    assert "transport  " in "\n".join(OBS._run_lines(summary))
+
+
+def test_a_question_with_no_writer_says_which_route_it_was_refused_for():
+    summary = run_of(
+        [
+            entry(
+                "transport-unavailable",
+                t=1000,
+                run="rA",
+                level="warn",
+                code="editor-mixed-transports",
+                editorKind="multi",
+                editors=2,
+                fieldKind="native",
+                blanks=0,
+            ),
+            entry(
+                "failed", t=1100, run="rA", level="warn", errorKey="errorEditorUnknown"
+            ),
+        ]
+    )
+
+    assert summary["transport"]["refused"] == "editor-mixed-transports"
+    assert summary["transport"]["editor_kind"] == "multi"
+    assert summary["outcome"] == "failed"
+
+
 # --- which of the seven kinds of failure ----------------------------------
 
 

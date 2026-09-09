@@ -45,6 +45,7 @@ MODULES = (
     "common/cadence.js",
     "common/cadence-audio.js",
     "common/cadence-session.js",
+    "common/transport.js",
     "common/page-actions.js",
     "common/table-actions.js",
     "common/graph-actions.js",
@@ -213,7 +214,19 @@ EDITOR_OK = {
 }
 QUESTION_A = {"promptText": "Question A.", "expressions": ["a^2"]}
 QUESTION_B = {"promptText": "Question B.", "expressions": ["b^2"]}
-ENTERED_OK = {"ok": True, "code": "native-input", "answer": "3y"}
+ENTERED_OK = {
+    "ok": True,
+    "code": "entered",
+    "entered": "3y",
+    "transport": "hawkes-dynamic-keypad",
+}
+#: A question whose several answers are plain boxes rather than dynamic ones.
+#: Its parts are typed into the fields as they stand, by the isolated writer.
+PLAIN_FIELD_EDITOR = {
+    **EDITOR_OK,
+    "kind": "textbox",
+    "allowedCharacters": "0123456789-",
+}
 PAIR_INSPECT = {
     "ready": True,
     "code": "multi-answer-fields",
@@ -221,6 +234,14 @@ PAIR_INSPECT = {
     "fieldIds": ["QBase1_input", "QBase2_input"],
 }
 PAIR_EDITOR = {
+    "ok": True,
+    "code": "described-multi",
+    "kind": "multi",
+    "editors": [PLAIN_FIELD_EDITOR, PLAIN_FIELD_EDITOR],
+}
+#: The same two-field question, drawn with Hawkes' dynamic editors instead.
+#: Both parts are directly typeable and both still go through the editor.
+DYNAMIC_PAIR_EDITOR = {
     "ok": True,
     "code": "described-multi",
     "kind": "multi",
@@ -245,7 +266,7 @@ FOUR_EDITOR = {
     "ok": True,
     "code": "described-multi",
     "kind": "multi",
-    "editors": [{**EDITOR_OK, "allowedCharacters": "0123456789-"} for _ in range(4)],
+    "editors": [PLAIN_FIELD_EDITOR for _ in range(4)],
 }
 FOUR_ENTERED = {
     "ok": True,
@@ -404,8 +425,7 @@ def test_an_undisturbed_insertion_writes_to_its_own_target(page):
     page.pump()
     page.answer(EDITOR_OK)  # describeEditor
     page.answer(QUESTION_A)  # the signature re-check
-    page.answer(INSPECT_OK)  # the isolated-world prelude
-    page.answer(ENTERED_OK)  # the entry itself
+    page.answer(ENTERED_OK)  # the entry itself, in the page's own world
     page.answer(QUESTION_A)  # finishInsertion's rebase read
 
     assert page.writes, "an undisturbed insertion wrote nothing"

@@ -599,6 +599,12 @@ def summarize_run(group: dict, reference: dict) -> dict:
         "runtime": None,
         "ownership": None,
         "cadence": None,
+        # Which writer the run was routed to, and what actually carried the
+        # characters. Declared here so an observation always states them --
+        # absent is a run that never reached the decision, not a run whose
+        # route was unrecorded.
+        "transport": None,
+        "insertion": None,
         "answer_length": None,
         "answer_parts": None,
         "host_answer_parts": None,
@@ -725,10 +731,31 @@ def summarize_run(group: dict, reference: dict) -> dict:
             run["outcome"] = "abandoned"
         elif event == "cadence-performed":
             run["cadence"] = data
+        elif event in {"transport-chosen", "transport-unavailable"}:
+            # Which writer this question was routed to, decided from the page's
+            # own answer model. Recorded whether or not a write followed, so a
+            # refusal says which route it was refused for.
+            run["transport"] = {
+                "chosen": data.get("transport") or "",
+                "world": data.get("world") or "",
+                "writer": data.get("writer") or "",
+                "editor_kind": data.get("editorKind") or "",
+                "field_kind": data.get("fieldKind") or "",
+                "blanks": data.get("blanks"),
+                "refused": data.get("code") or "",
+            }
         elif event == "inserted":
             run["outcome"] = "inserted"
             run["insertion"] = {
                 "via": data.get("via"),
+                # The route the characters actually took, as the writer that
+                # carried them reported it, beside the route it was given.
+                # `via` names the branch and has always been the shape of the
+                # answer; these two name the mechanism.
+                "transport": data.get("transport") or "",
+                "routed_to": data.get("routedTo") or "",
+                "keypad_writes": (data.get("timing") or {}).get("keypadWrites"),
+                "native_writes": (data.get("timing") or {}).get("nativeWrites"),
                 "elapsed_ms": data.get("elapsedMs"),
                 "answer_length": data.get("answerLength"),
             }
@@ -1398,6 +1425,10 @@ def _run_lines(run: dict) -> list[str]:
         lines.append(
             f"     ownership  changed={changed} at={own.get('why') or 'pinned'}{joined}"
         )
+    if run.get("transport"):
+        lines.append(f"     transport  {_compact(run['transport'])}")
+    if run.get("insertion"):
+        lines.append(f"     inserted   {_compact(run['insertion'])}")
     if run.get("not_insertable"):
         lines.append(f"     refused    {_compact(run['not_insertable'])}")
     if run.get("cadence"):

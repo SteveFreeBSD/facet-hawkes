@@ -6,6 +6,50 @@ name the add-on as it was called at the time.
 
 ## Unreleased
 
+- **One editor, one writer: the transport is chosen from the page, never from
+  the answer.** The event page decided how to place an answer by asking whether
+  the reviewed answer fitted the editor's published character set. An answer
+  that fitted went to the isolated DOM writer; anything else went to the
+  page-world editor. So one question's answer box had two writers and the
+  answer picked between them: `5` and `1/5` went into the same dynamic box by
+  different machinery, with different failure modes, and the log recorded which
+  shape the answer had rather than which route it took.
+
+  It was also wrong about the editor. A digit is not merely *acceptable* to a
+  Hawkes dynamic editor -- it is one of that editor's own operations.
+  `keyPadButtonClick(name)` delegates to `addElement(name, true, callback)`,
+  whose ordinary-character branch validates the character against the slot the
+  editor is in, updates the page-owned base, focuses it and runs Hawkes' own
+  change handler. Assigning the same character through the input's prototype
+  setter reached the box and ran none of that.
+
+  `common/transport.js` is now the whole of the decision, and it is made from
+  the page's own answer model: a dynamic math editor takes every character and
+  every template through `keyPadButtonClick`; a plain answer box is written by
+  its own `input` handling, which is what Hawkes' own `AnswerBoxKeyPadClick`
+  does to one and the only native path it has; separate plain solution fields,
+  completion-table cells, a contenteditable field and a graph keep the writers
+  they had. The policy takes no answer, no plan and no character set, so the
+  old sentence cannot be written in it, and the branch an insertion takes is
+  compared against the transport that was chosen rather than assumed to agree.
+  An answer that does not suit the writer its page chose is refused by name --
+  it is never a reason to choose a different writer.
+
+  Nothing about Cadence moved. There is still one score per insertion and one
+  `runScoredEntry`; each character still lands on its own note, a template is
+  still a fermata, and no second timing algorithm appeared -- the keypad call
+  simply happens where the assignment used to. Answer boxes that were never
+  dynamic are untouched, and so are graphs.
+
+  Diagnostics now say which route ran rather than which shape the answer had:
+  the log records the chosen transport and the one the writer reports having
+  used, with a count of characters that went through the keypad and through the
+  box; the observatory prints both; and the retained failure ledger keeps the
+  route a refused run was on, or `none:<code>` where the page published no
+  writer for its control. `scripts/build_extension.py` refuses a tree where the
+  old policy returns, and `tests/test_hawkes_transport.py` states the policy as
+  tests.
+
 - **A named positivity assumption reaches the solver in readable form.** On
   lesson 1.5, MathJax exposed both its drawn inequality and its assistive MathML
   through the prompt's text. The visible “Assume x > 0.” therefore crossed the

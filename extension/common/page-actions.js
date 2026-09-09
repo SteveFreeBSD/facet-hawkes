@@ -4,11 +4,12 @@
  * The one function that writes to the Hawkes editor.
  *
  * It is passed to `scripting.executeScript` as `func` and runs in the page's
- * own world, because building structure means calling the editor's own
- * `keyPadButtonClick` — a page-owned method no isolated script can reach.
- * Passing it as a function rather than a file is what allows the plan to be an
- * argument; `executeScript` accepts files or a function with arguments, never
- * both.
+ * own world, because both of the transports it performs need the page's own
+ * model: a dynamic editor takes every character through `keyPadButtonClick`,
+ * and a plain answer box splits into two only when the control behind it says
+ * it did. Passing it as a function rather than a file is what allows the plan
+ * to be an argument; `executeScript` accepts files or a function with
+ * arguments, never both.
  *
  * It must stay self-contained: `executeScript` serialises it, so it may not
  * reference anything outside its own body.
@@ -17,6 +18,34 @@
  * against this question's own character set and permitted templates. This
  * function performs the plan and reports what happened; it makes no decisions
  * about what the answer should be, and it never touches Submit or Check.
+ *
+ * ## It is told its transport; it does not choose one
+ *
+ * `common/transport.js` decides which writer runs, from the page's own answer
+ * model and nothing else, and the name of that decision arrives here as an
+ * argument. This function refuses a transport it does not implement rather
+ * than picking whichever mechanism the plan's steps happen to suggest — the
+ * defect being closed is exactly a writer that chose its own mechanism from
+ * the answer in front of it.
+ *
+ * | Transport | Characters | Structure |
+ * |---|---|---|
+ * | `hawkes-dynamic-keypad` | `keyPadButtonClick(character)` | `keyPadButtonClick(template)` |
+ * | `hawkes-plain-box` | the box's own `input` handling | a typed `/`, which the box splits on |
+ *
+ * A dynamic character is not merely acceptable to the editor: it is one of the
+ * editor's own operations. `keyPadButtonClick(name)` delegates to
+ * `addElement(name, true, callback)`, whose ordinary-character branch
+ * validates the character against the slot the editor is in, updates the
+ * page-owned `Base`, focuses it and runs Hawkes' own change handler. The DOM
+ * setter reaches the same box and bypasses all of that, which is why it is no
+ * longer how a dynamic editor is typed into.
+ *
+ * A plain answer box publishes no such API. Hawkes' own `AnswerBoxKeyPadClick`
+ * builds structure there by assigning `.value` and letting the box's `input`
+ * handling sanitise it, so the box's own input handling *is* its native path
+ * and pressing a keypad at it would be this add-on inventing a capability the
+ * page does not have.
  */
 
 /**
@@ -25,10 +54,21 @@
  * }>>} steps one plan, or independently preflighted plans for multiple fields
  * @param {object} cadence
  * @param {string[]} targetFieldIds exact multi-field target, empty for one editor
+ * @param {string} transport the route chosen in `common/transport.js`
  * @returns {Promise<{ok: boolean, code: string, entered?: string, detail?: string}>}
  */
-export async function enterPlan(steps, cadence = {}, targetFieldIds = []) {
+export async function enterPlan(steps, cadence = {}, targetFieldIds = [], transport = "") {
   const SETTLE_MS = 4000;
+  // The two routes this writer implements. Anything else -- including the
+  // empty string a caller that forgot to say would pass -- is refused before
+  // the page is touched, so a new branch upstream cannot silently inherit
+  // whichever mechanism happens to be written first below.
+  const KEYPAD = "hawkes-dynamic-keypad";
+  const PLAIN_BOX = "hawkes-plain-box";
+  if (transport !== KEYPAD && transport !== PLAIN_BOX) {
+    return { ok: false, code: "transport-unavailable", detail: String(transport ?? "") };
+  }
+  const viaKeypad = transport === KEYPAD;
   // Kept in step with `common/config.js` by the build's shared-constant
   // check; this function is serialized into the page's own world by
   // `scripting.executeScript`, so no import survives here.
@@ -63,6 +103,11 @@ export async function enterPlan(steps, cadence = {}, targetFieldIds = []) {
   let notesStruck = 0;
   let heldMs = 0;
   const lateness = [];
+  // How each accepted character actually reached the page, counted as it
+  // happens. The log used to say `via: "plain"` or `via: "structured"`, which
+  // named the shape of the answer rather than the route it took; these are the
+  // route, measured rather than assumed.
+  const written = { keypad: 0, native: 0 };
 
   /**
    * Tell an optional listener that something happened, in the write's own turn.
@@ -222,16 +267,80 @@ export async function enterPlan(steps, cadence = {}, targetFieldIds = []) {
     return true;
   };
 
+  /**
+   * Press one ordinary character on the editor's own keypad.
+   *
+   * `keyPadButtonClick` is the same entry point a template press takes. Its
+   * `addElement(name, true, callback)` handles the templates and special keys
+   * first and then falls through to an ordinary-character branch, so a digit,
+   * a letter and a supported operator are editor operations in exactly the
+   * sense `Fraction` is. Nothing here decides whether the character is
+   * allowed: the editor validates it against the slot it is in and refuses it
+   * itself, which is the whole reason for coming this way.
+   */
+  const pressCharacter = (character) => {
+    const control = currentControl();
+    if (!control || typeof control.keyPadButtonClick !== "function") {
+      return false;
+    }
+    try {
+      control.keyPadButtonClick(character, () => {});
+    } catch {
+      // The editor declining is not this writer throwing. The read-back below
+      // is what decides, and it will see that nothing landed.
+      return false;
+    }
+    return true;
+  };
+
+  /**
+   * Write one character the way a plain answer box receives one.
+   *
+   * The prototype's setter, then the `input` the box's own sanitiser runs
+   * inside. This is what Hawkes' own `AnswerBoxKeyPadClick` does to a plain
+   * box, and there is no page-owned character API to prefer over it.
+   */
+  const writeCharacter = (box, character) => {
+    const setter = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value"
+    ).set;
+    setter.call(box, box.value + character);
+    box.dispatchEvent(
+      new InputEvent("input", {
+        bubbles: true,
+        data: character,
+        inputType: "insertText",
+      })
+    );
+  };
+
   const typeInto = async (id, text) => {
     const box = document.getElementById(id);
     if (!box) {
       return { ok: false, code: "answer-field-disappeared" };
     }
     box.focus();
-    const setter = Object.getOwnPropertyDescriptor(
-      HTMLInputElement.prototype,
-      "value"
-    ).set;
+    if (viaKeypad) {
+      // DOM focus moves `document.activeElement` and nothing else, and it is
+      // the *editor's* own cursor that decides where a keypad character lands.
+      // Without this a slot move typed its characters wherever the editor
+      // still thought it was -- the same fault `press` aims out before loading
+      // a template, and the read-back below is what catches it if aiming
+      // fails.
+      aimEditorAt(id);
+    } else if (box.disabled || box.readOnly) {
+      return { ok: false, code: "field-not-editable" };
+    } else if (!box.dispatchEvent(new InputEvent("beforeinput", {
+      bubbles: true,
+      cancelable: true,
+      data: text,
+      inputType: "insertText",
+    }))) {
+      // The box's own preflight, kept from the writer this transport replaced:
+      // Hawkes cancels this event for input its published model will not take.
+      return { ok: false, code: "input-cancelled" };
+    }
     for (const character of text) {
       await waitForNote();
       // The box is re-read every note: this now spans seconds rather than one
@@ -240,24 +349,34 @@ export async function enterPlan(steps, cadence = {}, targetFieldIds = []) {
       if (!live) {
         return { ok: false, code: "answer-field-disappeared" };
       }
-      setter.call(live, live.value + character);
-      live.dispatchEvent(
-        new InputEvent("input", {
-          bubbles: true,
-          data: character,
-          inputType: "insertText",
-        })
-      );
-      if (!live.value.endsWith(character)) {
+      if (viaKeypad) {
+        pressCharacter(character);
+      } else {
+        if (live.disabled || live.readOnly) {
+          // The field closed under us part-way through. Stop rather than write
+          // into something that has stopped accepting input.
+          return { ok: false, code: "field-not-editable" };
+        }
+        writeCharacter(live, character);
+      }
+      // Read back from the box by id rather than from the reference written
+      // through: a keypad press is the editor's own code, and the editor may
+      // replace the node it renders into.
+      const settled = document.getElementById(id);
+      if (!settled || !settled.value.endsWith(character)) {
         // Name the one character Hawkes rejected, not the whole typing run.
         // This distinguishes a character refusal from a template failure and
         // makes the panel's diagnostic specific without retaining the answer.
+        // Under the keypad transport it also catches a character the editor
+        // accepted into some *other* box, because this asks the box the plan
+        // meant rather than asking whether anything happened.
         return {
           ok: false,
           code: "answer-has-rejected-characters",
           detail: character,
         };
       }
+      written[viaKeypad ? "keypad" : "native"] += 1;
       // Emitted in the accepted write's callback. An optional, one-way
       // presentation observer hears only the index and elapsed time. A page
       // can observe/spoof this DOM cue; it confers no insertion capability.
@@ -268,6 +387,12 @@ export async function enterPlan(steps, cadence = {}, targetFieldIds = []) {
 
   /** How this performance actually ran, as numbers only. */
   const measured = () => ({
+    // Not a number, and the only one: which route the characters actually
+    // took. A diagnostic that cannot say this cannot tell a transport that
+    // drifted from one that was chosen.
+    transport,
+    keypadWrites: written.keypad,
+    nativeWrites: written.native,
     notes: lateness.length,
     heldMs: Math.round(heldMs),
     elapsedMs: Math.round(performance.now() - performanceStartedAt),
@@ -555,6 +680,18 @@ export async function enterPlan(steps, cadence = {}, targetFieldIds = []) {
     return { ok: false, code: "editor-disabled" };
   }
 
+  // One answer, and one place for it. A single plan takes the first visible
+  // answer box and types the whole answer into the structure it opens, which
+  // is only true while the page is showing one answer's boxes. The isolated
+  // writer this transport replaced refused a page showing several solution
+  // fields; this is the same refusal, asked of the boxes rather than of the
+  // markup around them, and asked before anything is written. A cell's two
+  // halves -- `txtAns1_num` and `txtAns1_den` -- are one group, because they
+  // are one answer.
+  if (!multi && new Set(ids().map(baseOf)).size > 1) {
+    return { ok: false, code: "editor-multiple-answer" };
+  }
+
   const enteredParts = [];
   for (let planIndex = 0; planIndex < plans.length; planIndex += 1) {
     activeControl = multi ? pinnedControls[planIndex] : null;
@@ -585,6 +722,11 @@ export async function enterPlan(steps, cadence = {}, targetFieldIds = []) {
       }
 
       if (step.op === "template") {
+        if (!viaKeypad) {
+          // A plain answer box has no templates to press. A plan carrying one
+          // was made against a different editor than the one being written to.
+          return await abandon("transport-step-mismatch", step.name);
+        }
         const before = ids();
         document.getElementById(cursor)?.focus();
         if (!(await press(step.name, cursor))) {
@@ -609,6 +751,14 @@ export async function enterPlan(steps, cadence = {}, targetFieldIds = []) {
       }
 
       if (step.op === "slash") {
+        if (viaKeypad) {
+          // A dynamic editor builds a fraction with its own Fraction template,
+          // and `/` is in no dynamic question's character set: typing one there
+          // raises the editor's refusal dialog. The planner only emits this
+          // step for a paired plain box, so reaching it here means the plan and
+          // the transport disagree about which editor this is.
+          return await abandon("transport-step-mismatch", "slash");
+        }
         // Native expansion. There is no template to press: typing `/` into an
         // ordinary Hawkes answer box is what turns it into a numerator and a
         // denominator, and it is how a student enters a fraction into a
@@ -718,6 +868,7 @@ export async function enterPlan(steps, cadence = {}, targetFieldIds = []) {
     return {
       ok: true,
       code: "entered-fields",
+      transport,
       entered: enteredParts,
       enteredFields: [...targetFieldIds],
       completed: enteredParts.length,
@@ -728,5 +879,5 @@ export async function enterPlan(steps, cadence = {}, targetFieldIds = []) {
   const entered = boxes()
     .map((box) => box.value)
     .join("");
-  return { ok: true, code: "entered", entered, timing: measured() };
+  return { ok: true, code: "entered", transport, entered, timing: measured() };
 }

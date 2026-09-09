@@ -205,11 +205,15 @@ strictly better, and it is what this add-on does.
 
 **Three bounded operations run in the page's own world.**
 Hawkes drives its editor through page-owned JavaScript — a `quant_wp_UI` model
-holding each question's rules, and a `keyPadButtonClick` method that loads a
-template. Neither is reachable from an isolated script, so reading the rules
-and building an answer both require the page's world.
+holding each question's rules, and a `keyPadButtonClick` method that is how the
+editor enters *everything*, an ordinary character as much as a template.
+Neither is reachable from an isolated script, so reading the rules and entering
+an answer both require the page's world.
 `content/hawkes-describe.js` reads and never writes; `common/page-actions.js`
-types into answer boxes and presses named templates. `common/graph-actions.js`
+enters characters into answer boxes and presses named templates — through that
+one editor method where the box is a dynamic editor, and through the box's own
+input handling where it is a plain one, which is what Hawkes' own keypad
+handler does to a plain box. `common/graph-actions.js`
 reads the graph model and dispatches only arrow/space keys to pinned SVG point
 anchors, then verifies model coefficients, SVG points, and the rendered curve.
 The build fails if these operations stray: no `eval`, no clicking page
@@ -580,6 +584,7 @@ extension/
 ├── common/config.js          shared origin and answer validation
 ├── common/cadence.js         shared Answer Cadence score and timer transport
 ├── common/editor-plan.js     validated structured keypad plan
+├── common/transport.js       which writer places an answer, from the page alone
 ├── common/frames.js          which frame may receive an answer (DOM-free)
 ├── common/i18n.js            data-i18n localisation for extension pages
 ├── common/log.js             the bounded, redacted diagnostic log

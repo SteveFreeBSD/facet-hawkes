@@ -40,6 +40,7 @@ import { planAnswerParts, planEntry } from "/common/editor-plan.js";
 import { describeResults, selectAnswerFrame } from "/common/frames.js";
 import { graphOperation } from "/common/graph-actions.js";
 import { enterPlan } from "/common/page-actions.js";
+import { chooseTransport, transportMatches } from "/common/transport.js";
 import { enterTableCells } from "/common/table-actions.js";
 import { collectSources, foldSources } from "/common/build-marker.js";
 import { buildFailureRecord, recordFailure } from "/common/failure-record.js";
@@ -134,6 +135,10 @@ function blankRunFacts() {
     certainty: null,
     refusal: "",
     notInsertable: null,
+    // Which writer this run was routed to, or the reason it had none. A
+    // refused insertion's whole diagnosis can be "which route was it on", and
+    // the ledger is read hours later with no log ring left to consult.
+    transport: "",
     events: [],
   };
 }
@@ -263,6 +268,11 @@ function blankState() {
     tabId: null,
     frameId: null,
     fieldId: "",
+    // What kind of DOM node that field is, as the page's own probe reported
+    // it. The only page fact outside the editor model that changes the route
+    // an answer takes: a MathQuill-style editor is a contenteditable element
+    // rather than an input, and the box writer has no box to write into.
+    fieldKind: "",
     fieldIds: [],
     // The browser's own mapping for a completion table: semantic blank N, and
     // the control occupying that cell. Read by the question reader, held here
@@ -586,6 +596,7 @@ function retain(outcome, { errorKey = "", phase = "", stage = "" } = {}) {
       marker: buildMarker,
       version: MANIFEST_VERSION,
       notInsertable: runFacts.notInsertable,
+      transport: runFacts.transport,
       evidenceRefused: runFacts.evidence?.read === "refused",
       events: runFacts.events,
     }));
@@ -1090,8 +1101,16 @@ function multiEntryPlans(parts, editor) {
       ? { ok: true, steps: [{ op: "type", text: part }] }
       : planEntry(part, editor.editors[index])
   );
+  // `directlyTypeable` is a statement about the *answer*, and it used to be
+  // returned as `plain` and read as a router: every part typeable meant the
+  // isolated field writer, anything else meant the page-world editor. So one
+  // question had two writers and the answer picked between them. It is kept
+  // because the field writer can only type a part it is handed -- it performs
+  // no plan -- so it is the capability question that transport has to ask of
+  // this answer. Which writer runs is decided in `common/transport.js`, from
+  // the page, before this is consulted.
   return plans.every((plan) => plan.ok)
-    ? { plans, plain: direct.every(Boolean) }
+    ? { plans, directlyTypeable: direct.every(Boolean) }
     : null;
 }
 
@@ -2017,6 +2036,7 @@ async function prepare(windowId = state.windowId) {
       tabId: tab.id,
       frameId: choice.frameId,
       fieldId: choice.fieldId ?? "",
+      fieldKind: chosenReport?.fieldKind ?? "",
       fieldIds,
       tableTargets,
       answerChoices,
@@ -2643,13 +2663,19 @@ async function acceptReply(reply) {
 }
 
 /**
- * Build a structured answer with the editor's own templates.
+ * Place one answer into one Hawkes answer box, by the route it was given.
  *
- * Only reached when the answer cannot simply be typed. The plan is worked out
- * beforehand from this question's permitted templates and character set, so
- * this either performs it or reports which step the editor refused.
+ * Reached for every single-box answer now, not only for one that "cannot
+ * simply be typed": a digit going into a dynamic editor is that editor's own
+ * operation and takes the same keypad the templates take. The plan is worked
+ * out beforehand from this question's permitted templates and character set,
+ * so this either performs it or reports which step the editor refused.
+ *
+ * `routed` comes from `common/transport.js` and is passed through to the
+ * writer, which refuses a transport it does not implement rather than
+ * inferring a mechanism from the plan in front of it.
  */
-async function buildStructured(answer, cadence, target, editor) {
+async function buildStructured(answer, cadence, target, editor, routed) {
   // Planning consumes explicit machine notation (`sqrt(30)*y/30`), not the
   // compact display (`y√30/30`). Keeping those roles separate removes an
   // entire class of radical-boundary and implicit-multiplication bugs.
@@ -2662,9 +2688,9 @@ async function buildStructured(answer, cadence, target, editor) {
     results = await runScoredEntry(target, plan.steps, cadence, () => browser.scripting.executeScript({
       // The pinned frame, never the live one: this call is the write.
       target: { tabId: target.tabId, frameIds: [target.frameId] },
-      world: "MAIN",
+      world: routed.world,
       func: enterPlan,
-      args: [plan.steps, cadence],
+      args: [plan.steps, cadence, [], routed.transport],
     }));
   } catch (error) {
     return { ok: false, code: errorKeyOf(error) };
@@ -2690,6 +2716,7 @@ async function buildStructured(answer, cadence, target, editor) {
  * @property {number} tabId
  * @property {number} frameId
  * @property {string} fieldId
+ * @property {string} fieldKind what the page said that field is
  * @property {string[]} fieldIds
  * @property {object[]} tableTargets blank-to-control mapping, in blank order
  * @property {string | null} signature the question the answer was reviewed for
@@ -2706,6 +2733,7 @@ function pinInsertionTarget() {
     tabId: state.tabId,
     frameId: state.frameId,
     fieldId: state.fieldId,
+    fieldKind: state.fieldKind ?? "",
     fieldIds: Object.freeze([...(state.fieldIds ?? [])]),
     // Frozen with everything else, and for the same reason: the mapping is
     // what says which box each value belongs in, so it must not be re-read
@@ -2914,6 +2942,37 @@ async function insert() {
     return;
   }
 
+  // Which writer places this answer, decided from the page's own answer model
+  // and nothing about the answer itself -- see `common/transport.js`. Taken
+  // once, here, against the editor that was just re-read, and then *checked*
+  // at each branch below rather than re-derived: a branch whose transport is
+  // not the one that was chosen is a refusal, not a second opinion.
+  const routed = chooseTransport(editor, {
+    tableTargets: target.tableTargets,
+    fieldKind: target.fieldKind,
+  });
+  runFacts.transport = routed.ok ? routed.transport : `none:${routed.code}`;
+  if (!routed.ok) {
+    log.warn("transport-unavailable", {
+      code: routed.code,
+      editorKind: editor?.kind ?? "",
+      editors: editor?.editors?.length ?? 0,
+      fieldKind: target.fieldKind,
+      blanks: target.tableTargets.length,
+    });
+    fail(insertErrorKey(routed.code));
+    return;
+  }
+  log.info("transport-chosen", {
+    transport: routed.transport,
+    world: routed.world,
+    writer: routed.writer,
+    editorKind: editor?.kind ?? "",
+    fieldKind: target.fieldKind,
+    blanks: target.tableTargets.length,
+    parts: target.answerParts.length,
+  });
+
   if (target.graphPlan) {
     if (editor.kind !== "graph" || JSON.stringify(editor.snapshot) !== JSON.stringify(target.graphSnapshot)) {
       // Which of the four parts of the snapshot moved, and nothing of what any
@@ -2932,8 +2991,18 @@ async function insert() {
       fail("errorQuestionChanged", { detail: "graph-target-stale" });
       return;
     }
+    // Its own checks above are more specific and run first; this is the same
+    // agreement every other branch states, so that no writer is reached
+    // without the transport having named it.
+    if (!transportMatches(routed, "hawkes-graph")) {
+      log.warn("transport-branch-mismatch", {
+        transport: routed.transport, branch: "hawkes-graph", editorKind: editor?.kind ?? "",
+      });
+      fail("errorEditorUnknown");
+      return;
+    }
     const [entry] = await runInjection({ target: { tabId: target.tabId, frameIds: [target.frameId] },
-      world: "MAIN", func: graphOperation, args: [{ plan: target.graphPlan, coefficients: target.graphCoefficients, snapshot: target.graphSnapshot }] });
+      world: routed.world, func: graphOperation, args: [{ plan: target.graphPlan, coefficients: target.graphCoefficients, snapshot: target.graphSnapshot }] });
     if (!ownsTarget(target)) { abandonInsertion(target, "graph-actuation"); return; }
     if (!entry?.result?.ok) {
       // Which refusal it was, and what the page said about its own graph as it
@@ -2951,14 +3020,28 @@ async function insert() {
     return;
   }
 
-  // A typeable answer goes in as text; anything with structure has to be
-  // built with the keypad templates, one step at a time.
   // Both entry paths perform on the same cadence; only the machinery differs.
   const cadence = resolveEntryCadence(settings);
   // A performance now runs for seconds, so how long it actually took is the
   // one thing worth recording. The answer itself never enters the log.
   const entryStartedAt = Date.now();
-  if (target.answerParts.length >= 2 && target.tableTargets.length >= 2) {
+  if (target.tableTargets.length >= 2) {
+    // The page publishes a completion table, so the table writer is the route
+    // whatever the answer turned out to be. An answer that is not several
+    // parts cannot be placed into several blanks, and is refused here rather
+    // than falling through to a writer meant for a single box -- which is how
+    // one value would have gone into the first cell of a five-cell table.
+    if (!transportMatches(routed, "hawkes-table-cells")
+        || target.answerParts.length < 2) {
+      log.warn("transport-branch-mismatch", {
+        transport: routed.transport,
+        branch: "hawkes-table-cells",
+        parts: target.answerParts.length,
+        blanks: target.tableTargets.length,
+      });
+      fail(insertErrorKey("table-answer-incomplete"));
+      return;
+    }
     // The mapping, read again from the page by the same reader that made it,
     // and compared cell by cell against the one the answer was reviewed
     // against. Nothing here re-derives a target: a disagreement is a refusal,
@@ -3092,9 +3175,9 @@ async function insert() {
     return;
   }
   if (target.answerParts.length >= 2) {
-    const commaPlan = commaAnswerPlan(
-      target.answerParts, editor, target.problemText
-    );
+    const commaPlan = transportMatches(routed, "hawkes-dynamic-keypad")
+      ? commaAnswerPlan(target.answerParts, editor, target.problemText)
+      : null;
     if (commaPlan !== null) {
       if (!ownsTarget(target)) {
         abandonInsertion(target, "before-comma-parts-write");
@@ -3104,9 +3187,9 @@ async function insert() {
       try {
         const results = await runScoredEntry(target, commaPlan.steps, cadence, () => browser.scripting.executeScript({
           target: { tabId: target.tabId, frameIds: [target.frameId] },
-          world: "MAIN",
+          world: routed.world,
           func: enterPlan,
-          args: [commaPlan.steps, cadence],
+          args: [commaPlan.steps, cadence, [], routed.transport],
         }));
         built = results?.[0]?.result;
       } catch (error) {
@@ -3123,10 +3206,17 @@ async function insert() {
       }
       log.info("inserted", {
         via: "structured-comma-parts",
+        // The route the characters actually took, as the writer reported it,
+        // beside the route that was chosen for them. Two names rather than
+        // one, because a writer that used a different mechanism than the one
+        // it was routed to is precisely the defect being ruled out.
+        transport: built.transport ?? "",
+        routedTo: routed.transport,
         fields: 1,
         parts: target.answerParts.length,
         answerLength: reviewed.length,
         elapsedMs: Date.now() - entryStartedAt,
+        timing: built.timing,
       });
       await finishInsertion("entered both comma-separated answers", target);
       return;
@@ -3167,7 +3257,35 @@ async function insert() {
       fail("errorQuestionChanged");
       return;
     }
-    const plain = multiEntry.plain;
+    // The page said several separate answer fields; which writer reaches them
+    // is the transport's decision, and this asks only whether the answer can
+    // be placed by the writer that was chosen. The field writer types a part
+    // as it stands and performs no plan, so a part needing one cannot go that
+    // way -- and does not quietly go the other way either.
+    const plain = transportMatches(routed, "hawkes-plain-fields");
+    if (!plain && !transportMatches(routed, "hawkes-dynamic-keypad")) {
+      log.warn("transport-branch-mismatch", {
+        transport: routed.transport,
+        branch: "multi-fields",
+        fields: target.fieldIds.length,
+        parts: target.answerParts.length,
+      });
+      fail("errorEditorUnknown");
+      return;
+    }
+    if (plain && !multiEntry.directlyTypeable) {
+      // Each part was planned against its own box, and at least one needs
+      // structure that a plain field cannot be handed. Refused by name; the
+      // old policy answered this by switching to the editor writer, which
+      // has no editor to write to on a question made of plain boxes.
+      log.warn("answer-needs-structure-in-plain-fields", {
+        transport: routed.transport,
+        fields: target.fieldIds.length,
+        parts: target.answerParts.length,
+      });
+      fail(insertErrorKey("answer-needs-template"));
+      return;
+    }
     let outcome;
     if (plain) {
       const [entry] = await runScoredEntry(target, target.answerParts.map((text) => ({ op: "type", text })), cadence, () => runInjection({
@@ -3188,9 +3306,14 @@ async function insert() {
       try {
         const results = await runScoredEntry(target, multiEntry.plans.map((plan) => plan.steps), cadence, () => browser.scripting.executeScript({
           target: { tabId: target.tabId, frameIds: [target.frameId] },
-          world: "MAIN",
+          world: routed.world,
           func: enterPlan,
-          args: [multiEntry.plans.map((plan) => plan.steps), cadence, target.fieldIds],
+          args: [
+            multiEntry.plans.map((plan) => plan.steps),
+            cadence,
+            target.fieldIds,
+            routed.transport,
+          ],
         }));
         outcome = results?.[0]?.result;
       } catch (error) {
@@ -3209,6 +3332,8 @@ async function insert() {
     }
     log.info("inserted", {
       via: plain ? "plain-fields" : "structured-fields",
+      transport: outcome.transport ?? routed.transport,
+      routedTo: routed.transport,
       fields: target.fieldIds.length,
       parts: target.answerParts.length,
       answerLength: reviewed.length,
@@ -3217,8 +3342,20 @@ async function insert() {
     await finishInsertion(`entered all ${target.answerParts.length} answer fields`, target);
     return;
   }
-  const typeable = reviewed && answerFitsEditor(reviewed, editor).insertable;
-  if (!typeable) {
+  // One Hawkes answer box, of either kind. Both are written to in the page's
+  // own world by `enterPlan`, and the transport it is handed says which
+  // mechanism it uses: the dynamic editor's keypad for every character, or the
+  // plain box's own input handling. Which one runs is not a question about the
+  // answer, so nothing about the answer is asked here.
+  //
+  // Until this change the reviewed answer was tested against the editor's
+  // character set here, and a set that accepted it sent the whole answer to the
+  // isolated DOM writer while anything else went to the page-world editor. `5`
+  // and `1/5` went into the same box by different machinery.
+  if (
+    transportMatches(routed, "hawkes-dynamic-keypad")
+    || transportMatches(routed, "hawkes-plain-box")
+  ) {
     // The last check before the page is changed.
     if (!ownsTarget(target)) {
       abandonInsertion(target, "before-structured-write");
@@ -3226,21 +3363,54 @@ async function insert() {
     }
     // This is the same machine form the panel planned and offered for review.
     // Replanning the readable answer can produce different template steps.
-    const built = await buildStructured(target.machineEntry, cadence, target, editor);
+    const built = await buildStructured(
+      target.machineEntry, cadence, target, editor, routed
+    );
     if (built.ok) {
       log.info("inserted", {
         via: "structured",
+        // What actually carried the characters, reported by the writer that
+        // carried them, beside the route it was given. `via` names the branch
+        // and has always been the shape of the answer; these two name the
+        // mechanism, which is the thing that used to be unrecoverable from a
+        // log after the fact.
+        transport: built.transport ?? "",
+        routedTo: routed.transport,
         answerLength: reviewed.length,
         elapsedMs: Date.now() - entryStartedAt,
         // The writer's own view of the performance: how late the browser woke
-        // each write against its score offset, and how long the editor held the
-        // phrase building structure. Present even when nothing was listening.
+        // each write against its score offset, how long the editor held the
+        // phrase building structure, and how many characters went through the
+        // keypad rather than through the box.
         timing: built.timing,
       });
       await finishInsertion(`entered: ${built.entered ?? ""}`, target);
     } else {
       fail(insertErrorKey(built.code), { detail: built.detail ?? built.code });
     }
+    return;
+  }
+
+  // Everything else this page could be answered on has already returned. What
+  // is left is the one field with no Hawkes box behind it: a contenteditable
+  // editor, written at its own caret from the isolated world.
+  if (!transportMatches(routed, "native-contenteditable")) {
+    log.warn("transport-branch-mismatch", {
+      transport: routed.transport,
+      branch: "native-contenteditable",
+      editorKind: editor?.kind ?? "",
+      fieldKind: target.fieldKind,
+    });
+    fail("errorEditorUnknown");
+    return;
+  }
+  // The caret writer performs no plan: it types the reviewed answer as it
+  // stands, so the answer has to fit the field as it stands. A capability
+  // check against the transport that was chosen -- never a reason to choose a
+  // different one.
+  const fits = reviewed ? answerFitsEditor(reviewed, editor) : { insertable: false, code: "answer-empty" };
+  if (!fits.insertable) {
+    fail(insertErrorKey(fits.code), { detail: fits.detail ?? fits.code });
     return;
   }
 
@@ -3274,6 +3444,8 @@ async function insert() {
     }
     log.info("inserted", {
       via: "plain",
+      transport: routed.transport,
+      routedTo: routed.transport,
       code: outcome.code,
       answerLength: reviewed.length,
       elapsedMs: Date.now() - entryStartedAt,
@@ -3699,6 +3871,8 @@ function markedCode() {
     "common/log.js#setRun": setRun,
     "common/page-actions.js#enterPlan": enterPlan,
     "common/table-actions.js#enterTableCells": enterTableCells,
+    "common/transport.js#chooseTransport": chooseTransport,
+    "common/transport.js#transportMatches": transportMatches,
     "common/settings.js#defaultSettings": defaultSettings,
     "common/settings.js#migrateSettings": migrateSettings,
     "common/settings.js#onSettingsChanged": onSettingsChanged,

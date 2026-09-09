@@ -202,7 +202,7 @@ FIXTURE = """<!doctype html><title>RC5 local insertion fixture</title>
 const mode = new URLSearchParams(location.search).get('mode');
 const editor=document.querySelector('#editor');
 const input=document.createElement(mode==='editable'?'div':'input');
-input.id='txtAns1'; input.className='qbaseCSS';
+input.id='txtAns1'; input.className='qbaseCSS'; input.dataset.slot='base';
 if(mode==='editable'){input.contentEditable='true';input.setAttribute('role','textbox');}
 editor.append(input); input.focus();
 window.writes=[]; window.cues=[]; window.submitted=0;
@@ -220,10 +220,24 @@ const control={enabled:true,CurrentBase:{}, boxValue:()=>input.value||'',Current
   // returning at the first change. The delays here are what make this a test
   // of that, and of the hold the phrase takes while it happens.
   keyPadButtonClick(name){
-    if(name!=='Exponent')return;
+    // `keyPadButtonClick` delegates to `addElement`, which handles the
+    // templates and special keys first and then falls through to an ordinary
+    // character: it validates that character against the slot the editor is
+    // in, writes it there and runs the editor's own change handler. A digit is
+    // an editor operation here for the same reason `Exponent` is.
+    if(name!=='Exponent'){
+      const box=document.activeElement;
+      if(!box||!box.classList||!box.classList.contains('qbaseCSS'))return;
+      const allowed=box.dataset.slot==='exponent'
+        ? control.qdyExpo_AllowedChar : control.qdyBase_AllowedChar;
+      if(allowed.indexOf(name)<0)return;   // the editor's own refusal
+      box.value=box.value+name;
+      box.dispatchEvent(new InputEvent('input',{bubbles:true,data:name,inputType:'insertText'}));
+      return;
+    }
     const sup=document.createElement('sup'); const exponent=document.createElement('input');
-    exponent.id='slot'+serial++;exponent.className='qbaseCSS';sup.append(exponent);
-    const continuation=document.createElement('input');continuation.id='slot'+serial++;continuation.className='qbaseCSS';
+    exponent.id='slot'+serial++;exponent.className='qbaseCSS';exponent.dataset.slot='exponent';sup.append(exponent);
+    const continuation=document.createElement('input');continuation.id='slot'+serial++;continuation.className='qbaseCSS';continuation.dataset.slot='base';
     setTimeout(()=>{editor.append(sup);exponent.focus();},400);
     // Within `settle`'s stability window on purpose. It returns after three
     // quiet 60 ms polls, so an editor that paused longer than that between two
@@ -348,6 +362,10 @@ insertionInstrument.close=()=>{
 // "the page ended" from "the page was told it was ending and released audio".
 globalThis.rc5Suspended=null;
 browser.runtime.onSuspend?.addListener(()=>{globalThis.rc5Suspended=Date.now();});
+// The exact listener that announcement is given, reachable from the observer.
+// Firefox 155 has been seen announcing a suspension it did not carry out and
+// announcing none at all, so the release is exercised rather than waited for.
+globalThis.rc5Suspend=()=>{cancelCadence();return globalThis.rc5Report();};
 globalThis.rc5AudioCost=async()=>{__AUDIO_COST__};
 globalThis.rc5Cycle=async(rounds)=>{
   for(let round=0;round<rounds;round++){
@@ -1113,26 +1131,42 @@ def idle_lifecycle(m):
         # A woken page starts with an empty trace, whatever it says about itself.
         or not after.get("trace")
     )
-    # The claim this check can actually support, and the one that matters: after
-    # a minute of nothing, this feature is holding no output device and no voice.
-    # Whether the event page itself has ended is Firefox's decision -- an open
-    # port was observed keeping it alive here -- and the feature does not depend
-    # on it, because `onSuspend` releases audio the moment Firefox says so.
+    observed = {
+        "idle_seconds": idle_seconds,
+        "event_page_ended": ended,
+        "suspend_announced": after.get("suspended") is not None,
+        "audio_after": after.get("contextState"),
+        "voices_after": after.get("voices"),
+        "closes_during": [
+            entry["by"]
+            for entry in (after.get("closes") or [])
+            if entry["at"] >= armed["start"]
+        ],
+    }
+    # After a minute of nothing, the feature is holding no voice. That much is
+    # its own doing and is asserted.
     demand(
-        after.get("contextState") is None and after.get("voices") == 0,
-        "a minute of idling leaves no output device and no voice held",
-        {
-            "idle_seconds": idle_seconds,
-            "event_page_ended": ended,
-            "suspend_announced": after.get("suspended") is not None,
-            "audio_after": after.get("contextState"),
-            "voices_after": after.get("voices"),
-            "closes_during": [
-                entry["by"]
-                for entry in (after.get("closes") or [])
-                if entry["at"] >= armed["start"]
-            ],
-        },
+        after.get("voices") == 0, "a minute of idling leaves no voice held", observed
+    )
+    # The device is a separate claim, and it is Firefox's to make: this probe
+    # deliberately opened one and asked for a sixty-second oscillator, and the
+    # only thing that releases it while the page lives is the suspension
+    # announcement. Firefox 155 has been observed both announcing one it did not
+    # carry out and announcing nothing at all, so *requiring* the device to be
+    # gone here passed or failed on whether some earlier operation's `finish`
+    # happened to land inside this window -- which is a fact about scheduling
+    # and not about this feature. What is required is the release itself, so it
+    # is exercised rather than waited for: `cancelCadence` is the exact listener
+    # `runtime.onSuspend` is given, and calling it must leave nothing held.
+    released = background_js(m, "return window.rc5Suspend();")
+    observed["released_on_suspend"] = {
+        "audio": released.get("contextState"),
+        "voices": released.get("voices"),
+    }
+    demand(
+        released.get("contextState") is None and released.get("voices") == 0,
+        "the suspension handler releases every voice and closes the device",
+        observed,
     )
     return {"prefs": prefs, "armed": armed, "after": after}
 

@@ -220,6 +220,8 @@ def test_a_template_landing_sounds_without_becoming_a_scored_note(clock):
     assert fraction["layers"][0]["midi"] < exponent["layers"][0]["midi"]
 
 
+#: One plain Hawkes answer box: no page-owned character API, so its own
+#: `input` handling is the native path and the write is the prototype setter.
 MAIN_FIXTURE = """
   var document = {
     querySelectorAll: selector => selector.includes('customMessageBox') ? [] : [box],
@@ -231,12 +233,17 @@ MAIN_FIXTURE = """
     get value() {return this.held;} set value(v) {this.held=v;}
     focus() {document.activeElement=this;}
     getBoundingClientRect() {return {width:100};}
-    dispatchEvent(e) {writes.push([writes.length,now]);}
+    // Only the write itself is a write. `beforeinput` is the box's own
+    // preflight and is answered, not counted.
+    dispatchEvent(e) {
+      if (e.type === 'input') { writes.push([writes.length,now]); }
+      return true;
+    }
   }
   var box = new HTMLInputElement();
   var window = {quant_wp_UI:{controlsCollection:[{enabled:true}],focusedElementIndex:0}};
-  class InputEvent { constructor(type, options) {Object.assign(this,options);} }
-  class CustomEvent { constructor(type, options) {Object.assign(this,options);} }
+  class InputEvent { constructor(type, options) {this.type=type; Object.assign(this,options);} }
+  class CustomEvent { constructor(type, options) {this.type=type; Object.assign(this,options);} }
 """
 
 
@@ -249,7 +256,8 @@ def test_serialized_main_writer_consumes_the_shared_score_and_emits_in_its_write
     clock.eval(f"""
       var steps = [{{op:'type',text:'2x+3'}}];
       var phrase = ethnosCadence.planSemanticPhrase(steps,{{durationMinMs:{seconds * 1000},durationMaxMs:{seconds * 1000}}});
-      enterPlan(steps,{{score:phrase,channel:'test'}}).then(result => completed=result);
+      enterPlan(steps,{{score:phrase,channel:'test'}},[],'hawkes-plain-box')
+        .then(result => completed=result);
     """)
     pump(clock)
     assert value(clock, "completed.ok") is True
@@ -257,6 +265,11 @@ def test_serialized_main_writer_consumes_the_shared_score_and_emits_in_its_write
         [i, t] for i, t in enumerate(value(clock, "phrase.offsets"))
     ]
     assert [s[:2] for s in value(clock, "sounds")] == value(clock, "writes")
+    # The route is reported by the writer that took it, not inferred by a
+    # reader of the log.
+    assert value(clock, "completed.transport") == "hawkes-plain-box"
+    assert value(clock, "completed.timing.nativeWrites") == 4
+    assert value(clock, "completed.timing.keypadWrites") == 0
 
 
 def test_suspended_or_missing_audio_device_never_queues_stale_notes(clock):
@@ -449,11 +462,22 @@ STRUCTURED_FIXTURE = """
     getElementById: id => boxes[id] ?? null,
     dispatchEvent: event => { cues.push([now, JSON.parse(event.detail)]); },
   };
-  class InputEvent { constructor(type, options) {Object.assign(this,options);} }
-  class CustomEvent { constructor(type, options) {Object.assign(this,options);} }
-  // The editor takes real time to add its boxes, and does not add them all at
-  // once: that is exactly what `settle` exists to wait out.
+  class InputEvent { constructor(type, options) {this.type=type; Object.assign(this,options);} }
+  class CustomEvent { constructor(type, options) {this.type=type; Object.assign(this,options);} }
+  var TEMPLATES = ['Exponent','Fraction','Radical','IndexedRadical','PBrace','Mod','Clear','BS'];
+  // One entry point for both, as the editor has. `addElement` handles the
+  // templates and special keys first and falls through to an ordinary
+  // character, which it writes into the slot its `CurrentBase` owns -- so a
+  // character that lands proves the editor's own cursor was where the plan
+  // meant it to be. A template takes real time and does not add every box in
+  // one tick, which is what `settle` exists to wait out.
   var control = {enabled:true, arrChildObjects:[], keyPadButtonClick(name) {
+    if (!TEMPLATES.includes(name)) {
+      const base = control.CurrentBase;
+      const box = base && base.objMyDiv.querySelector('input.qbaseCSS');
+      if (box) { box.held += name; writes.push([box.id, now]); }
+      return;
+    }
     setTimeout(() => { addBox('slot'+(serial+1)); }, 400);
     setTimeout(() => { addBox('slot'+(serial+2)); serial += 2; }, 700);
   }};
@@ -476,7 +500,8 @@ def test_editor_structure_holds_the_phrase_instead_of_bursting_the_rest_of_it(cl
     clock.eval("""
       var steps = [{op:'type',text:'12'},{op:'template',name:'Exponent'},{op:'type',text:'345'}];
       var phrase = ethnosCadence.planSemanticPhrase(steps,{durationMinMs:2000,durationMaxMs:2000});
-      enterPlan(steps,{score:phrase,channel:'test'}).then(result => completed=result);
+      enterPlan(steps,{score:phrase,channel:'test'},[],'hawkes-dynamic-keypad')
+        .then(result => completed=result);
     """)
     pump(clock)
     assert value(clock, "completed.ok") is True
@@ -499,6 +524,12 @@ def test_editor_structure_holds_the_phrase_instead_of_bursting_the_rest_of_it(cl
     structural = [cue for _at, cue in value(clock, "cues") if len(cue) == 4]
     assert [cue[2] for cue in structural] == ["Exponent"]
     assert structural[0][0] == 2 and structural[0][3] == round(held)
+
+    # Every character of it went through the editor's own keypad, including the
+    # five digits that could have been assigned straight into the box.
+    assert value(clock, "completed.transport") == "hawkes-dynamic-keypad"
+    assert value(clock, "completed.timing.keypadWrites") == 5
+    assert value(clock, "completed.timing.nativeWrites") == 0
 
 
 def test_the_device_places_voices_on_the_score_not_on_the_wake_up_jitter(clock):
