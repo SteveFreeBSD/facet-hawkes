@@ -150,7 +150,7 @@ See [Retained failure ledger](docs/FAILURE_LEDGER.md).
 Firefox 142 or newer, Python 3.12+, `uv`, and a local Ollama installation are
 required. The 0.46.0 source layout uses two sibling repositories, with
 `facet-runtime` fixed at the commit in `deploy/facet-runtime.pin`, currently
-`89052e0765747aa0ee3db5f71d6aa3a7e8ef88cd`.
+`887da0e3c2482b6683650cf0437b31eba69e364c`.
 
 In both repositories `main` is a frozen release baseline and the current
 system lives on `feature/live-hawkes-next-slice`, so **neither default branch
@@ -161,7 +161,7 @@ is what you want**: `facet-hawkes`'s is 50 commits behind this page, and
 git clone https://github.com/SteveFreeBSD/facet-hawkes.git
 git clone https://github.com/SteveFreeBSD/facet-runtime.git
 git -C facet-hawkes checkout feature/live-hawkes-next-slice
-git -C facet-runtime checkout --detach 89052e0765747aa0ee3db5f71d6aa3a7e8ef88cd
+git -C facet-runtime checkout --detach 887da0e3c2482b6683650cf0437b31eba69e364c
 cd facet-hawkes
 ```
 

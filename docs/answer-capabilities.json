@@ -95,7 +95,7 @@
       "description": {
         "kind": "dynamic",
         "enabled": true,
-        "allowedCharacters": "0123456789abcxyzri-+/^\u221a()|,",
+        "allowedCharacters": "0123456789abcxyzri-+/^√()|,",
         "maxLength": 32,
         "templates": {
           "fraction": true,
@@ -105,12 +105,12 @@
           "absoluteValue": true
         },
         "slots": {
-          "base": "0123456789abcxyzri-+/^\u221a()|,",
-          "numerator": "0123456789abcxyzri-+/^\u221a()|,",
-          "denominator": "0123456789abcxyzri-+/^\u221a()|,",
-          "exponent": "0123456789abcxyzri-+/^\u221a()|,",
-          "exponentBase": "0123456789abcxyzri-+/^\u221a()|,",
-          "radicand": "0123456789abcxyzri-+/^\u221a()|,",
+          "base": "0123456789abcxyzri-+/^√()|,",
+          "numerator": "0123456789abcxyzri-+/^√()|,",
+          "denominator": "0123456789abcxyzri-+/^√()|,",
+          "exponent": "0123456789abcxyzri-+/^√()|,",
+          "exponentBase": "0123456789abcxyzri-+/^√()|,",
+          "radicand": "0123456789abcxyzri-+/^√()|,",
           "index": "23456789"
         }
       }
@@ -145,7 +145,7 @@
       "description": {
         "kind": "dynamic",
         "enabled": true,
-        "allowedCharacters": "0123456789-,/\u221a()",
+        "allowedCharacters": "0123456789-,/√()",
         "maxLength": 32,
         "templates": {
           "fraction": true,
@@ -155,12 +155,12 @@
           "absoluteValue": false
         },
         "slots": {
-          "base": "0123456789-,/\u221a()",
-          "numerator": "0123456789-,/\u221a()",
-          "denominator": "0123456789-,/\u221a()",
-          "exponent": "0123456789-,/\u221a()",
-          "exponentBase": "0123456789-,/\u221a()",
-          "radicand": "0123456789-,/\u221a()",
+          "base": "0123456789-,/√()",
+          "numerator": "0123456789-,/√()",
+          "denominator": "0123456789-,/√()",
+          "exponent": "0123456789-,/√()",
+          "exponentBase": "0123456789-,/√()",
+          "radicand": "0123456789-,/√()",
           "index": "23456789"
         }
       }
@@ -803,6 +803,37 @@
       }
     },
     {
+      "id": "choice-notated",
+      "semantic": "named alternative carrying a set notation",
+      "form": "choice",
+      "notation": [
+        "group"
+      ],
+      "example": "Infinite Solutions (ℝ)",
+      "editor": "radio-group",
+      "topology": "one radio group whose labels gloss themselves, `No Solution (∅)`",
+      "mechanism": [
+        "answerFitsEditor"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "no"
+      },
+      "probe": {
+        "instruction": "Solve the equation.",
+        "expressions": [
+          "4t+5=4(t+3)-7"
+        ],
+        "choices": [
+          "No Solution (∅)",
+          "One Solution",
+          "Infinite Solutions (ℝ)"
+        ]
+      }
+    },
+    {
       "id": "plan-parabola",
       "semantic": "parabola graph plan",
       "form": "parabola_plan",
@@ -943,7 +974,7 @@
         "group",
         "comma"
       ],
-      "example": "(-\u221e,-3)\u222a(3,\u221e)",
+      "example": "(-∞,-3)∪(3,∞)",
       "editor": "maths-box",
       "topology": "the characters are in no published set",
       "mechanism": [

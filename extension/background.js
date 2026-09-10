@@ -1319,13 +1319,26 @@ function answerShapeOf(editor, answerTable = null, tableTargets = [], choices = 
   // taken, so a build whose probe still reports five controls -- an older one,
   // or one reloaded from a stale directory -- cannot reintroduce a five-part
   // contract for a five-button radio group.
+  //
+  // Mixed exactly as the probe mixes it. A group whose page also publishes
+  // controls it is not drawing is still one group: the undrawn box belongs to
+  // whichever alternative reveals it, and nobody can type into it until that
+  // choice is made. `collection.drawn` is the probe's own count of the boxes
+  // on screen, carried on the description for this, and only a measured zero
+  // counts -- an unknown count is `-1` and never overrules the model.
   if (
     editor?.kind === "multi"
     && Array.isArray(editor.editors)
     && editor.editors.length >= 2
-    && editor.editors.every((one) => one?.kind === "option")
   ) {
-    return optionShape(choices);
+    const options = editor.editors.filter((one) => one?.kind === "option");
+    if (
+      options.length >= 2
+      && (options.length === editor.editors.length
+        || editor.collection?.drawn === 0)
+    ) {
+      return optionShape(choices);
+    }
   }
   if (
     editor?.kind === "multi"
@@ -2563,8 +2576,33 @@ async function acceptReply(reply) {
   // What may be typed is a narrower question than what may be shown. A
   // multi-part answer keeps the readable equality only as its reviewed
   // identity; its entry values remain separate all the way to the field writer.
+  // A published choice is not typed, so the alphabet an answer may be *typed*
+  // in does not govern it.
+  //
+  // `validateAnswer` is a contract about characters somebody's keystrokes put
+  // in a box, which is why it admits `√` and `π` and nothing set-theoretic.
+  // The answer to a choice question is not keystrokes: it is the page's own
+  // string, matched character for character so that the right control is the
+  // one selected. Live, on 2026-09-10, lesson 1.6 published `Infinite
+  // Solutions (ℝ)`; Facet answered with exactly that, and this filter dropped
+  // it for containing `ℝ` -- so a correct answer to a question whose every
+  // alternative the page had printed was reported as "not a supported
+  // plain-text answer".
+  //
+  // Admitted only when it *is* one of the alternatives this question
+  // published, compared exactly. That is a narrower test than the character
+  // one, not a weaker one: nothing the page did not print can pass it, and
+  // `publishableAnswer` independently holds the state to the same list before
+  // anything reaches a card.
+  const published = (state.answerChoices ?? []).filter(
+    (choice) => typeof choice === "string" && choice.trim().length > 0
+  );
+  const answersByChoosing = (value) =>
+    typeof value === "string" && published.includes(value.trim());
   const candidates = [shaped.display_text, shaped.keyboard_entry].filter(
-    (value) => typeof value === "string" && validateAnswer(value).ok
+    (value) =>
+      typeof value === "string"
+      && (validateAnswer(value).ok || answersByChoosing(value))
   );
   const answer = hasParts
     ? displayText
@@ -2680,7 +2718,10 @@ async function acceptReply(reply) {
     // The machine form is validated; the readable one is only preferred when
     // it is itself an answer. Falling back keeps the card honest without
     // failing a solve whose entry value was perfectly good all along.
-    displayText: displayableAnswer(displayText) ? displayText : answer,
+    displayText:
+      displayableAnswer(displayText) || answersByChoosing(displayText)
+        ? displayText
+        : answer,
     entryText,
     answerParts: hasParts ? answerParts : [],
     problemText: reply.problem_text ?? "",

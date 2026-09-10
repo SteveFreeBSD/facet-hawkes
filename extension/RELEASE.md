@@ -32,7 +32,7 @@ $ sha256sum dist/facet-hawkes-0.46.0-unsigned.xpi
 
 The 0.46.0 publication strategy keeps the
 existing sibling repositories, fixes `facet-runtime` at companion commit
-`89052e0765747aa0ee3db5f71d6aa3a7e8ef88cd`, and establishes
+`887da0e3c2482b6683650cf0437b31eba69e364c`, and establishes
 `SteveFreeBSD/facet-hawkes` as the canonical public Hawkes repository. The old
 Ethnos repository is not a publication target; `ethnos-caspian` may remain as a
 legacy/private remote. CI checks out the exact runtime commit rather than a

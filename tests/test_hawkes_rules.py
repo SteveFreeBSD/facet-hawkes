@@ -535,11 +535,13 @@ def test_the_event_page_publishes_notation_and_never_unchecked_prose() -> None:
 
     # The readable form is notation, by the rule the entry planner shares.
     assert "return mathNotation(" in background
-    # And it reaches the card only when it is an answer at all.
+    # And it reaches the card only when it is an answer at all -- either by its
+    # shape, or by this question having published it as one of the alternatives
+    # it is answered by choosing between, which is the narrower test of the two.
     assert (
-        "displayText: displayableAnswer(displayText) ? displayText : answer,"
-        in background
+        "displayableAnswer(displayText) || answersByChoosing(displayText)" in background
     )
+    assert "published.includes(value.trim())" in background
     # A refusal is stamped with the answer it was raised for, and a changed
     # question drops it rather than carrying it onto the next one.
     assert "errorAnswer: state.entryText || state.answer" in background

@@ -7,8 +7,10 @@
 # tests/test_runtime_pin.py fails if any document quotes a different commit.
 #
 # Raise it in the same change that starts depending on something newer. This
-# commit is the one that added the `relation` answer form, on which an equation
-# carries both of its sides; the tip of that repository may be ahead of it, and
-# that is fine -- the pin is a floor, and the test checks the sibling is not
-# below it.
-89052e0765747aa0ee3db5f71d6aa3a7e8ef88cd
+# commit is the one that answers a solution-count question in the words the page
+# published -- `Infinite Solutions` as the page's own `Infinite Solutions (ℝ)`,
+# and the same for `No Solution (∅)` -- without which lesson 1.6's choice
+# questions are solved exactly and then refused as unusable. The tip of that
+# repository may be ahead of it, and that is fine -- the pin is a floor, and the
+# test checks the sibling is not below it.
+887da0e3c2482b6683650cf0437b31eba69e364c
