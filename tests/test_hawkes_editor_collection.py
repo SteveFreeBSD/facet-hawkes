@@ -337,3 +337,132 @@ def test_the_described_box_is_the_one_the_page_has_selected() -> None:
 
     assert described["kind"] == "textbox"
     assert described["collection"]["branch"] == "one-drawn-box"
+
+
+# --- an option group beside a box nobody is drawing -------------------------
+#
+# Live, on 2026-09-10, run rmtvul9kee591 and three more on build 1d0e21b6b1d3.
+# A linear equation asking which kind of solution set it has. The page prints
+# one radio group of three phrases -- "No Solution (∅)", "One Solution",
+# "Infinite Solutions (ℝ)" -- and "One Solution" reveals a textbox for the
+# value. Before that choice is made the box is not on screen, and the isolated
+# DOM sweep said so in the same run:
+#
+#     answer-target-inspected {"code":"option-answer","fields":0}
+#     editor-described {"kind":"multi","editors":5,
+#                       "collection":{"usable":5,"drawn":0,"branch":"multi"}}
+#     host-request-shaped {"answerShape":"multi","answerParts":5}
+#     answer-not-insertable {"editor":"editor-rules-unknown","editorKind":"multi"}
+#
+# Five usable controls: the three options, and the two behind the one box the
+# chosen alternative would reveal. The group was mixed, so the option-group
+# branch declined it and `multi` took all five. Facet solved the equation
+# correctly and the answer had nowhere to go -- the failure reads as the
+# answer's shape, and the fault is the count, four runs upstream of it.
+#
+# The two readings agreed about the page and disagreed about the question.
+# `drawn: 0` is the probe's own half of that agreement.
+
+
+def option_data(enabled: bool = True) -> str:
+    """An option control's data: no `boxValue`, so nothing to type into."""
+    return (
+        '{Name: "solution_kind", isQDy: false,'
+        f" enableState: {'true' if enabled else 'false'}}}"
+    )
+
+
+def solution_kind_model(options: int = 3, boxes: int = 2, focused: int = 0) -> str:
+    """The live model: an option per printed phrase, plus one box's controls.
+
+    `focused` is the page's own cursor. It sits on the group until a choice
+    reveals the box, and moves into the box when one does.
+    """
+    controls = ", ".join(control() for _ in range(options + boxes))
+    rows = ", ".join(
+        [option_data() for _ in range(options)] + [data() for _ in range(boxes)]
+    )
+    return (
+        f"{{focusedElementIndex: {focused}, controlsCollection: [{controls}],"
+        f" controlsCollectionData: [{rows}]}}"
+    )
+
+
+def test_the_live_solution_kind_question_is_one_choice_not_five_answers() -> None:
+    """The whole live defect, at the boundary that made it."""
+    described = describe(solution_kind_model(), drawn=0)
+
+    assert described["kind"] == "option"
+    assert described["code"] == "described-option-group"
+    assert described["collection"]["branch"] == "option-group-undrawn"
+    assert described["collection"]["usable"] == 5
+    assert described["collection"]["drawn"] == 0
+    # The alternatives, which is what a choice is made between -- not the five
+    # controls, which is what was asked for and refused.
+    assert described["options"] == 3
+    assert described["name"] == "solution_kind"
+    assert described["enabled"] is True
+
+
+def test_an_option_group_alone_still_takes_the_plain_branch() -> None:
+    """Nothing typeable published at all: the rule that was already here."""
+    described = describe(solution_kind_model(boxes=0), drawn=0)
+
+    assert described["kind"] == "option"
+    assert described["collection"]["branch"] == "option-group"
+    assert described["options"] == 3
+
+
+def test_a_revealed_box_is_not_swallowed_by_the_group() -> None:
+    """Once the choice is made the page draws its box and puts its cursor in
+    it, and that box is the answer surface. The group stops being the whole
+    question at the moment the page starts drawing something to type into --
+    `one-drawn-box` takes it, as it does for any single box with two controls
+    behind it, and the option branch never sees it."""
+    described = describe(solution_kind_model(focused=3), drawn=1)
+
+    assert described["kind"] == "textbox"
+    assert described["collection"]["branch"] == "one-drawn-box"
+    assert described["collection"]["drawn"] == 1
+    assert described["allowedCharacters"] == "[0-9-]"
+
+
+def test_an_option_beside_a_drawn_box_is_still_not_this_probe_s_to_guess() -> None:
+    """A question with an option *and* a field it is drawing: unchanged. Two
+    boxes on screen is not a group with something hidden behind it."""
+    described = describe(solution_kind_model(options=2, boxes=2), drawn=2)
+
+    assert described["kind"] == "multi"
+    assert described["collection"]["branch"] == "multi"
+
+
+def test_an_unknown_drawn_count_never_collapses_a_mixed_group() -> None:
+    """No document to read. The page said nothing about what it is drawing, so
+    the mixed group is not read as a choice on the strength of an absence."""
+    described = describe(solution_kind_model())
+
+    assert described["collection"]["drawn"] == -1
+    assert described["kind"] == "multi"
+
+
+def test_one_option_beside_undrawn_boxes_is_not_a_group() -> None:
+    """A choice is made between alternatives, and one control offers none."""
+    described = describe(solution_kind_model(options=1, boxes=2), drawn=0)
+
+    assert described["kind"] != "option"
+    assert described["collection"]["branch"] == "multi"
+
+
+def test_a_disabled_option_never_joins_the_group() -> None:
+    """`usable` is what the count is taken from, here as everywhere else."""
+    controls = ", ".join(control() for _ in range(3))
+    rows = ", ".join([option_data(), option_data(enabled=False), data()])
+    model = (
+        f"{{focusedElementIndex: 0, controlsCollection: [{controls}],"
+        f" controlsCollectionData: [{rows}]}}"
+    )
+
+    described = describe(model, drawn=0)
+
+    assert described["kind"] != "option"
+    assert described["collection"]["usable"] == 2

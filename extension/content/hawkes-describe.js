@@ -261,25 +261,49 @@
   //
   // Decided on what the controls are, not on how many there are, so it holds
   // for a two-option "Real Number / Not a Real Number" question and for a
-  // ten-option one alike. A group mixing options with typeable boxes is left
-  // to the branch below: that is a question with an option *and* a field, and
-  // guessing which of them is the answer is not this probe's to do.
-  if (usable.length >= 2 && usable.every((editor) => editor.kind === "option")) {
+  // ten-option one alike.
+  //
+  // A group is still a group when the page publishes typeable controls beside
+  // it that it is not drawing. Live, on 2026-09-10: "No Solution / One
+  // Solution / Infinite Solutions" publishes its three options *and* the two
+  // controls behind the box that "One Solution" reveals -- five usable
+  // controls, no box on screen -- and this branch handed all five to `multi`
+  // because the group was mixed. The host asked Facet for five values to a
+  // question whose answer is one of three printed phrases, Facet solved the
+  // equation, and every run was refused as not-insertable. An undrawn control
+  // is neither one of the alternatives nor a second answer: it belongs to the
+  // alternative that reveals it, and cannot be typed into until that choice is
+  // made.
+  //
+  // `drawn === 0` is the page's own statement that nothing is typeable yet,
+  // read here exactly as the one-drawn-box branch above reads it, and never
+  // inferred from the controls. A group beside a box the page *is* drawing
+  // still falls to the branch below: that is a question with an option *and* a
+  // field, and guessing which of them holds the answer is not this probe's to
+  // do.
+  const options = usable.filter((editor) => editor.kind === "option");
+  const wholeGroup = options.length === usable.length;
+  if (options.length >= 2 && (wholeGroup || drawn === 0)) {
     return {
       ok: true,
       code: "described-option-group",
       kind: "option",
-      // Named as the group, from the controls' own names, so a reader can see
+      // Named as the group, from the options' own names, so a reader can see
       // which group was described. The choices a person actually reads are
       // published in the DOM and are collected there, by `inspectField`.
-      name: String(usable[0].name ?? ""),
+      name: String(options[0].name ?? ""),
       enabled: true,
       text: "",
       allowedCharacters: "",
       maxLength: null,
       templates: { fraction: false, radical: false, exponent: false },
-      options: usable.length,
-      collection: { ...collection, branch: "option-group" },
+      // The alternatives, not the controls: a box behind one of them is not a
+      // choice anybody can make.
+      options: options.length,
+      collection: {
+        ...collection,
+        branch: wholeGroup ? "option-group" : "option-group-undrawn",
+      },
     };
   }
   if (usable.length >= 2 && usable.length <= MAX_ANSWER_PARTS) {
