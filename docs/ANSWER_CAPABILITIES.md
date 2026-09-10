@@ -115,7 +115,7 @@ function that does the typing.
 | multipart ordered pairs with integer components | `parts` | group+comma | `(1,-3)` | several full-keypad boxes, one per ordered pair | `multiEntryPlans` → `planEntry` → `planRun` → `planCommaList` | yes | no | no | `parts-group-comma` |
 | multipart ordered pairs with rational components | `parts` | fraction+group+comma | `(0,-1/6)` | several full-keypad boxes, one per rational ordered pair | `multiEntryPlans` → `planEntry` → `planRun` → `planCommaList` → `planFractionTemplate` | yes | no | no | `parts-fraction-group-comma` |
 | named alternative | `choice` | phrase | `Quadrant IV` | one radio group, N buttons | `answerFitsEditor` | yes | no | yes | `choice-phrase` |
-| named alternative carrying a set notation | `choice` | group | `Infinite Solutions (ℝ)` | one radio group whose labels gloss themselves, `No Solution (∅)` | `answerFitsEditor` | yes | no | no | `choice-notated` |
+| named alternative carrying a set notation | `choice` | group | `Infinite Solutions (ℝ)` | one radio group whose labels gloss themselves, `No Solution (∅)` | `answerFitsEditor` | yes | no | yes | `choice-notated` |
 | parabola graph plan | `parabola_plan` | *plan* | `plan, no value` | vertex and two symmetric controls | `graphOperation` | yes | no | yes | `plan-parabola` |
 | literal points graph plan | `point_plot_plan` | *plan* | `plan, no value` | one draggable control per point | `graphOperation` | yes | no | yes | `plan-point-plot` |
 | quadratic regression plan | `quadratic_regression` | *plan* | `plan, no value` | coefficients checked, then read | `graphOperation` | yes | no | yes | `plan-quadratic-regression` |

@@ -819,7 +819,7 @@
       "coverage": {
         "unit": "yes",
         "harness": "no",
-        "live": "no"
+        "live": "yes"
       },
       "probe": {
         "instruction": "Solve the equation.",
