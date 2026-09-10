@@ -22,6 +22,13 @@ const STATE_FIELDS = [
   "frameId",
   "fieldId",
   "fieldIds",
+  // A completion table's blank-to-control mapping. `prepare` re-reads it, and
+  // where that read cannot state one -- a cell the owner has clicked into
+  // shows two controls -- revalidates the mapping this same question was
+  // reviewed against, from the previous state. Lost with an event-page unload,
+  // that fallback had nothing to revalidate and the held answer could not be
+  // placed.
+  "tableTargets",
   "answer",
   "displayText",
   "entryText",

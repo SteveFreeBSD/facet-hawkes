@@ -41,6 +41,8 @@ var setTimeout = (fn, ms) => { const t = {fn, at: now + ms}; timers.push(t); ret
 var clearTimeout = t => { timers = timers.filter(item => item !== t); };
 var completed = null;
 class InputEvent { constructor(type, options) { this.type = type; Object.assign(this, options); } }
+class KeyboardEvent { constructor(type, options) { this.type = type; Object.assign(this, options); } }
+class Event { constructor(type, options) { this.type = type; Object.assign(this, options); } }
 class FocusEvent { constructor(type, options) { this.type = type; Object.assign(this, options); } }
 class CustomEvent { constructor(type, options) { this.type = type; Object.assign(this, options); } }
 

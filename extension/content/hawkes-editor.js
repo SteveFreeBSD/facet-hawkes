@@ -176,8 +176,9 @@ var ethnosHawkes = (function () {
     fieldIds: [],
   };
 
-  function solutionFields() {
-    const fields = [...document.querySelectorAll(HAWKES_FIELD_SELECTOR)]
+  /** Visible answer boxes in their page order, before deciding what joins them. */
+  function solutionFieldCandidates() {
+    return [...document.querySelectorAll(HAWKES_FIELD_SELECTOR)]
       .filter(
         (element) =>
           element.id
@@ -191,6 +192,10 @@ var ethnosHawkes = (function () {
         const b = right.getBoundingClientRect();
         return a.top - b.top || a.left - b.left;
       });
+  }
+
+  function solutionFields() {
+    const fields = solutionFieldCandidates();
     if (
       fields.length < 2
       || fields.length > MAX_ANSWER_PARTS
@@ -692,68 +697,6 @@ var ethnosHawkes = (function () {
     return played.failure;
   }
 
-  /**
-   * Write one character, as the field's own machinery expects to receive it.
-   *
-   * Reads the prototype's setter so frameworks that patch the instance
-   * property still observe the change. This only reads a descriptor; it never
-   * installs one, so no built-in is modified.
-   */
-  function writeCharacter(target, character) {
-    const start = Number.isInteger(target.selectionStart)
-      ? target.selectionStart
-      : target.value.length;
-    const end = Number.isInteger(target.selectionEnd) ? target.selectionEnd : start;
-    const next = `${target.value.slice(0, start)}${character}${target.value.slice(end)}`;
-    const owner = target instanceof HTMLTextAreaElement
-      ? HTMLTextAreaElement.prototype
-      : HTMLInputElement.prototype;
-    const descriptor = Object.getOwnPropertyDescriptor(owner, "value");
-    if (descriptor?.set) {
-      descriptor.set.call(target, next);
-    } else {
-      target.value = next;
-    }
-    const caret = start + character.length;
-    target.setSelectionRange?.(caret, caret);
-    target.dispatchEvent(
-      new InputEvent("input", { bubbles: true, data: character, inputType: "insertText" })
-    );
-  }
-
-  async function insertIntoNativeField(target, value, cadence, preflighted = false) {
-    if (target.disabled || target.readOnly) {
-      return { ok: false, code: "field-not-editable" };
-    }
-    if (!preflighted && !beforeInputAccepted(target, value)) {
-      return { ok: false, code: "input-cancelled" };
-    }
-
-    target.focus();
-    const failure = await playEntryCadence([...value], (character) => {
-      if (!target.isConnected) {
-        // Hawkes swaps a question in place, and a performance now spans
-        // seconds: the field this began in can be replaced part-way through.
-        // A detached input still accepts writes and still reports itself as
-        // editable, so without this the rest of the answer went nowhere and
-        // the insertion reported success. The structured path re-reads its box
-        // by id for the same reason.
-        return { ok: false, code: "editor-lost-focus" };
-      }
-      if (target.disabled || target.readOnly) {
-        // The field closed under us part-way through. Stop rather than write
-        // into something that has stopped accepting input.
-        return { ok: false, code: "field-not-editable" };
-      }
-      writeCharacter(target, character);
-      return null;
-    }, cadence);
-    if (failure) {
-      return failure;
-    }
-    return { ok: true, code: "native-input" };
-  }
-
   async function insertIntoEditable(target, value, cadence) {
     target.focus();
     const selection = window.getSelection();
@@ -799,7 +742,22 @@ var ethnosHawkes = (function () {
   }
 
   /**
-   * Insert `value` at the caret of this frame's focused answer field.
+   * Insert `value` at the caret of this frame's focused contenteditable field.
+   *
+   * That is the whole of this writer now: `native-contenteditable` is the one
+   * transport in `common/transport.js` that runs in this world. A Hawkes answer
+   * box of any kind -- one or several, plain or dynamic, a table's cell or the
+   * box a chosen option reveals -- is a control the page owns and routes
+   * `input` through, which this world can neither see nor select. Each is
+   * written from the page's own world, by `common/page-actions.js` or
+   * `common/table-actions.js`, and held there until the page has kept it.
+   *
+   * This used to write a native box as well, through the prototype setter and
+   * an `input` event, and later with key events wrapped around it. Nothing
+   * routes one here any more, so reaching one means the page changed shape
+   * after its transport was chosen -- and a box written from here would be a
+   * value in the DOM that nothing proved the page kept. It is refused
+   * untouched, by the name a writer handed a route it does not perform gives.
    *
    * @returns {{ok: boolean, code: string}}
    */
@@ -824,74 +782,41 @@ var ethnosHawkes = (function () {
     if (!target) {
       return { ok: false, code: "no-focused-answer-field" };
     }
-    const cadence = normalizedCadence(cadenceOptions);
     if (isNativeField(target)) {
-      // Returns a promise: entry is paced, and `executeScript` awaits it.
-      return insertIntoNativeField(target, value, cadence);
+      return { ok: false, code: "transport-unavailable" };
     }
     if (target.isContentEditable || target.getAttribute("role") === "textbox") {
-      return insertIntoEditable(target, value, cadence);
+      // Returns a promise: entry is paced, and `executeScript` awaits it.
+      return insertIntoEditable(target, value, normalizedCadence(cadenceOptions));
     }
     return { ok: false, code: "unsupported-field" };
   }
 
-  /** Insert one structured solution set into its exact pinned fields. */
-  async function insertAnswerParts(parts, expectedFieldIds, cadenceOptions = {}) {
-    if (!originAllowed()) {
-      return { ok: false, code: "wrong-site" };
-    }
-    if (
-      !Array.isArray(parts)
-      || parts.length < 2
-      || parts.length > MAX_ANSWER_PARTS
-      || !parts.every(answerIsSupported)
-      || !Array.isArray(expectedFieldIds)
-      || expectedFieldIds.length !== parts.length
-    ) {
-      return { ok: false, code: "answer-invalid" };
-    }
-    const fields = solutionFields();
-    if (
-      fields.length !== parts.length
-      || fields.some((field, index) => field.id !== expectedFieldIds[index])
-    ) {
-      return { ok: false, code: "answer-fields-changed" };
-    }
-    if (fields.some((field) => !isNativeField(field) || field.value !== "")) {
-      return { ok: false, code: "answer-fields-not-empty" };
-    }
-    // Validate every editor before the first mutation. Hawkes uses this event
-    // to reject characters that its published model does not accept.
-    if (!fields.every((field, index) => beforeInputAccepted(field, parts[index]))) {
-      return { ok: false, code: "input-cancelled" };
-    }
-
-    const cadence = normalizedCadence(cadenceOptions);
-    for (let index = 0; index < fields.length; index += 1) {
-      const current = solutionFields();
-      if (
-        current.length !== parts.length
-        || current.some((field, offset) => field.id !== expectedFieldIds[offset])
-      ) {
-        return { ok: false, code: "answer-fields-changed", written: index };
-      }
-      const outcome = await insertIntoNativeField(
-        current[index], parts[index], cadence, true
-      );
-      if (!outcome.ok) {
-        return { ...outcome, written: index };
-      }
-    }
-    const settled = solutionFields();
-    if (
-      settled.length !== parts.length
-      || settled.some((field, index) => field.id !== expectedFieldIds[index])
-      || settled.some((field, index) => field.value !== parts[index])
-    ) {
-      return { ok: false, code: "answer-parts-incomplete", written: parts.length };
-    }
-    return { ok: true, code: "native-input-fields", entered: [...parts] };
-  }
+  /**
+   * A multipart plain answer is written from the page's own world too.
+   *
+   * `insertAnswerParts` used to live at this point in the file. It revalidated
+   * the pinned solution fields, preflighted every part, and then did what an
+   * isolated writer can do: focus each box, assign its part through the
+   * prototype setter, dispatch `input`. Live, on 2026-09-10, lesson 1.6's
+   * three boxes -- `txt1_num`, `txt2_num`, `txt3_num` -- took three correct
+   * parts and settled holding them cumulatively and across each other, and the
+   * read-back at the end of it duly refused the insertion.
+   *
+   * Those boxes are page-owned controls -- one entry each in the editor
+   * collection this scope is not allowed to name, let alone read -- and
+   * `input` is routed through the one Hawkes has selected among them.
+   * `focus()` moves `document.activeElement` and does not
+   * move that selection, and no amount of key events around the write can:
+   * they were reaching the right box and the wrong control. It is the same
+   * fact that moved the completion table out of this scope, one surface over.
+   *
+   * `common/table-actions.js` is where both surfaces are written now. The
+   * proof that these several boxes are one answer is still made here, by
+   * `solutionFields` and `inspectField`, and is revalidated by the event page
+   * immediately before the write; nothing in this file may reach the page's
+   * model.
+   */
 
   /**
    * A completion table is written from the page's own world, not from here.
@@ -910,7 +835,6 @@ var ethnosHawkes = (function () {
     answerIsSupported,
     inspectField,
     insertAnswer,
-    insertAnswerParts,
     originAllowed,
   };
 })();

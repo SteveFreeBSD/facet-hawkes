@@ -75,6 +75,15 @@ export async function enterPlan(steps, cadence = {}, targetFieldIds = [], transp
   const MAX_ANSWER_PARTS = 5;
   const multi = Array.isArray(targetFieldIds) && targetFieldIds.length >= 2
     && targetFieldIds.length <= MAX_ANSWER_PARTS;
+  // Several plain answer boxes are not this writer's. They are the
+  // `hawkes-plain-fields` transport, written by `enterOwnedFields` through the
+  // control Hawkes has selected for each -- which is what keeps one box's part
+  // out of another's. This writer pins several targets by the dynamic editor's
+  // own `Base` objects, which a plain box does not have, so a plain-box plan
+  // handed several targets was routed against some other page.
+  if (multi && !viaKeypad) {
+    return { ok: false, code: "transport-unavailable", detail: transport };
+  }
   const plans = multi ? steps : [steps];
   if (
     !Array.isArray(plans)
@@ -107,7 +116,7 @@ export async function enterPlan(steps, cadence = {}, targetFieldIds = [], transp
   // happens. The log used to say `via: "plain"` or `via: "structured"`, which
   // named the shape of the answer rather than the route it took; these are the
   // route, measured rather than assumed.
-  const written = { keypad: 0, native: 0 };
+  const written = { keypad: 0, native: 0, fields: new Set() };
 
   /**
    * Tell an optional listener that something happened, in the write's own turn.
@@ -190,6 +199,49 @@ export async function enterPlan(steps, cadence = {}, targetFieldIds = [], transp
     [...document.querySelectorAll('[id*="customMessageBox"]')].some(
       (node) => node.getBoundingClientRect().height > 0
     );
+
+  /**
+   * How long the page is given to accept or undo what was just written, as a
+   * count of polls rather than a wall-clock deadline.
+   *
+   * Counted, because the two clocks a caller may virtualise are not the same
+   * one: a harness that drives `setTimeout` from a queue without also moving
+   * `Date.now` leaves a deadline loop spinning forever against a clock nothing
+   * advances. Polls advance whatever the timers advance, so this terminates
+   * under a real clock and a virtual one alike.
+   */
+  const PERSIST_POLLS = 15;
+  const PERSIST_INTERVAL_MS = 80;
+
+  /**
+   * Whether the page kept the entry once its own handling had run.
+   *
+   * Reading a box back in the same turn as the write proves the assignment
+   * happened and nothing more. Hawkes decides afterwards, from its own copy of
+   * the answer: on 2026-09-10 the character went in, read back correctly, this
+   * writer reported success -- and Hawkes then raised "Your answer seems
+   * incomplete" and emptied the box, with the panel still saying the answer
+   * had been placed. An entry the page discards is a failed insertion, and
+   * saying so is the difference between a bug that is reported and one that is
+   * watched happening.
+   *
+   * Held to the boxes' own text rather than to any model of what should be in
+   * them, so this stays a persistence check and decides nothing about the
+   * answer. Hawkes' own dialog counts as a refusal however the text ended up.
+   */
+  const heldByThePage = async (expected) => {
+    const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    for (let poll = 0; poll < PERSIST_POLLS; poll += 1) {
+      await pause(PERSIST_INTERVAL_MS);
+      if (dialogUp()) {
+        return "editor-dialog-open";
+      }
+      if (boxes().map((box) => box.value).join("") !== expected) {
+        return "answer-did-not-persist";
+      }
+    }
+    return true;
+  };
 
   /**
    * Wait for the editor to finish adding boxes after a template loads.
@@ -300,11 +352,50 @@ export async function enterPlan(steps, cadence = {}, targetFieldIds = [], transp
    * inside. This is what Hawkes' own `AnswerBoxKeyPadClick` does to a plain
    * box, and there is no page-owned character API to prefer over it.
    */
+  /**
+   * One key event, carrying the fields an older editor reads.
+   *
+   * `KeyboardEvent` cannot be constructed with `keyCode`, `charCode` or
+   * `which`: they are legacy accessors and the init dictionary ignores them,
+   * so a constructed event reports 0 for all three. Hawkes' answer boxes are
+   * ASP.NET-era code and read exactly those, and a handler that switches on
+   * `keyCode` treats 0 as "not a character" and does nothing. Defined back on
+   * the event so the page sees what a real key press carries.
+   */
+  const keyEvent = (box, type, character) => {
+    const event = new KeyboardEvent(type, {
+      bubbles: true,
+      cancelable: true,
+      key: character,
+    });
+    const code = character.charCodeAt(0);
+    for (const name of ["keyCode", "charCode", "which"]) {
+      try {
+        Object.defineProperty(event, name, { get: () => code });
+      } catch {
+        // An engine that will not redefine it still gets the event.
+      }
+    }
+    return box.dispatchEvent(event);
+  };
+
+  /**
+   * Write one character the way a plain answer box receives one.
+   *
+   * The prototype's setter, then the `input` the box's own sanitiser runs
+   * inside -- surrounded by the key events a real press makes. Those are not
+   * decoration: a box that syncs the page's answer model on `keyup` never sees
+   * a value written without one, and the DOM then holds a value the page does
+   * not own. That is what live insertion looked like on 2026-09-10 -- the
+   * character went in, read back correctly, and Hawkes raised its own "Your
+   * answer seems incomplete" dialog and cleared the box.
+   */
   const writeCharacter = (box, character) => {
     const setter = Object.getOwnPropertyDescriptor(
       HTMLInputElement.prototype,
       "value"
     ).set;
+    keyEvent(box, "keydown", character);
     setter.call(box, box.value + character);
     box.dispatchEvent(
       new InputEvent("input", {
@@ -313,6 +404,7 @@ export async function enterPlan(steps, cadence = {}, targetFieldIds = [], transp
         inputType: "insertText",
       })
     );
+    keyEvent(box, "keyup", character);
   };
 
   const typeInto = async (id, text) => {
@@ -382,7 +474,29 @@ export async function enterPlan(steps, cadence = {}, targetFieldIds = [], transp
       // can observe/spoof this DOM cue; it confers no insertion capability.
       emit([notesStruck - 1, performance.now() - origin]);
     }
+    written.fields.add(id);
     return { ok: true };
+  };
+
+  /**
+   * Commit the boxes that were written, the way finishing with them does.
+   *
+   * A native input fires `change` when the caret leaves it having been
+   * modified, and a page that keeps its own copy of the answer takes it there.
+   * Done once the whole answer is in rather than per box, because that is when
+   * a person is finished with it -- and because the expected text has to be
+   * read *before* any of this, or a page that discards the entry here would be
+   * checked against the wreckage it left.
+   *
+   * Dispatched rather than waited on, and the caret is left where it is: this
+   * add-on never moves focus away from an answer it has just entered.
+   */
+  const commitWrittenBoxes = () => {
+    for (const id of written.fields) {
+      document
+        .getElementById(id)
+        ?.dispatchEvent(new Event("change", { bubbles: true }));
+    }
   };
 
   /** How this performance actually ran, as numbers only. */
@@ -879,5 +993,15 @@ export async function enterPlan(steps, cadence = {}, targetFieldIds = [], transp
   const entered = boxes()
     .map((box) => box.value)
     .join("");
+  // The keypad transport writes through the editor's own API, so what it
+  // entered is the editor's by construction. A plain box is written to
+  // directly, and only the page can say whether it kept it.
+  if (!viaKeypad) {
+    commitWrittenBoxes();
+    const kept = await heldByThePage(entered);
+    if (kept !== true) {
+      return { ok: false, code: kept, transport, timing: measured() };
+    }
+  }
   return { ok: true, code: "entered", transport, entered, timing: measured() };
 }

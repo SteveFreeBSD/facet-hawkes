@@ -1,4 +1,20 @@
-"""Regressions for Hawkes questions with one structured multi-field answer."""
+"""Discovering the "or"-separated solution set, from the DOM alone.
+
+This file models what an isolated content script can see: several visible
+answer boxes, and the wording between them. That is what decides whether the
+page is showing one answer in several places, and it is all `inspectField`
+and `solutionFields` are allowed to decide from.
+
+It used to exercise the insertion as well, through `insertAnswerParts`, and
+it modelled the boxes as independent inputs -- so a write to one could not
+touch another and every insertion test passed while the live page was being
+corrupted. A Hawkes answer box is a page-owned control, `input` is routed
+through the one the page has selected, and none of that exists here. The
+insertion moved to `common/table-actions.js` and is proven against the
+controlled editor in `test_hawkes_owned_fields.py`; the pinned identity this
+file discovers is revalidated by the event page, in
+`test_hawkes_insertion_ownership.py`.
+"""
 
 from __future__ import annotations
 
@@ -57,6 +73,7 @@ def two_field_page():
         class HTMLIFrameElement extends Element {}
         class HTMLFrameElement extends Element {}
         class InputEvent { constructor(type) { this.type = type; } }
+        class KeyboardEvent { constructor(type) { this.type = type; } }
 
         const body = new Element();
         const documentElement = new Element();
@@ -120,41 +137,6 @@ def test_exact_pair_is_discovered_in_left_to_right_order(two_field_page):
     }
 
 
-def test_both_roots_are_preflighted_then_written_to_their_pinned_fields(
-    two_field_page,
-):
-    two_field_page.eval(
-        "globalThis.outcome = null; "
-        "ethnosHawkes.insertAnswerParts(['-1', '5'], "
-        "['QBase1_input', 'QBase2_input']).then(value => { outcome = value; })"
-    )
-    settle(two_field_page)
-
-    assert two_field_page.eval("fields[0].value") == "-1"
-    assert two_field_page.eval("fields[1].value") == "5"
-    assert result(two_field_page, "outcome") == {
-        "ok": True,
-        "code": "native-input-fields",
-        "entered": ["-1", "5"],
-    }
-
-
-def test_second_editor_rejection_leaves_both_fields_untouched(two_field_page):
-    two_field_page.eval(
-        "fields[1].accept = false; globalThis.outcome = null; "
-        "ethnosHawkes.insertAnswerParts(['-1', '5'], "
-        "['QBase1_input', 'QBase2_input']).then(value => { outcome = value; })"
-    )
-    settle(two_field_page)
-
-    assert two_field_page.eval("fields[0].value") == ""
-    assert two_field_page.eval("fields[1].value") == ""
-    assert result(two_field_page, "outcome") == {
-        "ok": False,
-        "code": "input-cancelled",
-    }
-
-
 def add_four_field_shape(context):
     context.eval(
         """
@@ -171,72 +153,15 @@ def add_four_field_shape(context):
     )
 
 
-def test_four_parts_are_written_to_four_fields_in_visual_order(two_field_page):
+def test_four_fields_are_discovered_in_visual_order(two_field_page):
     add_four_field_shape(two_field_page)
+
     assert result(two_field_page, "ethnosHawkes.inspectField()") == {
         "ready": True,
         "code": "multi-answer-fields",
         "fieldId": "\u001f".join(f"QBase{index}_input" for index in range(1, 5)),
         "fieldIds": [f"QBase{index}_input" for index in range(1, 5)],
     }
-
-    two_field_page.eval(
-        "globalThis.outcome = null; "
-        "ethnosHawkes.insertAnswerParts(['-2*sqrt(5)', '2*sqrt(5)', "
-        "'-2*i*sqrt(5)', '2*i*sqrt(5)'], "
-        "['QBase1_input', 'QBase2_input', 'QBase3_input', 'QBase4_input'])"
-        ".then(value => { outcome = value; })"
-    )
-    settle(two_field_page)
-
-    assert result(two_field_page, "fields.map(field => field.value)") == [
-        "-2*sqrt(5)",
-        "2*sqrt(5)",
-        "-2*i*sqrt(5)",
-        "2*i*sqrt(5)",
-    ]
-    assert result(two_field_page, "outcome")["ok"] is True
-
-
-def test_part_field_mismatch_refuses_before_mutation(two_field_page):
-    add_four_field_shape(two_field_page)
-    two_field_page.eval(
-        "globalThis.outcome = null; "
-        "ethnosHawkes.insertAnswerParts(['-1', '1'], "
-        "['QBase1_input', 'QBase2_input']).then(value => { outcome = value; })"
-    )
-    settle(two_field_page)
-
-    assert result(two_field_page, "outcome") == {
-        "ok": False,
-        "code": "answer-fields-changed",
-    }
-    assert result(two_field_page, "fields.map(field => field.value)") == [
-        "",
-        "",
-        "",
-        "",
-    ]
-
-
-def test_partial_multi_field_write_never_reports_success(two_field_page):
-    add_four_field_shape(two_field_page)
-    two_field_page.eval(
-        "let plays = 0; afterPlay = () => { plays += 1; "
-        "if (plays === 1) separators[0].textContent = 'and'; }; "
-        "globalThis.outcome = null; "
-        "ethnosHawkes.insertAnswerParts(['-2', '2', '-2*i', '2*i'], "
-        "['QBase1_input', 'QBase2_input', 'QBase3_input', 'QBase4_input'])"
-        ".then(value => { outcome = value; })"
-    )
-    settle(two_field_page)
-
-    assert result(two_field_page, "outcome") == {
-        "ok": False,
-        "code": "answer-fields-changed",
-        "written": 1,
-    }
-    assert two_field_page.eval("fields[0].value") == "-2"
 
 
 @pytest.mark.parametrize(
@@ -246,16 +171,19 @@ def test_partial_multi_field_write_never_reports_success(two_field_page):
         "extras.push(new HTMLInputElement({id: 'third'}))",
     ],
 )
-def test_disappearing_or_ambiguous_pair_is_refused(two_field_page, change):
-    two_field_page.eval(
-        f"{change}; globalThis.outcome = null; "
-        "ethnosHawkes.insertAnswerParts(['-1', '5'], "
-        "['QBase1_input', 'QBase2_input']).then(value => { outcome = value; })"
-    )
-    settle(two_field_page)
-    outcome = result(two_field_page, "outcome")
+def test_a_pair_that_stops_saying_or_is_no_longer_one_answer(two_field_page, change):
+    """The wording is the whole of the proof, so losing it loses the shape.
 
-    assert outcome["ok"] is False
-    assert outcome["code"] == "answer-fields-changed"
-    assert two_field_page.eval("fields[0].value") == ""
-    assert two_field_page.eval("fields[1].value") == ""
+    An extra box is the same fact from the other side: three boxes joined by
+    one "or" are not three parts of one answer, and this reader will not say
+    they are. The event page may still adopt boxes with no separator at all,
+    but only when the page's own editor model publishes exactly that many
+    editors -- which is a different proof, made somewhere else, and pinned as
+    `editor-corroborated`.
+    """
+    two_field_page.eval(change)
+
+    found = result(two_field_page, "ethnosHawkes.inspectField()")
+
+    assert found.get("fieldIds", []) == []
+    assert found.get("code") != "multi-answer-fields"

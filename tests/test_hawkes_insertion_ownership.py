@@ -54,8 +54,27 @@ MODULES = (
 )
 
 HARNESS = """
-globalThis.__H = { timers: [], calls: [], pending: [], logged: [], localStored: {} };
+globalThis.__H = {
+  timers: [], calls: [], pending: [], logged: [], localStored: {}, intervals: [],
+};
 const __H = globalThis.__H;
+
+// The question watcher runs on an interval. Held rather than fired, so a test
+// drives exactly one tick and settles its reads itself -- the same contract
+// the injection mock below keeps.
+globalThis.setInterval = (fn, ms) => {
+  __H.intervals.push({ id: __H.intervals.length + 1, fn, ms: ms || 0 });
+  return __H.intervals.length;
+};
+globalThis.clearInterval = (id) => {
+  const keep = __H.intervals.filter((entry) => entry.id !== id);
+  __H.intervals.length = 0;
+  for (const entry of keep) { __H.intervals.push(entry); }
+};
+__H.tick = () => {
+  for (const entry of [...__H.intervals]) { entry.fn(); }
+  return __H.intervals.length;
+};
 
 // Timers carry their delay so the pump can run the short retry sleeps without
 // firing the 15-second injection deadline, which would abort every held call.
@@ -151,6 +170,9 @@ globalThis.browser = {
         frameId: Array.isArray(frames) ? frames[0] : null,
         file: (injection.files || []).join(","),
         func: injection.func ? injection.func.name : "",
+        // Which world the injection asked for. The page's own model lives in
+        // one of them and nowhere else, so this is not a detail.
+        world: injection.world || "isolated",
         args: injection.args || [],
       };
       __H.calls.push(record);
@@ -221,7 +243,8 @@ ENTERED_OK = {
     "transport": "hawkes-dynamic-keypad",
 }
 #: A question whose several answers are plain boxes rather than dynamic ones.
-#: Its parts are typed into the fields as they stand, by the isolated writer.
+#: Its parts are typed into the boxes as they stand, each through the control
+#: the page has selected, by the page-world writer a completion table shares.
 PLAIN_FIELD_EDITOR = {
     **EDITOR_OK,
     "kind": "textbox",
@@ -252,8 +275,10 @@ DYNAMIC_PAIR_EDITOR = {
 }
 PAIR_ENTERED = {
     "ok": True,
-    "code": "native-input-fields",
-    "entered": ["-1", "5"],
+    "code": "entered-answer-fields",
+    "fields": ["QBase1_input", "QBase2_input"],
+    "settled": 2,
+    "models": 2,
 }
 FOUR_FIELD_IDS = [f"QBase{index}_input" for index in range(1, 5)]
 FOUR_INSPECT = {
@@ -270,8 +295,10 @@ FOUR_EDITOR = {
 }
 FOUR_ENTERED = {
     "ok": True,
-    "code": "native-input-fields",
-    "entered": ["-2", "2", "-3", "3"],
+    "code": "entered-answer-fields",
+    "fields": FOUR_FIELD_IDS,
+    "settled": 4,
+    "models": 4,
 }
 STRUCTURED_PAIR_EDITOR = {
     "ok": True,
@@ -370,7 +397,7 @@ class Page:
             call
             for call in self.json("__H.calls")
             if call["func"] in {"enterPlainAnswer", "enterPlan"}
-            or call["func"] == "enterPlainAnswerParts"
+            or call["func"] == "enterOwnedFields"
         ]
 
     def said(self, event):
@@ -492,6 +519,7 @@ def test_two_roots_reach_only_the_two_fields_pinned_with_the_question(page):
           ...blankState(), phase: "solved", windowId: 1, tabId: 11, frameId: 0,
           fieldId: "QBase1_input\\u001fQBase2_input",
           fieldIds: ["QBase1_input", "QBase2_input"],
+          fieldIdentity: "separated",
           editor: {json.dumps(PAIR_EDITOR)},
           answer: "y = -1 or y = 5", displayText: "y = -1 or y = 5",
           answerParts: ["-1", "5"],
@@ -509,7 +537,7 @@ def test_two_roots_reach_only_the_two_fields_pinned_with_the_question(page):
     page.answer(PAIR_ENTERED)
     page.answer(QUESTION_A)
 
-    writes = [call for call in page.writes if call["func"] == "enterPlainAnswerParts"]
+    writes = [call for call in page.writes if call["func"] == "enterOwnedFields"]
     assert len(writes) == 1
     assert writes[0]["tabId"] == 11
     assert writes[0]["frameId"] == 0
@@ -517,6 +545,140 @@ def test_two_roots_reach_only_the_two_fields_pinned_with_the_question(page):
     assert writes[0]["args"][1] == ["QBase1_input", "QBase2_input"]
     assert page.json("state.phase") == "inserted"
     assert page.json("state.placedText") == "y = -1 or y = 5"
+
+    # The page's own world, because these boxes are page-owned controls: an
+    # isolated writer can focus one and cannot select it, and its parts arrive
+    # cumulative and crossed between the boxes.
+    assert writes[0]["world"] == "MAIN"
+    assert writes[0]["args"][3] == "fields"
+
+
+@pytest.mark.parametrize(
+    ("pinned", "live", "why"),
+    [
+        ("separated", [], "the wording that joined them stopped saying so"),
+        (
+            "editor-corroborated",
+            ["QBase1_input", "QBase2_input"],
+            "wording appeared that was not there when the answer was reviewed",
+        ),
+    ],
+)
+def test_the_proof_those_boxes_are_one_answer_is_revalidated_before_the_write(
+    page, pinned, live, why
+):
+    """Not just *which* boxes, but *how* they were shown to be one answer.
+
+    The isolated writer used to re-derive this for itself between parts. It
+    now runs in the page's own world, where the separator rule does not exist,
+    so the proof is revalidated at the gate that already holds every other
+    part of the pinned identity -- and a separator appearing is as much a
+    change as one going.
+    """
+    # The same two boxes either way -- the sweep still offers them as
+    # candidates when the wording is gone -- so the ids agree and the one thing
+    # that moved is the proof.
+    inspected = {
+        **PAIR_INSPECT,
+        "fieldIds": live,
+        "multiFieldEvidence": {
+            "fields": 2,
+            "fieldIds": ["QBase1_input", "QBase2_input"],
+        },
+    }
+    page.run(
+        f"""
+        state = {{
+          ...blankState(), phase: "solved", windowId: 1, tabId: 11, frameId: 0,
+          fieldId: "QBase1_input\u001fQBase2_input",
+          fieldIds: ["QBase1_input", "QBase2_input"],
+          fieldIdentity: {json.dumps(pinned)},
+          editor: {json.dumps(PAIR_EDITOR)},
+          answer: "y = -1 or y = 5", displayText: "y = -1 or y = 5",
+          answerParts: ["-1", "5"],
+          signature: questionSignature(
+            {json.dumps(QUESTION_A)}
+          ),
+        }};
+        insert();
+        """
+    )
+    page.pump()
+    page.answer(PAIR_EDITOR)
+    page.answer(QUESTION_A)
+    page.answer(inspected)
+
+    assert page.writes == [], why
+    assert page.json("state.errorKey") == "errorQuestionChanged"
+    changed = page.said("answer-fields-changed-before-insert")
+    assert changed and changed[-1]["data"]["wasIdentity"] == pinned
+    # Refused for the proof and nothing else: the boxes are the same two.
+    assert changed[-1]["data"]["nowFields"] == ["QBase1_input", "QBase2_input"]
+    assert changed[-1]["data"]["nowIdentity"] != pinned
+
+
+def test_a_re_read_of_the_same_question_adopts_its_proof_with_its_fields(page):
+    """The ids and the proof that they are one answer come from one read.
+
+    A re-prepare of the same question re-reads the fields, and used to keep the
+    proof from before. Fresh ids beside a held proof described no read at all:
+    the insertion revalidates both against the page, so an unchanged page was
+    refused as a changed question -- and every later prepare kept the same
+    held proof, so nothing short of dropping the answer got it back.
+    """
+    pair = ["QBase1_input", "QBase2_input"]
+    # The same two boxes, shown without the "or" between them: the sweep
+    # offers them as candidates, and the editor model corroborates the count.
+    corroborated = {
+        "ready": True,
+        "code": "focused-answer-field",
+        "via": "focused-field",
+        "fieldId": "QBase1_input",
+        "fieldKind": "native",
+        "suppliedSubject": "",
+        "multiFieldEvidence": {
+            "fields": 2,
+            "separatorCandidates": 0,
+            "separators": 0,
+            "fieldIds": pair,
+        },
+    }
+    page.run(
+        f"""
+        state = {{
+          ...blankState(), phase: "solved", windowId: 1, tabId: 11, frameId: 0,
+          fieldId: {json.dumps("QBase1_input" + chr(0x1F) + "QBase2_input")},
+          fieldIds: {json.dumps(pair)},
+          fieldIdentity: "separated",
+          editor: {json.dumps(PAIR_EDITOR)},
+          answer: "y = -1 or y = 5", displayText: "y = -1 or y = 5",
+          answerParts: ["-1", "5"],
+          signature: questionSignature({json.dumps(QUESTION_A)}),
+        }};
+        prepare(1);
+        """
+    )
+    page.pump()
+    page.answer(corroborated)  # the all-frame field read
+    page.answer(PAIR_EDITOR)  # describeEditor
+    page.answer(QUESTION_A)  # the question, unchanged
+
+    assert page.json("state.phase") == "solved", "a good answer was discarded"
+    assert page.json("state.answerParts") == ["-1", "5"]
+    assert page.json("state.fieldIds") == pair
+    assert page.json("state.fieldIdentity") == "editor-corroborated"
+
+    # And the page it was read from takes the answer.
+    page.run("insert();")
+    page.pump()
+    page.answer(PAIR_EDITOR)  # describeEditor
+    page.answer(QUESTION_A)  # the signature re-check
+    page.answer(corroborated)  # the fields, revalidated
+
+    writes = [call for call in page.writes if call["func"] == "enterOwnedFields"]
+    assert len(writes) == 1
+    assert writes[0]["args"][:2] == [["-1", "5"], pair]
+    assert page.said("answer-fields-changed-before-insert") == []
 
 
 def test_facet_parts_use_the_same_pinned_two_field_transaction(page):
@@ -526,6 +688,7 @@ def test_facet_parts_use_the_same_pinned_two_field_transaction(page):
           ...blankState(), phase: "solving", windowId: 1, tabId: 11, frameId: 0,
           fieldId: "QBase1_input\u001fQBase2_input",
           fieldIds: ["QBase1_input", "QBase2_input"],
+          fieldIdentity: "separated",
           editor: {json.dumps(PAIR_EDITOR)},
           signature: questionSignature(
             {json.dumps(QUESTION_A)}
@@ -557,7 +720,7 @@ def test_facet_parts_use_the_same_pinned_two_field_transaction(page):
     page.answer(PAIR_ENTERED)
     page.answer(QUESTION_A)
 
-    writes = [call for call in page.writes if call["func"] == "enterPlainAnswerParts"]
+    writes = [call for call in page.writes if call["func"] == "enterOwnedFields"]
     assert len(writes) == 1
     assert writes[0]["args"][:2] == [
         ["-1", "5"],
@@ -573,6 +736,7 @@ def test_four_facet_parts_use_the_same_pinned_multi_field_transaction(page):
         state = {{
           ...blankState(), phase: "solving", windowId: 1, tabId: 11, frameId: 0,
           fieldId: {json.dumps(field_id)}, fieldIds: {json.dumps(FOUR_FIELD_IDS)},
+          fieldIdentity: "separated",
           editor: {json.dumps(FOUR_EDITOR)},
           signature: questionSignature(
             {json.dumps(QUESTION_A)}
@@ -603,7 +767,7 @@ def test_four_facet_parts_use_the_same_pinned_multi_field_transaction(page):
     page.answer(FOUR_ENTERED)
     page.answer(QUESTION_A)
 
-    writes = [call for call in page.writes if call["func"] == "enterPlainAnswerParts"]
+    writes = [call for call in page.writes if call["func"] == "enterOwnedFields"]
     assert len(writes) == 1
     assert writes[0]["args"][:2] == [
         ["-2", "2", "-3", "3"],
@@ -621,6 +785,7 @@ def test_two_fraction_roots_run_two_preflighted_plans_on_the_pinned_editors(page
           ...blankState(), phase: "solved", windowId: 1, tabId: 11, frameId: 0,
           fieldId: "QBase1_input\u001fQBase2_input",
           fieldIds: ["QBase1_input", "QBase2_input"],
+          fieldIdentity: "separated",
           editor: {json.dumps(STRUCTURED_PAIR_EDITOR)},
           answer: {json.dumps(display)}, displayText: {json.dumps(display)},
           answerParts: {json.dumps(parts)},

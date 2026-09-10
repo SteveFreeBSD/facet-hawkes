@@ -119,6 +119,43 @@ def test_a_graph_answer_keeps_the_live_snapshot_that_insertion_will_recheck(cont
     assert restored["editor"]["snapshot"] == {"question": "digest"}
 
 
+def test_a_table_answer_keeps_the_mapping_prepare_revalidates(context):
+    """`prepare` revalidates the mapping a question was reviewed against when a
+    fresh read cannot state one, and it reads that mapping from the previous
+    state. An answer restored without it had nothing to revalidate."""
+    mapping = [
+        {
+            "blank": 1,
+            "id": "MatrixTextBoxes3_num",
+            "row": 1,
+            "column": 2,
+            "maxLength": 4,
+            "label": "row 1",
+        },
+        {
+            "blank": 2,
+            "id": "MatrixTextBoxes6_num",
+            "row": 2,
+            "column": 1,
+            "maxLength": 4,
+            "label": "row 2",
+        },
+    ]
+    table = solved_state(
+        answer="",
+        displayText="4, 2",
+        entryText="",
+        answerParts=["4", "2"],
+        tableTargets=mapping,
+    )
+    restored = evaluate(
+        context,
+        f"restoreSolvedAnswer(snapshotSolvedAnswer({json.dumps(table)}, 1234))",
+    )
+
+    assert restored["tableTargets"] == mapping
+
+
 def test_session_storage_is_the_only_answer_cache_and_prepare_rechecks_it():
     background = (EXTENSION / "background.js").read_text(encoding="utf-8")
     prepare = background.split("async function prepare", 1)[1].split(

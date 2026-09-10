@@ -294,7 +294,7 @@ INJECTED_PATH = re.compile(r"""_SCRIPT = ["']([^"']+)["']""")
 # and building structure both require it.
 MAIN_WORLD_SCRIPT = Path("content/hawkes-describe.js")  # reads only
 MAIN_WORLD_WRITER = Path("common/page-actions.js")  # builds structured answers
-MAIN_WORLD_TABLE = Path("common/table-actions.js")  # types a completion table
+MAIN_WORLD_TABLE = Path("common/table-actions.js")  # types page-owned answer boxes
 
 
 def _check_main_world(problems: list[str]) -> None:
@@ -413,14 +413,15 @@ def _check_main_world_writer(problems: list[str]) -> None:
 
 
 def _check_table_writer(problems: list[str]) -> None:
-    """The page-world table writer types into named cells, and nothing else.
+    """The page-owned-box writer types into named boxes, and nothing else.
 
-    It is the only file allowed to move Hawkes' own selection, because that is
-    the whole of the fix: a completion cell's `input` is routed through the
-    control the page has selected, and DOM focus does not move that. The
-    capability is bounded here -- it may select a control and type into the
-    cell that control owns, and it may not press a keypad template, build
-    structure, click, navigate, or evaluate anything.
+    Two surfaces reach it -- a completion table's cells and a multipart
+    question's plain answer boxes -- and it is the only file allowed to move
+    Hawkes' own selection, because that is the whole of the fix: such a box's
+    `input` is routed through the control the page has selected, and DOM focus
+    does not move that. The capability is bounded here -- it may select a
+    control and type into the box that control owns, and it may not press a
+    keypad template, build structure, click, navigate, or evaluate anything.
     """
     path = EXTENSION_DIR / MAIN_WORLD_TABLE
     if not path.is_file():
@@ -443,7 +444,7 @@ def _check_table_writer(problems: list[str]) -> None:
     for pattern, what in forbidden:
         if re.search(pattern, text):
             problems.append(
-                f"{MAIN_WORLD_TABLE}: {what}; it may only enter table cells"
+                f"{MAIN_WORLD_TABLE}: {what}; it may only enter answer boxes"
             )
 
     # Selection is made by the page, never asserted to it. The index is a
@@ -456,12 +457,20 @@ def _check_table_writer(problems: list[str]) -> None:
         )
     if "const noteOffsets = cadence.score?.offsets" not in text:
         problems.append(f"{MAIN_WORLD_TABLE} must consume the shared Cadence score")
-    if "func: enterTableCells" not in (EXTENSION_DIR / "background.js").read_text(
-        encoding="utf-8"
-    ):
+    background = (EXTENSION_DIR / "background.js").read_text(encoding="utf-8")
+    if "func: enterOwnedFields" not in background:
         problems.append(
-            "background.js must pass enterTableCells as the injected function"
+            "background.js must pass enterOwnedFields as the injected function"
         )
+    # One writer, two answer surfaces, and each branch says which it is. A
+    # branch that stopped naming its surface would take the other one's words
+    # for its refusals -- "the Hawkes table did not keep each answer in its own
+    # cell" of a question with no table in it.
+    for surface in ('cadence, "table"', 'cadence, "fields"'):
+        if surface not in background:
+            problems.append(
+                f"background.js must name the answer surface it writes: {surface}"
+            )
 
     # And nothing writes the mirror -- not even this file.
     for other in packaged_files():

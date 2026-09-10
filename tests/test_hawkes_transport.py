@@ -146,7 +146,17 @@ def test_several_fields_are_routed_by_what_kind_of_fields_they_are(policy):
     dynamic_pair = {"ok": True, "kind": "multi", "editors": [DYNAMIC, DYNAMIC]}
     plain_pair = {"ok": True, "kind": "multi", "editors": [TEXTBOX, TEXTBOX]}
     assert chosen(policy, dynamic_pair)["transport"] == "hawkes-dynamic-keypad"
-    assert chosen(policy, plain_pair)["transport"] == "hawkes-plain-fields"
+    # Several plain boxes are several page-owned controls, routed by the one
+    # Hawkes has selected -- so they are written from the page's own world, by
+    # the writer a completion table's cells take. An isolated writer can focus
+    # a box and cannot select it, and live its parts arrived cumulative and
+    # crossed between the boxes.
+    assert chosen(policy, plain_pair) == {
+        "ok": True,
+        "transport": "hawkes-plain-fields",
+        "world": "MAIN",
+        "writer": "enterOwnedFields",
+    }
     # Two editors of different kinds need two writers for one answer, and there
     # is no route that is both. Refused by name rather than resolved by
     # whichever half the answer happened to suit.
@@ -215,6 +225,8 @@ var serial = 0;
 var allowed = '0123456789xy-+,';
 
 class InputEvent { constructor(type, options) { this.type = type; Object.assign(this, options); } }
+class KeyboardEvent { constructor(type, options) { this.type = type; Object.assign(this, options); } }
+class Event { constructor(type, options) { this.type = type; Object.assign(this, options); } }
 class FocusEvent { constructor(type, options) { this.type = type; Object.assign(this, options); } }
 class CustomEvent { constructor(type, options) { this.type = type; Object.assign(this, options); } }
 
@@ -349,13 +361,18 @@ def test_a_plain_box_is_written_by_its_own_input_handling():
     assert [box for box, _value in value(live, "assigned")] == ["QBase1_input"] * 4
     assert value(live, "boxes.QBase1_input.held") == "12xy"
     # The box's own preflight is asked once for the run, then each character is
-    # delivered as an `input` the box's sanitiser runs inside.
+    # delivered as a whole key press -- `keydown`, the assignment, the `input`
+    # its sanitiser runs inside, `keyup` -- and the box is committed with the
+    # `change` that leaving it produces.
+    #
+    # The key events are not decoration. Live, on 2026-09-10, a value written
+    # with `input` alone read back correctly and was then discarded by Hawkes,
+    # which raised its own "Your answer seems incomplete" dialog and emptied
+    # the box: the DOM held a value the page never owned.
     assert [event for _id, event in value(live, "dispatched")] == [
         "beforeinput",
-        "input",
-        "input",
-        "input",
-        "input",
+        *["keydown", "input", "keyup"] * 4,
+        "change",
     ]
     assert outcome["timing"]["nativeWrites"] == 4
     assert outcome["timing"]["keypadWrites"] == 0
@@ -539,3 +556,96 @@ def test_a_question_with_no_route_is_refused_before_the_page_is_touched(page):  
     }
     assert page.json("state.phase") == "failed"
     assert page.json("state.errorKey") == "errorEditorUnknown"
+
+
+# --- an entry the page discards is a failed insertion -----------------------
+#
+# Live, on 2026-09-10, on the box "One Solution" reveals. The character went
+# in, the writer read it back from the box in the same turn, and the panel said
+# the answer had been placed. Hawkes then raised its own modal --
+#
+#     Your answer seems incomplete.  Please try again.
+#
+# -- and emptied the box, while the log showed nothing after `inserted`,
+# because the add-on had nothing more to do. Reading a box back in the turn
+# that wrote it proves the assignment happened and nothing else; the page
+# decides afterwards, from its own copy of the answer.
+#
+# These hold the writer to the page's verdict rather than to its own.
+
+
+def discards_the_entry_on_commit(live):
+    """Make the page take the entry back when the box is committed.
+
+    This is the live shape: every character is accepted and reads back, and the
+    page discards the lot when the box is finished with -- which is where a
+    page that keeps its own copy of the answer decides whether it has one. A
+    stub that emptied the box mid-typing would model something else entirely,
+    and the per-character read-back already catches that.
+    """
+    live.eval(
+        """
+        var __box = boxes.QBase1_input;
+        var __dispatch = __box.dispatchEvent.bind(__box);
+        __box.dispatchEvent = event => {
+          const result = __dispatch(event);
+          if (event.type === 'change') { __box.held = ''; }
+          return result;
+        };
+        """
+    )
+
+
+def test_a_value_the_page_takes_back_is_not_a_successful_insertion():
+    """The live defect, at the writer that reported success for it."""
+    live = editor_page()
+    discards_the_entry_on_commit(live)
+
+    outcome = perform(live, [{"op": "type", "text": "12xy"}], "hawkes-plain-box")
+
+    assert outcome["ok"] is False
+    assert outcome["code"] == "answer-did-not-persist"
+    # Every character was accepted on the way in, which is exactly why the
+    # same-turn read-back could not see this.
+    assert outcome["timing"]["nativeWrites"] == 4
+
+
+def test_a_value_the_page_keeps_still_succeeds():
+    """The check must not refuse an entry that survived. Same writer, same
+    characters, a page that leaves them alone."""
+    live = editor_page()
+
+    outcome = perform(live, [{"op": "type", "text": "12xy"}], "hawkes-plain-box")
+
+    assert outcome["ok"] is True
+    assert outcome["code"] == "entered"
+    assert value(live, "boxes.QBase1_input.held") == "12xy"
+
+
+def test_the_pages_own_dialog_is_a_refusal_however_the_box_reads():
+    """Hawkes' modal is its verdict on the entry. A box that still shows the
+    characters underneath an "incomplete" dialog has not been accepted."""
+    live = editor_page()
+    live.eval(
+        "document.querySelectorAll = selector =>"
+        " selector.indexOf('customMessageBox') >= 0"
+        "   ? [{getBoundingClientRect: () => ({width: 300, height: 120})}]"
+        "   : order.map(id => boxes[id]);"
+    )
+
+    outcome = perform(live, [{"op": "type", "text": "12xy"}], "hawkes-plain-box")
+
+    assert outcome["ok"] is False
+    assert outcome["code"] == "editor-dialog-open"
+
+
+def test_the_keypad_transport_is_not_held_to_this():
+    """It writes through the editor's own API, so what it entered is the
+    editor's by construction. Unchanged, and not slowed by a settle it has no
+    use for."""
+    live = editor_page()
+
+    outcome = perform(live, [{"op": "type", "text": "12xy"}], "hawkes-dynamic-keypad")
+
+    assert outcome["ok"] is True
+    assert outcome["timing"]["keypadWrites"] == 4

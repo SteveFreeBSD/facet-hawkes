@@ -23,7 +23,7 @@
   // every decision, and the observatory applies the same normalization to the
   // tree. Unlike the event-page marker, this proves which Hawkes reader was
   // injected into the authoritative page DOM.
-  const HAWKES_READER_BUILD = "c4a66dcf524f";
+  const HAWKES_READER_BUILD = "5606dc29cb89";
 
   const ANSWER_CONTROLS =
     'input.qbaseCSS, input[id^="txtAns"], input.boxStyle, input[id$="_optchk"], '
@@ -768,8 +768,25 @@
       .replace(/\s+/g, " ")
       .trim();
 
+  /** Descendant prose, with MathJax left exclusively to `expressions`. */
+  const proseWords = (element) => {
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    const words = [];
+    for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+      if (
+        node.parentElement?.closest(
+          "math, mjx-container, mjx-assistive-mml, .MathJax"
+        ) !== null
+      ) {
+        continue;
+      }
+      words.push(node.textContent);
+    }
+    return words.join("").replace(/\s+/g, " ").trim();
+  };
+
   /** Prose above the answer area, in document order. */
-  let lines = [...document.querySelectorAll("p, div, span, td")]
+  const proseCandidates = [...document.querySelectorAll("p, div, span, td")]
     .filter((element) => {
       if (!visible(element) || element.getBoundingClientRect().top >= limit) {
         return false;
@@ -782,15 +799,21 @@
         || (answerTable.table !== null && answerTable.table.node.contains(element))
       );
     })
-    .map((element) =>
+    .map((element) => ({
       // A container contributes only its own words, so the figure, the table
       // and every nested sentence stay out of it and are considered on their
-      // own terms.
-      element.querySelector("p, div, table") !== null
-        ? ownWords(element)
-        : (element.textContent || "").trim()
-    )
-    .filter((text) => text.length > 3 && text.length < 400);
+      // own terms. Mixed prose and MathJax is the exception: live Hawkes puts
+      // the prose fragments in descendants around nested MathJax containers,
+      // so direct text alone reduces the whole word problem to its step label.
+      text: element.querySelector("p, div, table") !== null
+        ? (element.querySelector("math") !== null
+          ? proseWords(element)
+          : ownWords(element))
+        : (element.textContent || "").trim(),
+      mixed: element.querySelector("math") !== null,
+    }))
+    .filter(({ text }) => text.length > 3 && text.length < 400);
+  let lines = proseCandidates.map(({ text }) => text);
 
   /**
    * One visible named-positivity condition, without MathJax's duplicate text.
@@ -848,7 +871,9 @@
   // captured, which was true and useless.
   let instruction = lines.find(
     (text) => text.length > 8 && INSTRUCTION.test(text)
-  ) ?? "";
+  ) ?? proseCandidates.find(
+    ({ text, mixed }) => mixed && text.length > 8
+  )?.text ?? "";
 
   /**
    * A condition the question states on a separate rendered line.

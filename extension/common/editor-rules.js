@@ -389,8 +389,27 @@ export function insertErrorKey(code) {
     "field-not-editable": "errorFieldNotEditable",
     "unsupported-field": "errorUnsupportedField",
     "input-cancelled": "errorInsertRejected",
+    // Written, read back, and then undone by the page: Hawkes decided the
+    // entry was not one it would keep. A refusal, however late it arrived.
+    "answer-did-not-persist": "errorInsertRejected",
     "editor-rejected-insert": "errorInsertRejected",
     "answer-fields-changed": "errorQuestionChanged",
+    // The multipart plain-answer surface, written by the same page-world
+    // writer a completion table is, and refused by the same faults: a pinned
+    // box that stopped being one, a box the page owns no single control for, a
+    // box that could not be proven selected, and a box that did not settle
+    // holding its own part.
+    "answer-field-missing": "errorQuestionChanged",
+    "answer-field-model-missing": "errorEditorUnknown",
+    "answer-field-model-ambiguous": "errorEditorUnknown",
+    "answer-field-model-shared": "errorEditorUnknown",
+    "answer-field-model-disagrees": "errorEditorUnknown",
+    "answer-field-not-selected": "errorEditorUnknown",
+    "answer-field-not-expandable": "errorEditorUnknown",
+    // Its own sentence, as the table's is: this is the editor putting an
+    // answer somewhere nobody asked for, not the editor refusing one.
+    "answer-field-not-settled": "errorAnswerBoxesCrossed",
+    "answer-field-crossed": "errorAnswerBoxesCrossed",
     // The table mapping stopped describing the page between the review and
     // the write: a cell's control is gone, replaced, or no longer editable.
     "table-target-missing": "errorQuestionChanged",
@@ -418,7 +437,10 @@ export function insertErrorKey(code) {
     // answer somewhere nobody asked for, not the editor refusing one.
     "table-cell-not-settled": "errorTableCellsCrossed",
     "table-cell-crossed": "errorTableCellsCrossed",
-    "answer-fields-not-empty": "errorFieldNotEditable",
+    // Not read-only -- occupied. Reported as "the focused field is read-only"
+    // until the multipart writer started refusing this from the page's own
+    // world, which is where the boxes are actually looked at.
+    "answer-fields-not-empty": "errorAnswerBoxesNotEmpty",
     "answer-parts-incomplete": "errorInsertRejected",
     "editor-multiple-answer": "errorEditorUnknown",
     // The transport and the writer disagreed about what this page is: a

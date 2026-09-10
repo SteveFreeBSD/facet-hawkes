@@ -1605,17 +1605,27 @@ def test_the_answer_is_entered_one_character_at_a_time():
     """
     editor = (EXTENSION_DIR / "content" / "hawkes-editor.js").read_text()
     cadence = (EXTENSION_DIR / "common" / "cadence.js").read_text()
+    plain = (EXTENSION_DIR / "common" / "page-actions.js").read_text()
+    owned = (EXTENSION_DIR / "common" / "table-actions.js").read_text()
 
     assert "durationMinMs: 5000" in cadence
     assert "durationMaxMs: 10000" in cadence
-    assert "function writeCharacter(target, character)" in editor
-    entry = editor.split("async function insertIntoNativeField", 1)[1].split(
-        "\n  }\n", 1
+    # A Hawkes answer box -- one, several, or a table's cells -- is typed from
+    # the page's own world, one character per note.
+    typing = plain.split("const typeInto = async (id, text) => {", 1)[1].split(
+        "\n  };\n", 1
     )[0]
+    assert "for (const character of text) {" in typing
+    assert "writeCharacter(live, character)" in typing
+    assert "for (const character of parts[at]) {" in owned
+    assert "writeCell(box, placed, character)" in owned
+    # And so is the one field the isolated world still writes.
+    entry = editor.split("async function insertIntoEditable", 1)[1].split("\n  }\n", 1)[
+        0
+    ]
     assert "playEntryCadence([...value]" in entry
-    assert "writeCharacter(target, character)" in entry
     # The field closing part-way through stops the write rather than continuing.
-    assert "field-not-editable" in entry
+    assert "field-not-editable" in typing
 
 
 def test_the_paced_insertion_is_awaited_by_its_caller():
@@ -1846,14 +1856,20 @@ def test_a_paced_write_stops_if_its_field_leaves_the_document():
     nowhere and the insertion reported success.
     """
     editor = (EXTENSION_DIR / "content" / "hawkes-editor.js").read_text()
+    plain = (EXTENSION_DIR / "common" / "page-actions.js").read_text()
+    owned = (EXTENSION_DIR / "common" / "table-actions.js").read_text()
 
-    native = editor.split("async function insertIntoNativeField", 1)[1].split(
-        "\n  }\n", 1
+    typing = plain.split("const typeInto = async (id, text) => {", 1)[1].split(
+        "\n  };\n", 1
     )[0]
     editable = editor.split("async function insertIntoEditable", 1)[1].split(
         "\n  }\n", 1
     )[0]
-    assert "!target.isConnected" in native
+    # A Hawkes box is re-read by id on every note, in the page's own world, and
+    # the owned-fields writer re-checks the one box it is typing into.
+    assert "const live = document.getElementById(id);" in typing
+    assert 'code: "answer-field-disappeared"' in typing
+    assert "if (!box.isConnected) {" in owned
     assert "!target.isConnected" in editable
 
 

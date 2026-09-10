@@ -405,13 +405,77 @@ def test_the_ordered_pair_of_rationals_is_declared_supported(authority, planner)
     )
 
 
-def test_the_decimal_form_is_declared_deliberately_unsupported(authority):
-    """Making the exact form enterable must not read as making the decimal one
-    enterable. The refusal is the correct behaviour and is written down."""
-    entry = next(item for item in authority.entries if "decimal" in item.notation)
+def test_a_decimal_is_entered_only_where_the_box_publishes_the_point(
+    authority, planner
+):
+    """Making the exact form enterable must not read as making every decimal
+    enterable -- and a box that publishes the point must not be declared as
+    refusing one.
 
-    assert not entry.supported
-    assert entry.refusal == "answer-has-rejected-characters"
+    Both were once one row, "decimal anything", unsupported because no observed
+    box accepted a decimal point. The live plain boxes publish `[0-9.-]`, the
+    planner types a decimal straight into one, and the exact discount family
+    answers in cents. So the rows split on the one page fact that decides it,
+    and each side is held to its own editor.
+    """
+    rows = [entry for entry in authority.entries if "decimal" in entry.notation]
+    refused = next(entry for entry in rows if entry.id == "scalar-decimal")
+
+    assert not refused.supported
+    assert refused.refusal == "answer-has-rejected-characters"
+    assert any(entry.supported for entry in rows)
+    for entry in rows:
+        editor = authority.editor_for(entry)
+        publishes_point = planner(
+            "accepts", editor["allowedCharacters"], ".", editor["kind"]
+        )
+        assert publishes_point is entry.supported, entry.id
+
+
+@pytest.fixture(scope="module")
+def routing():
+    """The shipped transport policy, in a real JS engine, with nothing stubbed."""
+    quickjs = pytest.importorskip("quickjs", reason="pip install quickjs")
+    context = quickjs.Context()
+    source = (COMMON / "transport.js").read_text(encoding="utf-8")
+    context.eval(IMPORT_LINE.sub("", source).replace("export ", ""))
+
+    def call(expression):
+        return json.loads(context.eval(f"JSON.stringify({expression})"))
+
+    return call
+
+
+def test_a_row_that_names_a_writer_names_the_one_its_page_is_routed_to(
+    authority, routing
+):
+    """A writer the row's own page could never reach is a dead claim.
+
+    `parts-plain` named `enterOwnedFields` against a dynamic integer box, and
+    several dynamic boxes are routed to the keypad writer, `enterPlan`. The
+    planner check above could not see that: planning is the same either way,
+    and only the transport differs. So every supported row naming one of the
+    transport table's writers is routed by `chooseTransport` as its page would
+    be -- several of its editor for a multipart row, one otherwise -- and has
+    to name the writer that comes back.
+    """
+    writers = set(routing("Object.values(TRANSPORTS).map((one) => one.writer)"))
+    wrong = []
+    for entry in authority.supported():
+        named = writers & set(entry.mechanism)
+        if not named:
+            continue
+        editor = {"ok": True, **authority.editor_for(entry)}
+        page = (
+            {"ok": True, "kind": "multi", "editors": [editor, editor]}
+            if entry.form == "parts"
+            else editor
+        )
+        routed = routing(f"chooseTransport({json.dumps(page)}, {{}})")
+        if not routed.get("ok") or routed["writer"] not in named:
+            wrong.append(f"{entry.id}: names {sorted(named)}, routed {routed}")
+
+    assert wrong == []
 
 
 def test_the_rendered_document_is_up_to_date():

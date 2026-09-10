@@ -466,3 +466,89 @@ def test_a_disabled_option_never_joins_the_group() -> None:
 
     assert described["kind"] != "option"
     assert described["collection"]["usable"] == 2
+
+
+# --- the box a chosen option reveals ----------------------------------------
+#
+# Live, on 2026-09-10, lesson 1.6 question 2, build 5cba7ca1b64e. The owner
+# selected "One Solution", Hawkes revealed the answer box, and a fresh read of
+# that page reported:
+#
+#     answer-target-inspected {"code":"focused-answer-field",
+#                              "via":"revealed-option"}
+#     editor-described  {"kind":"option","code":"described",
+#                        "collection":{"controls":4,"usable":4,"focused":1,
+#                                      "drawn":1,"branch":"one-drawn-box"}}
+#     host-request-shaped {"answerShape":"option","answerChoices":0}
+#     answer-not-insertable {"editor":"editor-option-answer"}
+#
+# The isolated DOM sweep had followed the radio to its box and said so. The
+# page's own cursor had not moved: `focusedElementIndex` is 1, which is the
+# radio that was just clicked, and control 1 is an option. So this branch
+# described an option for a page drawing one textbox, and the answer was
+# refused as a choice on a surface with nothing left to choose.
+#
+# Measured, not assumed. The number of controls behind the box varies with the
+# question -- four here, five on question 1 -- so nothing below counts them.
+
+
+def test_the_box_a_chosen_option_revealed_is_the_editor() -> None:
+    """The live defect: the cursor is on the radio, the box is on screen."""
+    described = describe(solution_kind_model(options=3, boxes=1, focused=1), drawn=1)
+
+    assert described["kind"] == "textbox"
+    assert described["collection"]["branch"] == "one-drawn-box"
+    assert described["collection"]["focused"] == 1
+    assert described["collection"]["drawn"] == 1
+    # Usable to answer with, not the disabled husk an option describes.
+    assert described["enabled"] is True
+    assert described["allowedCharacters"] == "[0-9-]"
+
+
+def test_one_typeable_control_is_not_a_pair() -> None:
+    """`pairedControl` says a second control sits behind this box, and the
+    entry planner types a `/` into the box on the strength of it. One control
+    is one box with nowhere to put a denominator."""
+    described = describe(solution_kind_model(options=3, boxes=1, focused=1), drawn=1)
+
+    assert described["pairedControl"] is False
+
+
+def test_a_revealed_box_with_two_controls_behind_it_is_still_a_pair() -> None:
+    """Question 1 of the same lesson publishes five controls for the same three
+    choices. The count of controls behind the box is the page's business and
+    changes between questions; what it means does not."""
+    described = describe(solution_kind_model(options=3, boxes=2, focused=1), drawn=1)
+
+    assert described["kind"] == "textbox"
+    assert described["pairedControl"] is True
+    assert described["collection"]["branch"] == "one-drawn-box"
+
+
+def test_the_cursor_is_preferred_when_it_is_in_a_box() -> None:
+    """Narrowing to the typeable controls makes the page's cursor an ordering
+    preference among them, not the decision. Where it is already in a box, that
+    box is still the one described."""
+    described = describe(solution_kind_model(options=2, boxes=2, focused=3), drawn=1)
+
+    assert described["kind"] == "textbox"
+    assert described["collection"]["focused"] == 3
+    assert described["collection"]["branch"] == "one-drawn-box"
+
+
+def test_a_group_drawing_no_box_is_still_the_group() -> None:
+    """Before the choice is made nothing is drawn, and the answer is still
+    which alternative to pick. The branch above must not claim that page."""
+    described = describe(solution_kind_model(options=3, boxes=1, focused=1), drawn=0)
+
+    assert described["kind"] == "option"
+    assert described["collection"]["branch"] == "option-group-undrawn"
+
+
+def test_options_alone_never_take_the_drawn_box_branch() -> None:
+    """No typeable control at all: whatever the page is drawing, it is not one
+    of these, and this branch has nothing to describe."""
+    described = describe(solution_kind_model(options=3, boxes=0, focused=1), drawn=1)
+
+    assert described["kind"] == "option"
+    assert described["collection"]["branch"] == "option-group"

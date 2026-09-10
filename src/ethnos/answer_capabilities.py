@@ -48,7 +48,7 @@ NOTATION_FEATURES: dict[str, str] = {
     "group": "parentheses that must come from a template, never typed",
     "absolute-value": "bars that must become an AbsoluteValue template",
     "comma": "several values in one box, separated the way the page asks",
-    "decimal": "a decimal point, which no observed answer box accepts",
+    "decimal": "a decimal point, typed only where the box publishes one",
     "phrase": "words rather than mathematics -- selected, or typed as text",
 }
 

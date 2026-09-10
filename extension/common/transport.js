@@ -63,14 +63,19 @@ export const TRANSPORTS = Object.freeze({
     what: "the plain answer box's own input handling",
   }),
   "hawkes-plain-fields": Object.freeze({
-    world: "isolated",
-    writer: "enterPlainAnswerParts",
+    world: "MAIN",
+    writer: "enterOwnedFields",
+    // Several plain answer boxes are several page-owned controls, routed by
+    // the one Hawkes has selected -- exactly as a completion cell is, and for
+    // exactly the same reason this one moved out of the isolated world. An
+    // isolated writer can focus the box and cannot select the control, so its
+    // parts arrived cumulative and crossed between the boxes.
     keypad: false,
-    what: "one plain answer box per pinned solution field",
+    what: "the page-selected control owning each pinned answer box",
   }),
   "hawkes-table-cells": Object.freeze({
     world: "MAIN",
-    writer: "enterTableCells",
+    writer: "enterOwnedFields",
     // A completion cell is routed through the control the page has selected,
     // which is why this one runs in MAIN; it still types, and never presses a
     // template.

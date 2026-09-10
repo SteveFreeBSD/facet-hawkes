@@ -257,6 +257,22 @@
           "index": "23456789"
         }
       }
+    },
+    "plain-box": {
+      "note": "A plain Hawkes answer box: no keypad, and a character rule published as a pattern rather than a set. Lesson 1.6 draws three of them for one question -- `txt1_num`, `txt2_num`, `txt3_num`, each `[0-9.-]` and eight characters long -- observed 2026-09-10.",
+      "description": {
+        "kind": "textbox",
+        "enabled": true,
+        "allowedCharacters": "[0-9.-]",
+        "maxLength": 8,
+        "templates": {
+          "fraction": false,
+          "radical": false,
+          "exponent": false,
+          "parentheses": false,
+          "absoluteValue": false
+        }
+      }
     }
   },
   "entries": [
@@ -627,11 +643,11 @@
         "plain"
       ],
       "example": "-3",
-      "editor": "integer-box",
+      "editor": "plain-box",
       "topology": "several drawn boxes, one per value",
       "mechanism": [
         "planAnswerParts",
-        "enterPlainAnswerParts"
+        "enterOwnedFields"
       ],
       "status": "supported",
       "coverage": {
@@ -945,15 +961,40 @@
       }
     },
     {
+      "id": "scalar-decimal-price",
+      "semantic": "an exact amount in cents",
+      "form": "scalar",
+      "notation": [
+        "decimal"
+      ],
+      "example": "79.00",
+      "editor": "plain-box",
+      "topology": "one plain box whose character rule admits the decimal point",
+      "mechanism": [
+        "planEntry",
+        "enterPlan"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "no"
+      },
+      "probe": {
+        "instruction": "A jacket is on sale for $63.20 after a 20% discount. What was the original price of the jacket?",
+        "expressions": []
+      }
+    },
+    {
       "id": "scalar-decimal",
-      "semantic": "decimal anything",
+      "semantic": "a decimal where the box has no decimal point",
       "form": "scalar",
       "notation": [
         "decimal"
       ],
       "example": "8.5",
       "editor": "maths-box",
-      "topology": "no observed answer box accepts a decimal point",
+      "topology": "a box whose published characters include no decimal point",
       "mechanism": [
         "planEntry"
       ],
@@ -964,7 +1005,7 @@
         "live": "n/a"
       },
       "refusal": "answer-has-rejected-characters",
-      "why": "The exact form is the answer. Rounding one to fit a box is how a wrong answer gets typed in confidently."
+      "why": "A box with no decimal point is asking for the exact form, and rewriting a value to fit a box is how a wrong answer gets typed in confidently."
     },
     {
       "id": "scalar-interval",

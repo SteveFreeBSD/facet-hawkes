@@ -109,7 +109,7 @@ function that does the typing.
 | named phrase, typed | `scalar` | phrase | `trinomial` | one box accepting letters | `planEntry` → `enterPlan` | yes | no | no | `scalar-phrase` |
 | ordered pair, integer components | `ordered-pair` | group+comma | `(3,-1)` | page draws ( [box] ), no parentheses template | `pageBracketedPair` → `planAnswerParts` | yes | no | yes | `ordered-pair-group-comma` |
 | ordered pair, rational components | `ordered-pair` | fraction+group+comma | `(17/2,-1/2)` | one box, PBrace and Fraction | `planCommaList` → `planFractionTemplate` | yes | no | yes | `ordered-pair-fraction-group-comma` |
-| multipart scalars | `parts` | plain | `-3` | several drawn boxes, one per value | `planAnswerParts` → `enterPlainAnswerParts` | yes | yes | yes | `parts-plain` |
+| multipart scalars | `parts` | plain | `-3` | several drawn boxes, one per value | `planAnswerParts` → `enterOwnedFields` | yes | yes | yes | `parts-plain` |
 | multipart rationals over radicals | `parts` | fraction+radical+group | `(-3+sqrt(17))/2` | one control per value, each planned on its own | `planAnswerParts` → `planFractionTemplate` → `planRun` | yes | no | yes | `parts-fraction-radical-group` |
 | multipart rational roots | `parts` | fraction | `-4/3` | one comma-answer box offering the Fraction template | `commaAnswerPlan` → `planAnswerParts` → `planFractionTemplate` | yes | no | no | `parts-fraction` |
 | multipart ordered pairs with integer components | `parts` | group+comma | `(1,-3)` | several full-keypad boxes, one per ordered pair | `multiEntryPlans` → `planEntry` → `planRun` → `planCommaList` | yes | no | no | `parts-group-comma` |
@@ -121,6 +121,7 @@ function that does the typing.
 | quadratic regression plan | `quadratic_regression` | *plan* | `plan, no value` | coefficients checked, then read | `graphOperation` | yes | no | yes | `plan-quadratic-regression` |
 | factored form with an exponent | `scalar` | exponent+group | `-5*x*(2*y^2+3*y-5)` | one box, Exponent inside a parentheses template | `planRun` | yes | no | yes | `scalar-exponent-group` |
 | multipart complex rationals | `parts` | fraction+group | `(-4-6*i)/7` | one control per value, each a fraction over a bracketed sum | `planAnswerParts` → `planFractionTemplate` → `planRun` | yes | no | yes | `parts-fraction-group` |
+| an exact amount in cents | `scalar` | decimal | `79.00` | one plain box whose character rule admits the decimal point | `planEntry` → `enterPlan` | yes | no | no | `scalar-decimal-price` |
 | line in slope-intercept form, whole equation | `relation` | plain | `y=-2*x+5` | one box publishing `=`, with no subject printed in front | `surfaceStatesSubject` → `planEntry` → `enterPlan` | yes | no | no | `relation-plain` |
 <!-- /generated:supported -->
 
@@ -138,7 +139,7 @@ names; none is silently mis-entered.
 <!-- generated:unsupported -->
 | Composition | Example | Why | What happens now | Entry id |
 |---|---|---|---|---|
-| decimal anything | `8.5` | The exact form is the answer. Rounding one to fit a box is how a wrong answer gets typed in confidently. | Refused as `answer-has-rejected-characters` | `scalar-decimal` |
+| a decimal where the box has no decimal point | `8.5` | A box with no decimal point is asking for the exact form, and rewriting a value to fit a box is how a wrong answer gets typed in confidently. | Refused as `answer-has-rejected-characters` | `scalar-decimal` |
 | interval notation | `(-∞,-3)∪(3,∞)` | Publishable as a reading, never insertable. | Refused as `answer-invalid` | `scalar-interval` |
 | a choice typed into a field | `Quadrant IV` | Selecting stays the reader's action, always. | Refused as `editor-option-answer` | `choice-typed` |
 | named function's whole equation | `f(x)=-5*x-3` | Every observed page that names a function prints `f(x) =` beside its box, so the right side alone is what it takes and this is never asked for. The one box that does take an equation publishes `xy=+-` and digits: a name and its brackets are both outside it. | Refused as `answer-has-rejected-characters` | `relation-group` |

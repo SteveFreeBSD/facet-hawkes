@@ -43,11 +43,13 @@ The event page builds the score once for the approved route, whichever route
 that is. `enterPlan()` — the page-world writer, which places every answer into
 a single Hawkes answer box of either kind — receives it as serialized data: it
 no longer contains a second copy of the rhythm algorithm, and the build gate
-prevents that copy from returning. Separate plain solution fields and
-contenteditable fields receive it through the isolated prelude. Multi-field
-plain answers consume successive segments of one score and one origin, rather
-than starting a new duration window in each box. Structured multi-field entry
-already used one clock and continues to do so.
+prevents that copy from returning. `enterOwnedFields()` — the page-world writer
+that several plain answer boxes and a completion table's cells share — receives
+it the same way, and plays one note per character across every box from one
+origin, holding the phrase while each box settles rather than starting a new
+duration window in each. Only a contenteditable field receives it through the
+isolated prelude. Structured multi-field entry already used one clock and
+continues to do so.
 
 Which writer runs is not a Cadence decision and never was: `common/transport.js`
 makes it from the page's own answer model, before a score exists. What changed

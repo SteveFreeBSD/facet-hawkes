@@ -306,15 +306,34 @@ def test_the_table_writer_is_no_longer_in_the_isolated_prelude() -> None:
     assert "insertTableParts" not in (EXTENSION / "background.js").read_text()
 
 
-def test_the_generic_multi_field_writer_is_untouched() -> None:
-    """`insertAnswerParts` is the "or"-separated shape and keeps its own rules."""
-    source = (EXTENSION / "content" / "hawkes-editor.js").read_text()
+def test_the_multipart_plain_writer_followed_the_table_out_of_this_scope() -> None:
+    """The "or"-separated shape is written the way a completion cell is.
 
-    assert "async function insertAnswerParts(parts, expectedFieldIds" in source
-    assert 'code: "answer-fields-not-empty"' in source
-    assert 'code: "native-input-fields"' in source
-    # And the single-field writer still composes from the field it is editing.
-    assert "function writeCharacter(target, character)" in source
+    It left for the same reason and on the same evidence: its boxes are
+    page-owned controls, `input` is routed through the one Hawkes has
+    selected, and an isolated script can neither see nor move that. What
+    stayed here is the *discovery* -- which boxes the page is showing, and
+    whether the wording joins them into one answer.
+    """
+    source = (EXTENSION / "content" / "hawkes-editor.js").read_text()
+    writer = (EXTENSION / "common" / "table-actions.js").read_text()
+
+    assert "async function insertAnswerParts" not in source
+    assert 'code: "native-input-fields"' not in source
+    assert "function solutionFields()" in source
+    # The one writer, and the surface's own refusal for a box somebody else
+    # has already typed in -- a completion cell is cleared, a solution box is
+    # not.
+    assert "export async function enterOwnedFields(" in writer
+    assert 'code: "answer-fields-not-empty"' in writer
+    assert 'entered: "entered-answer-fields"' in writer
+    # And nothing in this scope writes a Hawkes answer box at all any more.
+    # What is left is the caret writer for a contenteditable field, the one
+    # transport that runs here; a native box reaching it is refused untouched.
+    assert "function writeCharacter" not in source
+    assert "function insertIntoNativeField" not in source
+    assert "async function insertIntoEditable(target, value, cadence)" in source
+    assert 'code: "transport-unavailable"' in source
 
 
 # --- what the event page does with it ---------------------------------------
@@ -485,7 +504,7 @@ def test_the_insertion_writes_to_the_cells_the_mapping_names() -> None:
     )
     page.answer(question)  # finishInsertion's rebase read
 
-    [write] = entries(page, "enterTableCells")
+    [write] = entries(page, "enterOwnedFields")
     assert write["args"][0] == PARTS
     assert write["args"][1] == [
         "MatrixTextBoxes8_num",
@@ -495,8 +514,15 @@ def test_the_insertion_writes_to_the_cells_the_mapping_names() -> None:
         "MatrixTextBoxes6_num",
     ]
     assert write["args"][1] != SWEPT_IDS, "reading order would be five wrong cells"
+    # One writer, two surfaces. The branch says which this is, and its refusals
+    # are worded for a table because of it.
+    assert write["args"][3] == "table"
     assert page.json("state.phase") == "inserted"
-    assert entries(page, "enterPlainAnswerParts") == []
+    # And nothing wrote this question as the multipart plain surface, which
+    # would clear no cell and refuse a cell that already holds a given.
+    assert [
+        call for call in entries(page, "enterOwnedFields") if call["args"][3] != "table"
+    ] == []
 
 
 def test_a_renumbered_grid_refuses_rather_than_writing_by_position() -> None:
@@ -518,7 +544,7 @@ def test_a_renumbered_grid_refuses_rather_than_writing_by_position() -> None:
     page.answer(TABLE_EDITOR)
     page.answer(renumbered)
 
-    assert entries(page, "enterTableCells") == []
+    assert entries(page, "enterOwnedFields") == []
     assert page.json("state.errorKey") == "errorQuestionChanged"
     changed = page.said("table-targets-changed-before-insert")
     assert changed and changed[-1]["data"]["blanks"] == 5
@@ -540,7 +566,7 @@ def test_a_grid_that_stopped_mapping_at_all_refuses() -> None:
     # revalidation; a page showing none of its cells revalidates nothing.
     page.answer({"ready": False, "code": "no-focused-answer-field"})
 
-    assert entries(page, "enterTableCells") == []
+    assert entries(page, "enterOwnedFields") == []
     assert page.json("state.errorKey") == "errorQuestionChanged"
 
 
@@ -555,7 +581,7 @@ def test_an_answer_the_boxes_will_not_take_is_refused_before_the_write() -> None
     page.answer(TABLE_EDITOR)
     page.answer(question)
 
-    assert entries(page, "enterTableCells") == []
+    assert entries(page, "enterOwnedFields") == []
     assert page.json("state.errorKey") == "errorEditorUnknown"
 
 
@@ -574,7 +600,7 @@ def test_the_mapping_is_an_ownership_component() -> None:
     page.answer(TABLE_EDITOR)
     page.pump()
 
-    assert entries(page, "enterTableCells") == []
+    assert entries(page, "enterOwnedFields") == []
     assert page.said("insertion-target-changed")
     assert (
         "tableTargets" in page.said("insertion-target-changed")[-1]["data"]["changed"]
@@ -740,7 +766,7 @@ def test_the_writer_is_reached_after_a_clicked_cell_is_revalidated() -> None:
     )
     page.answer(clicked_read(question))  # finishInsertion's rebase read
 
-    [write] = entries(page, "enterTableCells")
+    [write] = entries(page, "enterOwnedFields")
     assert write["args"][1] == cells
     assert page.said("table-targets-revalidated")
     assert page.json("state.phase") == "inserted"
@@ -799,6 +825,6 @@ def test_a_cell_that_expanded_after_the_review_still_takes_its_answer() -> None:
     )
     page.answer(expanded_read(question))
 
-    [write] = entries(page, "enterTableCells")
+    [write] = entries(page, "enterOwnedFields")
     assert write["args"][1] == cells
     assert page.json("state.phase") == "inserted"

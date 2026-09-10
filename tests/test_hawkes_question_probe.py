@@ -8,8 +8,73 @@ from pathlib import Path
 
 import pytest
 
+from hawkes_dom import read_question
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_mixed_mathjax_word_problem_keeps_all_surrounding_prose_once():
+    result = read_question(
+        r"""
+        <div>Step 1 of 1</div>
+        <div class="question">
+          <span>Kathy buys a hardcover novel for </span>
+          <div class="inline-math">
+            <mjx-container class="MathJax">
+              <mjx-math aria-hidden="true">$24.80</mjx-math>
+              <mjx-assistive-mml>
+                <math id="MathJax-Element-1"><mtext>$</mtext><mn>24.80</mn></math>
+              </mjx-assistive-mml>
+            </mjx-container>
+          </div>
+          <span>. This is with a </span>
+          <div class="inline-math">
+            <mjx-container class="MathJax">
+              <mjx-math aria-hidden="true">20%</mjx-math>
+              <mjx-assistive-mml>
+                <math id="MathJax-Element-2"><mn>20</mn><mo>%</mo></math>
+              </mjx-assistive-mml>
+            </mjx-container>
+          </div>
+          <span> discount from the original price. What was the original price?</span>
+        </div>
+        <input class="qbaseCSS" id="txtAns1">
+        """
+    )
+
+    assert result["promptText"] == (
+        "Step 1 of 1 Kathy buys a hardcover novel for . This is with a discount "
+        "from the original price. What was the original price?"
+    )
+    assert len(result["expressions"]) == 2
+    assert "<mn>24.80</mn>" in result["expressions"][0]
+    assert "<mn>20</mn><mo>%</mo>" in result["expressions"][1]
+    assert "$24.80" not in result["promptText"]
+    assert "20%" not in result["promptText"]
+
+
+def test_equation_only_math_stays_only_in_expressions():
+    result = read_question(
+        r"""
+        <div>Step 1 of 1</div>
+        <div class="question">
+          <span>Solve the following equation.</span>
+          <div class="display-math">
+            <mjx-container class="MathJax">
+              <mjx-math aria-hidden="true">x=4</mjx-math>
+              <mjx-assistive-mml>
+                <math><mi>x</mi><mo>=</mo><mn>4</mn></math>
+              </mjx-assistive-mml>
+            </mjx-container>
+          </div>
+        </div>
+        <input class="qbaseCSS" id="txtAns1">
+        """
+    )
+
+    assert result["promptText"] == "Step 1 of 1 Solve the following equation."
+    assert result["expressions"] == ["<math><mi>x</mi><mo>=</mo><mn>4</mn></math>"]
 
 
 def test_option_radios_bound_the_question_before_their_caption_mathml():

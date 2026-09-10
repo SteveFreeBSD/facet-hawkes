@@ -405,14 +405,14 @@ def score(parts):
     return {"score": {"offsets": [0] * len("".join(parts))}}
 
 
-def write(context, parts=None, cells=None, writer="enterTableCells"):
+def write(context, parts=None, cells=None, writer="enterOwnedFields"):
     """Run one writer to completion and return what it reported."""
     parts = parts or LIVE_PARTS
     cells = cells or LIVE_CELLS
     call = (
-        f"enterTableCells({json.dumps(parts)}, {json.dumps(cells)}, "
-        f"{json.dumps(score(parts))})"
-        if writer == "enterTableCells"
+        f"enterOwnedFields({json.dumps(parts)}, {json.dumps(cells)}, "
+        f"{json.dumps(score(parts))}, 'table')"
+        if writer == "enterOwnedFields"
         else f"{writer}({json.dumps(parts)}, {json.dumps(cells)})"
     )
     context.eval(f"globalThis.outcome = null; {call}.then(v => {{ outcome = v; }});")

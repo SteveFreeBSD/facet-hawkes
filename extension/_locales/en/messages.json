@@ -257,6 +257,14 @@
     "message": "Hawkes has a message box open, which blocks the answer field. Close it, then try again.",
     "description": "Error when a Hawkes modal is holding focus."
   },
+  "errorAnswerBoxesNotEmpty": {
+    "message": "One of the answer boxes already has something in it, so nothing was inserted. Clear the boxes, then try again.",
+    "description": "Shown when a multipart plain answer would overwrite something already typed into one of its boxes."
+  },
+  "errorAnswerBoxesCrossed": {
+    "message": "Hawkes did not keep each answer in its own box, so the boxes were put back as they were. Click one of the empty boxes, then try again.",
+    "description": "Shown when a multipart plain answer settled with a value in the wrong box, or with another box changed; nothing was left behind."
+  },
   "errorTableCellsCrossed": {
     "message": "The Hawkes table did not keep each answer in its own cell, so the table was put back as it was. Click one of the empty cells, then try again.",
     "description": "Shown when a completion table's editor settled with an answer outside the cell it was typed into."

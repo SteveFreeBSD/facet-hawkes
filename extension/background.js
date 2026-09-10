@@ -42,7 +42,7 @@ import { describeResults, selectAnswerFrame } from "/common/frames.js";
 import { graphOperation } from "/common/graph-actions.js";
 import { enterPlan } from "/common/page-actions.js";
 import { chooseTransport, transportMatches } from "/common/transport.js";
-import { enterTableCells } from "/common/table-actions.js";
+import { enterOwnedFields } from "/common/table-actions.js";
 import { collectSources, foldSources } from "/common/build-marker.js";
 import { buildFailureRecord, recordFailure } from "/common/failure-record.js";
 import {
@@ -275,6 +275,10 @@ function blankState() {
     // rather than an input, and the box writer has no box to write into.
     fieldKind: "",
     fieldIds: [],
+    // How those several fields were proven to be one answer: by visible
+    // separators, or by agreement between the DOM candidates and Hawkes'
+    // published multi-editor model. Insertion must revalidate by the same proof.
+    fieldIdentity: "",
     // The browser's own mapping for a completion table: semantic blank N, and
     // the control occupying that cell. Read by the question reader, held here
     // across the solve, and re-read and compared before anything is written.
@@ -748,16 +752,18 @@ async function enterPlainAnswer(answer, cadence) {
   return { ok: outcome.ok, code: outcome.code, answer };
 }
 
-/** One-shot insertion for one exact multi-part answer shape. */
-async function enterPlainAnswerParts(parts, fieldIds, cadence) {
-  if (typeof ethnosHawkes === "undefined") {
-    return { ok: false, code: "prelude-missing" };
-  }
-  if (!ethnosHawkes.originAllowed()) {
-    return { ok: false, code: "wrong-site" };
-  }
-  return ethnosHawkes.insertAnswerParts(parts, fieldIds, cadence);
-}
+/*
+ * A multipart plain answer is written from the page's own world.
+ *
+ * `enterPlainAnswerParts` used to live here and called into the isolated
+ * prelude, which focused each pinned box, assigned its part through the
+ * prototype setter and dispatched `input`. Live, on 2026-09-10, three correct
+ * parts settled cumulative and crossed between three boxes, and the writer's
+ * own read-back refused the insertion. Those boxes are page-owned controls,
+ * routed by the one Hawkes has selected, and DOM focus does not move that --
+ * the same fact that moved the completion table into `common/table-actions.js`
+ * on 2026-09-07. `enterOwnedFields` is where both surfaces are written now.
+ */
 
 /**
  * The Hawkes tab of one specific window.
@@ -1554,6 +1560,28 @@ function answerFieldIds(choice, evidence, editor) {
     : [];
 }
 
+/**
+ * How `answerFieldIds` knew those fields were one answer, in one word.
+ *
+ * `separated` is the page's own wording joining them -- "or" between the
+ * boxes. `editor-corroborated` is the DOM's candidates agreeing in number with
+ * the editors the page's model publishes. Either proves the shape, and they are
+ * different proofs, so an insertion holds the page to the one its fields were
+ * read by. Asked here and nowhere else -- by the prepare that adopts the fields
+ * and by the insertion that revalidates them -- because two copies of this rule
+ * could only ever disagree with each other.
+ *
+ * @returns {"" | "separated" | "editor-corroborated"} "" for fewer than two
+ */
+function answerFieldIdentity(choice, fieldIds) {
+  if (!Array.isArray(fieldIds) || fieldIds.length < 2) {
+    return "";
+  }
+  return Array.isArray(choice?.fieldIds) && choice.fieldIds.length > 0
+    ? "separated"
+    : "editor-corroborated";
+}
+
 // --- the native companion --------------------------------------------------
 
 /**
@@ -2023,6 +2051,7 @@ async function prepare(windowId = state.windowId) {
     // Where a table has been accepted, its mapping is the answer surface and
     // the sweep is dropped rather than reconciled.
     const fieldIds = tableTargets.length >= 2 ? [] : swept;
+    const fieldIdentity = answerFieldIdentity(choice, fieldIds);
     // The alternatives this question publishes, as the frame that owns the
     // answer reported them. Read fresh with the question and never carried:
     // last question's choices are not this one's, and a stale list is worse
@@ -2041,7 +2070,23 @@ async function prepare(windowId = state.windowId) {
       via: readTargets.length >= 2 ? "read" : "revalidated",
     });
     const alreadyInserted = sameQuestion && previous.phase === "inserted";
+    // An answer belongs to the surface it was produced for.
+    //
+    // The same question can be answered by choosing and then, once that choice
+    // reveals its box, by typing. Those are different answers: "One Solution"
+    // is what selects the control, and the value is what goes in the box the
+    // control revealed. Carried across, the choice arrived on a numeric box it
+    // cannot be typed into -- the panel said "solved" and Insert stayed
+    // disabled, which is the state a reset was the only way out of.
+    //
+    // Compared as kinds rather than as text, so this decides nothing about
+    // what the answer said. Where the surface is unchanged the answer is kept
+    // exactly as before, which is what stops a re-prepare from discarding a
+    // good answer and solving the question again.
+    const sameSurface =
+      (previous.editor?.kind === "option") === (editor?.kind === "option");
     const hasAnswer = sameQuestion
+      && sameSurface
       && (previous.answer !== "" || previous.answerParts?.length >= 2);
     // What was answered, and what answered it, describe a question that is
     // still on screen in both cases -- so they outlive the insertion that
@@ -2060,6 +2105,14 @@ async function prepare(windowId = state.windowId) {
         ? chosenReport.suppliedSubject
         : "",
       fieldIds,
+      // From the same read as the ids, and never carried. It used to be held
+      // across a re-prepare while the ids beside it were re-read, which paired
+      // a fresh reading with a stale proof: the insertion revalidates both
+      // against the page, so an unchanged page was refused as a changed
+      // question after every prepare that followed -- each of which kept the
+      // same stale proof. What the insertion holds the page to is the reading
+      // this prepare made; a change after it is still refused there.
+      fieldIdentity,
       tableTargets,
       answerChoices,
       editor: hasAnswer && previous.graphPlan ? previous.editor : editor,
@@ -2816,6 +2869,7 @@ async function buildStructured(answer, cadence, target, editor, routed) {
  * @property {string} fieldId
  * @property {string} fieldKind what the page said that field is
  * @property {string[]} fieldIds
+ * @property {string} fieldIdentity how the fields were proven to be one answer
  * @property {object[]} tableTargets blank-to-control mapping, in blank order
  * @property {string | null} signature the question the answer was reviewed for
  * @property {string} reviewed the answer as shown and approved
@@ -2833,6 +2887,7 @@ function pinInsertionTarget() {
     fieldId: state.fieldId,
     fieldKind: state.fieldKind ?? "",
     fieldIds: Object.freeze([...(state.fieldIds ?? [])]),
+    fieldIdentity: state.fieldIdentity ?? "",
     // Frozen with everything else, and for the same reason: the mapping is
     // what says which box each value belongs in, so it must not be re-read
     // from the live state between the awaits of a paced insertion.
@@ -2885,6 +2940,7 @@ const OWNERSHIP_COMPONENTS = Object.freeze({
   frameId: (target) => state.frameId === target.frameId,
   fieldId: (target) => state.fieldId === target.fieldId,
   fieldIds: (target) => sameStringArray(state.fieldIds ?? [], target.fieldIds),
+  fieldIdentity: (target) => (state.fieldIdentity ?? "") === target.fieldIdentity,
   tableTargets: (target) => sameTableMapping(state.tableTargets ?? [], target.tableTargets),
   answerParts: (target) => sameStringArray(state.answerParts ?? [], target.answerParts),
   signature: (target) => state.signature === target.signature,
@@ -2913,6 +2969,7 @@ function ownershipSnapshot(target) {
     frameId: target.frameId,
     fieldId: target.fieldId,
     fieldIds: target.fieldIds.length,
+    fieldIdentity: target.fieldIdentity,
     tableTargets: target.tableTargets.length,
     answerParts: target.answerParts.length,
     signature: target.signature,
@@ -3208,8 +3265,8 @@ async function insert() {
         () => runInjection({
           target: frame,
           world: "MAIN",
-          func: enterTableCells,
-          args: [[...target.answerParts], cells, cadence],
+          func: enterOwnedFields,
+          args: [[...target.answerParts], cells, cadence, "table"],
         })
       );
       outcome = entry?.result;
@@ -3335,10 +3392,18 @@ async function insert() {
       (entry) => entry?.result?.multiFieldEvidence
     )?.result?.multiFieldEvidence;
     const liveFieldIds = answerFieldIds(live, liveEvidence, editor);
+    // *How* those boxes are known to be one answer, by the one rule `prepare`
+    // read it with. The isolated writer used to re-derive this for itself
+    // inside the write; that writer now runs in the page's own world, where
+    // the separator rule does not exist, so the proof is revalidated here --
+    // at the gate that already holds every other part of the pinned identity.
+    // Separators appearing is as much a change as them going.
+    const liveIdentity = answerFieldIdentity(live, liveFieldIds);
     if (
       live.frameId !== target.frameId
       || live.fieldId !== target.fieldId
       || !sameStringArray(liveFieldIds, target.fieldIds)
+      || liveIdentity !== target.fieldIdentity
       || !ownsTarget(target)
     ) {
       // Its sibling gate above says what changed; this one said nothing, so a
@@ -3348,6 +3413,7 @@ async function insert() {
         wasFrame: target.frameId, nowFrame: live.frameId,
         wasField: target.fieldId, nowField: live.fieldId,
         wasFields: target.fieldIds, nowFields: liveFieldIds,
+        wasIdentity: target.fieldIdentity, nowIdentity: liveIdentity,
         editorKind: editor?.kind, editors: editor?.editors?.length,
         candidates: liveEvidence?.fieldIds?.length,
         owned: ownsTarget(target),
@@ -3388,15 +3454,40 @@ async function insert() {
     if (plain) {
       const [entry] = await runScoredEntry(target, target.answerParts.map((text) => ({ op: "type", text })), cadence, () => runInjection({
         target: { tabId: target.tabId, frameIds: [target.frameId] },
-        func: enterPlainAnswerParts,
-        args: [target.answerParts, target.fieldIds, cadence],
+        // The page's own world, for the reason a completion table runs there:
+        // each of these boxes is a control Hawkes owns, `input` is routed
+        // through the one it has selected, and DOM focus does not move that.
+        world: "MAIN",
+        func: enterOwnedFields,
+        args: [[...target.answerParts], [...target.fieldIds], cadence, "fields"],
       }));
       outcome = entry?.result;
       if (
         !outcome?.ok
-        || outcome.code !== "native-input-fields"
-        || !sameStringArray(outcome.entered, target.answerParts)
+        || outcome.code !== "entered-answer-fields"
+        || !sameStringArray(outcome.fields, target.fieldIds)
+        || outcome.settled !== target.fieldIds.length
       ) {
+        // What the writer established, and where it stopped. The same shapes
+        // the table branch logs: ids and counts the page minted itself, never
+        // a value and never the question's text.
+        log.warn("answer-parts-not-placed", {
+          code: outcome?.code ?? "no-result",
+          part: outcome?.part ?? 0,
+          moved: outcome?.moved ?? 0,
+          where: outcome?.where ?? "",
+          written: outcome?.written ?? 0,
+          leftBehind: outcome?.leftBehind === true,
+          fields: target.fieldIds.length,
+          why: outcome?.why ?? "",
+          mirrorIndex: Number.isInteger(outcome?.mirrorIndex) ? outcome.mirrorIndex : -1,
+          wantedIndex: Number.isInteger(outcome?.wantedIndex) ? outcome.wantedIndex : -1,
+          routed: Array.isArray(outcome?.routed) ? outcome.routed.slice(0, 8) : [],
+          uiKeys: Number.isInteger(outcome?.uiKeys) ? outcome.uiKeys : -1,
+          mirrorOwns: Array.isArray(outcome?.mirrorOwns)
+            ? outcome.mirrorOwns.slice(0, 4)
+            : [],
+        });
         fail(insertErrorKey(outcome?.code ?? "answer-parts-incomplete"));
         return;
       }
@@ -3435,6 +3526,18 @@ async function insert() {
       fields: target.fieldIds.length,
       parts: target.answerParts.length,
       answerLength: reviewed.length,
+      // For the owned-fields writer: what it established rather than how many
+      // write calls returned. Every box settled holding its own part with no
+      // other box moving, how each box was tied to a control, and how each
+      // control was selected.
+      ...(plain
+        ? {
+          settled: outcome.settled ?? 0,
+          models: outcome.models ?? 0,
+          ownership: outcome.ownership ?? [],
+          selected: outcome.selected ?? [],
+        }
+        : {}),
       elapsedMs: Date.now() - entryStartedAt,
     });
     await finishInsertion(`entered all ${target.answerParts.length} answer fields`, target);
@@ -3775,14 +3878,46 @@ function watchQuestion() {
       const targetChanged = state.phase !== "inserted"
         && Number.isInteger(target.frameId)
         && target.frameId !== state.frameId;
+      // The handoff this watcher was written for, which it could not see.
+      //
+      // Selecting "One Solution" reveals the box that completes it. That is a
+      // new answer surface in the *same* frame, and the question's own text is
+      // untouched -- `questionSignature` is the prompt and its MathML, so both
+      // comparisons above are false and the panel kept offering the choice it
+      // had already answered while the box sat empty beside it. Live, on
+      // 2026-09-10, on every regenerated lesson 1.6 question: Insert stayed
+      // disabled until the panel was reset or the add-on reloaded.
+      //
+      // The distinction is what kind of thing answers this question, not which
+      // box has the caret. `option-answer` is the page saying it is answered by
+      // choosing; anything else ready is a surface with somewhere to type. So
+      // the two states are compared as kinds, and a caret moving between boxes
+      // -- ready and not a choice both times -- is not a transition, which is
+      // the regression the field-id comparison was removed for.
+      const chosen = reports.find(
+        (entry) => entry?.frameId === target.frameId
+      )?.result;
+      const surfaceChanged = state.phase !== "inserted"
+        && chosen?.ready === true
+        && (state.editor?.kind === "option") !== (chosen.code === "option-answer");
       const question = await readQuestion(state.tabId, state.frameId, 1);
       const now = questionSignature(question);
       watchFailures = 0;
-      if (targetChanged || (now !== null && !sameQuestionSignature(now, state.signature))) {
-        log.debug("question-changed-while-open", {
+      if (
+        targetChanged
+        || surfaceChanged
+        || (now !== null && !sameQuestionSignature(now, state.signature))
+      ) {
+        log.info("question-changed-while-open", {
           was: state.signature,
           now,
           targetChanged,
+          // Which of the three noticed it. A surface transition leaves the
+          // signature identical on purpose, so a log that showed only the
+          // signatures said nothing about why this fired.
+          surfaceChanged,
+          wasEditor: state.editor?.kind ?? "",
+          nowCode: chosen?.code ?? "",
         });
         begin(() => prepare(state.windowId));
       }
@@ -3969,7 +4104,7 @@ function markedCode() {
     "common/log.js#setLogLevel": setLogLevel,
     "common/log.js#setRun": setRun,
     "common/page-actions.js#enterPlan": enterPlan,
-    "common/table-actions.js#enterTableCells": enterTableCells,
+    "common/table-actions.js#enterOwnedFields": enterOwnedFields,
     "common/transport.js#chooseTransport": chooseTransport,
     "common/transport.js#transportMatches": transportMatches,
     "common/settings.js#defaultSettings": defaultSettings,

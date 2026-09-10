@@ -230,22 +230,49 @@
   // Several controls for one drawn box are one blank's parts -- its numerator
   // and its denominator -- and not several answers. Described as the single
   // control it is, through the same path a one-control question takes.
-  if (usable.length >= 2 && drawn === 1) {
-    const index = Number.isInteger(ui.focusedElementIndex)
-      && ui.focusedElementIndex >= 0
-      && ui.focusedElementIndex < ui.controlsCollection.length
-        ? ui.focusedElementIndex
-        : candidates[0];
+  // The drawn box is a box, so whichever control stands for it is a typeable
+  // one. An option is never a drawn box and so can never be what this branch
+  // is about.
+  //
+  // `focusedElementIndex` is the page's own cursor, and it is not always in
+  // the box. Live, on 2026-09-10, lesson 1.6: selecting "One Solution" reveals
+  // that question's answer box *and* leaves Hawkes' cursor on the radio that
+  // revealed it. The cursor said 1, control 1 is an option, and this branch
+  // described the group as the editor -- `kind: "option"` for a page drawing
+  // one textbox. The answer was then refused as a choice, on a surface with
+  // nothing left to choose:
+  //
+  //     answer-target-inspected {"code":"focused-answer-field",
+  //                              "via":"revealed-option"}
+  //     editor-described  {"kind":"option","collection":{"focused":1,"drawn":1,
+  //                        "branch":"one-drawn-box"}}
+  //     answer-not-insertable {"editor":"editor-option-answer"}
+  //
+  // The isolated DOM sweep had already followed the radio to its box and said
+  // so. Narrowing to the typeable controls first makes the cursor a preference
+  // among them rather than the decision itself, and leaves a numerator and
+  // denominator pair -- both typeable -- choosing exactly as they did.
+  const typeable = candidates.filter((offset, position) => {
+    const one = described[position];
+    return one !== null && one.enabled !== false && one.kind !== "option";
+  });
+  if (usable.length >= 2 && drawn === 1 && typeable.length >= 1) {
+    const index = typeable.includes(ui.focusedElementIndex)
+      ? ui.focusedElementIndex
+      : typeable[0];
     const one = describe(index);
     if (one !== null && one.enabled !== false) {
       return {
         ...one,
-        // The box is one of a published pair, and that is the whole of what
-        // this probe claims. What the second control is *for* is decided where
-        // an answer is planned: a Hawkes answer box turns into a numerator and
-        // a denominator when a `/` is typed into it, which is how a rational
-        // is entered in a question offering no Fraction template at all.
-        pairedControl: true,
+        // Whether this box has a *second* control behind it, which is the
+        // whole of what this probe claims. What that control is for is decided
+        // where an answer is planned: a Hawkes answer box turns into a
+        // numerator and a denominator when a `/` is typed into it, which is
+        // how a rational is entered in a question offering no Fraction
+        // template at all. One typeable control is one box with nowhere to put
+        // a denominator, and saying otherwise is how a half-built fraction is
+        // left in somebody's coursework.
+        pairedControl: typeable.length >= 2,
         collection: { ...collection, branch: "one-drawn-box" },
       };
     }

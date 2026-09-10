@@ -72,6 +72,8 @@ def labelled_pair_page():
             this.selectionEnd = 0;
             this.accept = true;
             this.textContent = "";
+            this.events = [];
+            this.settledValue = "";
           }
           getBoundingClientRect() {
             return {
@@ -81,6 +83,8 @@ def labelled_pair_page():
             };
           }
           dispatchEvent(event) {
+            this.events.push(event.type);
+            if (event.type === "keyup") this.settledValue = this.value;
             return event.type !== "beforeinput" || this.accept;
           }
           matches(selector) { return selector.includes("input"); }
@@ -96,6 +100,7 @@ def labelled_pair_page():
         class HTMLIFrameElement extends Element {}
         class HTMLFrameElement extends Element {}
         class InputEvent { constructor(type) { this.type = type; } }
+        class KeyboardEvent { constructor(type) { this.type = type; } }
 
         const body = new Element();
         const documentElement = new Element();
@@ -198,6 +203,39 @@ def test_the_discarded_boxes_are_still_reported_as_candidates(labelled_pair_page
     assert evidence["separators"] == 0
     assert evidence["separatorCandidates"] == 0
     assert evidence["fieldIds"] == ["QBase1_input", "QBase2_input"]
+
+
+def test_three_boxes_without_or_are_offered_as_candidates(
+    labelled_pair_page,
+):
+    """The live drift, from the discovery side: three ids, and no separator.
+
+    The event page adopts these only when the page's own editor model
+    publishes exactly three enabled editors, and pins that as
+    `editor-corroborated`. What it then does with them is not this reader's
+    business: a multipart plain answer is written into the controls Hawkes
+    owns, in `common/table-actions.js`, and is proven against the controlled
+    editor in `test_hawkes_owned_fields.py`.
+
+    The insertion used to be exercised here, against three independent inputs
+    -- a page on which the live failure cannot happen. Live, on 2026-09-10,
+    exactly these three boxes took three correct parts and settled holding
+    them cumulatively and across each other, because `input` is routed
+    through the control the page has selected and DOM focus does not move
+    that. Key events around the write did not change it and could not.
+    """
+    labelled_pair_page.eval(
+        "fields[0].id = 'txt1_num'; fields[1].id = 'txt2_num'; "
+        "fields.push(new HTMLInputElement({"
+        "id: 'txt3_num', left: 340, top: 200, width: 80}));"
+    )
+
+    evidence = result(labelled_pair_page, "ethnosHawkes.inspectField()")[
+        "multiFieldEvidence"
+    ]
+
+    assert evidence["fieldIds"] == ["txt1_num", "txt2_num", "txt3_num"]
+    assert evidence["separators"] == 0
 
 
 def test_a_single_box_offers_no_candidates(labelled_pair_page):

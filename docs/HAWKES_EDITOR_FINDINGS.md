@@ -289,8 +289,8 @@ page's own answer model:
 |---|---|---|---|
 | dynamic math editor | `hawkes-dynamic-keypad` | `keyPadButtonClick(character)` | `keyPadButtonClick(template)` |
 | plain answer box | `hawkes-plain-box` | the box's own `input` handling | a typed `/`, which the box splits on |
-| several plain boxes | `hawkes-plain-fields` | the same, one field at a time | — |
-| completion table | `hawkes-table-cells` | the same, through the page-selected control | — |
+| several plain boxes | `hawkes-plain-fields` | the same, one box at a time, each through the control the page has selected | — |
+| completion table | `hawkes-table-cells` | the same writer, one cell at a time | a typed `/`, which the cell splits on |
 | contenteditable field | `native-contenteditable` | `execCommand` at its caret | — |
 | graph | `hawkes-graph` | — | the page's own controls |
 

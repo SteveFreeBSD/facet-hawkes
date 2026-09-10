@@ -123,10 +123,12 @@ cannot be given one. A dynamic math editor receives every character and every
 template through its own `keyPadButtonClick` — an ordinary character is one of
 that editor's operations, not merely something it will accept. A plain answer
 box is written by its own `input` handling, which is what Hawkes' own keypad
-handler does to one. Separate plain solution fields, completion-table cells, a
-contenteditable field and a graph each keep their own writer, and the branch an
-insertion takes is compared against the transport that was chosen rather than
-assumed to agree with it.
+handler does to one. Several plain answer boxes and a completion table's cells
+are controls the page owns, and share one page-world writer: it has Hawkes
+select each control through the page's own focus handling, writes, lets the box
+settle and reads it back before moving on. A contenteditable field and a graph
+each keep their own writer, and the branch an insertion takes is compared
+against the transport that was chosen rather than assumed to agree with it.
 
 An answer that does not suit the writer its page chose is refused by name. It
 is never a reason to choose a different writer — which is what the previous

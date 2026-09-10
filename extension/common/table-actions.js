@@ -1,7 +1,13 @@
 "use strict";
 
 /**
- * The one function that writes a completion table's cells.
+ * The one function that writes an answer into the controls Hawkes owns.
+ *
+ * Two surfaces reach it, and they are the same page mechanism twice: a
+ * completion table's cells, and the several plain answer boxes a multipart
+ * question draws. `surface` names which one, and it changes the words a
+ * refusal carries and nothing else -- there is one ownership proof, one
+ * selection, one settle and one read-back, because there is one editor.
  *
  * It is passed to `scripting.executeScript` as `func` with `world: "MAIN"`, so
  * it runs in the page's own world, and it must stay self-contained:
@@ -54,6 +60,31 @@
  * cell by cell — the intended cell holds the intended part, and no other cell
  * moved. Any of those failing is a refusal, not a smaller success.
  *
+ * ## Why the plain multi-field answer came here too
+ *
+ * `enterPlainAnswerParts` wrote those boxes from the *isolated* world, which
+ * is the one place Hawkes' control model cannot be seen. It did what the old
+ * table writer did: `focus()` the box, assign through the prototype setter,
+ * dispatch `input`. Live, on 2026-09-10, lesson 1.6's three-box question --
+ * `txt1_num`, `txt2_num`, `txt3_num`, one enabled control apiece in
+ * `controlsCollection` -- took three correct parts and settled holding them
+ * cumulatively and across each other, and the writer's own read-back refused
+ * the insertion:
+ *
+ *     transport  chosen=hawkes-plain-fields world=isolated
+ *                writer=enterPlainAnswerParts editor_kind=multi
+ *     FAILURE    answer-shape (errorInsertRejected)
+ *
+ * That is the 2026-09-07 table failure exactly, on a question with no table in
+ * it. `focus()` moves `document.activeElement`; Hawkes routes `input` through
+ * the control *it* has selected, and it selects from its own focus handling,
+ * which never runs while the panel holds system focus. Adding `keydown` and
+ * `keyup` around the write did not change it, and could not: the events were
+ * arriving at the right box and the wrong control.
+ *
+ * A Hawkes plain answer box is a page-owned control whether or not a table is
+ * drawn around it, so it is written the way a cell is.
+ *
  * ## Reading a cell back
  *
  * The isolated writer was forbidden from reading a cell at all, and that rule
@@ -70,13 +101,16 @@
  */
 
 /**
- * @param {string[]} parts reviewed answers, in semantic blank order
- * @param {string[]} cells control ids, in the same order; `cells[N]` holds
- *   blank `N + 1`, as the reader that accepted the table states it
+ * @param {string[]} parts reviewed answers, in the order the mathematics
+ *   numbers them
+ * @param {string[]} targets control ids, in the same order; `targets[N]` holds
+ *   part `N + 1`, as the reader that accepted this surface states it
  * @param {object} cadence the shared score, as data
+ * @param {"table" | "fields"} surface which answer surface this is: a
+ *   completion table's cells, or a multipart question's own answer boxes
  * @returns {Promise<{ok: boolean, code: string}>}
  */
-export async function enterTableCells(parts, cells, cadence = {}) {
+export async function enterOwnedFields(parts, targets, cadence = {}, surface = "table") {
   // Kept in step with `common/config.js` by the build's shared-constant
   // check; this function is serialized into the page's own world by
   // `scripting.executeScript`, so no import survives here.
@@ -91,6 +125,56 @@ export async function enterTableCells(parts, cells, cadence = {}) {
   /** How far into a control's own object graph ownership is looked for. */
   const WALK_DEPTH = 6;
   const WALK_BUDGET = 400;
+
+  const TABLE = "table";
+  const FIELDS = "fields";
+  if (surface !== TABLE && surface !== FIELDS) {
+    return { ok: false, code: "answer-invalid" };
+  }
+
+  /**
+   * One refusal, in the words of the surface it happened on.
+   *
+   * The same fault on two surfaces is the same fault, and it is reported under
+   * two names because a person reading "the Hawkes table did not keep each
+   * answer in its own cell" of a question with no table in it learns nothing.
+   * Every name below already existed on one side or the other; nothing here
+   * decides anything, and the mechanism cannot see which set it is using.
+   */
+  const REASONS = surface === TABLE
+    ? {
+      targetMissing: "table-target-missing",
+      targetNotEditable: "table-target-not-editable",
+      targetRepeated: "table-target-repeated",
+      targetsChanged: "table-targets-changed",
+      modelMissing: "table-cell-model-missing",
+      modelAmbiguous: "table-cell-model-ambiguous",
+      modelShared: "table-cell-model-shared",
+      modelDisagrees: "table-cell-model-disagrees",
+      notSelected: "table-cell-not-selected",
+      notSettled: "table-cell-not-settled",
+      crossed: "table-cell-crossed",
+      notExpandable: "table-cell-not-expandable",
+      entered: "entered-table-cells",
+    }
+    : {
+      targetMissing: "answer-field-missing",
+      targetNotEditable: "field-not-editable",
+      targetRepeated: "answer-fields-changed",
+      targetsChanged: "answer-fields-changed",
+      modelMissing: "answer-field-model-missing",
+      modelAmbiguous: "answer-field-model-ambiguous",
+      modelShared: "answer-field-model-shared",
+      modelDisagrees: "answer-field-model-disagrees",
+      notSelected: "answer-field-not-selected",
+      notSettled: "answer-field-not-settled",
+      crossed: "answer-field-crossed",
+      notExpandable: "answer-field-not-expandable",
+      entered: "entered-answer-fields",
+    };
+  /** What this surface calls the ordinal of one logical value, and its list. */
+  const AT = surface === TABLE ? "blank" : "part";
+  const LIST = surface === TABLE ? "cells" : "fields";
 
   if (window.location.origin !== ALLOWED_ORIGIN) {
     return { ok: false, code: "wrong-site" };
@@ -139,10 +223,10 @@ export async function enterTableCells(parts, cells, cadence = {}) {
     || parts.length < 2
     || parts.length > MAX_ANSWER_PARTS
     || !parts.every(supported)
-    || !Array.isArray(cells)
-    || cells.length !== parts.length
-    || !cells.every((id) => typeof id === "string" && id.length > 0)
-    || new Set(cells).size !== cells.length
+    || !Array.isArray(targets)
+    || targets.length !== parts.length
+    || !targets.every((id) => typeof id === "string" && id.length > 0)
+    || new Set(targets).size !== targets.length
   ) {
     return { ok: false, code: "answer-invalid" };
   }
@@ -154,10 +238,10 @@ export async function enterTableCells(parts, cells, cadence = {}) {
   // this writer could not route to a box of its own is refused here.
   if (
     halves.some(
-      (half, index) => half.denominator !== null && denominatorId(cells[index]) === null
+      (half, index) => half.denominator !== null && denominatorId(targets[index]) === null
     )
   ) {
-    return { ok: false, code: "table-cell-not-expandable" };
+    return { ok: false, code: REASONS.notExpandable };
   }
 
   // The extension passes the shared, already-built score as data. MAIN owns
@@ -266,22 +350,30 @@ export async function enterTableCells(parts, cells, cadence = {}) {
    * a Hawkes answer box, that it is visible and editable, that its own stated
    * bound can hold the part, and that no two blanks resolved to one box.
    */
-  const resolveFields = () => {
+  const resolveFields = (requireEmpty = false) => {
     const found = [];
-    for (const [index, id] of cells.entries()) {
+    for (const [index, id] of targets.entries()) {
       const field = document.getElementById(id);
       if (!field || field.isConnected === false) {
-        return { ok: false, code: "table-target-missing", blank: index + 1 };
+        return { ok: false, code: REASONS.targetMissing, [AT]: index + 1 };
       }
       if (!(field instanceof HTMLInputElement) || !field.matches?.(HAWKES_FIELD_SELECTOR)) {
-        return { ok: false, code: "table-target-missing", blank: index + 1 };
+        return { ok: false, code: REASONS.targetMissing, [AT]: index + 1 };
       }
       const rect = field.getBoundingClientRect();
       if (!(rect.width > 0 && rect.height > 0) || field.disabled || field.readOnly) {
-        return { ok: false, code: "table-target-not-editable", blank: index + 1 };
+        return { ok: false, code: REASONS.targetNotEditable, [AT]: index + 1 };
       }
       if (found.includes(field)) {
-        return { ok: false, code: "table-target-repeated", blank: index + 1 };
+        return { ok: false, code: REASONS.targetRepeated, [AT]: index + 1 };
+      }
+      // A completion cell is a blank the page states and this writer clears;
+      // a solution box is somewhere the owner may already have been typing,
+      // and the isolated writer this replaced refused rather than overwrite
+      // one. Asked once, before anything is written -- between parts the
+      // earlier boxes are holding their own parts on purpose.
+      if (requireEmpty && surface === FIELDS && field.value !== "") {
+        return { ok: false, code: "answer-fields-not-empty", [AT]: index + 1 };
       }
       const bound = field.maxLength;
       // Each half is typed into a box of its own, so each half is what the
@@ -291,14 +383,14 @@ export async function enterTableCells(parts, cells, cadence = {}) {
         halves[index].numerator.length, halves[index].denominator?.length ?? 0
       );
       if (Number.isInteger(bound) && bound > 0 && longest > bound) {
-        return { ok: false, code: "answer-invalid", blank: index + 1 };
+        return { ok: false, code: "answer-invalid", [AT]: index + 1 };
       }
       found.push(field);
     }
     return { ok: true, fields: found };
   };
 
-  const resolved = resolveFields();
+  const resolved = resolveFields(true);
   if (!resolved.ok) {
     return resolved;
   }
@@ -513,7 +605,7 @@ export async function enterTableCells(parts, cells, cadence = {}) {
     const row = claims[at];
     const best = Math.max(0, ...row);
     if (best === 0) {
-      return { ok: false, code: "table-cell-model-missing", blank: at + 1 };
+      return { ok: false, code: REASONS.modelMissing, [AT]: at + 1 };
     }
     const winners = [];
     for (let which = 0; which < row.length; which += 1) {
@@ -522,13 +614,13 @@ export async function enterTableCells(parts, cells, cadence = {}) {
       }
     }
     if (winners.length !== 1) {
-      return { ok: false, code: "table-cell-model-ambiguous", blank: at + 1 };
+      return { ok: false, code: REASONS.modelAmbiguous, [AT]: at + 1 };
     }
     owners.push(winners[0]);
     ownership.push(EVIDENCE[Math.floor(best / 1000)]);
   }
   if (new Set(owners).size !== owners.length) {
-    return { ok: false, code: "table-cell-model-shared" };
+    return { ok: false, code: REASONS.modelShared };
   }
   // And the other direction. A control that claims some other cell of this
   // table more strongly than the one it was given does not own that one; the
@@ -537,7 +629,7 @@ export async function enterTableCells(parts, cells, cadence = {}) {
     const which = owners[at];
     for (let other = 0; other < fields.length; other += 1) {
       if (other !== at && claims[other][which] > claims[at][which]) {
-        return { ok: false, code: "table-cell-model-disagrees", blank: at + 1 };
+        return { ok: false, code: REASONS.modelDisagrees, [AT]: at + 1 };
       }
     }
   }
@@ -751,7 +843,7 @@ export async function enterTableCells(parts, cells, cadence = {}) {
    * `/` is typed, and this writer is what types it.
    */
   const halfBox = (at) => {
-    const id = denominatorId(cells[at]);
+    const id = denominatorId(targets[at]);
     if (id === null) {
       return null;
     }
@@ -922,12 +1014,12 @@ export async function enterTableCells(parts, cells, cadence = {}) {
       return await refuse({ ...again, written: at });
     }
     if (again.fields.some((one, other) => one !== fields[other])) {
-      return await refuse({ ok: false, code: "table-targets-changed", written: at });
+      return await refuse({ ok: false, code: REASONS.targetsChanged, written: at });
     }
 
     const field = fields[at];
     const refuseSelection = () => refuse({
-      ok: false, code: "table-cell-not-selected", blank: at + 1, written: at,
+      ok: false, code: REASONS.notSelected, [AT]: at + 1, written: at,
       ...selectionEvidence(at),
     });
 
@@ -967,12 +1059,12 @@ export async function enterTableCells(parts, cells, cadence = {}) {
       await waitForNote();
       if (!box.isConnected) {
         return await refuse({
-          ok: false, code: "table-target-missing", blank: at + 1, written: at,
+          ok: false, code: REASONS.targetMissing, [AT]: at + 1, written: at,
         });
       }
       if (box.disabled || box.readOnly) {
         return await refuse({
-          ok: false, code: "table-target-not-editable", blank: at + 1, written: at,
+          ok: false, code: REASONS.targetNotEditable, [AT]: at + 1, written: at,
         });
       }
       if (character === "/" && halves[at].denominator !== null && box === field) {
@@ -989,7 +1081,7 @@ export async function enterTableCells(parts, cells, cadence = {}) {
         const other = halfBox(at);
         if (other === null) {
           return await refuse({
-            ok: false, code: "table-cell-not-expandable", blank: at + 1, written: at,
+            ok: false, code: REASONS.notExpandable, [AT]: at + 1, written: at,
           });
         }
         // Hawkes moves to the new box itself, as it does for a template's
@@ -998,7 +1090,7 @@ export async function enterTableCells(parts, cells, cadence = {}) {
         const reached = selectBox(other, at);
         if (reached === null) {
           return await refuse({
-            ok: false, code: "table-cell-not-selected", blank: at + 1, written: at,
+            ok: false, code: REASONS.notSelected, [AT]: at + 1, written: at,
             ...selectionEvidence(at),
           });
         }
@@ -1018,13 +1110,13 @@ export async function enterTableCells(parts, cells, cadence = {}) {
     holdForSettling();
     if (dialogUp()) {
       return await refuse({
-        ok: false, code: "editor-dialog-open", blank: at + 1, written,
+        ok: false, code: "editor-dialog-open", [AT]: at + 1, written,
       });
     }
     expected[at] = parts[at];
     if (settled[at] !== parts[at]) {
       return await refuse({
-        ok: false, code: "table-cell-not-settled", where: "cell", blank: at + 1, written,
+        ok: false, code: REASONS.notSettled, where: "cell", [AT]: at + 1, written,
       });
     }
     // The failure this writer exists to catch: the editor took the part and
@@ -1034,7 +1126,7 @@ export async function enterTableCells(parts, cells, cadence = {}) {
     );
     if (moved >= 0) {
       return await refuse({
-        ok: false, code: "table-cell-crossed", blank: at + 1, moved: moved + 1, written,
+        ok: false, code: REASONS.crossed, [AT]: at + 1, moved: moved + 1, written,
       });
     }
     // The control this cell is mapped to holds the numerator. A fraction's
@@ -1045,7 +1137,7 @@ export async function enterTableCells(parts, cells, cadence = {}) {
       modelsRead += 1;
       if (text !== halves[at].numerator) {
         return await refuse({
-          ok: false, code: "table-cell-not-settled", where: "model", blank: at + 1, written,
+          ok: false, code: REASONS.notSettled, where: "model", [AT]: at + 1, written,
         });
       }
     }
@@ -1054,16 +1146,16 @@ export async function enterTableCells(parts, cells, cadence = {}) {
   // Every cell, once more, after the last one settled.
   const final = resolveFields();
   if (!final.ok || final.fields.some((one, at) => one !== fields[at])) {
-    return await refuse({ ok: false, code: "table-targets-changed", written });
+    return await refuse({ ok: false, code: REASONS.targetsChanged, written });
   }
   if (snapshot().some((value, at) => value !== parts[at])) {
-    return await refuse({ ok: false, code: "table-cell-not-settled", where: "cell", written });
+    return await refuse({ ok: false, code: REASONS.notSettled, where: "cell", written });
   }
 
   return {
     ok: true,
-    code: "entered-table-cells",
-    cells: [...cells],
+    code: REASONS.entered,
+    [LIST]: [...targets],
     // What this insertion actually established, rather than how many write
     // calls returned. `settled` is cells whose own state was read back and
     // matched, with no other cell moving; `models` is how many of the page's

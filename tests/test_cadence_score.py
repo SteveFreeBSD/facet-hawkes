@@ -243,6 +243,8 @@ MAIN_FIXTURE = """
   var box = new HTMLInputElement();
   var window = {quant_wp_UI:{controlsCollection:[{enabled:true}],focusedElementIndex:0}};
   class InputEvent { constructor(type, options) {this.type=type; Object.assign(this,options);} }
+class KeyboardEvent { constructor(type, options) { this.type = type; Object.assign(this, options); } }
+class Event { constructor(type, options) { this.type = type; Object.assign(this, options); } }
   class CustomEvent { constructor(type, options) {this.type=type; Object.assign(this,options);} }
 """
 
@@ -463,6 +465,8 @@ STRUCTURED_FIXTURE = """
     dispatchEvent: event => { cues.push([now, JSON.parse(event.detail)]); },
   };
   class InputEvent { constructor(type, options) {this.type=type; Object.assign(this,options);} }
+class KeyboardEvent { constructor(type, options) { this.type = type; Object.assign(this, options); } }
+class Event { constructor(type, options) { this.type = type; Object.assign(this, options); } }
   class CustomEvent { constructor(type, options) {this.type=type; Object.assign(this,options);} }
   var TEMPLATES = ['Exponent','Fraction','Radical','IndexedRadical','PBrace','Mod','Clear','BS'];
   // One entry point for both, as the editor has. `addElement` handles the
