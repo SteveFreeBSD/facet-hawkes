@@ -7,8 +7,9 @@
 # tests/test_runtime_pin.py fails if any document quotes a different commit.
 #
 # Raise it in the same change that starts depending on something newer. This
-# commit adds exact routing for discount-price and consecutive-integer word
-# problems, without which those questions fall through to a reasoning model.
+# commit adds exact routing for one-variable linear and compound inequalities
+# answered in interval notation, without which those questions fall through to
+# a reasoning model.
 # The tip of that repository may be ahead of it, and that is fine -- the pin is
 # a floor, and the test checks the sibling is not below it.
-1d048672186dde7b0ab3b20c8d139c92674436e9
+a83546e3aa5dd5dd347a054d791dd8a1a7925821
