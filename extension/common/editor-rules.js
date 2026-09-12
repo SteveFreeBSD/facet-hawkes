@@ -32,6 +32,10 @@ const STRUCTURAL = {
   "^": "exponent",
   "(": "parentheses",
   ")": "parentheses",
+  // An interval's closed end. Hawkes draws it with `SBrace`, `PSBrace` or
+  // `SPBrace`, never from a typed character.
+  "[": "brackets",
+  "]": "brackets",
 };
 
 /**

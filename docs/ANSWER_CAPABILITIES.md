@@ -123,6 +123,9 @@ function that does the typing.
 | multipart complex rationals | `parts` | fraction+group | `(-4-6*i)/7` | one control per value, each a fraction over a bracketed sum | `planAnswerParts` → `planFractionTemplate` → `planRun` | yes | no | yes | `parts-fraction-group` |
 | an exact amount in cents | `scalar` | decimal | `79.00` | one plain box whose character rule admits the decimal point | `planEntry` → `enterPlan` | yes | no | no | `scalar-decimal-price` |
 | line in slope-intercept form, whole equation | `relation` | plain | `y=-2*x+5` | one box publishing `=`, with no subject printed in front | `surfaceStatesSubject` → `planEntry` → `enterPlan` | yes | no | no | `relation-plain` |
+| interval, one end open and one closed | `scalar` | group+comma+interval | `(-8,7]` | one box publishing `∞` and `∅`, a bracket template for each pairing of ends | `planEntry` → `planRun` → `planCommaList` → `enterPlan` | yes | no | yes | `scalar-interval` |
+| interval with a decimal end and an infinite one | `scalar` | group+comma+decimal+interval | `[-2.5,∞)` | the same box; `∞` and the decimal point are characters it publishes | `planEntry` → `planRun` → `planCommaList` → `enterPlan` | yes | no | no | `scalar-interval-decimal` |
+| the empty set | `scalar` | interval | `∅` | the same box, whose character set holds `∅` | `planEntry` → `planRun` → `enterPlan` | yes | no | no | `scalar-interval-empty` |
 <!-- /generated:supported -->
 
 **Unit** means a QuickJS or Python test drives the real module. **Harness**
@@ -140,7 +143,8 @@ names; none is silently mis-entered.
 | Composition | Example | Why | What happens now | Entry id |
 |---|---|---|---|---|
 | a decimal where the box has no decimal point | `8.5` | A box with no decimal point is asking for the exact form, and rewriting a value to fit a box is how a wrong answer gets typed in confidently. | Refused as `answer-has-rejected-characters` | `scalar-decimal` |
-| interval notation | `(-∞,-3)∪(3,∞)` | Publishable as a reading, never insertable. | Refused as `answer-invalid` | `scalar-interval` |
+| union of intervals | `(-∞,-3)∪(3,∞)` | Hawkes' own source types `∪` as an ordinary special character (`symUnion`) between two bracket templates, so the planner builds it exactly that way wherever a box publishes it. No observed box does: lesson 1.7's publishes `∞` and `∅` and not `∪`, and a union is not claimed enterable until a page that asks for one is seen. | Refused as `answer-has-rejected-characters` | `scalar-interval-union` |
+| interval whose end has no template | `[-2,5)` | A closed end is drawn by `SBrace`, `PSBrace` or `SPBrace` and by nothing else. A question that offers none of them is not asking for one, and an open bracket in its place is a different interval. | Refused as `template-refused-by-question` | `scalar-interval-unoffered-bracket` |
 | a choice typed into a field | `Quadrant IV` | Selecting stays the reader's action, always. | Refused as `editor-option-answer` | `choice-typed` |
 | named function's whole equation | `f(x)=-5*x-3` | Every observed page that names a function prints `f(x) =` beside its box, so the right side alone is what it takes and this is never asked for. The one box that does take an equation publishes `xy=+-` and digits: a name and its brackets are both outside it. | Refused as `answer-has-rejected-characters` | `relation-group` |
 | equation with a rational coefficient, whole | `y=(1/2)*x+8` | A rational coefficient is parenthesised so that `1/2x` cannot be read as `1/(2x)`, and parentheses can only come from a template. The observed equation box offers Fraction and no other, so this is refused by name rather than entered as a different number. | Refused as `template-refused-by-question` | `relation-fraction-group` |

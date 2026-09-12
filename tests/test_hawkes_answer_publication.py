@@ -269,17 +269,19 @@ def test_a_value_is_refused_by_a_graph_question(page):
 def test_a_readable_form_alone_does_not_make_an_answer_publishable(page):
     """Something validated has to stand behind what the card shows.
 
-    Interval notation reads perfectly well and is not typeable into anything:
-    no answer box accepts an infinity sign. It is publishable as a *reading*
-    and it is not an answer on its own, so a card carrying it and nothing else
-    would be offering a solve with nothing behind it.
+    Inequality notation reads perfectly well and is not typeable into
+    anything: `\u2264` is outside every answer's alphabet. It is publishable as a
+    *reading* and it is not an answer on its own, so a card carrying it and
+    nothing else would be offering a solve with nothing behind it. (Interval
+    notation was this example until lesson 1.7's box was seen publishing `\u221e`
+    and bracket templates, which made it an answer.)
     """
     solving(page, EDITOR_OK)
 
     reply(
         page,
         {
-            "display_text": "(-\u221e,-3)\u222a(3,\u221e)",
+            "display_text": "x \u2264 -3 or x \u2265 3",
             "keyboard_entry": "",
             "parts": [],
         },

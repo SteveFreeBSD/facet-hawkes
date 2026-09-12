@@ -273,6 +273,35 @@
           "absoluteValue": false
         }
       }
+    },
+    "interval-box": {
+      "note": "The live lesson 1.7 box: \"solve the inequality and express your answer in interval notation\". A dynamic box publishing digits, the decimal point, the comma, `∞` and `∅`, and its brackets as keypad templates under Hawkes' own names. Observed 2026-09-12, ledger f1:00bb842307138c89. All four bracket templates confirmed published by the probe on build a0f9317f4246.",
+      "description": {
+        "kind": "dynamic",
+        "enabled": true,
+        "allowedCharacters": "0123456789-.,∞∅",
+        "maxLength": 16,
+        "templates": {
+          "fraction": false,
+          "radical": false,
+          "exponent": false,
+          "parentheses": true,
+          "absoluteValue": false,
+          "PBrace": true,
+          "SBrace": true,
+          "PSBrace": true,
+          "SPBrace": true
+        },
+        "slots": {
+          "base": "0123456789-.,∞∅",
+          "numerator": "0123456789xy+-",
+          "denominator": "0123456789xy+-",
+          "exponent": "0123456789xy",
+          "exponentBase": "xy",
+          "radicand": "0123456789xy+-",
+          "index": "0123456789"
+        }
+      }
     }
   },
   "entries": [
@@ -1008,18 +1037,19 @@
       "why": "A box with no decimal point is asking for the exact form, and rewriting a value to fit a box is how a wrong answer gets typed in confidently."
     },
     {
-      "id": "scalar-interval",
-      "semantic": "interval notation",
+      "id": "scalar-interval-union",
+      "semantic": "union of intervals",
       "form": "scalar",
       "notation": [
         "group",
-        "comma"
+        "comma",
+        "interval"
       ],
       "example": "(-∞,-3)∪(3,∞)",
-      "editor": "maths-box",
-      "topology": "the characters are in no published set",
+      "editor": "interval-box",
+      "topology": "a box that does not publish `∪`",
       "mechanism": [
-        "validateAnswer"
+        "planRun"
       ],
       "status": "unsupported",
       "coverage": {
@@ -1027,8 +1057,32 @@
         "harness": "no",
         "live": "n/a"
       },
-      "refusal": "answer-invalid",
-      "why": "Publishable as a reading, never insertable."
+      "refusal": "answer-has-rejected-characters",
+      "why": "Hawkes' own source types `∪` as an ordinary special character (`symUnion`) between two bracket templates, so the planner builds it exactly that way wherever a box publishes it. No observed box does: lesson 1.7's publishes `∞` and `∅` and not `∪`, and a union is not claimed enterable until a page that asks for one is seen."
+    },
+    {
+      "id": "scalar-interval-unoffered-bracket",
+      "semantic": "interval whose end has no template",
+      "form": "scalar",
+      "notation": [
+        "group",
+        "comma",
+        "interval"
+      ],
+      "example": "[-2,5)",
+      "editor": "fraction-box",
+      "topology": "a box offering `PBrace` and no other bracket",
+      "mechanism": [
+        "planRun"
+      ],
+      "status": "unsupported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "n/a"
+      },
+      "refusal": "template-refused-by-question",
+      "why": "A closed end is drawn by `SBrace`, `PSBrace` or `SPBrace` and by nothing else. A question that offers none of them is not asking for one, and an open bracket in its place is a different interval."
     },
     {
       "id": "choice-typed",
@@ -1080,6 +1134,79 @@
           "(0,5)",
           "Slope=-2"
         ]
+      }
+    },
+    {
+      "id": "scalar-interval",
+      "semantic": "interval, one end open and one closed",
+      "form": "scalar",
+      "notation": [
+        "group",
+        "comma",
+        "interval"
+      ],
+      "example": "(-8,7]",
+      "editor": "interval-box",
+      "topology": "one box publishing `∞` and `∅`, a bracket template for each pairing of ends",
+      "mechanism": [
+        "planEntry",
+        "planRun",
+        "planCommaList",
+        "enterPlan"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "yes"
+      }
+    },
+    {
+      "id": "scalar-interval-decimal",
+      "semantic": "interval with a decimal end and an infinite one",
+      "form": "scalar",
+      "notation": [
+        "group",
+        "comma",
+        "decimal",
+        "interval"
+      ],
+      "example": "[-2.5,∞)",
+      "editor": "interval-box",
+      "topology": "the same box; `∞` and the decimal point are characters it publishes",
+      "mechanism": [
+        "planEntry",
+        "planRun",
+        "planCommaList",
+        "enterPlan"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "no"
+      }
+    },
+    {
+      "id": "scalar-interval-empty",
+      "semantic": "the empty set",
+      "form": "scalar",
+      "notation": [
+        "interval"
+      ],
+      "example": "∅",
+      "editor": "interval-box",
+      "topology": "the same box, whose character set holds `∅`",
+      "mechanism": [
+        "planEntry",
+        "planRun",
+        "enterPlan"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "no"
       }
     },
     {

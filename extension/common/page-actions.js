@@ -630,13 +630,19 @@ export async function enterPlan(steps, cadence = {}, targetFieldIds = [], transp
     // Absolute value is one of the editor's parentheses: `addElement` groups
     // `Mod` with `PBrace`, `SBrace` and the rest, and guards them all with
     // `qualifyLoadParenthesis(ObjType)` -- which, unlike the other guards,
-    // takes the type as an argument.
+    // takes the type as an argument. The same guard is what checks the
+    // bracket family's names against the slot's own published templates, so
+    // an interval end the question does not offer is refused by Hawkes here
+    // rather than drawn.
     const guards = {
       Exponent: [base.qualifyLoadExponent, []],
       Fraction: [base.qualifyLoadFraction, []],
       Radical: [base.qualifyLoadRadical, []],
       IndexedRadical: [base.qualifyLoadRadical, []],
       PBrace: [base.qualifyLoadParenthesis, ["PBrace"]],
+      SBrace: [base.qualifyLoadParenthesis, ["SBrace"]],
+      PSBrace: [base.qualifyLoadParenthesis, ["PSBrace"]],
+      SPBrace: [base.qualifyLoadParenthesis, ["SPBrace"]],
       Mod: [base.qualifyLoadParenthesis, ["Mod"]],
     };
     const [guard, guardArgs] = guards[name] ?? [undefined, []];
@@ -688,6 +694,9 @@ export async function enterPlan(steps, cadence = {}, targetFieldIds = [], transp
         // index box asked for by a second argument.
         IndexedRadical: [base.loadRadical, [true, true]],
         PBrace: [base.loadParenthesis, ["PBrace", true]],
+        SBrace: [base.loadParenthesis, ["SBrace", true]],
+        PSBrace: [base.loadParenthesis, ["PSBrace", true]],
+        SPBrace: [base.loadParenthesis, ["SPBrace", true]],
         Mod: [base.loadParenthesis, ["Mod", true]],
       };
       const [loader, loaderArgs] = loaders[name] ?? [undefined, []];

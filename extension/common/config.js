@@ -46,8 +46,61 @@ export const MAX_ANSWER_PARTS = 5;
  * before the page's own rules were ever consulted, which is the wrong place to
  * decide it: what may reach a particular answer box is `allowedCharacters`,
  * per question, and this is only the shape every answer has to have.
+ *
  */
 const ANSWER_PATTERN = /^[0-9A-Za-z+\-*/^().,=√π ]+$/;
+
+/**
+ * The same shape, widened by interval notation and nothing else.
+ *
+ * Here for the reason the equals sign is. "Express your answer in interval
+ * notation" is answered `(-8,7]` or `[2.5,∞)`, and lesson 1.7's box publishes
+ * `∞` and `∅` as characters and its brackets as keypad templates. Refusing
+ * `]`, `∞` or `∅` here withheld a correct interval before the page was ever
+ * asked. `∪` joins two intervals and is one of Hawkes' own special characters
+ * (`symUnion`); whether a particular box takes it is, again, that box's
+ * published set.
+ *
+ * Kept apart from `ANSWER_PATTERN` rather than folded into it, because that
+ * pattern is also the stricter guard the self-contained table and
+ * contenteditable writers carry, and neither of them enters an interval.
+ * Square brackets are admitted only as interval ends -- see
+ * `bracketsAreIntervals` -- so no answer gains a delimiter it could use as
+ * anything but mathematics.
+ */
+const INTERVAL_PATTERN = /^[0-9A-Za-z+\-*/^().,=√π \[\]∞∅∪]+$/;
+
+/**
+ * Whether every bracket in an answer closes, and every square one is an
+ * interval's end.
+ *
+ * Round and square brackets are counted as one family, because an interval's
+ * two ends may be one of each: `(a,b]`. A square bracket is otherwise no part
+ * of the notation any answer is written in, so a group it opens or closes must
+ * hold exactly two endpoints -- one top-level comma -- or it is not an interval
+ * and is refused.
+ */
+function bracketsAreIntervals(text) {
+  const open = [];
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    if (character === "(" || character === "[") {
+      open.push({ at: index, commas: 0 });
+    } else if (character === "," && open.length > 0) {
+      open[open.length - 1].commas += 1;
+    } else if (character === ")" || character === "]") {
+      const group = open.pop();
+      if (group === undefined) {
+        return false;
+      }
+      const square = text[group.at] === "[" || character === "]";
+      if (square && group.commas !== 1) {
+        return false;
+      }
+    }
+  }
+  return open.length === 0;
+}
 
 /**
  * One answer written as mathematics, rather than as the spelling it arrived in.
@@ -157,7 +210,13 @@ export function validateAnswer(value) {
   if (trimmed.length === 0 || trimmed.length > MAX_ANSWER_LENGTH) {
     return { ok: false, code: "answer-invalid" };
   }
-  if (!ANSWER_PATTERN.test(trimmed)) {
+  if (ANSWER_PATTERN.test(trimmed)) {
+    return { ok: true, value: trimmed };
+  }
+  // Interval notation, and only as intervals. Unbalanced round brackets were
+  // admitted by the pattern above and are still left for the planner to refuse
+  // by name; a square bracket is new here, so it has to close an interval.
+  if (!INTERVAL_PATTERN.test(trimmed) || !bracketsAreIntervals(trimmed)) {
     return { ok: false, code: "answer-invalid" };
   }
   return { ok: true, value: trimmed };

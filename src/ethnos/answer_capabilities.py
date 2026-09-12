@@ -48,6 +48,11 @@ NOTATION_FEATURES: dict[str, str] = {
     "group": "parentheses that must come from a template, never typed",
     "absolute-value": "bars that must become an AbsoluteValue template",
     "comma": "several values in one box, separated the way the page asks",
+    "interval": (
+        "an interval's ends -- a bracket template chosen by the pair of marks, "
+        "PBrace, SBrace, PSBrace or SPBrace -- and ∞, ∅ or ∪ typed where the "
+        "box publishes them"
+    ),
     "decimal": "a decimal point, typed only where the box publishes one",
     "phrase": "words rather than mathematics -- selected, or typed as text",
 }
@@ -58,6 +63,11 @@ _FEATURE_ORDER = tuple(NOTATION_FEATURES)
 _FRACTION = re.compile(r"\\frac|(?<![A-Za-z])/")
 _RADICAL = re.compile(r"√|∛|∜|\\sqrt|\\?cbrt\s*\(|\bsqrt\s*\(")
 _DECIMAL = re.compile(r"\d\.\d")
+#: A square bracket closes an interval's end and is written in nothing else;
+#: infinity, the empty set and a union are interval notation's own symbols. An
+#: open finite interval, `(a,b)`, reads exactly as a pair does and takes the
+#: same `PBrace` route, so it is not told apart here.
+_INTERVAL = re.compile(r"[\[\]∞∅∪]")
 _PHRASE = re.compile(r"\A[A-Za-z][A-Za-z ]*\Z")
 
 
@@ -87,9 +97,13 @@ def notation_of(value: str) -> tuple[str, ...]:
             found.add("comma")
         if _DECIMAL.search(value):
             found.add("decimal")
+        # Interval notation has no words in it. `No Solution (∅)` is a choice
+        # glossing itself in set notation, selected rather than built.
+        if _INTERVAL.search(value) and not re.search(r"[A-Za-z]{2}", value):
+            found.add("interval")
         # A radical's own bracket is the radical's, not a group of its own.
         stripped = re.sub(r"(?:sqrt|cbrt)\s*\([^()]*\)", "", value)
-        if "(" in stripped:
+        if "(" in stripped or "[" in stripped:
             found.add("group")
     if not found:
         found.add("plain")

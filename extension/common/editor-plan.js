@@ -13,12 +13,51 @@ import { accepts } from "./editor-rules.js";
  * ordered plan: type, press, type, continue.
  *
  * Exponents (including a fractional one), one top-level fraction,
- * parenthesized groups, absolute value, and square or indexed radicals are
- * supported. An answer needing anything else is refused by name so the panel
- * can say so.
+ * parenthesized groups, intervals with open or closed ends, absolute value,
+ * and square or indexed radicals are supported. An answer needing anything
+ * else is refused by name so the panel can say so.
  *
  * DOM-free, so it can be exercised directly — see `tests/test_hawkes_plan.py`.
  */
+
+/**
+ * Hawkes' bracket templates, keyed by the two marks each one draws.
+ *
+ * The mixed pair is Hawkes' own statement, not a reading of the names. The
+ * lesson bundle labels `PSBrace` "left parenthesis, right square bracket" and
+ * `SPBrace` "left square bracket, right parenthesis"; it draws `PSBrace`'s left
+ * side as a curve and `SPBrace`'s as straight lines; and it binds Ctrl+] to
+ * `PSBrace` ("(]Bracket") and Ctrl+[ to `SPBrace` ("[)Bracket"). All three
+ * agree.
+ */
+const BRACKET_TEMPLATES = {
+  "()": "PBrace",
+  "[]": "SBrace",
+  "(]": "PSBrace",
+  "[)": "SPBrace",
+};
+const OPENERS = "([";
+const CLOSERS = ")]";
+
+/**
+ * Whether the question publishes this bracket template.
+ *
+ * `parentheses` is how every description before the bracket family was
+ * published said `PBrace`, and a stored or hand-written description may still
+ * say only that.
+ */
+function offersBracket(editor, name) {
+  const templates = editor?.templates ?? {};
+  if (name === "PBrace" && templates.parentheses === true) {
+    return true;
+  }
+  return templates[name] === true;
+}
+
+/** Whether the question publishes any bracket template at all. */
+function offersAnyBracket(editor) {
+  return Object.values(BRACKET_TEMPLATES).some((name) => offersBracket(editor, name));
+}
 
 /**
  * @typedef {{op: "type", text: string}
@@ -311,7 +350,10 @@ export function planAnswerParts(parts, editor, separator = ",") {
  * brackets still goes the template route.
  */
 function pageBracketedPair(answer, editor) {
-  if (editor?.kind !== "dynamic" || editor?.templates?.parentheses === true) {
+  // Any bracket template is the question meaning its brackets. A box offering
+  // only `SPBrace` still wants `(-∞,3)` built, not typed as `-∞,3` inside
+  // brackets nobody drew.
+  if (editor?.kind !== "dynamic" || offersAnyBracket(editor)) {
     return null;
   }
   const interior = unwrap(answer);
@@ -328,16 +370,22 @@ function pageBracketedPair(answer, editor) {
   return parts;
 }
 
-/** Split on a delimiter that is not inside brackets. */
+/**
+ * Split on a delimiter that is not inside brackets.
+ *
+ * Round and square brackets are one family throughout this file: an interval
+ * opens with one kind and may close with the other, so depth is counted over
+ * both.
+ */
 function splitTopLevel(value, delimiter) {
   const parts = [];
   let depth = 0;
   let start = 0;
   for (let index = 0; index < value.length; index += 1) {
     const character = value[index];
-    if (character === "(") {
+    if (OPENERS.includes(character)) {
       depth += 1;
-    } else if (character === ")") {
+    } else if (CLOSERS.includes(character)) {
       depth -= 1;
     } else if (character === delimiter && depth === 0) {
       parts.push(value.slice(start, index));
@@ -359,9 +407,9 @@ function splitFraction(answer) {
   let position = -1;
   for (let index = 0; index < answer.length; index += 1) {
     const character = answer[index];
-    if (character === "(") {
+    if (OPENERS.includes(character)) {
       depth += 1;
-    } else if (character === ")") {
+    } else if (CLOSERS.includes(character)) {
       depth -= 1;
     } else if (character === "/" && depth === 0) {
       if (position !== -1) {
@@ -386,9 +434,9 @@ function unwrap(value) {
   }
   let depth = 0;
   for (let index = 0; index < value.length; index += 1) {
-    if (value[index] === "(") {
+    if (OPENERS.includes(value[index])) {
       depth += 1;
-    } else if (value[index] === ")") {
+    } else if (CLOSERS.includes(value[index])) {
       depth -= 1;
       if (depth === 0 && index !== value.length - 1) {
         return value;
@@ -480,22 +528,30 @@ function planRun(answer, editor, slot = "base") {
       continue;
     }
 
-    if (character === "(") {
-      if (editor?.templates?.parentheses !== true) {
-        return { ok: false, code: "template-refused-by-question", detail: "parentheses" };
-      }
-      const group = readGroup(answer, index);
+    if (OPENERS.includes(character)) {
+      const group = readBracketed(answer, index);
       if (group === null) {
         return { ok: false, code: "parentheses-not-understood" };
+      }
+      // Which template is decided by the two marks the answer is written
+      // with, and whether it may be pressed by the question alone. A pair of
+      // round brackets keeps the refusal detail it always had.
+      const template = BRACKET_TEMPLATES[`${group.open}${group.close}`];
+      if (!offersBracket(editor, template)) {
+        return {
+          ok: false,
+          code: "template-refused-by-question",
+          detail: template === "PBrace" ? "parentheses" : template,
+        };
       }
       const inner = planCommaList(group.text, editor, slot);
       if (inner.ok === false) {
         return inner;
       }
       // The group attaches after the pending outer factor, so finish that
-      // factor before loading Hawkes's parenthesis template.
+      // factor before loading Hawkes's bracket template.
       flush();
-      steps.push({ op: "template", name: "PBrace" }, ...inner.steps);
+      steps.push({ op: "template", name: template }, ...inner.steps);
       index = group.next;
       if (index < answer.length) {
         steps.push({ op: "base" });
@@ -503,7 +559,7 @@ function planRun(answer, editor, slot = "base") {
       continue;
     }
 
-    if (character === ")") {
+    if (CLOSERS.includes(character)) {
       return { ok: false, code: "parentheses-not-understood" };
     }
 
@@ -689,6 +745,38 @@ function readGroup(answer, start) {
       depth -= 1;
       if (depth === 0) {
         return { text: answer.slice(start + 1, cursor), next: cursor + 1 };
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Read a bracketed group of either kind, and the marks that open and close it.
+ *
+ * `(a,b]` is one group opened by `(` and closed by `]`, so depth is counted
+ * over both kinds and the closing mark is whichever one brings it back to
+ * zero. What those two marks mean is `BRACKET_TEMPLATES`' decision.
+ *
+ * @returns {{text: string, open: string, close: string, next: number} | null}
+ */
+function readBracketed(answer, start) {
+  if (!OPENERS.includes(answer[start])) {
+    return null;
+  }
+  let depth = 0;
+  for (let cursor = start; cursor < answer.length; cursor += 1) {
+    if (OPENERS.includes(answer[cursor])) {
+      depth += 1;
+    } else if (CLOSERS.includes(answer[cursor])) {
+      depth -= 1;
+      if (depth === 0) {
+        return {
+          text: answer.slice(start + 1, cursor),
+          open: answer[start],
+          close: answer[cursor],
+          next: cursor + 1,
+        };
       }
     }
   }

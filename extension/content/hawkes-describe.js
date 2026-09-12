@@ -68,6 +68,17 @@
       };
     }
 
+    // The templates the base slot publishes, by the exact names Hawkes gives
+    // them. `seperateValidTemplates` builds this as an array from the
+    // question's `<qpbrac/>`, `<qpsbrac/>`… markup, and `qualifyLoadParenthesis`
+    // asks it `indexOf(TemplateName)` -- an exact name, never a substring. The
+    // substring test this replaces read `"SPBrace".includes("PBrace")` as a
+    // parentheses template, and collapsed four different brackets into one
+    // boolean besides.
+    const baseTemplates = new Set(
+      String(control.qdyBase_AllowedTemplates ?? "").split(/[^A-Za-z]+/).filter(Boolean)
+    );
+
     return {
       ok: true,
       code: "described",
@@ -100,9 +111,18 @@
         fraction: control.qdyFractionAllowed === true,
         radical: control.qdyRadicalAllowed === true,
         exponent: control.qdyExponentAllowed === true,
-        parentheses: [control.qdyBase_AllowedTemplates].some((allowed) =>
-          String(allowed ?? "").includes("PBrace")
-        ),
+        parentheses: baseTemplates.has("PBrace"),
+        // The bracket family, each under Hawkes' own name. What each one
+        // draws is Hawkes' own statement, read from the lesson bundle's aria
+        // labels, SVG paths and keyboard shortcuts: `PBrace` "parentheses",
+        // `SBrace` "square brackets", `PSBrace` "left parenthesis, right
+        // square bracket" (Ctrl+]), `SPBrace` "left square bracket, right
+        // parenthesis" (Ctrl+[). The planner picks among them; this only
+        // says which ones the question offers.
+        PBrace: baseTemplates.has("PBrace"),
+        SBrace: baseTemplates.has("SBrace"),
+        PSBrace: baseTemplates.has("PSBrace"),
+        SPBrace: baseTemplates.has("SPBrace"),
         absoluteValue: [
           control.qdyBase_AllowedTemplates,
           control.qdyFrac_AllowedNumeTemplates,
