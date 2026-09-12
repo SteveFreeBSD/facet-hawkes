@@ -9,8 +9,9 @@
 # Raise it in the same change that starts depending on something newer. This
 # commit answers one-variable linear, compound and absolute-value inequalities
 # exactly, whether the question asks for interval notation or for the solution
-# set to be graphed on a number line; without it those questions fall through to
-# a reasoning model, which has answered absolute-value inequalities wrongly.
+# set to be graphed on a number line, and solves only the displayed inequality a
+# step names; without it those questions fall through to a reasoning model or
+# are answered for the wrong inequality.
 # The tip of that repository may be ahead of it, and that is fine -- the pin is
 # a floor, and the test checks the sibling is not below it.
-0c12b1c08c0a56f49e37ca426ddf2d46b2ca4e3f
+af305628c77785229d7bc36dbfabf9205abc3bd8
