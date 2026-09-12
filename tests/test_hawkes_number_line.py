@@ -41,10 +41,17 @@ CONTEXT = {
     "snap": [1.0],
     "controls": "interval-buttons",
     "intervals": ALL_SHAPES,
+    # QNumberLine's own default, where a question states no `maxplots`.
+    "count": 3,
 }
 
 
 def plan(left, left_closed, right, right_closed):
+    return union((left, left_closed, right, right_closed))
+
+
+def union(*intervals):
+    """A plan of one or more intervals, each `(left, closed, right, closed)`."""
     return {
         "kind": "numberline",
         "intervals": [
@@ -52,6 +59,7 @@ def plan(left, left_closed, right, right_closed):
                 "left": {"value": left, "closed": left_closed},
                 "right": {"value": right, "closed": right_closed},
             }
+            for left, left_closed, right, right_closed in intervals
         ],
     }
 
@@ -147,14 +155,21 @@ Object.defineProperty(line, 'data', {
   get() { return plotted; },
   set(text) {
     writes.push(text);
-    const m = String(text).replace(/<\\/?qmath>/g, '').match(/^<(q\\w+brac)>(.*),(.*)<\\/\\1>$/);
-    if (!m) return;
-    plotted = '<qmath><' + m[1] + '>' + snap(m[2]) + ',' + snap(m[3]) + '</' + m[1] + '></qmath>';
+    // `plotUserAnswer`: split on the union, plot each interval snapped to a
+    // tick, and stop silently at the engine's own maximum, as QNLGlobal does.
+    const pieces = String(text).replace(/<\\/?qmath>/g, '').split('<qspchar>symUnion</qspchar>')
+      .map(piece => piece.match(/^<(q\\w+brac)>(.*),(.*)<\\/\\1>$/)).filter(Boolean)
+      .slice(0, ENGINE_MAX);
+    if (!pieces.length) return;
+    plotted = '<qmath>' + pieces.map(m => '<' + m[1] + '>' + snap(m[2]) + ',' + snap(m[3]) + '</' + m[1] + '>')
+      .join('<qspchar>symUnion</qspchar>') + '</qmath>';
   },
 });
 var mode = {
   strUITemplateContainer: 'UIT1',
   objNumberLine: line,
+  controlsJSON: MAXPLOTS === null ? {numline: {plotdata: {}}}
+    : {numline: {plotdata: {maxplots: () => String(MAXPLOTS)}}},
   setActiveMode() { window.objActiveMode = this; },
   getUserAnswer() { this.setActiveMode(); return this.objNumberLine.data; },
   setUserAnswer(text) { this.setActiveMode(); this.objNumberLine.data = text; },
@@ -204,6 +219,8 @@ def number_line(
     ticks=tuple(str(n) for n in range(-10, 11)),
     answer="",
     disabled="undefined",
+    maxplots=None,
+    engine_max=3,
 ):
     context = quickjs.Context()
     context.eval(
@@ -211,6 +228,8 @@ def number_line(
         .replace("ANSWER", json.dumps(answer))
         .replace("DISABLED", disabled)
         .replace("BUTTONS", json.dumps(list(buttons)))
+        .replace("MAXPLOTS", json.dumps(maxplots))
+        .replace("ENGINE_MAX", str(engine_max))
     )
     source = re.sub(r"^export ", "", GRAPH.read_text(encoding="utf-8"), flags=re.M)
     context.eval(source)
@@ -405,6 +424,105 @@ def test_a_page_that_undoes_the_interval_while_settling_is_caught():
     assert result["code"] == "graph-numberline-not-settled"
 
 
+def test_the_line_states_how_many_intervals_it_takes():
+    assert run(number_line())["context"]["count"] == 3
+    described = run(number_line(maxplots=2, engine_max=2))
+    assert described["context"]["count"] == 2
+    assert described["probe"]["maxIntervalsStated"] is True
+
+
+@pytest.mark.parametrize(
+    ("offered_plan", "written"),
+    [
+        (
+            union(("-inf", False, "1", False), ("4", False, "inf", False)),
+            "<qmath><qpbrac>-<qspchar>symInfinite</qspchar>,1</qpbrac>"
+            "<qspchar>symUnion</qspchar>"
+            "<qpbrac>4,<qspchar>symInfinite</qspchar></qpbrac></qmath>",
+        ),
+        (
+            union(("-inf", False, "-4", True), ("-2", True, "inf", False)),
+            "<qmath><qpsbrac>-<qspchar>symInfinite</qspchar>,-4</qpsbrac>"
+            "<qspchar>symUnion</qspchar>"
+            "<qspbrac>-2,<qspchar>symInfinite</qspchar></qspbrac></qmath>",
+        ),
+        (
+            union(("-inf", False, "1", False), ("1", False, "inf", False)),
+            "<qmath><qpbrac>-<qspchar>symInfinite</qspchar>,1</qpbrac>"
+            "<qspchar>symUnion</qspchar>"
+            "<qpbrac>1,<qspchar>symInfinite</qspchar></qpbrac></qmath>",
+        ),
+        (
+            union(
+                ("-5", False, "-2", False),
+                ("2", False, "5", False),
+                ("7", True, "9", True),
+            ),
+            "<qmath><qpbrac>-5,-2</qpbrac><qspchar>symUnion</qspchar><qpbrac>2,5</qpbrac>"
+            "<qspchar>symUnion</qspchar><qsbrac>7,9</qsbrac></qmath>",
+        ),
+    ],
+)
+def test_a_union_is_written_as_hawkes_writes_one(offered_plan, written):
+    context = number_line()
+    described = run(context)
+
+    result = run(context, {"plan": offered_plan, "snapshot": described["snapshot"]})
+
+    assert result["ok"] is True, result
+    assert result["intervals"] == len(offered_plan["intervals"])
+    assert json.loads(context.eval("JSON.stringify(writes)")) == [written]
+    assert context.eval("mode.getUserAnswer()") == written
+
+
+def test_more_intervals_than_the_line_takes_are_never_written():
+    context = number_line(maxplots=2, engine_max=2)
+    described = run(context)
+    three = union(
+        ("-5", False, "-2", False), ("2", False, "5", False), ("7", True, "9", True)
+    )
+
+    result = run(context, {"plan": three, "snapshot": described["snapshot"]})
+
+    assert result["code"] == "graph-numberline-too-many-intervals"
+    assert context.eval("writes.length") == 0
+
+
+def test_an_engine_that_plots_fewer_than_it_said_is_caught():
+    """The page's own reading decides, even against its own stated maximum."""
+    context = number_line(maxplots=3, engine_max=1)
+    described = run(context)
+
+    result = run(
+        context,
+        {
+            "plan": union(("-inf", False, "1", False), ("4", False, "inf", False)),
+            "snapshot": described["snapshot"],
+        },
+    )
+
+    assert result["code"] == "graph-numberline-not-settled"
+    assert result["leftBehind"] is True
+
+
+@pytest.mark.parametrize(
+    "offered_plan",
+    [
+        union(("4", False, "inf", False), ("-inf", False, "1", False)),
+        union(("-inf", False, "1", True), ("1", True, "inf", False)),
+        union(("-5", False, "2", False), ("1", False, "5", False)),
+    ],
+)
+def test_intervals_out_of_order_or_overlapping_are_not_written(offered_plan):
+    context = number_line()
+    described = run(context)
+
+    result = run(context, {"plan": offered_plan, "snapshot": described["snapshot"]})
+
+    assert result["code"] == "graph-plan-invalid"
+    assert context.eval("writes.length") == 0
+
+
 # --- the host: the set becomes a plan the line can show ----------------------
 
 
@@ -428,6 +546,31 @@ def test_each_exact_interval_becomes_its_plan(solution_set, expected):
     assert number_line_plan(solution_set, line_context()).model_dump() == expected
 
 
+@pytest.mark.parametrize(
+    ("solution_set", "expected"),
+    [
+        (
+            "(-∞,1)∪(4,∞)",
+            union(("-inf", False, "1", False), ("4", False, "inf", False)),
+        ),
+        (
+            "(-∞,-4]∪[-2,∞)",
+            union(("-inf", False, "-4", True), ("-2", True, "inf", False)),
+        ),
+        (
+            "(-∞,1)∪(1,∞)",
+            union(("-inf", False, "1", False), ("1", False, "inf", False)),
+        ),
+        (
+            "(-5,-2)∪(2,5)",
+            union(("-5", False, "-2", False), ("2", False, "5", False)),
+        ),
+    ],
+)
+def test_a_union_becomes_one_interval_per_piece(solution_set, expected):
+    assert number_line_plan(solution_set, line_context()).model_dump() == expected
+
+
 def test_a_half_tick_end_is_placed_where_the_line_steps_by_halves():
     made = number_line_plan("(-2.5,1/2]", line_context(snap=[0.5]))
 
@@ -443,7 +586,11 @@ def test_a_half_tick_end_is_placed_where_the_line_steps_by_halves():
         ("(-12,7]", {}, "off the number line"),
         ("(-6,7]", {"intervals": ["open", "closed"]}, "publishes no open-closed"),
         ("∅", {}, "empty set"),
-        ("(-∞,-3)∪(3,∞)", {}, "not one interval"),
+        ("(-∞,-3)∪(3,∞)", {"count": 1}, "at most 1 interval"),
+        ("(-∞,1)∪(2,3)∪(4,5)∪(6,7)", {}, "at most 3 intervals"),
+        ("(4,∞)∪(-∞,1)", {}, "not in order"),
+        ("(-∞,1]∪[1,∞)", {}, "overlap"),
+        ("(-∞,1)∪(4,∞]", {}, "never included"),
         ("[-∞,3)", {}, "never included"),
         ("(7,-6)", {}, "not in order"),
     ],
@@ -462,6 +609,8 @@ def test_what_the_line_cannot_show_exactly_is_refused(solution_set, context, rea
         {"intervals": ["open", "open"]},
         {"controls": "draggable-points"},
         {"bounds": [10.0, -10.0]},
+        {"count": 0},
+        {"count": 13},
     ],
 )
 def test_a_number_line_context_states_its_own_geometry(change):
@@ -520,6 +669,23 @@ def test_the_host_draws_facets_exact_solution_set(monkeypatch):
     assert result.certainty.method == "SymPy exact linear inequality"
     # Facet was asked a question, never told there is a number line.
     assert "graph" not in loopback.problems[0]
+
+
+def test_the_host_draws_an_exact_union(monkeypatch):
+    result, loopback = solve_on_line(
+        monkeypatch,
+        "Graph the solution set of the absolute value inequality.",
+        math="<math><mo>|</mo><mn>2</mn><mi>x</mi><mo>−</mo><mn>5</mn><mo>|</mo>"
+        "<mo>&gt;</mo><mn>3</mn></math>",
+    )
+
+    assert result.status == "ready", result
+    assert loopback.prompts == []
+    assert result.answer.graph_plan.model_dump() == union(
+        ("-inf", False, "1", False), ("4", False, "inf", False)
+    )
+    assert result.answer.display_text == "(-∞,1)∪(4,∞)"
+    assert result.certainty.answered_by == "exact"
 
 
 def test_a_reasoned_solution_set_is_never_drawn(monkeypatch):

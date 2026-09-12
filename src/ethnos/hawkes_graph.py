@@ -65,16 +65,17 @@ class NumberLineInterval(BaseModel):
 
 
 class NumberLinePlan(BaseModel):
-    """One interval to draw on a number line, and nothing derived about it.
+    """The intervals to draw on a number line, and nothing derived about them.
 
-    The set itself is Facet's, solved exactly. What this carries is where its
-    two ends go and whether each is included -- the only things a number line
-    can be told -- in values already checked against the page's own ticks.
+    The set itself is Facet's, solved exactly. What this carries is where the
+    ends of each of its intervals go and whether each is included -- the only
+    things a number line can be told -- in values already checked against the
+    page's own ticks, one interval per piece of a union.
     """
 
     model_config = ConfigDict(extra="forbid", strict=True)
     kind: Literal["numberline"]
-    intervals: list[NumberLineInterval] = Field(min_length=1, max_length=1)
+    intervals: list[NumberLineInterval] = Field(min_length=1, max_length=12)
 
 
 #: A solution set written in interval notation, as Facet writes one.
@@ -94,23 +95,53 @@ def _shape(left_closed: bool, right_closed: bool) -> str:
 
 
 def number_line_plan(solution_set: str, context) -> NumberLinePlan:
-    """The number-line plan for one exactly solved interval, or a named refusal.
+    """The number-line plan for an exactly solved solution set, or a named refusal.
 
     Every check is against the page's own number line, as its probe reported
-    it: the interval's shape has to be one the page publishes a button for, a
+    it: each interval's shape has to be one the page publishes a button for, a
     finite end has to be one of its ticks, and an infinite end is always open --
-    Hawkes draws it by dragging an open end to the arrow. The empty set, a
-    union and a single point are not one interval, and are refused by name
-    rather than drawn as something near them.
+    Hawkes draws it by dragging an open end to the arrow.
+
+    A union is one interval per piece, as many as the line says it will take,
+    left to right and apart from each other -- which is what the solution of
+    `|u| > c` is. The empty set and a single point are not intervals, and are
+    refused by name rather than drawn as something near them.
     """
     text = re.sub(r"\s+", "", solution_set or "")
     if text == "∅":
         raise ValueError("the empty set is not an interval to draw")
-    match = _INTERVAL.fullmatch(text)
-    if match is None:
-        raise ValueError("the solution set is not one interval in interval notation")
     if context is None or context.family != "numberline":
         raise ValueError("a number-line plan needs the page's number line")
+    pieces = text.split("∪")
+    limit = context.count or 1
+    if len(pieces) > limit:
+        raise ValueError(
+            f"the number line takes at most {limit} interval"
+            + ("s" if limit != 1 else "")
+            + f", and the solution set has {len(pieces)}"
+        )
+    planned = [_plan_interval(piece, context) for piece in pieces]
+    for before, after in zip(planned, planned[1:], strict=False):
+        right, right_closed = before[2]
+        left, left_closed = after[1]
+        if right is None or left is None or right > left:
+            raise ValueError("the intervals of the union are not in order")
+        if right == left and right_closed and left_closed:
+            raise ValueError("the intervals of the union overlap")
+    return NumberLinePlan(
+        kind="numberline", intervals=[interval[0] for interval in planned]
+    )
+
+
+def _plan_interval(piece: str, context):
+    """One interval of the set: its plan, and its two ends as numbers.
+
+    The ends come back as `(value, closed)`, with None for an infinite end, so
+    that the pieces of a union can be put in order against each other.
+    """
+    match = _INTERVAL.fullmatch(piece)
+    if match is None:
+        raise ValueError("the solution set is not intervals in interval notation")
     left_closed = match.group("open") == "["
     right_closed = match.group("close") == "]"
     ends = []
@@ -138,15 +169,11 @@ def number_line_plan(solution_set: str, context) -> NumberLinePlan:
     shape = _shape(left_closed, right_closed)
     if shape not in (context.intervals or []):
         raise ValueError(f"the number line publishes no {shape} interval")
-    return NumberLinePlan(
-        kind="numberline",
-        intervals=[
-            NumberLineInterval(
-                left=NumberLineEnd(value=ends[0][1], closed=left_closed),
-                right=NumberLineEnd(value=ends[1][1], closed=right_closed),
-            )
-        ],
+    interval = NumberLineInterval(
+        left=NumberLineEnd(value=ends[0][1], closed=left_closed),
+        right=NumberLineEnd(value=ends[1][1], closed=right_closed),
     )
+    return interval, (ends[0][0], left_closed), (ends[1][0], right_closed)
 
 
 def _tick_spelling(value: Fraction) -> str:

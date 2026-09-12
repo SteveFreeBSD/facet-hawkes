@@ -367,7 +367,7 @@ var BRACKETS = ['PBrace', 'SBrace', 'PSBrace', 'SPBrace', 'Mod'];
 var control = {
   enabled: true, arrChildObjects: [], CurrentBase: null, loaded: [], guarded: [],
   qdyBase_AllowedTemplates: PUBLISHED,
-  qdyBase_AllowedChar: '0123456789-.,∞∅',
+  qdyBase_AllowedChar: CHARACTERS,
   keyPadButtonClick(name) { this.addElement(name, true); },
   addElement(name) {
     if (name === 'Clear') {
@@ -416,9 +416,13 @@ var window = {quant_wp_UI: {controlsCollection: [control], focusedElementIndex: 
 """
 
 
-def editor(published: list[str]):
+def editor(published: list[str], characters: str = "0123456789-.,∞∅"):
     context = quickjs.Context()
-    context.eval(EDITOR.replace("PUBLISHED", json.dumps(published)))
+    context.eval(
+        EDITOR.replace("PUBLISHED", json.dumps(published)).replace(
+            "CHARACTERS", json.dumps(characters)
+        )
+    )
     for name in ("cadence.js", "page-actions.js"):
         source = (COMMON / name).read_text(encoding="utf-8")
         context.eval(IMPORT_LINE.sub("", source).replace("export ", ""))
@@ -493,6 +497,40 @@ def test_the_writer_loads_the_planned_bracket_through_hawkes_guard(
     pump(page)
     assert page.eval("dialog") is False
     assert "".join(value for _, value in drawn(page)) == interior
+
+
+def test_a_union_is_built_through_the_keypad_where_the_box_publishes_it(js):
+    """Hawkes types `∪` as an ordinary special character between two enclosures."""
+    characters = "0123456789-.,∞∪"
+    page = editor(list(BRACKETS), characters)
+    steps = js("planEntry", "(-∞,1]∪[4,∞)", offering(*BRACKETS, characters=characters))[
+        "steps"
+    ]
+
+    reported = perform(page, steps)
+
+    assert reported["ok"] is True, reported
+    assert json.loads(page.eval("JSON.stringify(control.loaded)")) == [
+        "PSBrace",
+        "SPBrace",
+    ]
+    held = [box for box in drawn(page) if box[1]]
+    assert held == [["PSBrace", "-∞,1"], ["", "∪"], ["SPBrace", "4,∞"]]
+    assert reported["timing"]["nativeWrites"] == 0
+    page.eval("setTimeout(() => {}, 2000);")
+    pump(page)
+    assert page.eval("dialog") is False
+
+
+def test_a_union_is_never_typed_into_a_box_that_does_not_publish_it(js):
+    """Hawkes' own editor would refuse the `∪` key with its dialog."""
+    result = js("planEntry", "(-∞,1]∪[4,∞)", INTERVAL_BOX)
+
+    assert result == {
+        "ok": False,
+        "code": "answer-has-rejected-characters",
+        "detail": "∪",
+    }
 
 
 def test_the_writer_refuses_a_bracket_the_page_does_not_publish(js):

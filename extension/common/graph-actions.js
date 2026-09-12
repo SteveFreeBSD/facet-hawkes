@@ -106,14 +106,25 @@ export function graphOperation(offered = null) {
     if (nodes.some((n) => !n)) return refuse("graph-question-missing");
     const asked = () => nodes.map((n) => new XMLSerializer().serializeToString(n)).join("");
     const answer = () => String(line.data ?? "");
-    const shot = () => ({ question: asked(), ticks: [...ticks], shapes: [...offeredShapes], answer: answer() });
+    // How many intervals the line will plot. A question states it as the
+    // number line's `plotdata.maxplots`; where it does not, QNumberLine's own
+    // `QNLGlobal` plots up to three, and stops plotting silently past it --
+    // which is why a union longer than this is refused before it is written.
+    const plotdata = mode?.controlsJSON?.numline?.plotdata;
+    const stated = Number.parseInt(
+      typeof plotdata?.maxplots === "function" ? plotdata.maxplots() : plotdata?.maxplots, 10);
+    const maxIntervals = Math.min(Number.isInteger(stated) && stated >= 1 ? stated : 3, 12);
+    const shot = () => ({ question: asked(), ticks: [...ticks], shapes: [...offeredShapes],
+      maxIntervals, answer: answer() });
     const first = shot();
     const context = { family: "numberline", bounds: [sorted[0], sorted[sorted.length - 1]],
-      snap: [step], controls: "interval-buttons", intervals: offeredShapes };
+      snap: [step], controls: "interval-buttons", intervals: offeredShapes, count: maxIntervals };
     if (!offered) {
       return { ok: true, kind: "graph", code: "graph-described", enabled: true, context,
         snapshot: first, probe: { engine: "numberline", ticks: ticks.length,
-          shapes: offeredShapes, answered: first.answer.length > 0 } };
+          shapes: offeredShapes, maxIntervals,
+          maxIntervalsStated: Number.isInteger(stated) && stated >= 1,
+          answered: first.answer.length > 0 } };
     }
     if (JSON.stringify(first) !== JSON.stringify(offered.snapshot)) return refuse("graph-target-stale");
     // Somebody's own work on the line is not this writer's to replace.
@@ -123,7 +134,8 @@ export function graphOperation(offered = null) {
     const has = (o, k) => o && typeof o === "object"
       && Object.keys(o).sort().join() === k.split(" ").sort().join();
     if (!has(plan, "kind intervals") || plan.kind !== "numberline"
-      || !Array.isArray(plan.intervals) || plan.intervals.length !== 1) return refuse("graph-plan-invalid");
+      || !Array.isArray(plan.intervals) || plan.intervals.length < 1) return refuse("graph-plan-invalid");
+    if (plan.intervals.length > maxIntervals) return refuse("graph-numberline-too-many-intervals");
     const wanted = plan.intervals.map((interval) => {
       if (!has(interval, "left right")) throw Error("graph-plan-invalid");
       return ["left", "right"].map((side) => {
@@ -142,13 +154,32 @@ export function graphOperation(offered = null) {
         return { infinite: false, closed: end.closed, label: ticks[at], value: values[at] };
       });
     });
-    const [[left, right]] = wanted;
-    if (!left.infinite && !right.infinite && !(left.value < right.value)) return refuse("graph-plan-invalid");
-    const shape = { "false,false": "open", "true,true": "closed",
-      "false,true": "open-closed", "true,false": "closed-open" }[`${left.closed},${right.closed}`];
-    if (!offeredShapes.includes(shape)) return refuse("graph-numberline-shape-unoffered");
+    // Each interval in order, and apart from the next: the pieces of a union
+    // left to right, sharing at most an end neither of them includes.
+    const SHAPE_OF = { "false,false": "open", "true,true": "closed",
+      "false,true": "open-closed", "true,false": "closed-open" };
+    const pieces = wanted.map(([left, right]) => ({ left, right,
+      shape: SHAPE_OF[`${left.closed},${right.closed}`] }));
+    if (pieces.some(({ left, right }) => !left.infinite && !right.infinite && !(left.value < right.value))) {
+      return refuse("graph-plan-invalid");
+    }
+    for (let i = 1; i < pieces.length; i += 1) {
+      const before = pieces[i - 1].right;
+      const after = pieces[i].left;
+      if (before.infinite || after.infinite || before.value > after.value
+        || (near(before.value, after.value) && before.closed && after.closed)) {
+        return refuse("graph-plan-invalid");
+      }
+    }
+    if (pieces.some((piece) => !offeredShapes.includes(piece.shape))) {
+      return refuse("graph-numberline-shape-unoffered");
+    }
     const spell = (end, sign) => (end.infinite ? `${sign}<qspchar>symInfinite</qspchar>` : end.label);
-    const written = `<qmath><${TAGS[shape]}>${spell(left, "-")},${spell(right, "")}</${TAGS[shape]}></qmath>`;
+    // Hawkes' own union: the intervals joined by `symUnion` inside one `qmath`,
+    // exactly as its number line reports a plotted union.
+    const written = `<qmath>${pieces.map(({ left, right, shape }) =>
+      `<${TAGS[shape]}>${spell(left, "-")},${spell(right, "")}</${TAGS[shape]}>`)
+      .join("<qspchar>symUnion</qspchar>")}</qmath>`;
 
     // What the page says is on the line, as intervals. Tolerant of how Hawkes
     // wraps and spells a value, strict about which interval it is.
@@ -176,8 +207,9 @@ export function graphOperation(offered = null) {
       const got = readBack(text);
       const same = (end, want) => end !== null && end.infinite === want.infinite
         && (want.infinite || near(end.value, want.value));
-      return got.length === 1 && got[0] !== null && got[0].shape === shape
-        && same(got[0].left, left) && same(got[0].right, right);
+      return got.length === pieces.length && got.every((one, i) => one !== null
+        && one.shape === pieces[i].shape
+        && same(one.left, pieces[i].left) && same(one.right, pieces[i].right));
     };
     const dialogUp = () => [...document.querySelectorAll('[id*="customMessageBox"]')]
       .some((n) => n.getBoundingClientRect().height > 0);
@@ -211,7 +243,8 @@ export function graphOperation(offered = null) {
           return;
         }
         if (polls >= 8) {
-          resolve({ ok: true, code: "numberline-verified", events: 1, shape });
+          resolve({ ok: true, code: "numberline-verified", events: 1,
+            intervals: pieces.length });
           return;
         }
         setTimeout(poll, 100);

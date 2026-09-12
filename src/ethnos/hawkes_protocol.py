@@ -34,7 +34,8 @@ class GraphContext(BaseModel):
     controls: Literal[
         "vertex-and-symmetric-points", "draggable-points", "interval-buttons"
     ]
-    #: How many draggable controls a plotting graph offers, one per point.
+    #: How many draggable controls a plotting graph offers, one per point; on a
+    #: number line, how many intervals it will plot.
     count: int | None = None
     #: The interval shapes a number line publishes a button for.
     intervals: list[Literal["open", "closed", "open-closed", "closed-open"]] | None = (
@@ -53,7 +54,7 @@ class GraphContext(BaseModel):
                 or self.snap[0] <= 0
                 or self.controls != "interval-buttons"
                 or self.orientation is not None
-                or self.count is not None
+                or (self.count is not None and not 1 <= self.count <= 12)
                 or not self.intervals
                 or len(set(self.intervals)) != len(self.intervals)
             ):

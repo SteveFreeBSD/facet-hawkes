@@ -127,6 +127,8 @@ function that does the typing.
 | interval with a decimal end and an infinite one | `scalar` | group+comma+decimal+interval | `[-2.5,∞)` | the same box; `∞` and the decimal point are characters it publishes | `planEntry` → `planRun` → `planCommaList` → `enterPlan` | yes | no | no | `scalar-interval-decimal` |
 | the empty set | `scalar` | interval | `∅` | the same box, whose character set holds `∅` | `planEntry` → `planRun` → `enterPlan` | yes | no | no | `scalar-interval-empty` |
 | a solution set graphed on a number line | `scalar` | group+comma+interval | `(-6,7]` | a QNumberLine with interval buttons and labelled ticks, no answer box | `number_line_plan` → `graphOperation` → `numberLine` | yes | no | yes | `scalar-interval-number-line` |
+| union of intervals, typed | `scalar` | group+comma+interval | `(-∞,1]∪[4,∞)` | one box publishing `∪`, a bracket template for each end pairing | `planEntry` → `planRun` → `planCommaList` → `enterPlan` | yes | no | no | `scalar-interval-union-typed` |
+| union of intervals, graphed | `scalar` | group+comma+interval | `(-∞,1)∪(4,∞)` | a QNumberLine taking up to its `maxplots` intervals | `number_line_plan` → `graphOperation` → `numberLine` | yes | no | no | `scalar-interval-union-number-line` |
 <!-- /generated:supported -->
 
 **Unit** means a QuickJS or Python test drives the real module. **Harness**
@@ -144,7 +146,7 @@ names; none is silently mis-entered.
 | Composition | Example | Why | What happens now | Entry id |
 |---|---|---|---|---|
 | a decimal where the box has no decimal point | `8.5` | A box with no decimal point is asking for the exact form, and rewriting a value to fit a box is how a wrong answer gets typed in confidently. | Refused as `answer-has-rejected-characters` | `scalar-decimal` |
-| union of intervals | `(-∞,-3)∪(3,∞)` | Hawkes' own source types `∪` as an ordinary special character (`symUnion`) between two bracket templates, so the planner builds it exactly that way wherever a box publishes it. No observed box does: lesson 1.7's publishes `∞` and `∅` and not `∪`, and a union is not claimed enterable until a page that asks for one is seen. | Refused as `answer-has-rejected-characters` | `scalar-interval-union` |
+| union of intervals | `(-∞,-3)∪(3,∞)` | Hawkes' own editor refuses a `∪` key in a box whose characters do not include it, and this box publishes `∞` and `∅` only. The planner refuses the same character before a key is pressed; the same union goes in wherever the box publishes `∪` (`scalar-interval-union-typed`). | Refused as `answer-has-rejected-characters` | `scalar-interval-union` |
 | interval whose end has no template | `[-2,5)` | A closed end is drawn by `SBrace`, `PSBrace` or `SPBrace` and by nothing else. A question that offers none of them is not asking for one, and an open bracket in its place is a different interval. | Refused as `template-refused-by-question` | `scalar-interval-unoffered-bracket` |
 | a choice typed into a field | `Quadrant IV` | Selecting stays the reader's action, always. | Refused as `editor-option-answer` | `choice-typed` |
 | named function's whole equation | `f(x)=-5*x-3` | Every observed page that names a function prints `f(x) =` beside its box, so the right side alone is what it takes and this is never asked for. The one box that does take an equation publishes `xy=+-` and digits: a name and its brackets are both outside it. | Refused as `answer-has-rejected-characters` | `relation-group` |

@@ -304,7 +304,7 @@
       }
     },
     "number-line": {
-      "note": "Hawkes' QNumberLine, a separate engine from the Cartesian graph: a `role=\"application\"` container holding `svg#svg_numberline`, labelled ticks, and one button per interval shape. Lesson 1.7 step 2, \"graph the solution set\", observed 2026-09-12. The template keeps the line on `objActiveMode.objNumberLine` (not in the control collection) and nests two `role=\"application\"` containers around its SVG. Nothing is typed; the interval is written through the mode's own `setUserAnswer`, read back through the line's `data`, and held to the mode's own `isEmpty`. Proven live 2026-09-12 on build 3e2660c80f63.",
+      "note": "Hawkes' QNumberLine, a separate engine from the Cartesian graph: a `role=\"application\"` container holding `svg#svg_numberline`, labelled ticks, and one button per interval shape. Lesson 1.7 step 2, \"graph the solution set\", observed 2026-09-12. The template keeps the line on `objActiveMode.objNumberLine` (not in the control collection) and nests two `role=\"application\"` containers around its SVG. Nothing is typed; the interval is written through the mode's own `setUserAnswer`, read back through the line's `data`, and held to the mode's own `isEmpty`. Proven live 2026-09-12 on build 3e2660c80f63. It plots up to its `plotdata.maxplots` intervals, three where a question states none, joined in its own answer by `symUnion`.",
       "description": {
         "kind": "graph",
         "enabled": true,
@@ -325,7 +325,37 @@
             "closed",
             "open-closed",
             "closed-open"
-          ]
+          ],
+          "count": 3
+        }
+      }
+    },
+    "interval-union-box": {
+      "note": "An interval box whose character set holds `∪`. Hawkes' own editor types `∪` as an ordinary special character (`symUnion`, Ctrl+Shift+U) between two bracket templates, and validates it against the box's published characters like any other -- so this is the box a union is typed into. Described from the lesson bundle's editor source; the lesson 1.7 box it is modelled on publishes `∞` and `∅` and not `∪`.",
+      "description": {
+        "kind": "dynamic",
+        "enabled": true,
+        "allowedCharacters": "0123456789-.,∞∅∪",
+        "maxLength": 16,
+        "templates": {
+          "fraction": false,
+          "radical": false,
+          "exponent": false,
+          "parentheses": true,
+          "absoluteValue": false,
+          "PBrace": true,
+          "SBrace": true,
+          "PSBrace": true,
+          "SPBrace": true
+        },
+        "slots": {
+          "base": "0123456789-.,∞∅∪",
+          "numerator": "0123456789xy+-",
+          "denominator": "0123456789xy+-",
+          "exponent": "0123456789xy",
+          "exponentBase": "xy",
+          "radicand": "0123456789xy+-",
+          "index": "0123456789"
         }
       }
     }
@@ -1084,7 +1114,7 @@
         "live": "n/a"
       },
       "refusal": "answer-has-rejected-characters",
-      "why": "Hawkes' own source types `∪` as an ordinary special character (`symUnion`) between two bracket templates, so the planner builds it exactly that way wherever a box publishes it. No observed box does: lesson 1.7's publishes `∞` and `∅` and not `∪`, and a union is not claimed enterable until a page that asks for one is seen."
+      "why": "Hawkes' own editor refuses a `∪` key in a box whose characters do not include it, and this box publishes `∞` and `∅` only. The planner refuses the same character before a key is pressed; the same union goes in wherever the box publishes `∪` (`scalar-interval-union-typed`)."
     },
     {
       "id": "scalar-interval-unoffered-bracket",
@@ -1257,6 +1287,55 @@
         "unit": "yes",
         "harness": "no",
         "live": "yes"
+      }
+    },
+    {
+      "id": "scalar-interval-union-typed",
+      "semantic": "union of intervals, typed",
+      "form": "scalar",
+      "notation": [
+        "group",
+        "comma",
+        "interval"
+      ],
+      "example": "(-∞,1]∪[4,∞)",
+      "editor": "interval-union-box",
+      "topology": "one box publishing `∪`, a bracket template for each end pairing",
+      "mechanism": [
+        "planEntry",
+        "planRun",
+        "planCommaList",
+        "enterPlan"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "no"
+      }
+    },
+    {
+      "id": "scalar-interval-union-number-line",
+      "semantic": "union of intervals, graphed",
+      "form": "scalar",
+      "notation": [
+        "group",
+        "comma",
+        "interval"
+      ],
+      "example": "(-∞,1)∪(4,∞)",
+      "editor": "number-line",
+      "topology": "a QNumberLine taking up to its `maxplots` intervals",
+      "mechanism": [
+        "number_line_plan",
+        "graphOperation",
+        "numberLine"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "no"
       }
     },
     {
