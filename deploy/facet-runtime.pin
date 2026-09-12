@@ -7,9 +7,10 @@
 # tests/test_runtime_pin.py fails if any document quotes a different commit.
 #
 # Raise it in the same change that starts depending on something newer. This
-# commit adds exact routing for one-variable linear and compound inequalities
-# answered in interval notation, without which those questions fall through to
-# a reasoning model.
+# commit answers one-variable linear and compound inequalities exactly, whether
+# the question asks for interval notation or for the solution set to be graphed
+# on a number line; without it those questions fall through to a reasoning model
+# and a graphed solution set cannot be drawn at all.
 # The tip of that repository may be ahead of it, and that is fine -- the pin is
 # a floor, and the test checks the sibling is not below it.
-a83546e3aa5dd5dd347a054d791dd8a1a7925821
+515cff1ef2b04514da9939298f88135348899b4b

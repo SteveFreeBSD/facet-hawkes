@@ -1938,6 +1938,9 @@ async function prepare(windowId = state.windowId) {
       // never inserted, because insertion wants one field id per answer part.
       via: evidenceReport?.via ?? "",
       multiFieldEvidence: evidenceReport?.multiFieldEvidence ?? null,
+      // What a frame drawing a number line saw of it, when none claimed it.
+      numberLineEvidence: results.map((entry) => entry?.result?.numberLineEvidence)
+        .find(Boolean) ?? null,
     });
     if (!Number.isInteger(choice.frameId)) {
       fail(frameErrorKey(choice), {
@@ -2589,9 +2592,14 @@ async function acceptReply(reply) {
     // is the question's own words and has nothing to derive, so what stands in
     // for that proof is the live graph itself -- one control per stated point,
     // every one landing on the grid, checked in the page before a key moves.
-    const plotting = reply.answer.graph_plan.kind === "points";
-    const wrong = plotting
-      ? state.editor?.context?.family !== "points"
+    // A plan that places what the question states -- its points, or the
+    // ends of a solution set Facet solved exactly -- is proved on the page, so
+    // what has to agree here is only that it is a plan for this page's graph.
+    const stated = { points: "points", numberline: "numberline" }[
+      reply.answer.graph_plan.kind
+    ];
+    const wrong = stated
+      ? state.editor?.context?.family !== stated
       : certainty.answered_by !== "facet"
         || !certainty.facet_invoked
         || reply.answer.graph_coefficients?.length !== 3;
@@ -3170,8 +3178,13 @@ async function insert() {
       fail("errorSolveRefused", { detail: code });
       return;
     }
-    log.info("graph-verified", { events: entry.result.events });
-    await finishInsertion(target.detail + "\nGraph controls and coefficients verified", target);
+    log.info("graph-verified", { events: entry.result.events, code: entry.result.code ?? "" });
+    await finishInsertion(
+      target.detail + (entry.result.code === "numberline-verified"
+        ? "\nNumber line interval verified against the page's own answer"
+        : "\nGraph controls and coefficients verified"),
+      target
+    );
     return;
   }
 

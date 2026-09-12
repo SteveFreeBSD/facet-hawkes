@@ -546,6 +546,56 @@ var ethnosHawkes = (function () {
         };
       }
     }
+    // A number line is a graph too, drawn by a different Hawkes engine.
+    //
+    // Live, on 2026-09-12: "graph the solution set" of a compound inequality,
+    // a number line with interval buttons under it, and no answer box on the
+    // page. Only the Cartesian `#QGraph` was ever looked for, so the question
+    // fell past it into the field sweep and came out `no-focused-answer-field`,
+    // telling somebody to click a box their question does not have.
+    //
+    // QNumberLine marks its own surface: a `role="application"` container
+    // holding the SVG it names `svg_numberline`. Claimed only where no answer
+    // box is drawn beside it, for the reason a scatter plot beside a box is
+    // not claimed above.
+    //
+    // Counted by the line, not by the containers. Hawkes' NumberLine template
+    // gives its own `#NumberLineContainer` `role="application"`, and the engine
+    // then builds `#divBaseContainer` inside it with the same role -- so one
+    // line on screen is two application containers around one SVG. Counting
+    // containers made every real number line look like two, and the first
+    // version of this fell through to `no-focused-answer-field` exactly as
+    // before. Each SVG resolves to the innermost container around it.
+    const lineSvgs = [...document.querySelectorAll("svg#svg_numberline")];
+    const numberLines = [
+      ...new Set(
+        lineSvgs
+          .map((svg) => svg.closest?.('[role="application"]'))
+          .filter((node) => node && rectangleOf(node))
+      ),
+    ];
+    // Counts only, for the case this falls through: what a number line on this
+    // frame looked like to the claim above. A question that draws one and is
+    // still reported as having no field is diagnosable from the log.
+    const numberLineEvidence = {
+      svgs: lineSvgs.length,
+      applications: document.querySelectorAll('[role="application"]').length,
+      surfaces: numberLines.length,
+      graphs: graphs.length,
+      candidates: solutionFieldCandidates().length,
+    };
+    if (
+      graphs.length === 0
+      && numberLines.length === 1
+      && solutionFieldCandidates().length === 0
+    ) {
+      return {
+        ready: true,
+        code: "graph-answer",
+        via: "number-line-surface",
+        fieldId: numberLines[0].id || "svg_numberline",
+      };
+    }
     // A selected option may reveal the only text field that completes it.
     // Hawkes links that field from the radio with aria-controls, so following
     // that relation is exact and does not weaken the one-target rule.
@@ -596,6 +646,7 @@ var ethnosHawkes = (function () {
       const report = {
         ready: false,
         code: "no-focused-answer-field",
+        ...(numberLineEvidence.svgs > 0 ? { numberLineEvidence } : {}),
       };
       if (lastSolutionFieldEvidence.fields >= 2) {
         report.multiFieldEvidence = lastSolutionFieldEvidence;

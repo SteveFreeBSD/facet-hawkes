@@ -133,6 +133,13 @@ def solve(request: SolveRequest, report=None) -> SolveResponse:
         # and no model is asked.
         if problem.answer_shape.graph and problem.answer_shape.graph.family == "points":
             return _solve_point_plot_with_facet(request, instruction, announce)
+        # A solution set drawn on a number line. The set is Facet's to solve;
+        # where its ends go on this page's line is this side's to decide.
+        if (
+            problem.answer_shape.graph
+            and problem.answer_shape.graph.family == "numberline"
+        ):
+            return _solve_number_line_with_facet(request, instruction, announce)
         return _solve_graph_with_facet(request, instruction, announce)
 
     if request.solve_engine == "facet":
@@ -772,6 +779,79 @@ def _solve_point_plot_with_facet(request, instruction, announce):
             router=solution.router,
             # The pairs were read off the page's own MathML, which is the same
             # reading a value question gets from the same source.
+            reading="mathml",
+            method=solution.method,
+            runtime=solution.runtime,
+            elapsed_ms=solution.elapsed_ms,
+        ),
+    )
+
+
+def _solve_number_line_with_facet(request, instruction, announce):
+    """Draw an exactly solved solution set on the page's own number line.
+
+    "Graph the solution set" asks for the same set "express your answer in
+    interval notation" does, and Facet answers both with one exact solver. What
+    it returns is the set, as mathematics; this turns that set into where the
+    two ends go on the line the page is showing, and refuses anything that line
+    cannot show exactly -- an end between its ticks, a shape it offers no
+    button for, a union, the empty set.
+
+    Only an exact answer is drawn. A reasoned interval has no working behind it
+    to check here, and a graph is committed by moving controls rather than by
+    typing something a reader can read back letter by letter.
+    """
+    from .facet_client import safe_request_id, solve_math
+    from .hawkes_graph import number_line_plan
+    from .hawkes_mathml import mathml_to_latex
+
+    problem = request.problem
+    try:
+        if not problem.mathml:
+            raise ValueError(
+                "a number line is drawn only from the page's own mathematics"
+            )
+        announce("solving", "Facet exact solution set")
+        solution = solve_math(
+            instruction=instruction,
+            request_id=safe_request_id(request.request_id),
+            expressions=[mathml_to_latex(item) for item in problem.mathml],
+            accelerator_required=False,
+            allow_fallback=False,
+        )
+        if solution.route != "exact":
+            raise ValueError(
+                "a number line is drawn only from an exactly solved solution set"
+                + (f" ({solution.router_detail})" if solution.router_detail else "")
+            )
+        if solution.answer.form not in ("", "scalar"):
+            raise ValueError("the solution set is not one value")
+        announce("checking", "placing the solution set on the page's number line")
+        plan = number_line_plan(
+            solution.answer.entry or solution.answer.display,
+            problem.answer_shape.graph,
+        )
+    except Exception as error:  # noqa: BLE001 - a refusal, never a host fault
+        return error_response(
+            request.request_id, f"Number line refused: {error}", "unsupported"
+        )
+    return SolveResponse(
+        request_id=request.request_id,
+        status="ready",
+        problem_text="\n".join(
+            (instruction, *(mathml_to_latex(m) for m in problem.mathml))
+        ),
+        # The set itself is what a reader is reviewing before Insert, so it is
+        # what the card says.
+        answer=AnswerPayload(graph_plan=plan, display_text=solution.answer.display),
+        certainty=Certainty(
+            prompt_seen=True,
+            source=solution.source,
+            transcription="exact",
+            insertable=True,
+            answered_by="exact",
+            facet_invoked=True,
+            router=solution.router,
             reading="mathml",
             method=solution.method,
             runtime=solution.runtime,

@@ -534,7 +534,14 @@ def test_every_bracket_the_planner_can_press_is_guarded_loaded_and_described():
 
 def test_every_interval_row_plans_the_template_its_ends_call_for(js):
     authority = load()
-    rows = [entry for entry in authority.entries if "interval" in entry.notation]
+    # A number line is drawn rather than typed, and is proved in
+    # `test_hawkes_number_line.py`.
+    rows = [
+        entry
+        for entry in authority.entries
+        if "interval" in entry.notation
+        and authority.editor_for(entry)["kind"] != "graph"
+    ]
     marks = {"()": "PBrace", "[]": "SBrace", "(]": "PSBrace", "[)": "SPBrace"}
 
     assert {entry.id for entry in rows if entry.supported} >= {

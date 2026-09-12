@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import re
+from fractions import Fraction
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -41,6 +43,126 @@ class PointPlotPlan(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     kind: Literal["points"]
     points: list[GraphPoint] = Field(min_length=1, max_length=12)
+
+
+#: The four interval shapes a number line draws, named by their two ends.
+IntervalShape = Literal["open", "closed", "open-closed", "closed-open"]
+
+#: A finite end as the page's own tick spells it, or one of the two infinities.
+_END_VALUE = r"^(?:-inf|inf|-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?)$"
+
+
+class NumberLineEnd(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    value: str = Field(pattern=_END_VALUE, max_length=30)
+    closed: bool
+
+
+class NumberLineInterval(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    left: NumberLineEnd
+    right: NumberLineEnd
+
+
+class NumberLinePlan(BaseModel):
+    """One interval to draw on a number line, and nothing derived about it.
+
+    The set itself is Facet's, solved exactly. What this carries is where its
+    two ends go and whether each is included -- the only things a number line
+    can be told -- in values already checked against the page's own ticks.
+    """
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+    kind: Literal["numberline"]
+    intervals: list[NumberLineInterval] = Field(min_length=1, max_length=1)
+
+
+#: A solution set written in interval notation, as Facet writes one.
+_INTERVAL = re.compile(
+    r"^(?P<open>[(\[])(?P<left>-∞|-?\d+(?:\.\d+)?(?:/\d+)?),"
+    r"(?P<right>∞|-?\d+(?:\.\d+)?(?:/\d+)?)(?P<close>[)\]])$"
+)
+
+
+def _shape(left_closed: bool, right_closed: bool) -> str:
+    return {
+        (False, False): "open",
+        (True, True): "closed",
+        (False, True): "open-closed",
+        (True, False): "closed-open",
+    }[(left_closed, right_closed)]
+
+
+def number_line_plan(solution_set: str, context) -> NumberLinePlan:
+    """The number-line plan for one exactly solved interval, or a named refusal.
+
+    Every check is against the page's own number line, as its probe reported
+    it: the interval's shape has to be one the page publishes a button for, a
+    finite end has to be one of its ticks, and an infinite end is always open --
+    Hawkes draws it by dragging an open end to the arrow. The empty set, a
+    union and a single point are not one interval, and are refused by name
+    rather than drawn as something near them.
+    """
+    text = re.sub(r"\s+", "", solution_set or "")
+    if text == "∅":
+        raise ValueError("the empty set is not an interval to draw")
+    match = _INTERVAL.fullmatch(text)
+    if match is None:
+        raise ValueError("the solution set is not one interval in interval notation")
+    if context is None or context.family != "numberline":
+        raise ValueError("a number-line plan needs the page's number line")
+    left_closed = match.group("open") == "["
+    right_closed = match.group("close") == "]"
+    ends = []
+    for raw, closed, infinity in (
+        (match.group("left"), left_closed, "-∞"),
+        (match.group("right"), right_closed, "∞"),
+    ):
+        if raw == infinity:
+            if closed:
+                raise ValueError("an infinite end is never included")
+            ends.append((None, "-inf" if raw == "-∞" else "inf", closed))
+            continue
+        value = Fraction(raw)
+        low, high = (Fraction(str(bound)) for bound in context.bounds)
+        step = Fraction(str(context.snap[0]))
+        if not low <= value <= high:
+            raise ValueError("an end of the interval is off the number line")
+        if (value - low) % step != 0:
+            raise ValueError(
+                "an end of the interval is not one of the number line's ticks"
+            )
+        ends.append((value, _tick_spelling(value), closed))
+    if ends[0][0] is not None and ends[1][0] is not None and ends[0][0] >= ends[1][0]:
+        raise ValueError("the interval's ends are not in order")
+    shape = _shape(left_closed, right_closed)
+    if shape not in (context.intervals or []):
+        raise ValueError(f"the number line publishes no {shape} interval")
+    return NumberLinePlan(
+        kind="numberline",
+        intervals=[
+            NumberLineInterval(
+                left=NumberLineEnd(value=ends[0][1], closed=left_closed),
+                right=NumberLineEnd(value=ends[1][1], closed=right_closed),
+            )
+        ],
+    )
+
+
+def _tick_spelling(value: Fraction) -> str:
+    """A tick value as a terminating decimal, which is how a tick is labelled."""
+    if value.denominator == 1:
+        return str(value.numerator)
+    denominator = value.denominator
+    for prime in (2, 5):
+        while denominator % prime == 0:
+            denominator //= prime
+    if denominator != 1:
+        raise ValueError("an end of the interval is not one of the number line's ticks")
+    places = 0
+    while (value * 10**places).denominator != 1:
+        places += 1
+    return f"{value:.{places}f}"
 
 
 def _strict_json(text: str):

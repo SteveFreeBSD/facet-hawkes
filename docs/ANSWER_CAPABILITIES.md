@@ -126,6 +126,7 @@ function that does the typing.
 | interval, one end open and one closed | `scalar` | group+comma+interval | `(-8,7]` | one box publishing `∞` and `∅`, a bracket template for each pairing of ends | `planEntry` → `planRun` → `planCommaList` → `enterPlan` | yes | no | yes | `scalar-interval` |
 | interval with a decimal end and an infinite one | `scalar` | group+comma+decimal+interval | `[-2.5,∞)` | the same box; `∞` and the decimal point are characters it publishes | `planEntry` → `planRun` → `planCommaList` → `enterPlan` | yes | no | no | `scalar-interval-decimal` |
 | the empty set | `scalar` | interval | `∅` | the same box, whose character set holds `∅` | `planEntry` → `planRun` → `enterPlan` | yes | no | no | `scalar-interval-empty` |
+| a solution set graphed on a number line | `scalar` | group+comma+interval | `(-6,7]` | a QNumberLine with interval buttons and labelled ticks, no answer box | `number_line_plan` → `graphOperation` → `numberLine` | yes | no | yes | `scalar-interval-number-line` |
 <!-- /generated:supported -->
 
 **Unit** means a QuickJS or Python test drives the real module. **Harness**

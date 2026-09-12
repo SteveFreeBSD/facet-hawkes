@@ -175,9 +175,13 @@ def test_every_entry_uses_a_declared_form_and_feature(authority):
 def test_every_entry_names_a_mechanism_that_exists(authority):
     """A row naming a function that was renamed away reads as coverage and is a
     dead pointer, which is worse than no row."""
+    # The host is half of some mechanisms: a graph's plan is made there.
     sources = "\n".join(
         path.read_text(encoding="utf-8")
-        for path in (PROJECT_ROOT / "extension").rglob("*.js")
+        for path in [
+            *(PROJECT_ROOT / "extension").rglob("*.js"),
+            *(PROJECT_ROOT / "src" / "ethnos").glob("*.py"),
+        ]
     )
     missing = [
         f"{entry.id}: {name}"
@@ -306,6 +310,15 @@ def test_every_supported_composition_plans_against_its_own_editor(
     if entry.form == "choice":
         verdict = planner("answerFitsEditor", entry.example, editor)
         assert verdict["code"] == "editor-option-answer"
+        return
+    # Nothing is typed into a graph. The value is turned into a plan against
+    # the geometry the page's own graph reported, by the host's own rule.
+    if editor["kind"] == "graph":
+        from ethnos.hawkes_graph import number_line_plan
+        from ethnos.hawkes_protocol import GraphContext
+
+        context = GraphContext.model_validate(editor["context"])
+        assert number_line_plan(entry.example, context).intervals, entry.id
         return
     # A multi-part answer is planned one part at a time, against the control
     # that part is typed into -- so that is how it is exercised here.

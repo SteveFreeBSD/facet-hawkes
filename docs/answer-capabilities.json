@@ -302,6 +302,32 @@
           "index": "0123456789"
         }
       }
+    },
+    "number-line": {
+      "note": "Hawkes' QNumberLine, a separate engine from the Cartesian graph: a `role=\"application\"` container holding `svg#svg_numberline`, labelled ticks, and one button per interval shape. Lesson 1.7 step 2, \"graph the solution set\", observed 2026-09-12. The template keeps the line on `objActiveMode.objNumberLine` (not in the control collection) and nests two `role=\"application\"` containers around its SVG. Nothing is typed; the interval is written through the mode's own `setUserAnswer`, read back through the line's `data`, and held to the mode's own `isEmpty`. Proven live 2026-09-12 on build 3e2660c80f63.",
+      "description": {
+        "kind": "graph",
+        "enabled": true,
+        "allowedCharacters": "",
+        "templates": {},
+        "context": {
+          "family": "numberline",
+          "bounds": [
+            -10.0,
+            10.0
+          ],
+          "snap": [
+            1.0
+          ],
+          "controls": "interval-buttons",
+          "intervals": [
+            "open",
+            "closed",
+            "open-closed",
+            "closed-open"
+          ]
+        }
+      }
     }
   },
   "entries": [
@@ -1207,6 +1233,30 @@
         "unit": "yes",
         "harness": "no",
         "live": "no"
+      }
+    },
+    {
+      "id": "scalar-interval-number-line",
+      "semantic": "a solution set graphed on a number line",
+      "form": "scalar",
+      "notation": [
+        "group",
+        "comma",
+        "interval"
+      ],
+      "example": "(-6,7]",
+      "editor": "number-line",
+      "topology": "a QNumberLine with interval buttons and labelled ticks, no answer box",
+      "mechanism": [
+        "number_line_plan",
+        "graphOperation",
+        "numberLine"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "yes"
       }
     },
     {

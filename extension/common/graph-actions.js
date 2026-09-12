@@ -22,8 +22,215 @@ export function graphOperation(offered = null) {
     seen = { ...seen, ...facts };
   };
   const refuse = (code) => ({ ok: false, code, found: seen });
+
+  // --- a number line: Hawkes' QNumberLine engine ------------------------------
+  //
+  // A different engine from the Cartesian graph below, with a different model.
+  // Hawkes' NumberLine template keeps the line on the active mode, not in the
+  // control collection -- `objActiveMode.objNumberLine` -- and publishes its
+  // answer through that mode's own `getUserAnswer`, `setUserAnswer` and
+  // `isEmpty`, which read and write the line's `data`. An interval crosses in
+  // Hawkes' own markup -- `<qmath><qpsbrac>a,b</qpsbrac></qmath>`, the bracket
+  // family the answer editor uses, `symInfinite` for an end at an arrow.
+  //
+  // So the write is one call to the page's own template, and the proof is the
+  // page's own reading of it: the answer it reports afterwards, parsed and
+  // compared end for end, still reported once the page has settled, and no
+  // longer empty by the page's own emptiness check.
+  function numberLine(surfaces) {
+    note({ engine: "numberline", surfaces: surfaces.length });
+    if (surfaces.length !== 1) return refuse("graph-numberline-ambiguous");
+    const surface = surfaces[0];
+    // Hawkes appends the tick labels and the buttons to the line's container,
+    // which may be the surface itself or the element holding it.
+    const labelled = "span.clsMath[label]";
+    const scope = surface.querySelector(labelled) ? surface : (surface.parentElement ?? surface);
+    const SHAPES = { OO: "open", CC: "closed", OC: "open-closed", CO: "closed-open" };
+    const TAGS = { open: "qpbrac", closed: "qsbrac", "open-closed": "qpsbrac", "closed-open": "qspbrac" };
+    // The shapes this page offers are the interval buttons it drew, braces
+    // (`B..`) or circles (`C..`) alike: which one is a drawing choice, not a
+    // different interval.
+    const offeredShapes = Object.entries(SHAPES).filter(([ends]) =>
+      ["B", "C"].some((style) => {
+        const button = document.getElementById(style + ends);
+        return Boolean(button) && (scope.contains(button) || surface.parentElement?.contains(button));
+      })).map(([, name]) => name);
+    const ticks = [...scope.querySelectorAll(labelled)]
+      .map((span) => String(span.getAttribute("label") ?? "").trim());
+    const values = ticks.map(Number);
+    // The mode is a page global, and may be a lexical one rather than a
+    // property of `window`; both are read, never assigned.
+    const activeMode = () => window.objActiveMode
+      ?? (typeof objActiveMode !== "undefined" ? objActiveMode : undefined);
+    const mode = activeMode();
+    const line = mode?.objNumberLine;
+    const accessorOf = (one) => {
+      for (let proto = one, depth = 0; proto && depth < 4; proto = Object.getPrototypeOf(proto), depth += 1) {
+        const described = Object.getOwnPropertyDescriptor(proto, "data");
+        if (described) return described;
+      }
+      return null;
+    };
+    const isLine = (one) => one !== null && typeof one === "object"
+      && typeof one.loadNumberLine === "function"
+      && typeof accessorOf(one)?.get === "function"
+      && typeof accessorOf(one)?.set === "function";
+    const templated = ["getUserAnswer", "setUserAnswer", "isEmpty"]
+      .every((name) => typeof mode?.[name] === "function");
+    // The line this mode owns has to be the line on screen: the template
+    // renames its container to the mode's own template id.
+    const container = document.getElementById(`${String(mode?.strUITemplateContainer ?? "")}NumberLineContainer`);
+    note({
+      shapes: offeredShapes,
+      ticks: ticks.length,
+      activeMode: typeof mode,
+      numberLine: isLine(line),
+      templated,
+      owned: Boolean(container?.contains(surface)),
+    });
+    if (!isLine(line) || !templated) return refuse("graph-numberline-model-missing");
+    if (!container || !container.contains(surface)) return refuse("graph-numberline-model-elsewhere");
+    if (ticks.length < 2 || !values.every(Number.isFinite)) return refuse("graph-numberline-ticks-unreadable");
+    const sorted = [...values].sort((a, b) => a - b);
+    const gaps = sorted.slice(1).map((v, i) => v - sorted[i]);
+    const step = Math.min(...gaps);
+    const near = (a, b) => Math.abs(a - b) < 1e-9;
+    if (!(step > 0) || !sorted.every((v) => near((v - sorted[0]) / step, Math.round((v - sorted[0]) / step)))) {
+      return refuse("graph-numberline-grid-unsupported");
+    }
+    if (offeredShapes.length === 0) return refuse("graph-numberline-intervals-missing");
+    if (line.disableNL === true) return refuse("graph-numberline-disabled");
+    const nodes = ["questionDescription", "questionString", "partInformation"]
+      .map((id) => document.getElementById(id));
+    note({ questionNodes: nodes.filter(Boolean).length });
+    if (nodes.some((n) => !n)) return refuse("graph-question-missing");
+    const asked = () => nodes.map((n) => new XMLSerializer().serializeToString(n)).join("");
+    const answer = () => String(line.data ?? "");
+    const shot = () => ({ question: asked(), ticks: [...ticks], shapes: [...offeredShapes], answer: answer() });
+    const first = shot();
+    const context = { family: "numberline", bounds: [sorted[0], sorted[sorted.length - 1]],
+      snap: [step], controls: "interval-buttons", intervals: offeredShapes };
+    if (!offered) {
+      return { ok: true, kind: "graph", code: "graph-described", enabled: true, context,
+        snapshot: first, probe: { engine: "numberline", ticks: ticks.length,
+          shapes: offeredShapes, answered: first.answer.length > 0 } };
+    }
+    if (JSON.stringify(first) !== JSON.stringify(offered.snapshot)) return refuse("graph-target-stale");
+    // Somebody's own work on the line is not this writer's to replace.
+    if (first.answer !== "") return refuse("graph-numberline-not-empty");
+
+    const plan = offered.plan;
+    const has = (o, k) => o && typeof o === "object"
+      && Object.keys(o).sort().join() === k.split(" ").sort().join();
+    if (!has(plan, "kind intervals") || plan.kind !== "numberline"
+      || !Array.isArray(plan.intervals) || plan.intervals.length !== 1) return refuse("graph-plan-invalid");
+    const wanted = plan.intervals.map((interval) => {
+      if (!has(interval, "left right")) throw Error("graph-plan-invalid");
+      return ["left", "right"].map((side) => {
+        const end = interval[side];
+        if (!has(end, "value closed") || typeof end.closed !== "boolean"
+          || typeof end.value !== "string") throw Error("graph-plan-invalid");
+        const infinite = end.value === (side === "left" ? "-inf" : "inf");
+        if (infinite) {
+          if (end.closed) throw Error("graph-plan-invalid");
+          return { infinite: true, closed: false };
+        }
+        // A finite end has to be one of the ticks the page labelled, spelled
+        // as the page spells it -- which is also what it is written back as.
+        const at = ticks.indexOf(end.value);
+        if (at < 0) throw Error("graph-plan-off-grid");
+        return { infinite: false, closed: end.closed, label: ticks[at], value: values[at] };
+      });
+    });
+    const [[left, right]] = wanted;
+    if (!left.infinite && !right.infinite && !(left.value < right.value)) return refuse("graph-plan-invalid");
+    const shape = { "false,false": "open", "true,true": "closed",
+      "false,true": "open-closed", "true,false": "closed-open" }[`${left.closed},${right.closed}`];
+    if (!offeredShapes.includes(shape)) return refuse("graph-numberline-shape-unoffered");
+    const spell = (end, sign) => (end.infinite ? `${sign}<qspchar>symInfinite</qspchar>` : end.label);
+    const written = `<qmath><${TAGS[shape]}>${spell(left, "-")},${spell(right, "")}</${TAGS[shape]}></qmath>`;
+
+    // What the page says is on the line, as intervals. Tolerant of how Hawkes
+    // wraps and spells a value, strict about which interval it is.
+    const readBack = (text) => {
+      const bare = text.replace(/<\/?qmath>/gi, "");
+      const pieces = bare.split(/<qspchar>symUnion<\/qspchar>/i).filter((piece) => piece.trim());
+      return pieces.map((piece) => {
+        const match = piece.trim().match(/^<(qpbrac|qsbrac|qpsbrac|qspbrac)>([\s\S]*)<\/\1>$/i);
+        if (!match) return null;
+        const [lo, hi] = match[2].split(",");
+        const endOf = (raw, sign) => {
+          const plain = String(raw ?? "").trim();
+          if (plain.toLowerCase() === `${sign}<qspchar>syminfinite</qspchar>`) return { infinite: true };
+          const fraction = plain.match(/^(-?)<qfrac><qnum>(-?[0-9.]+)<\/qnum><qden>([0-9.]+)<\/qden><\/qfrac>$/i);
+          const number = fraction
+            ? (fraction[1] ? -1 : 1) * Number(fraction[2]) / Number(fraction[3])
+            : Number(plain.replace(/<[^>]*>/g, ""));
+          return Number.isFinite(number) && plain !== "" ? { infinite: false, value: number } : null;
+        };
+        const shapeName = Object.entries(TAGS).find(([, tag]) => tag === match[1].toLowerCase())?.[0];
+        return { shape: shapeName, left: endOf(lo, "-"), right: endOf(hi, "") };
+      });
+    };
+    const agrees = (text) => {
+      const got = readBack(text);
+      const same = (end, want) => end !== null && end.infinite === want.infinite
+        && (want.infinite || near(end.value, want.value));
+      return got.length === 1 && got[0] !== null && got[0].shape === shape
+        && same(got[0].left, left) && same(got[0].right, right);
+    };
+    const dialogUp = () => [...document.querySelectorAll('[id*="customMessageBox"]')]
+      .some((n) => n.getBoundingClientRect().height > 0);
+    const pinned = () => surface.isConnected && activeMode() === mode && mode.objNumberLine === line
+      && container.isConnected && container.contains(surface)
+      && asked() === first.question && line.disableNL !== true && !dialogUp();
+    if (!pinned()) return refuse("graph-target-stale");
+
+    mode.setUserAnswer(written);
+    const settled = answer();
+    if (!agrees(settled) || mode.isEmpty() !== false) {
+      return { ...refuse("graph-numberline-not-settled"), leftBehind: settled !== "" };
+    }
+    // Held still while the page finishes: redrawn by its own handlers, and
+    // still reporting the same interval at the end of it.
+    return new Promise((resolve) => {
+      let polls = 0;
+      const poll = () => {
+        polls += 1;
+        let now = "";
+        let holding = false;
+        try {
+          now = answer();
+          holding = pinned() && now === settled && agrees(now) && mode.isEmpty() === false;
+        } catch {
+          holding = false;
+        }
+        if (!holding) {
+          resolve({ ...refuse(dialogUp() ? "editor-dialog-open" : "graph-numberline-not-settled"),
+            leftBehind: now !== "" });
+          return;
+        }
+        if (polls >= 8) {
+          resolve({ ok: true, code: "numberline-verified", events: 1, shape });
+          return;
+        }
+        setTimeout(poll, 100);
+      };
+      setTimeout(poll, 100);
+    });
+  }
+
   try {
     if (window.location.origin !== "https://learn.hawkeslearning.com") return refuse("wrong-site");
+    // One surface per line, not per container: Hawkes' template and its engine
+    // both mark a container `role="application"`, one inside the other.
+    const lineSurfaces = [...new Set([...document.querySelectorAll("svg#svg_numberline")]
+      .map((svg) => svg.closest?.('[role="application"]'))
+      .filter((node) => node && node.getBoundingClientRect().width > 0))];
+    if (document.querySelectorAll('#QGraph[role="application"]').length === 0
+      && lineSurfaces.length > 0) {
+      return numberLine(lineSurfaces);
+    }
     const roots = [...document.querySelectorAll('#QGraph[role="application"]')];
     if (roots.length !== 1 || roots[0].getBoundingClientRect().width <= 0) return refuse("graph-missing");
     const root = roots[0];

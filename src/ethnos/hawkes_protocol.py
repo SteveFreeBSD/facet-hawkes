@@ -12,7 +12,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from .hawkes_graph import GraphPlan, PointPlotPlan, GraphPoint
+from .hawkes_graph import GraphPlan, GraphPoint, NumberLinePlan, PointPlotPlan
 
 PROTOCOL_VERSION = 1
 
@@ -24,19 +24,49 @@ MAX_MESSAGE_BYTES = 1024 * 1024
 
 class GraphContext(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)
-    family: Literal["parabola", "points"]
+    family: Literal["parabola", "points", "numberline"]
     #: A parabola states which way it opens. A set of points has no orientation.
     orientation: Literal["vertical"] | None = None
-    bounds: list[float] = Field(min_length=4, max_length=4)
-    snap: list[float] = Field(min_length=2, max_length=2)
-    controls: Literal["vertex-and-symmetric-points", "draggable-points"]
+    #: `[xmin, xmax, ymin, ymax]` on a plane; `[min, max]` on a number line.
+    bounds: list[float] = Field(min_length=2, max_length=4)
+    #: One step per axis: two on a plane, one on a number line.
+    snap: list[float] = Field(min_length=1, max_length=2)
+    controls: Literal[
+        "vertex-and-symmetric-points", "draggable-points", "interval-buttons"
+    ]
     #: How many draggable controls a plotting graph offers, one per point.
     count: int | None = None
+    #: The interval shapes a number line publishes a button for.
+    intervals: list[Literal["open", "closed", "open-closed", "closed-open"]] | None = (
+        None
+    )
 
     @model_validator(mode="after")
     def valid_grid(self) -> GraphContext:
+        # A number line is one axis. It states its own controls and the shapes
+        # it offers, and borrows nothing from a plane's.
+        if self.family == "numberline":
+            if (
+                len(self.bounds) != 2
+                or len(self.snap) != 1
+                or self.bounds[0] >= self.bounds[1]
+                or self.snap[0] <= 0
+                or self.controls != "interval-buttons"
+                or self.orientation is not None
+                or self.count is not None
+                or not self.intervals
+                or len(set(self.intervals)) != len(self.intervals)
+            ):
+                raise ValueError(
+                    "a number line states ordered bounds, one positive step, "
+                    "and the interval shapes it offers"
+                )
+            return self
         if (
-            self.bounds[0] >= self.bounds[1]
+            len(self.bounds) != 4
+            or len(self.snap) != 2
+            or self.intervals is not None
+            or self.bounds[0] >= self.bounds[1]
             or self.bounds[2] >= self.bounds[3]
             or min(self.snap) <= 0
         ):
@@ -321,7 +351,7 @@ class AnswerRelation(BaseModel):
 class AnswerPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    graph_plan: GraphPlan | PointPlotPlan | None = None
+    graph_plan: GraphPlan | PointPlotPlan | NumberLinePlan | None = None
     graph_coefficients: list[str] = Field(default_factory=list, max_length=3)
     display_text: str = ""
     keyboard_entry: str = ""
