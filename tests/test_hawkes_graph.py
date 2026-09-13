@@ -135,6 +135,52 @@ def test_stale_graph_snapshot_refuses_before_actuation(page):  # noqa: F811
     )
 
 
+@pytest.mark.parametrize(
+    "plan",
+    [
+        PLAN,
+        {"kind": "points", "points": [{"x": "-7", "y": "5"}, {"x": "2", "y": "-9"}]},
+        {
+            "kind": "numberline",
+            "intervals": [
+                {
+                    "left": {"value": "-inf", "closed": False},
+                    "right": {"value": "-3.5", "closed": True},
+                }
+            ],
+        },
+    ],
+    ids=lambda plan: plan["kind"],
+)
+def test_a_pinned_graph_answer_reaches_the_diagnostic_ring_only_as_a_shape(
+    page,  # noqa: F811
+    plan,
+):
+    """A plan is the answer, so the ring may say one was pinned and no more.
+
+    `insertion-pinned` carried the plan whole: a parabola's vertex and control
+    points, and every point to plot, were stored verbatim in `storage.local` at
+    the default level, and a number line's ends kept whether each was included.
+    Asserted against what the shipped event page actually stores.
+    """
+    editor = {"ok": True, "kind": "graph", "context": CONTEXT, "snapshot": {}}
+    page.own_window_a()
+    page.run(
+        f"update({{editor: {json.dumps(editor)}, graphPlan: {json.dumps(plan)}, "
+        f'graphCoefficients: ["1","-6","8"], answer: "", displayText: "", '
+        f'entryText: "", answerParts: []}}); insert();'
+    )
+    page.pump()
+
+    ring = page.json("__H.localStored.diagnostics")
+    pinned = [entry for entry in ring if entry["event"] == "insertion-pinned"]
+    assert pinned, "the insertion was never pinned, so this asserts nothing"
+    assert pinned[0]["data"]["graphPlan"] == {"present": True}
+    stored = json.dumps(ring)
+    for coursework in ("vertex", "opening", "points", "intervals", "closed", "-3.5"):
+        assert f'"{coursework}"' not in stored, coursework
+
+
 def test_graph_shape_and_truthful_panel_provenance(page):  # noqa: F811
     page.run(
         "update("

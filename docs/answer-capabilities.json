@@ -330,6 +330,33 @@
         }
       }
     },
+    "number-line-halves": {
+      "note": "The lesson 1.7 Certify line, `3y - 2 > 5 + 5y` graphed, observed 2026-09-12: labelled at each integer from -10 to 10 with a subtick at every half, and a stated `maxplots` of one. Its question states that grid in `numline.baseline` -- twenty divisions, two subdivisions, subticks shown -- and QNumberLine plots on every tick it draws, so an end may sit on a half. Before the probe read that grid it described the line as stepping by one, and `y < -3.5` was refused on it.",
+      "description": {
+        "kind": "graph",
+        "enabled": true,
+        "allowedCharacters": "",
+        "templates": {},
+        "context": {
+          "family": "numberline",
+          "bounds": [
+            -10.0,
+            10.0
+          ],
+          "snap": [
+            0.5
+          ],
+          "controls": "interval-buttons",
+          "intervals": [
+            "open",
+            "closed",
+            "open-closed",
+            "closed-open"
+          ],
+          "count": 1
+        }
+      }
+    },
     "interval-union-box": {
       "note": "An interval box whose character set holds `∪`. Hawkes' own editor types `∪` as an ordinary special character (`symUnion`, Ctrl+Shift+U) between two bracket templates, and validates it against the box's published characters like any other -- so this is the box a union is typed into. Described from the lesson bundle's editor source; the lesson 1.7 box it is modelled on publishes `∞` and `∅` and not `∪`.",
       "description": {
@@ -1337,6 +1364,163 @@
         "harness": "no",
         "live": "no"
       }
+    },
+    {
+      "id": "scalar-interval-fraction",
+      "semantic": "interval with a rational end, typed",
+      "form": "scalar",
+      "notation": [
+        "fraction",
+        "group",
+        "comma",
+        "interval"
+      ],
+      "example": "(-∞,-7/2)",
+      "editor": "interval-box",
+      "topology": "the lesson 1.7 box: no Fraction template, and no `/` among its characters",
+      "mechanism": [
+        "planEntry",
+        "planRun",
+        "planCommaList"
+      ],
+      "status": "unsupported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "n/a"
+      },
+      "probe": {
+        "instruction": "Consider the following linear inequality. Solve the inequality and express your answer in interval notation.",
+        "expressions": [
+          "3y-2>5+5y"
+        ]
+      },
+      "refusal": "answer-has-rejected-characters",
+      "why": "Facet writes a rational end as a fraction unless the question asks for decimals, and this box offers no Fraction template and publishes no slash, so the planner refuses the `/` before a key is pressed. It is not rewritten as `-3.5` to fit: which spelling this box takes for a rational end has not been observed, and rewriting a value to fit a box is how a wrong answer gets typed in confidently."
+    },
+    {
+      "id": "scalar-interval-fraction-number-line",
+      "semantic": "interval with a rational end, graphed",
+      "form": "scalar",
+      "notation": [
+        "fraction",
+        "group",
+        "comma",
+        "interval"
+      ],
+      "example": "(-∞,-7/2)",
+      "editor": "number-line-halves",
+      "topology": "a QNumberLine whose own grid has a tick at the end, here a subtick at every half",
+      "mechanism": [
+        "number_line_plan",
+        "graphOperation",
+        "numberLine"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "no"
+      },
+      "probe": {
+        "instruction": "Consider the following linear inequality. Graph the solution set.",
+        "expressions": [
+          "3y-2>5+5y"
+        ]
+      }
+    },
+    {
+      "id": "scalar-interval-open",
+      "semantic": "interval open at two finite ends",
+      "form": "scalar",
+      "notation": [
+        "group",
+        "comma"
+      ],
+      "example": "(1,4)",
+      "editor": "interval-box",
+      "topology": "the same box, `PBrace` around both ends; with no `∞` and no square bracket the value reads as a pair does",
+      "mechanism": [
+        "planEntry",
+        "planRun",
+        "planCommaList",
+        "enterPlan"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "no"
+      },
+      "probe": {
+        "instruction": "Solve the absolute value inequality. Write your answer in interval notation.",
+        "expressions": [
+          "|2x-5|<3"
+        ]
+      }
+    },
+    {
+      "id": "scalar-interval-open-decimal",
+      "semantic": "interval open at two decimal ends",
+      "form": "scalar",
+      "notation": [
+        "group",
+        "comma",
+        "decimal"
+      ],
+      "example": "(-0.5,1.5)",
+      "editor": "interval-box",
+      "topology": "the same box; the decimal point is a character it publishes",
+      "mechanism": [
+        "planEntry",
+        "planRun",
+        "planCommaList",
+        "enterPlan"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "no"
+      },
+      "probe": {
+        "instruction": "Solve the absolute value inequality. Write your answer in interval notation. Use decimal form for numerical values.",
+        "expressions": [
+          "|2x-1|<2"
+        ]
+      }
+    },
+    {
+      "id": "scalar-interval-open-fraction",
+      "semantic": "interval open at two rational ends, typed",
+      "form": "scalar",
+      "notation": [
+        "fraction",
+        "group",
+        "comma"
+      ],
+      "example": "(1/2,7/2)",
+      "editor": "interval-box",
+      "topology": "the lesson 1.7 box: no Fraction template, and no `/` among its characters",
+      "mechanism": [
+        "planEntry",
+        "planRun",
+        "planCommaList"
+      ],
+      "status": "unsupported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "n/a"
+      },
+      "probe": {
+        "instruction": "Solve the absolute value inequality. Write your answer in interval notation.",
+        "expressions": [
+          "|\\frac{1}{2}x-1|<\\frac{3}{4}"
+        ]
+      },
+      "refusal": "answer-has-rejected-characters",
+      "why": "`scalar-interval-fraction`'s refusal, for its reason: this box takes neither a `/` nor a Fraction template, and a rational end is not rewritten as a decimal to fit. Declared on its own because, with no infinite end, it reads as a pair of rationals rather than as interval notation."
     },
     {
       "id": "relation-group",

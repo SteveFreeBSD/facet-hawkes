@@ -463,7 +463,8 @@ FAILURE_RULES = (
     (
         "evidence",
         lambda run: (
-            run["error_key"] in {"errorNoCapture", "errorQuestionRegion"}
+            run["error_key"]
+            in {"errorNoCapture", "errorQuestionRegion", "errorCaptureMoved"}
             or (run["error_key"] == "errorSolveRefused" and run["evidence_refused"])
         ),
         "the question could not be read exactly and the picture path did not rescue it",

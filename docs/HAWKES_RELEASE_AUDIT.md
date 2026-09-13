@@ -17,7 +17,7 @@ locally, external publication actions not yet authorized.**
 |---|---|
 | Product name | Facet Hawkes Assistant |
 | Packaged-source baseline | recorded as `fc3f5e4a…`, which resolves to no object in this repository. Treat the audit as anchored to its date, not to that name |
-| Required Facet runtime | `af305628c77785229d7bc36dbfabf9205abc3bd8` |
+| Required Facet runtime | `c1ac419c84b640f43e094645d080504d87ed467c` |
 | Candidate artifact | `dist/facet-hawkes-0.46.0-unsigned.xpi` |
 | Candidate SHA-256 | `6bf24fb9744da4b375171530cee9d0c2069a0e7c4be3536161ad6bd983215d64`, as audited on 6 September. The source line has advanced since; rebuild to get today's |
 | Packaged members | 33, as audited. A current build packages more |
@@ -31,7 +31,7 @@ locally, external publication actions not yet authorized.**
 | Archive | integrity passed; exact packaged archive linted |
 | Browser gate | unsigned XPI installed active in a clean throwaway Firefox 155.0.1 profile; Settings and popup loaded without fatal error |
 | Canonical public repository | `https://github.com/SteveFreeBSD/facet-hawkes` — to be created after explicit approval |
-| Companion topology | sibling `facet-hawkes` + `facet-runtime`; CI pins runtime `af30562` |
+| Companion topology | sibling `facet-hawkes` + `facet-runtime`; CI pins runtime `c1ac419` |
 | Remaining prerequisites | all three publication prerequisites were first met on 2026-09-08 and have held since: the pinned runtime is published on its branch, the canonical Hawkes repository is populated, and a fresh public sibling clone passed. What remains is external and is not a repository state: Mozilla signing, then signed-artifact physical acceptance |
 
 > **Read this section as a dated audit, not as today's build.** Every number in
@@ -76,7 +76,7 @@ only mode A can support.
 The selected strategy retains the existing sibling path dependency. The public
 README, migration checklist, manifest homepage, CI badge, and CI checkout now
 consistently name `SteveFreeBSD/facet-hawkes`; CI fixes the sibling runtime at
-`af305628c77785229d7bc36dbfabf9205abc3bd8`. The old Ethnos repository is not a
+`c1ac419c84b640f43e094645d080504d87ed467c`. The old Ethnos repository is not a
 Facet Hawkes publication target. The private `ethnos-caspian` remote remains
 useful as legacy history and need not be removed.
 

@@ -132,15 +132,17 @@ def test_linear_choice_mapping_does_not_guess_at_multiple_expressions():
 
 
 @pytest.mark.parametrize(
-    ("expression", "display", "keyboard"),
+    ("expression", "display", "keyboard", "parts"),
     [
-        ("|-14y+5|+8=7", "No Solution", "No Solution"),
-        ("|2y-6|=0", "One Solution (y = 3)", "3"),
-        ("|2y-6|=4", "Two Solutions (y = 1 or y = 5)", "Two Solutions"),
+        ("|-14y+5|+8=7", "No Solution", "No Solution", []),
+        ("|2y-6|=0", "One Solution (y = 3)", "3", []),
+        # Two roots are two values to enter, not the phrase "Two Solutions"
+        # (audit F08). A count is an answer only as a choice the page published.
+        ("|2y-6|=4", "Two Solutions (y = 1 or y = 5)", "", ["1", "5"]),
     ],
 )
 def test_absolute_value_results_map_to_the_hawkes_choice_model(
-    expression, display, keyboard
+    expression, display, keyboard, parts
 ):
     from ethnos.hawkes_host import _equation_answer
 
@@ -151,6 +153,7 @@ def test_absolute_value_results_map_to_the_hawkes_choice_model(
     assert answer is not None
     assert answer.display_text == display
     assert answer.keyboard_entry == keyboard
+    assert answer.parts == parts
 
 
 def test_two_quadratic_roots_are_kept_as_distinct_answer_parts():

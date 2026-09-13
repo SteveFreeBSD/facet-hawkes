@@ -129,6 +129,17 @@ def test_the_coursework_is_never_written_only_its_shape(context, key):
     assert "3y" not in json.dumps(redacted)
 
 
+@pytest.mark.parametrize(
+    "key", ["graphPlan", "graph_plan", "graphCoefficients", "graph_coefficients"]
+)
+def test_a_graph_answer_is_reduced_to_the_fact_that_there_was_one(context, key):
+    """A plan is an answer written as geometry, and is kept no more than one."""
+    plan = '{kind: "parabola", vertex: {x: "37", y: "-41"}, coefficients: ["-2"]}'
+    redacted = evaluate(context, f"redact({{{key}: {plan}}})")
+
+    assert redacted == {key: {"present": True}}
+
+
 def test_a_screenshot_is_reduced_to_the_fact_that_there_was_one(context):
     redacted = evaluate(context, 'redact({screenshot_png_base64: "iVBORw0KGgo"})')
 

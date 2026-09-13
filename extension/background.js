@@ -1829,25 +1829,75 @@ function measureQuestionBounds() {
   };
 }
 
-/** Capture the visible question only when exact page markup was insufficient. */
-async function captureQuestion(tabId, frameId) {
+/**
+ * Capture the visible question only when exact page markup was insufficient.
+ *
+ * `signal` is the solve's. Once it is aborted the state belongs to whatever
+ * aborted it -- Cancel, or another window claiming it -- so this returns
+ * nothing and fails nothing: a crop that failed for a cancelled solve used to
+ * put "the question region could not be isolated" on the other window's panel.
+ *
+ * `question` is the reading the picture is sent beside, and a picture is of
+ * that question only if it is taken of that tab while it still shows it. So the
+ * capture names the tab's own window, the tab has to be the one that window is
+ * showing on both sides of it, and a question that was read exactly has to read
+ * the same afterwards. `captureVisibleTab` with no window takes whichever one is
+ * current, and focus moving while the markup was being answered sent another
+ * window's picture beside this question's words.
+ */
+async function captureQuestion(tabId, frameId, signal, question = null) {
   update({ stage: "capturing" });
+  // The window showing this tab, or null when it is not the tab on screen.
+  const showing = async () => {
+    const tab = await browser.tabs.get(tabId);
+    return tab?.active === true && Number.isInteger(tab.windowId) ? tab.windowId : null;
+  };
+  const read = questionSignature(question);
   try {
+    const windowId = await showing();
+    if (signal?.aborted) {
+      return null;
+    }
+    if (windowId === null) {
+      log.warn("capture-target-moved", { tabShown: false, questionSame: true });
+      fail("errorCaptureMoved");
+      return null;
+    }
     let bounds = null;
     if (settings.cropCapture) {
       const [measured] = await browser.scripting.executeScript({
         target: { tabId, frameIds: [frameId] },
         func: measureQuestionBounds,
       });
+      if (signal?.aborted) {
+        return null;
+      }
       bounds = measured?.result;
       if (!bounds) {
         fail("errorQuestionRegion");
         return null;
       }
     }
-    let screenshot = await browser.tabs.captureVisibleTab({ format: "png" });
+    let screenshot = await browser.tabs.captureVisibleTab(windowId, { format: "png" });
+    const [still, now] = await Promise.all([
+      showing(),
+      read === null ? null : readQuestion(tabId, frameId, 1),
+    ]);
+    if (signal?.aborted) {
+      return null;
+    }
+    const questionSame = read === null || sameQuestionSignature(questionSignature(now), read);
+    if (still !== windowId || !questionSame) {
+      // Which of the two moved; never the picture, and never the question.
+      log.warn("capture-target-moved", { tabShown: still === windowId, questionSame });
+      fail("errorCaptureMoved");
+      return null;
+    }
     if (settings.cropCapture) {
       screenshot = await cropToQuestion(screenshot, bounds);
+      if (signal?.aborted) {
+        return null;
+      }
       if (!screenshot) {
         fail("errorQuestionRegion");
         return null;
@@ -1856,6 +1906,9 @@ async function captureQuestion(tabId, frameId) {
     return screenshot;
   } catch (error) {
     log.warn("capture-failed", { error: describeError(error) });
+    if (signal?.aborted) {
+      return null;
+    }
     // Reaching this line means the question DOM was already read through the
     // scoped Hawkes host grant. Firefox deliberately requires `activeTab` or
     // `<all_urls>` for a screenshot; the one-site grant is not enough. Calling
@@ -1913,9 +1966,23 @@ async function prepare(windowId = state.windowId) {
     detail: state.detail,
   };
   update({ ...blankState(), phase: "checking", windowId });
+  // Whether another window has taken the state while this waited on its page.
+  //
+  // Nothing cancels a prepare. A request from another window rebuilds the
+  // state (`claim`, or that window's own prepare), and this one then came back
+  // and wrote the tab, the question and any answer it had carried under the
+  // other window's id -- so `stateFor` showed that window's panel this
+  // window's answer with Insert offered, and the question watcher, reading the
+  // same stale tab, found nothing to correct. What a prepare reads after that
+  // describes a window the state no longer names, so it is dropped whole:
+  // never written, never failed with, never solved.
+  const handedOn = () => Number.isInteger(state.windowId) && state.windowId !== windowId;
   try {
     const tab = await activeHawkesTab(windowId);
     const results = await runOperation({ tabId: tab.id, allFrames: true }, INSPECT_SCRIPT);
+    if (handedOn()) {
+      return;
+    }
     const choice = selectAnswerFrame(results);
     const chosenReport = results.find((entry) => entry?.frameId === choice.frameId)?.result;
     const evidenceReport = chosenReport ?? results.find(
@@ -1950,6 +2017,9 @@ async function prepare(windowId = state.windowId) {
       return;
     }
     const editor = await describeEditor(tab.id, choice.frameId, 5, choice.graph === true);
+    if (handedOn()) {
+      return;
+    }
     if (choice.graph && (!editor?.ok || editor.kind !== "graph")) {
       // What the page's own graph model says it is drawing. Titles, counts and
       // flags only -- never a coordinate, and never the question's words -- so
@@ -2024,6 +2094,9 @@ async function prepare(windowId = state.windowId) {
       });
     }
     const question = await readQuestion(tab.id, choice.frameId);
+    if (handedOn()) {
+      return;
+    }
     const signature = questionSignature(question);
     // A question we could not read is never treated as the previous one.
     // Identity is the question's own content and nothing about the editor:
@@ -2156,11 +2229,16 @@ async function prepare(windowId = state.windowId) {
       return;
     }
     await settingsReady;
+    if (handedOn()) {
+      return;
+    }
     if (settings.autoSolve) {
       solve();
     }
   } catch (error) {
-    fail(errorKeyOf(error));
+    if (!handedOn()) {
+      fail(errorKeyOf(error));
+    }
   }
 }
 
@@ -2254,6 +2332,13 @@ async function solve(windowId = state.windowId) {
       promptText: "",
       expressions: [],
     };
+    // Before anything below writes. A solve cancelled while the page was being
+    // read -- by Cancel, or by another window claiming the state -- has handed
+    // that state on, and this read's signature, table mapping and evidence
+    // used to land in it on the way to noticing.
+    if (controller.signal.aborted) {
+      return;
+    }
     // Kept at `info`, not `debug`. What the add-on managed to read of the
     // question is the first fork in every failure -- an exact reading that
     // then failed and a reading that was refused are different faults -- and
@@ -2288,9 +2373,6 @@ async function solve(windowId = state.windowId) {
     });
     noteTableTargets(tableTargets, question, { adopted: state.fieldIds ?? [] });
     runFacts.evidence.signature = state.signature ?? "";
-    if (controller.signal.aborted) {
-      return;
-    }
 
     let screenshot = "";
     if (!readableQuestion(question)) {
@@ -2318,7 +2400,9 @@ async function solve(windowId = state.windowId) {
         answerTableDetail: runFacts.evidence.answerTableDetail,
         promptChars: runFacts.evidence.promptChars,
       });
-      screenshot = await captureQuestion(state.tabId, state.frameId);
+      screenshot = await captureQuestion(
+        state.tabId, state.frameId, controller.signal, question
+      );
       if (screenshot === null) {
         return;
       }
@@ -2412,7 +2496,9 @@ async function solve(windowId = state.windowId) {
         why: String(reply.message || "").slice(0, 120),
       });
       if (screenshot.length === 0) {
-        screenshot = await captureQuestion(state.tabId, state.frameId);
+        screenshot = await captureQuestion(
+          state.tabId, state.frameId, controller.signal, question
+        );
         if (screenshot === null || controller.signal.aborted) {
           return;
         }
@@ -3704,11 +3790,18 @@ async function finishInsertion(detail, target) {
   // a different window, and publishing "inserted" into that would put this
   // window's result on another window's panel. Say so in the log and leave
   // the live state alone.
-  if (!ownsTarget(target)) {
+  const stillOwned = (when) => {
+    if (ownsTarget(target)) {
+      return true;
+    }
     log.warn("insertion-finished-after-ownership-change", {
+      when,
       wasWindow: target.windowId,
       nowWindow: state.windowId,
     });
+    return false;
+  };
+  if (!stillOwned("entry")) {
     return;
   }
   // Structured entry changes Hawkes' rendered answer mathematics. Depending
@@ -3723,6 +3816,13 @@ async function finishInsertion(detail, target) {
     handledSignature = questionSignature(afterInsertion) ?? handledSignature;
   } catch (error) {
     log.debug("post-insert-question-read-failed", { error: describeError(error) });
+  }
+  // Checked again, because the read above is an await. A prepare that took the
+  // state while it was out -- another window's, or this one's for the next
+  // question -- was then marked "inserted" with this answer as its placed text
+  // and this question's signature as its own.
+  if (!stillOwned("question-read")) {
+    return;
   }
   update({
     phase: "inserted",

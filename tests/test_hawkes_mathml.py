@@ -183,6 +183,76 @@ def test_what_cannot_be_read_exactly_is_refused(markup):
         mathml_to_latex(markup)
 
 
+def fenced(inner: str, **attributes: str) -> str:
+    stated = "".join(f' {name}="{value}"' for name, value in attributes.items())
+    return f"<math><mfenced{stated}>{inner}</mfenced><mo>+</mo><mn>1</mn></math>"
+
+
+@pytest.mark.parametrize(
+    ("markup", "latex"),
+    [
+        pytest.param(
+            fenced("<mrow><mo>-</mo><mn>2</mn></mrow>", open="|", close="|"),
+            "|-2|+1",
+            id="bars-are-an-absolute-value",
+        ),
+        pytest.param(fenced("<mn>1</mn><mn>2</mn>"), "(1,2)+1", id="default-comma"),
+        pytest.param(
+            fenced("<mn>1</mn><mn>2</mn><mn>3</mn>", separators=" , "),
+            "(1,2,3)+1",
+            id="a-separator-repeats",
+        ),
+        pytest.param(
+            fenced("<mi>x</mi><mo>-</mo><mn>3</mn>", separators=""),
+            "(x-3)+1",
+            id="no-separators-is-one-run",
+        ),
+    ],
+)
+def test_an_mfenced_keeps_the_fences_and_separators_it_states(markup, latex):
+    assert mathml_to_latex(markup) == latex
+
+
+@pytest.mark.parametrize(
+    "markup",
+    [
+        pytest.param(fenced("<mi>x</mi>", open="{", close="}"), id="braces"),
+        pytest.param(fenced("<mn>1</mn><mn>2</mn>", close="]"), id="half-open"),
+        pytest.param(fenced("<mn>1</mn><mn>2</mn>", separators=";"), id="semicolon"),
+        pytest.param(
+            fenced("<mn>1</mn><mn>2</mn>", open="|", close="|"), id="bars-around-two"
+        ),
+        pytest.param(fenced("", open="|", close="|"), id="empty"),
+    ],
+)
+def test_an_mfenced_the_solver_cannot_read_the_same_way_is_refused(markup):
+    with pytest.raises(UnsupportedMathML):
+        mathml_to_latex(markup)
+
+
+def test_bars_written_as_an_mfenced_are_answered_as_an_absolute_value():
+    """Audit F04: `|-2|+1` crossed as `(-2)+1`, and `-1` was ready to insert."""
+    from ethnos.hawkes_host import handle
+
+    response = handle(
+        {
+            "operation": "solve_hawkes_problem",
+            "request_id": "mfenced-bars",
+            "origin": "https://learn.hawkeslearning.com",
+            "solve_engine": "ethnos",
+            "problem": {
+                "prompt_text": "Simplify the following expression.",
+                "mathml": [
+                    fenced("<mrow><mo>-</mo><mn>2</mn></mrow>", open="|", close="|")
+                ],
+            },
+        }
+    )
+
+    assert response.status == "ready"
+    assert response.answer.display_text == "3"
+
+
 @pytest.mark.parametrize(
     ("markup", "problem", "expected"),
     [

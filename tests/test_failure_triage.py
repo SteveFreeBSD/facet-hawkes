@@ -441,6 +441,25 @@ def test_a_ring_entry_is_redacted_a_second_time_on_the_way_into_a_bundle(
     assert poisoned["data"]["editor"] == "answer-needs-template"
 
 
+def test_a_graph_plan_stored_before_it_was_redacted_is_scrubbed_on_export():
+    """A ring written by an earlier build still holds plans whole.
+
+    `insertion-pinned` stored a graph's plan as it was, coordinates and all,
+    until `graphPlan` was named coursework. Those entries stay in a profile
+    until the ring evicts them, so the bundle's second lock has to know too.
+    """
+    entry = {
+        "t": 1,
+        "level": "info",
+        "event": "insertion-pinned",
+        "data": {"tabId": 11, "graphPlan": {"vertex": {"x": "37", "y": "-41"}}},
+    }
+
+    scrubbed = TRIAGE.sanitize_entry(entry, TRIAGE.contract())
+
+    assert scrubbed["data"] == {"tabId": 11, "graphPlan": {"present": True}}
+
+
 def test_the_allowlist_is_the_add_ons_own_and_is_never_guessed_at(
     monkeypatch, tmp_path
 ):

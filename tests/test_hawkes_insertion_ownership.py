@@ -153,7 +153,10 @@ globalThis.browser = {
     onDetached: { addListener: () => {} },
     onRemoved: { addListener: () => {} },
     onUpdated: { addListener: () => {} },
-    get: (id) => Promise.resolve({ id, windowId: __H.tabWindow[id] }),
+    // `active` as Firefox reports it: whether this is the tab its window shows.
+    get: (id) => Promise.resolve({
+      id, windowId: __H.tabWindow[id], active: __H.windowTab[__H.tabWindow[id]] === id,
+    }),
     query: ({ windowId }) => Promise.resolve([
       { id: __H.windowTab[windowId], windowId,
         url: "https://learn.hawkeslearning.com/Portal/Lesson/lesson_practice" },
@@ -1004,6 +1007,214 @@ def test_the_failure_is_reported_only_into_the_window_it_belongs_to(page):
 
     assert page.writes == []
     assert page.json("state.errorKey") == "errorInsertionAbandoned"
+
+
+# --- work that is not an insertion, returning after window B took over ---------
+
+#: The native host, held the way the page is: a reply goes back only when the
+#: scenario sends one. QuickJS has no `AbortController`, and `solve()` needs one.
+NATIVE_HOST = """
+globalThis.AbortController = class {
+  constructor() {
+    const listeners = [];
+    this.signal = {
+      aborted: false,
+      addEventListener: (_, fn) => listeners.push(fn),
+      removeEventListener: () => {},
+    };
+    this.abort = () => {
+      if (!this.signal.aborted) {
+        this.signal.aborted = true;
+        listeners.splice(0).forEach((fn) => fn());
+      }
+    };
+  }
+};
+__H.native = [];
+browser.runtime.connectNative = () => {
+  const port = { listeners: [] };
+  port.onMessage = { addListener: (fn) => port.listeners.push(fn) };
+  port.onDisconnect = { addListener: () => {} };
+  port.postMessage = (request) => { port.request = request; __H.native.push(port); };
+  port.disconnect = () => {};
+  return port;
+};
+__H.reply = (body) => {
+  const port = __H.native.shift();
+  port.listeners.forEach((fn) => fn({
+    protocol_version: PROTOCOL_VERSION, request_id: port.request.request_id, ...body,
+  }));
+};
+"""
+
+
+def window_b_takes_over(page):
+    """B's sidebar asks, and B's prepare settles while A is still parked."""
+    page.run("claim(2);")
+    page.pump()
+    for result in (INSPECT_OK, EDITOR_OK, QUESTION_B):
+        page.answer_tab(22, result)
+    assert page.json("[state.windowId, state.tabId]") == [2, 22], "B owns the state"
+    return page.json("state.signature")
+
+
+def solving_window_a(page):
+    """A's solve, past its health check and waiting on A's page."""
+    page.run(NATIVE_HOST)
+    page.run("settingsReady.then(() => { settings.autoSolve = false; });")
+    page.pump()
+    page.own_window_a()
+    page.run("update({ phase: 'ready', answer: '', displayText: '', entryText: '' });")
+    page.run("solve(1);")
+    page.pump()
+    page.run("__H.reply({ status: 'ok' });")
+    page.pump()
+
+
+def test_a_prepare_returning_after_another_window_took_over_writes_nothing(page):
+    """A re-prepare -> B claims and settles -> A's page reads come back.
+
+    Nothing cancels a prepare, so A's wrote tab 11, A's question and A's
+    carried answer under window 2's id: B's panel was offered A's answer with
+    Insert enabled, and the watcher, reading tab 11 against tab 11's own
+    signature, never saw anything to correct.
+    """
+    page.run("settingsReady.then(() => { settings.autoSolve = false; });")
+    page.pump()
+    page.own_window_a()
+    page.run("prepare(1);")
+    page.pump()
+    b_signature = window_b_takes_over(page)
+
+    for result in (INSPECT_OK, EDITOR_OK, QUESTION_A):
+        page.answer_tab(11, result)
+
+    shown = page.json("stateFor(2)")
+    assert [shown["windowId"], shown["tabId"]] == [2, 22]
+    assert shown["signature"] == b_signature
+    assert shown["answer"] == "", "window B's panel was offered window A's answer"
+    assert shown["phase"] == "ready"
+
+
+def test_a_cancelled_solve_leaves_its_reading_out_of_the_window_that_took_over(page):
+    """A solve's read returned, wrote its signature, and only then checked."""
+    solving_window_a(page)
+    b_signature = window_b_takes_over(page)
+
+    page.answer_tab(11, QUESTION_A)
+
+    assert page.json("[state.windowId, state.tabId]") == [2, 22]
+    assert page.json("state.signature") == b_signature
+
+
+def test_a_cancelled_solve_puts_no_capture_failure_on_another_windows_panel(page):
+    """A crop that failed for A's cancelled solve was B's panel's error."""
+    solving_window_a(page)
+    page.run("settings.cropCapture = true;")
+    # An unreadable question falls back to a capture, after the read's retries.
+    for _ in range(12):
+        if "measureQuestionBounds" in page.json("__H.pending.map(p => p.record.func)"):
+            break
+        page.answer_tab(11, {"promptText": "", "expressions": []})
+    else:
+        pytest.fail("A's solve never reached its capture")
+    window_b_takes_over(page)
+
+    page.answer_tab(11, None)
+
+    assert page.json("[state.windowId, state.tabId]") == [2, 22]
+    assert page.json("[state.phase, state.errorKey]") == ["ready", ""]
+
+
+def test_an_insertion_finishing_after_another_window_took_over_records_nothing(page):
+    """Audit F06: A's post-insertion read returned after B had prepared.
+
+    B went from `ready` to `inserted`, with A's answer as its placed text and
+    A's question as its signature.
+    """
+    page.own_window_a()
+    page.run("settingsReady.then(() => { settings.autoSolve = false; });")
+    page.run("insert();")
+    page.pump()
+    for result in (EDITOR_OK, QUESTION_A, ENTERED_OK):
+        page.answer(result)
+    b_signature = window_b_takes_over(page)
+    assert page.json("state.phase") == "ready"
+
+    page.answer_tab(11, QUESTION_A)  # finishInsertion's read comes back
+
+    assert page.json("[state.windowId, state.tabId, state.phase]") == [2, 22, "ready"]
+    assert page.json("state.placedText") == ""
+    assert page.json("state.signature") == b_signature
+    assert page.said("insertion-finished-after-ownership-change")
+
+
+# --- a picture is of the question it is sent beside ----------------------------
+
+#: A markup reading the host declines, so the solve falls back to a picture.
+#: `during` runs while that first request is out -- which is when focus, the tab
+#: in front, or the question itself can move. Every capture is recorded, and the
+#: synthetic image names the window it was taken of.
+MARKUP_DECLINED = """
+settings.cropCapture = false;
+__H.currentWindow = 1;
+__H.requests = [];
+askEthnos = async (operation, extra) => {
+  __H.requests.push({ operation, extra });
+  if (operation === "health") return { status: "ok" };
+  if (extra.solve_engine === "facet") {
+    DURING;
+    return { status: "unsupported", message: "synthetic markup declined" };
+  }
+  return { status: "unsupported", message: "synthetic image declined" };
+};
+browser.tabs.captureVisibleTab = (...args) => {
+  __H.captureArgs = args;
+  // Firefox's own overload: a window left out means the current one.
+  const windowId = Number.isInteger(args[0]) ? args[0] : __H.currentWindow;
+  return Promise.resolve("synthetic-image-from-window-" + windowId);
+};
+"""
+
+
+def solve_falling_back_to_a_picture(page, during, reread=QUESTION_A):
+    page.run(NATIVE_HOST)
+    page.pump()
+    page.own_window_a()
+    page.run(MARKUP_DECLINED.replace("DURING", during) + "solve(1);")
+    page.pump()
+    page.answer(QUESTION_A)  # the solve's own read
+    page.answer(reread)  # the read after the picture, when there is one
+    return [
+        request["extra"]["problem"].get("screenshot_png_base64")
+        for request in page.json("__H.requests")
+        if request["operation"] == "solve_hawkes_problem"
+    ]
+
+
+def test_a_capture_is_taken_of_the_questions_own_window(page):
+    """Audit F01: focus moved to window 2, and window 2's picture was sent."""
+    images = solve_falling_back_to_a_picture(page, "__H.currentWindow = 2")
+
+    assert page.json("__H.captureArgs[0]") == 1
+    assert images == ["", "synthetic-image-from-window-1"]
+
+
+def test_no_picture_is_sent_once_another_tab_is_in_front(page):
+    images = solve_falling_back_to_a_picture(
+        page, "__H.windowTab[1] = 12; __H.tabWindow[12] = 1"
+    )
+
+    assert images == [""], "a picture of whatever was in front was sent"
+    assert page.json("state.errorKey") == "errorCaptureMoved"
+
+
+def test_no_picture_is_sent_when_the_question_changed_under_it(page):
+    """Hawkes swaps a question in place, with no navigation to cancel anything."""
+    images = solve_falling_back_to_a_picture(page, "", reread=QUESTION_B)
+
+    assert images == [""], "the next question's picture went beside this one's words"
+    assert page.json("state.errorKey") == "errorCaptureMoved"
 
 
 def test_the_target_is_pinned_before_anything_can_yield(page):

@@ -53,6 +53,15 @@ const SENSITIVE = new Set([
   "stageDetail",
   "entered",
   "value",
+  // A graph's answer is a plan rather than a string: a parabola's vertex and
+  // control points, the points plotted, a number line's ends and whether each
+  // is included -- and, beside them, the coefficients a plan is proven
+  // against. Keyed like `answer`, so a plan pinned for insertion is kept as
+  // the fact that there was one, never as its coordinates.
+  "graphPlan",
+  "graph_plan",
+  "graphCoefficients",
+  "graph_coefficients",
 ]);
 
 /** Longest string kept in a payload; anything longer is truncated with a mark. */

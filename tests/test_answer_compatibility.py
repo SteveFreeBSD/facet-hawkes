@@ -282,6 +282,33 @@ def test_every_composition_the_runtime_exact_tests_emit_is_declared(
     )
 
 
+def test_the_runtime_tests_reach_every_declared_interval_through_the_router(
+    authority, runtime_emissions
+):
+    """The closure above sees only answers the router builds.
+
+    The inequality family's tests held their rational and decimal ends at
+    `solve_linear_inequality` -- one file said so, because a router answer with
+    a rational end was a composition nothing here declared -- so none reached
+    the recorder, the closure passed, and the router was meanwhile answering a
+    live lesson 1.7 question `(-∞,-7/2)`. Every interval composition declared
+    here has to be one those tests actually get from the router.
+    """
+    reached = {
+        composition(form, notation_of(text))
+        for emission in runtime_emissions
+        for form, text in entered(SimpleNamespace(**emission))
+    }
+    declared = {
+        entry.composition for entry in authority.entries if "interval" in entry.notation
+    }
+
+    assert sorted(declared - reached) == [], (
+        "declared interval compositions no facet-runtime test reaches through "
+        "solve_exact; a test holding an answer below the router is invisible here"
+    )
+
+
 def test_a_multi_value_answer_always_says_it_is_one(authority):
     """The invariant the regression defect broke: `parts` and `form` agree."""
     for entry in authority.entries:

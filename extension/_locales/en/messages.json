@@ -165,6 +165,10 @@
     "message": "The question region could not be isolated safely, so no screenshot was sent. For an unusual layout, you can explicitly turn off question-region limiting in Settings and retry.",
     "description": "Privacy error when a screenshot cannot be cropped without including unrelated page content."
   },
+  "errorCaptureMoved": {
+    "message": "The question stopped being the one on screen while its picture was being taken, so no screenshot was sent. Bring the question you want to the front and solve again.",
+    "description": "Privacy error when the question's tab was not the visible tab of its window, or the question changed, around a screenshot."
+  },
   "errorSolveRefused": {
     "message": "Facet would not answer this question. The reason is shown below.",
     "description": "Error when the host returns a non-ready status."
