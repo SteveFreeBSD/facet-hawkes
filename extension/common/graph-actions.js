@@ -93,11 +93,46 @@ export function graphOperation(offered = null) {
     if (ticks.length < 2 || !values.every(Number.isFinite)) return refuse("graph-numberline-ticks-unreadable");
     const sorted = [...values].sort((a, b) => a - b);
     const gaps = sorted.slice(1).map((v, i) => v - sorted[i]);
-    const step = Math.min(...gaps);
+    const labelGap = Math.min(...gaps);
     const near = (a, b) => Math.abs(a - b) < 1e-9;
-    if (!(step > 0) || !sorted.every((v) => near((v - sorted[0]) / step, Math.round((v - sorted[0]) / step)))) {
+    const onGrid = (v, origin, spacing) => near((v - origin) / spacing, Math.round((v - origin) / spacing));
+    if (!(labelGap > 0) || !sorted.every((v) => onGrid(v, sorted[0], labelGap))) {
       return refuse("graph-numberline-grid-unsupported");
     }
+    // Where an end may go is the line's own grid, not its labels. The question
+    // configures it -- `numline.baseline.line` states the range, how many
+    // divisions carry a label and how many subdivisions sit between them, and
+    // the baseline says whether subticks are drawn and whether plotting snaps
+    // to the labelled ticks only -- and QNumberLine plots and snaps on every
+    // tick it draws. Live, on 2026-09-12, a line labelled at each integer with
+    // a subtick at every half was described as stepping by one, and `y < -3.5`
+    // was refused as off the line it sat on.
+    const read = (value) => (typeof value === "function" ? value() : value);
+    const baseline = mode?.controlsJSON?.numline?.baseline;
+    const axis = baseline?.line;
+    const configured = {
+      min: Number.parseFloat(read(axis?.minval)),
+      max: Number.parseFloat(read(axis?.maxval)),
+      divisions: Number(read(axis?.divisions)),
+      // QNLGlobal's own defaults where a question states none.
+      subdivisions: axis && read(axis.subdivisions) !== undefined ? Number(read(axis.subdivisions)) : 2,
+      subticks: String(read(baseline?.showsubticks)) === "true",
+      ticksOnly: String(read(baseline?.snaptoticks)) === "true",
+    };
+    const gridStated = Number.isFinite(configured.min) && Number.isFinite(configured.max)
+      && configured.max > configured.min && Number.isInteger(configured.divisions)
+      && configured.divisions > 0 && Number.isInteger(configured.subdivisions)
+      && configured.subdivisions > 0;
+    const major = gridStated ? (configured.max - configured.min) / configured.divisions : labelGap;
+    // The configuration has to describe the line on screen: its labels are its
+    // major ticks. A question whose labels say otherwise is not read at all.
+    if (gridStated && !(near(sorted[0], configured.min) && near(sorted[sorted.length - 1], configured.max)
+      && near(labelGap, major) && sorted.every((v) => onGrid(v, configured.min, major)))) {
+      return refuse("graph-numberline-grid-unsupported");
+    }
+    const step = gridStated && configured.subticks && !configured.ticksOnly
+      ? major / configured.subdivisions : major;
+    note({ gridStated, step });
     if (offeredShapes.length === 0) return refuse("graph-numberline-intervals-missing");
     if (line.disableNL === true) return refuse("graph-numberline-disabled");
     const nodes = ["questionDescription", "questionString", "partInformation"]
@@ -115,7 +150,7 @@ export function graphOperation(offered = null) {
       typeof plotdata?.maxplots === "function" ? plotdata.maxplots() : plotdata?.maxplots, 10);
     const maxIntervals = Math.min(Number.isInteger(stated) && stated >= 1 ? stated : 3, 12);
     const shot = () => ({ question: asked(), ticks: [...ticks], shapes: [...offeredShapes],
-      maxIntervals, answer: answer() });
+      step, maxIntervals, answer: answer() });
     const first = shot();
     const context = { family: "numberline", bounds: [sorted[0], sorted[sorted.length - 1]],
       snap: [step], controls: "interval-buttons", intervals: offeredShapes, count: maxIntervals };
@@ -147,11 +182,15 @@ export function graphOperation(offered = null) {
           if (end.closed) throw Error("graph-plan-invalid");
           return { infinite: true, closed: false };
         }
-        // A finite end has to be one of the ticks the page labelled, spelled
-        // as the page spells it -- which is also what it is written back as.
-        const at = ticks.indexOf(end.value);
-        if (at < 0) throw Error("graph-plan-off-grid");
-        return { infinite: false, closed: end.closed, label: ticks[at], value: values[at] };
+        // A finite end has to be on the line's grid and within its range:
+        // a labelled tick, or a subtick between two of them. It is written as
+        // the plan spells it, a terminating decimal, which is how Hawkes
+        // reads a value back.
+        if (!/^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/.test(end.value)) throw Error("graph-plan-invalid");
+        const value = Number(end.value);
+        if (!(value >= sorted[0] - 1e-9 && value <= sorted[sorted.length - 1] + 1e-9)
+          || !onGrid(value, sorted[0], step)) throw Error("graph-plan-off-grid");
+        return { infinite: false, closed: end.closed, label: end.value, value };
       });
     });
     // Each interval in order, and apart from the next: the pieces of a union

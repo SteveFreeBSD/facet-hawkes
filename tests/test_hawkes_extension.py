@@ -126,6 +126,22 @@ def test_unhandled_markup_falls_back_to_a_capture_without_caching_coursework():
     assert "cache_dir=settings.question_image_cache_dir" not in host
 
 
+def test_a_graph_refusal_is_final_and_never_captures_a_screenshot():
+    """No graph route reads a picture, so a refused graph is shown as refused.
+
+    Live: a number line whose plan the host refused fell back to a capture and
+    was reported as "the question region could not be isolated safely".
+    """
+    background = (EXTENSION_DIR / "background.js").read_text()
+    solve = background[background.index("async function solve(") :]
+    fallback = solve[: solve.index('log.info("markup-fallback"')]
+    condition = fallback[fallback.rindex("if (") :]
+
+    assert 'reply?.status === "unsupported"' in condition
+    assert 'shape?.kind !== "graph"' in condition
+    assert '["number-line-refused", /^Number line refused/i]' in background
+
+
 def test_insertability_comes_from_the_editor_not_a_guess():
     background = (EXTENSION_DIR / "background.js").read_text()
     view = (EXTENSION_DIR / "common" / "panel-view.js").read_text()

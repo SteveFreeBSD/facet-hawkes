@@ -141,10 +141,21 @@ var XMLSerializer = class { serializeToString(node) { return node.id + ':' + nod
 var TICKS = TICK_LABELS;
 var plotted = ANSWER;
 var writes = [];
+function grid() {
+  // Every tick the page draws: its labels, and the subticks between them where
+  // the question shows subticks and does not snap to labels only.
+  const labels = TICKS.map(Number);
+  if (BASELINE === null || BASELINE.showsubticks !== 'true' || BASELINE.snaptoticks === 'true') {
+    return labels;
+  }
+  const parts = Number(BASELINE.line?.subdivisions ?? 2);
+  return labels.flatMap((v, i) => i === labels.length - 1 ? [v]
+    : Array.from({length: parts}, (_, k) => v + k * (labels[i + 1] - v) / parts));
+}
 function snap(value) {
   if (/syminfinite/i.test(value)) return value.trim();
   const n = Number(value);
-  return String(TICKS.map(Number).reduce((a, b) => Math.abs(b - n) < Math.abs(a - n) ? b : a));
+  return String(grid().reduce((a, b) => Math.abs(b - n) < Math.abs(a - n) ? b : a));
 }
 var line = {
   disableNL: DISABLED,
@@ -168,8 +179,16 @@ Object.defineProperty(line, 'data', {
 var mode = {
   strUITemplateContainer: 'UIT1',
   objNumberLine: line,
-  controlsJSON: MAXPLOTS === null ? {numline: {plotdata: {}}}
-    : {numline: {plotdata: {maxplots: () => String(MAXPLOTS)}}},
+  controlsJSON: {numline: {
+    plotdata: MAXPLOTS === null ? {} : {maxplots: () => String(MAXPLOTS)},
+    // The question's own line, as knockout observables: functions, as Hawkes
+    // publishes them.
+    ...(BASELINE === null ? {} : {baseline: {
+      ...Object.fromEntries(Object.entries(BASELINE).filter(([k]) => k !== 'line')
+        .map(([k, v]) => [k, () => v])),
+      line: Object.fromEntries(Object.entries(BASELINE.line ?? {}).map(([k, v]) => [k, () => v])),
+    }}),
+  }},
   setActiveMode() { window.objActiveMode = this; },
   getUserAnswer() { this.setActiveMode(); return this.objNumberLine.data; },
   setUserAnswer(text) { this.setActiveMode(); this.objNumberLine.data = text; },
@@ -221,6 +240,7 @@ def number_line(
     disabled="undefined",
     maxplots=None,
     engine_max=3,
+    baseline=None,
 ):
     context = quickjs.Context()
     context.eval(
@@ -230,6 +250,7 @@ def number_line(
         .replace("BUTTONS", json.dumps(list(buttons)))
         .replace("MAXPLOTS", json.dumps(maxplots))
         .replace("ENGINE_MAX", str(engine_max))
+        .replace("BASELINE", json.dumps(baseline))
     )
     source = re.sub(r"^export ", "", GRAPH.read_text(encoding="utf-8"), flags=re.M)
     context.eval(source)
@@ -521,6 +542,112 @@ def test_intervals_out_of_order_or_overlapping_are_not_written(offered_plan):
 
     assert result["code"] == "graph-plan-invalid"
     assert context.eval("writes.length") == 0
+
+
+#: Lesson 1.7's line as its question configures it: -10 to 10, a label at
+#: each of twenty divisions, a subtick between each pair, subticks drawn.
+HALVES = {
+    "line": {"minval": "-10", "maxval": "10", "divisions": "20", "subdivisions": "2"},
+    "showsubticks": "true",
+}
+
+
+def test_the_grid_is_the_lines_own_subticks_not_its_labels():
+    """Live: labels at each integer, a subtick at each half, and `-3.5` refused."""
+    described = run(number_line(baseline=HALVES))
+
+    assert described["context"]["snap"] == [0.5]
+    assert described["context"]["bounds"] == [-10, 10]
+    GraphContext.model_validate(described["context"])
+
+
+def test_a_line_that_snaps_to_its_labels_only_steps_by_them():
+    described = run(number_line(baseline={**HALVES, "snaptoticks": "true"}))
+
+    assert described["context"]["snap"] == [1]
+
+
+def test_a_line_that_draws_no_subticks_steps_by_its_labels():
+    described = run(number_line(baseline={**HALVES, "showsubticks": "false"}))
+
+    assert described["context"]["snap"] == [1]
+
+
+def test_a_line_without_a_stated_grid_falls_back_to_its_labels():
+    assert run(number_line())["context"]["snap"] == [1]
+
+
+def test_a_stated_grid_that_disagrees_with_the_labels_is_not_read():
+    wrong = {**HALVES, "line": {**HALVES["line"], "maxval": "20"}}
+
+    assert (
+        run(number_line(baseline=wrong))["code"] == "graph-numberline-grid-unsupported"
+    )
+
+
+def test_an_end_on_a_subtick_is_written_where_the_line_draws_subticks():
+    context = number_line(baseline=HALVES)
+    described = run(context)
+
+    result = run(
+        context,
+        {"plan": plan("-inf", False, "-3.5", False), "snapshot": described["snapshot"]},
+    )
+
+    assert result["ok"] is True, result
+    assert json.loads(context.eval("JSON.stringify(writes)")) == [
+        "<qmath><qpbrac>-<qspchar>symInfinite</qspchar>,-3.5</qpbrac></qmath>"
+    ]
+
+
+@pytest.mark.parametrize(
+    ("baseline", "end"),
+    [
+        (HALVES, "-3.25"),
+        ({**HALVES, "snaptoticks": "true"}, "-3.5"),
+        (None, "-3.5"),
+        (HALVES, "-10.5"),
+    ],
+)
+def test_an_end_off_the_lines_grid_is_never_written(baseline, end):
+    context = number_line(baseline=baseline)
+    described = run(context)
+
+    result = run(
+        context,
+        {"plan": plan("-inf", False, end, False), "snapshot": described["snapshot"]},
+    )
+
+    assert result["code"] == "graph-plan-off-grid"
+    assert context.eval("writes.length") == 0
+
+
+def test_the_host_places_a_half_on_a_line_that_steps_by_halves(monkeypatch):
+    """The live Certify question: `3y - 2 > 5 + 5y`, graphed."""
+    loopback = facet(monkeypatch)
+    result = handle(
+        {
+            "operation": "solve_hawkes_problem",
+            "request_id": "number-line-halves",
+            "origin": "https://learn.hawkeslearning.com",
+            "problem": {
+                "prompt_text": "Consider the following linear inequality. Graph the solution set.",
+                "mathml": [
+                    "<math><mn>3</mn><mi>y</mi><mo>−</mo><mn>2</mn><mo>&gt;</mo>"
+                    "<mn>5</mn><mo>+</mo><mn>5</mn><mi>y</mi></math>"
+                ],
+                "answer_shape": {
+                    "kind": "graph",
+                    "graph": {**CONTEXT, "snap": [0.5], "count": 1},
+                },
+            },
+        }
+    )
+
+    assert result.status == "ready", result
+    assert loopback.prompts == []
+    assert result.answer.graph_plan.model_dump() == plan("-inf", False, "-3.5", False)
+    assert result.certainty.answered_by == "exact"
 
 
 # --- the host: the set becomes a plan the line can show ----------------------

@@ -2391,7 +2391,19 @@ async function solve(windowId = state.windowId) {
     // then read from an image instead. Capture only after that cheap path
     // explicitly declines, so an ordinary question leaves no screenshot and
     // pays no vision-model cost.
-    if (reply?.status === "unsupported" && !controller.signal.aborted) {
+    //
+    // Never for a graph. Every graph route draws only from the page's own
+    // mathematics or its own measured points, so a picture of one can answer
+    // nothing a refusal did not already rule out -- and capturing it put a
+    // different fault on the panel. Live, on 2026-09-12, a number line whose
+    // plan the host refused was reported as "the question region could not be
+    // isolated safely", the crop failing on a page that had never needed one.
+    // The host's own refusal is the diagnosis, and it is what is shown.
+    if (
+      reply?.status === "unsupported"
+      && shape?.kind !== "graph"
+      && !controller.signal.aborted
+    ) {
       // The host says which decline this was; without it a live fallback
       // reports only that the exact path did not work, which is the one thing
       // already obvious from the minute it then takes.
@@ -2523,6 +2535,7 @@ const REFUSAL_REASONS = Object.freeze([
   ["regression-refused", /^Regression refused/i],
   ["graph-plan-refused", /^Graph plan refused/i],
   ["point-plot-refused", /^Point plot refused/i],
+  ["number-line-refused", /^Number line refused/i],
   ["invalid-request", /^Invalid request/i],
   ["malformed-message", /^Malformed message/i],
   ["not-an-object", /^Message was not an object/i],
