@@ -31,6 +31,7 @@ import pytest
 
 quickjs = pytest.importorskip("quickjs")
 COMMON = Path(__file__).resolve().parents[1] / "extension" / "common"
+DESCRIBE = COMMON.parent / "content" / "hawkes-describe.js"
 
 #: A Hawkes answer box, and the half a `/` opens behind it.
 PAGE = """
@@ -182,6 +183,38 @@ def test_a_rational_is_entered_through_the_pages_own_slash() -> None:
 
     assert reported["ok"] is True
     assert held(live) == ("-3", "2")
+
+
+def test_reduced_fraction_on_the_observed_paired_textbox_settles_in_both_halves() -> (
+    None
+):
+    """The live decimal refusal's seven-character fraction box, end to end."""
+    live = page()
+    live.eval(
+        "window.quant_wp_UI.controlsCollectionData = ["
+        "{Name: 'answer', isQDy: false, boxValue: '', validString: '[0-9-]',"
+        " maxLength: 7, enableState: true},"
+        "{Name: 'denominator', isQDy: false, boxValue: '',"
+        " validString: '[0-9-]', maxLength: 7, enableState: true}];"
+    )
+    editor = json.loads(live.eval(DESCRIBE.read_text(encoding="utf-8")).json())
+    assert editor["kind"] == "textbox"
+    assert editor["pairedControl"] is True
+    assert editor["allowedCharacters"] == "[0-9-]"
+    assert editor["maxLength"] == 7
+
+    for name in ("config.js", "editor-rules.js", "editor-plan.js"):
+        source = (COMMON / name).read_text()
+        source = re.sub(r"^import\s[\s\S]*?;\s*$", "", source, flags=re.M)
+        live.eval(re.sub(r"^export ", "", source, flags=re.M))
+    plan = json.loads(
+        live.eval(f"JSON.stringify(planEntry('69/8', {json.dumps(editor)}))")
+    )
+    assert plan["ok"] is True
+
+    reported = run(live, plan["steps"])
+    assert reported["ok"] is True
+    assert held(live) == ("69", "8")
 
 
 def test_the_denominator_box_is_the_one_the_page_opened() -> None:

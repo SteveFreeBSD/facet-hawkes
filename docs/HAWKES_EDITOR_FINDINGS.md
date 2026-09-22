@@ -1,9 +1,81 @@
 # Hawkes answer editor: observed behaviour
 
-Recorded from a live `learn.hawkeslearning.com` practice lesson on 2026-09-02,
-driven through `scripts/live_browser.py`. Everything here was observed, not
-inferred from documentation. Lesson 1.2, "Properties of Exponents and
-Radicals".
+The original findings below were recorded from a live
+`learn.hawkeslearning.com` practice lesson on 2026-09-02, driven through
+`scripts/live_browser.py`. Lesson 1.2, "Properties of Exponents and Radicals".
+The dated sections record later live evidence and distinguish tested, landed
+code from live insertion acceptance on the original specimens.
+
+## 2026-09-22: one-radical dynamic box, original live proof pending
+
+The owner's existing Firefox session showed a large blank bordered Answer
+region. Its page-owned surface was `span#qdy1_QDy.DynamicBox`, 261 by 157 CSS
+pixels, with a nested `input#QBase1_input.qbaseCSS` only 15 by 28 pixels. The
+input is in the top frame. `window.quant_wp_UI.controlsCollection` published
+one enabled `QDyText` control, and the add-on recognized it as `dynamic` once
+the input had focus. The visible border is the editor's container, not a
+separate text field or a canvas.
+
+For this question, the control offered Fraction and Radical templates but also
+published `qdyRoot_MaximumObjects = 1` and
+`qdyRoot_AllowedRadicandLen = 5`. Its radicand accepted digits and `y`. Facet
+Exact returned a mathematically correct rationalized answer with two adjacent
+square-root factors. The pre-fix planner emitted two `Radical` operations
+because `hawkes-describe.js` reported the template as available but omitted
+the one-object limit. The live insertion stopped after three character notes
+with `errorEditorUnknown`; `enterPlan` cleared the partial answer. The trace
+does not name the exact rejected step, but the three notes align with the
+first radical's contents before the planned second radical. The earliest
+deficient boundary is the page-model description, followed by a plan that
+exceeded the published limit. No facet-runtime change is indicated.
+
+The add-on now reads the radical object and radicand-length limits and
+combines adjacent real square-root factors into one radical when that is the
+only representation the page permits. Unsupported combinations are refused
+before entry. A regression uses the live QDy control's rules and the Exact
+answer's two-root shape. The notation-conversion integration rule was kept,
+and the complete Hawkes gate passed with 2039 tests. Firefox still ran the old build marker
+`d8715eedba1c` when the owner moved on to other questions. **No insertion with
+the new code has been observed.** Do not call this fixed or count it as live
+coverage yet.
+
+When the owner presents an unsubmitted question with this surface again,
+confirm the running marker with the
+observatory, and prove the editor description, Facet Exact answer, available
+Insert control, page-owned keypad entry, and settled read-back in that order.
+Leave Hawkes navigation and every graded-attempt control to the owner.
+
+## 2026-09-22: radical equation answered as a decimal, original live proof pending
+
+The next Chapter 1 Review question asked to solve an indexed radical equation
+and, if needed, give a fraction reduced to lowest terms. The observed equation
+was `∛(8x - 5) = 4`. Facet Reasoning returned `8.625`; Hawkes' revealed
+correct value was `69/8`. The owner's manual `8/625` entry only established
+that the fraction halves worked; it was not Facet's answer.
+
+Two retained runs, `rmuctq51u4159` and `rmuctrcjx5f71`, show the same boundary:
+the add-on described one drawn ordinary textbox backed by two controls, with
+`[0-9-]` and `maxLength=7`. It refused the decimal point before insertion.
+The existing slash plan is designed to open the page's denominator control.
+No insertion took place on either retained run.
+
+Facet parsed the indexed root but its equation router had no radical-equation
+solver, so it declined and used the reasoning model. The reasoning-result
+boundary accepted the model's decimal as the final answer even though the
+instruction requested a reduced fraction. The runtime now solves
+one indexed root of an affine expression equal to a rational exactly, and
+reduces a reasoning route's stated finite decimal when the instruction
+explicitly requests a reduced fraction. Hawkes still owns entry: its host
+converted the exact runtime value `\frac{69}{8}` to keyboard entry `69/8`.
+
+The installed local `facet-remote` helper returned Facet Exact, `69/8`, and
+zero model calls for the observed equation. An isolated regression read the
+observed paired textbox shape, planned a slash, inserted into the two
+page-owned halves, and read back `69` over `8`. The owner had already moved to
+another question before this code was ready. **No live Hawkes insertion of
+`69/8` has been observed, and this is not yet live acceptance.** The
+radical-object work above remains a separate repair with the same live
+acceptance limit. Both repairs are landed and Ready for a future live question.
 
 ## The answer entry is structured, not a text box
 

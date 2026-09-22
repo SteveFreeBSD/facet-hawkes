@@ -2074,6 +2074,7 @@ async function prepare(windowId = state.windowId) {
       maxLength: editor?.maxLength ?? null,
       allowedCharacters: String(editor?.allowedCharacters ?? "").slice(0, 48),
       templates: editor?.templates,
+      limits: editor?.limits ?? null,
       slots: editor?.slots ?? null,
       editors: editor?.editors?.length ?? 0,
       // What the page's own control collection held, beside the control chosen

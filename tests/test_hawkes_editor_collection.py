@@ -79,6 +79,28 @@ def dense(count: int, enabled: int | None = None) -> str:
     )
 
 
+def test_live_dynamic_box_reports_its_radical_object_limit() -> None:
+    """The large bordered QDy answer owns one tiny input and permits one root."""
+    described = describe(
+        "{focusedElementIndex: 0, controlsCollection: [{"
+        'Type: "QDyText", enabled: true, qdyBaseMaxChars: 16,'
+        'qdyBase_AllowedChar: "01213456789-+y",'
+        'qdyFrac_AllowedNumeChar: "01213456789-+y",'
+        'qdyFrac_AllowedDenoChar: "0123456789-y",'
+        'qdyRoot_AllowedRadicandChar: "01213456789-+y",'
+        "qdyRoot_AllowedRadicandLen: 5, qdyRoot_MaximumObjects: 1,"
+        "qdyFractionAllowed: true, qdyRadicalAllowed: true,"
+        "qdyExponentAllowed: true}], controlsCollectionData: ["
+        '{Name: "qdy", isQDy: true, boxValue: "", enableState: true}]}',
+        drawn=1,
+    )
+
+    assert described["kind"] == "dynamic"
+    assert described["collection"]["branch"] == "one-usable"
+    assert described["templates"]["radical"] is True
+    assert described["limits"] == {"radicals": 1, "radicandLength": 5}
+
+
 # --- the four shapes that all describe one textbox --------------------------
 
 

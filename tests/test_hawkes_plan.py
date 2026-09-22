@@ -93,6 +93,51 @@ QUADRATIC_COMMA = {
     "templates": {"fraction": True, "radical": True, "exponent": False},
 }
 
+# Read from the live bordered QDy answer box on the rationalized-radical page.
+# Its one-root limit is distinct from merely offering the Radical template.
+ONE_ROOT_BOX = {
+    "kind": "dynamic",
+    "allowedCharacters": "01213456789-+y",
+    "slots": {
+        "base": "01213456789-+y",
+        "numerator": "01213456789-+y",
+        "denominator": "0123456789-y",
+        "radicand": "01213456789-+y",
+    },
+    "templates": {"fraction": True, "radical": True, "exponent": True},
+    "limits": {"radicals": 1, "radicandLength": 5},
+}
+
+
+def test_adjacent_square_roots_fit_the_page_owned_one_root_box(plan):
+    assert plan("-8*sqrt(3)*sqrt(y)/(3*y)", ONE_ROOT_BOX) == {
+        "ok": True,
+        "steps": [
+            {"op": "template", "name": "Fraction"},
+            {"op": "type", "text": "-8"},
+            {"op": "template", "name": "Radical"},
+            {"op": "type", "text": "3y"},
+            {"op": "slot", "name": "denominator"},
+            {"op": "type", "text": "3y"},
+        ],
+    }
+
+
+def test_root_limit_refuses_unmergeable_sum_before_any_write(plan):
+    assert plan("sqrt(2)+sqrt(3)", ONE_ROOT_BOX) == {
+        "ok": False,
+        "code": "editor-radical-limit",
+    }
+
+
+def test_without_a_root_limit_existing_radical_plans_are_preserved(plan):
+    editor = {key: value for key, value in ONE_ROOT_BOX.items() if key != "limits"}
+    assert [
+        step["name"]
+        for step in plan("-8*sqrt(3)*sqrt(y)/(3*y)", editor)["steps"]
+        if step["op"] == "template"
+    ] == ["Fraction", "Radical", "Radical"]
+
 
 def test_plain_answer_is_one_typing_step(plan):
     assert plan("3y", EXPONENTS) == {

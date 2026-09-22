@@ -96,6 +96,17 @@
       maxLength: dynamic
         ? control.qdyBaseMaxChars ?? null
         : Number(read(data.maxLength)) || null,
+      // A template can be offered but still have a question-specific object
+      // limit. The planner must know this before pressing the first one: a
+      // second Radical is otherwise refused after part of the answer is in.
+      limits: dynamic
+        ? {
+            radicals: Number.isInteger(Number(control.qdyRoot_MaximumObjects))
+              ? Number(control.qdyRoot_MaximumObjects) : null,
+            radicandLength: Number.isInteger(Number(control.qdyRoot_AllowedRadicandLen))
+              ? Number(control.qdyRoot_AllowedRadicandLen) : null,
+          }
+        : null,
       slots: dynamic
         ? {
             base: String(control.qdyBase_AllowedChar ?? ""),

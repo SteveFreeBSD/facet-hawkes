@@ -39,6 +39,64 @@ const BRACKET_TEMPLATES = {
 const OPENERS = "([";
 const CLOSERS = ")]";
 
+/** One product of positive integers and single-letter real factors. */
+function rootMonomial(text) {
+  const factors = text.split("*");
+  let coefficient = 1;
+  const symbols = [];
+  for (const factor of factors) {
+    const match = /^([1-9][0-9]*)?([A-Za-z]*)$/.exec(factor);
+    if (!match || factor.length === 0) return null;
+    if (match[1]) {
+      coefficient *= Number(match[1]);
+      if (!Number.isSafeInteger(coefficient)) return null;
+    }
+    symbols.push(...match[2]);
+  }
+  return { coefficient, symbols };
+}
+
+/**
+ * Combine adjacent real square-root factors when this editor has room for one.
+ * Each original root is defined only for a nonnegative radicand, so their
+ * product equals the root of their product on the original answer's domain.
+ * Unsupported radicands stay untouched and the object limit then refuses the
+ * plan before any character is written.
+ */
+function fitRadicals(answer, editor) {
+  const limit = editor?.limits?.radicals;
+  if (!Number.isInteger(limit) || limit < 0) return answer;
+  const count = (value) => (value.match(/[√∛∜]/g) ?? []).length;
+  if (count(answer) <= limit) return answer;
+
+  let fitted = answer;
+  const pair = /√(?:\(([^()]*)\)|([0-9]+|[A-Za-z]))\s*\*?\s*√(?:\(([^()]*)\)|([0-9]+|[A-Za-z]))/g;
+  // Every replacement reduces the object count. A fixed pass bound also
+  // prevents a malformed answer from making the planner loop forever.
+  for (let pass = 0; pass < 8 && count(fitted) > limit; pass += 1) {
+    let changed = false;
+    fitted = fitted.replace(pair, (whole, leftGroup, leftBare, rightGroup, rightBare) => {
+      const a = rootMonomial(leftGroup ?? leftBare);
+      const b = rootMonomial(rightGroup ?? rightBare);
+      if (!a || !b) return whole;
+      const coefficient = a.coefficient * b.coefficient;
+      if (!Number.isSafeInteger(coefficient)) return whole;
+      const factors = [
+        ...(coefficient === 1 && (a.symbols.length + b.symbols.length) > 0
+          ? [] : [String(coefficient)]),
+        ...a.symbols, ...b.symbols,
+      ];
+      const radicand = factors.join("");
+      const maxLength = editor?.limits?.radicandLength;
+      if (Number.isInteger(maxLength) && radicand.length > maxLength) return whole;
+      changed = true;
+      return `√(${radicand})`;
+    });
+    if (!changed) break;
+  }
+  return count(fitted) <= limit ? fitted : null;
+}
+
 /**
  * Whether the question publishes this bracket template.
  *
@@ -78,10 +136,15 @@ export function planEntry(answer, editor) {
     return { ok: false, code: "answer-empty" };
   }
   // The host's machine form is deliberately explicit; unlike compact display
-  // text, `sqrt(30)*y` cannot mean sqrt(30y). Converted to notation by the
-  // same rule the panel reads with, so what is shown and what is built can
-  // never disagree about what the answer is.
+  // text, `sqrt(30)*y` cannot mean sqrt(30y). The shared conversion is the
+  // only place that translates machine radicals into readable notation.
   answer = mathNotation(answer);
+  answer = fitRadicals(answer, editor);
+  if (answer === null) {
+    return { ok: false, code: "editor-radical-limit" };
+  }
+  // The one-root fit may use an equivalent factorization, but never a
+  // different value on the answer's original real domain.
   // Display answers may contain spacing for readability; Hawkes treats it as
   // formatting, and its per-question character set often excludes spaces.
   answer = answer.replace(/\s+/g, "");
