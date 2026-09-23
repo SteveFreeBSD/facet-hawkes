@@ -6,7 +6,8 @@
     "ordered-pair",
     "parts",
     "choice",
-    "relation"
+    "relation",
+    "axis-intercepts"
   ],
   "plan_kinds": [
     "parabola_plan",
@@ -271,6 +272,29 @@
           "exponent": false,
           "parentheses": false,
           "absoluteValue": false
+        }
+      }
+    },
+    "axis-intercepts": {
+      "note": "Two labelled coordinate rows, each with its own page-owned absent radio. The four drawn coordinate boxes publish numerator/denominator control pairs like an ordinary Hawkes plain box.",
+      "description": {
+        "kind": "axis-intercepts",
+        "enabled": true,
+        "allowedCharacters": "",
+        "templates": {},
+        "coordinateEditor": {
+          "kind": "textbox",
+          "enabled": true,
+          "allowedCharacters": "[0-9-]",
+          "maxLength": 6,
+          "templates": {
+            "fraction": false,
+            "radical": false,
+            "exponent": false,
+            "parentheses": false,
+            "absoluteValue": false
+          },
+          "pairedControl": true
         }
       }
     },
@@ -745,6 +769,66 @@
           "(7,-4)",
           "(10,3)"
         ]
+      }
+    },
+    {
+      "id": "axis-intercepts-plain",
+      "semantic": "axis intercepts, including a semantically absent intercept",
+      "form": "axis-intercepts",
+      "notation": [
+        "plain"
+      ],
+      "example": "0",
+      "editor": "axis-intercepts",
+      "topology": "two coordinate-pair rows, each with its own absent radio",
+      "mechanism": [
+        "axisInterceptsOf",
+        "selectAxisAbsences",
+        "enterOwnedFields",
+        "verifyAxisInterceptInsertion"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "yes"
+      },
+      "probe": {
+        "instruction": "Find the x- and y-intercepts, if possible.",
+        "expressions": [
+          "4y=8"
+        ],
+        "answer_parts": 2
+      }
+    },
+    {
+      "id": "axis-intercepts-fraction",
+      "semantic": "axis intercepts with a rational coordinate",
+      "form": "axis-intercepts",
+      "notation": [
+        "fraction"
+      ],
+      "example": "1/2",
+      "editor": "axis-intercepts",
+      "topology": "two coordinate-pair rows whose boxes reveal denominator controls, each with its own absent radio",
+      "mechanism": [
+        "axisInterceptsOf",
+        "selectAxisAbsences",
+        "enterOwnedFields",
+        "verifyAxisInterceptInsertion"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "no"
+      },
+      "probe": {
+        "instruction": "Find the x- and y-intercepts, if possible.",
+        "expressions": [
+          "4y=2"
+        ],
+        "answer_parts": 2
       }
     },
     {

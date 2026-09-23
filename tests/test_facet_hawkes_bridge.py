@@ -483,6 +483,30 @@ def test_a_paired_answer_shape_reaches_facet_as_a_two_part_contract(
         assert leak not in prompt
 
 
+def test_axis_intercepts_cross_exactly_and_never_reach_a_model(monkeypatch) -> None:
+    loopback = answering(monkeypatch)
+    equation = "<math><mrow><mn>4</mn><mi>y</mi><mo>=</mo><mn>8</mn></mrow></math>"
+
+    response = handle(
+        request(
+            mathml=[equation],
+            instruction="Find the x- and y-intercepts, if possible.",
+            shape="axis-intercepts",
+            shape_count=2,
+        )
+    )
+
+    assert loopback.prompts == []
+    assert response.status == "ready"
+    assert response.certainty.answered_by == "exact"
+    assert response.certainty.answer_parts == 2
+    assert response.answer.keyboard_entry == ""
+    assert response.answer.parts == []
+    assert response.answer.axis_intercepts.x is None
+    assert response.answer.axis_intercepts.y.x == "0"
+    assert response.answer.axis_intercepts.y.y == "2"
+
+
 # Retained failure f1:6079e2061820668f.  Only the page-owned shape is kept:
 # two enabled textboxes, each six characters and restricted to digits/minus.
 # The real answer and coursework text are deliberately not fixtures.

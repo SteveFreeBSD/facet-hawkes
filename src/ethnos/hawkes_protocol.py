@@ -137,7 +137,7 @@ class AnswerShape(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    kind: Literal["field", "option", "multi", "graph"] = "field"
+    kind: Literal["field", "option", "multi", "graph", "axis-intercepts"] = "field"
     count: int = Field(default=1, ge=1, le=MAX_ANSWER_PARTS)
     graph: GraphContext | None = None
     representations: list[AnswerRepresentation] = Field(
@@ -160,11 +160,15 @@ class AnswerShape(BaseModel):
             raise ValueError("graph context must match answer kind")
         if self.kind == "multi" and self.count < 2:
             raise ValueError("a multi answer needs at least two parts")
-        if self.kind != "multi" and self.count != 1:
-            raise ValueError("only a multi answer may have more than one part")
+        if self.kind == "axis-intercepts" and self.count != 2:
+            raise ValueError("axis intercepts always name two axes")
+        if self.kind not in {"multi", "axis-intercepts"} and self.count != 1:
+            raise ValueError(
+                "only a multi or axis-intercept answer may have more than one part"
+            )
         if self.representations and len(self.representations) != self.count:
             raise ValueError("answer representations must match the answer count")
-        if self.kind in {"option", "graph"} and self.representations:
+        if self.kind in {"option", "graph", "axis-intercepts"} and self.representations:
             raise ValueError("only written answers may name representations")
         if self.choices and self.kind != "option":
             raise ValueError("only an option answer is chosen from alternatives")
@@ -349,6 +353,20 @@ class AnswerRelation(BaseModel):
     keyboard_entry: str = Field(min_length=1, max_length=200)
 
 
+class AnswerCoordinate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    x: str = Field(min_length=1, max_length=40)
+    y: str = Field(min_length=1, max_length=40)
+
+
+class AnswerAxisIntercepts(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    x: AnswerCoordinate | None
+    y: AnswerCoordinate | None
+
+
 class AnswerPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -363,6 +381,7 @@ class AnswerPayload(BaseModel):
     #: every other answer, which is what makes its presence the signal that
     #: this one can be entered two ways.
     relation: AnswerRelation | None = None
+    axis_intercepts: AnswerAxisIntercepts | None = None
 
 
 class Certainty(BaseModel):

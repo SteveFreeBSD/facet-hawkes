@@ -161,7 +161,7 @@ uv run python scripts/build_extension.py              # writes, and prints its d
 sha256sum dist/facet-hawkes-0.46.0-unsigned.xpi
 ```
 
-**Expect:** 38 packaged files, and the same digest on two consecutive builds
+**Expect:** 39 packaged files, and the same digest on two consecutive builds
 from unchanged sources. The digest recorded in `extension/RELEASE.md` and the
 audit ledger belongs to the **6 September audit** and will not match a current
 build — that is stated in both places and is not a defect. Re-record it only
@@ -233,7 +233,7 @@ uv run ethnos hawkes-coverage
 ```
 
 **Expect** the same results as sections 2, 5 and 6 above: everything clean,
-1781 or more tests passing, 38 validated packaged files, and 37/37 answered
+1781 or more tests passing, 39 validated packaged files, and 37/37 answered
 exactly with 1 correctly declined. Passed on 2026-09-08.
 
 Note the two checkout lines. Without them the clone lands on `main` in both

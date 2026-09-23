@@ -92,13 +92,30 @@ def entered(solution):
     # A recorded emission arrives as plain data; a live solution arrives as the
     # runtime's own object. Both name the same two sides.
     relation = getattr(solution, "relation", None)
+    intercepts = getattr(solution, "intercepts", None)
+    if isinstance(intercepts, dict):
+        intercepts = SimpleNamespace(
+            **{
+                axis: SimpleNamespace(**point) if isinstance(point, dict) else None
+                for axis, point in intercepts.items()
+            }
+        )
     payload = answer_payload(
         solution.display,
         solution.entry,
         solution.parts,
         solution.entry_mode,
         SimpleNamespace(**relation) if isinstance(relation, dict) else relation,
+        intercepts,
     )
+    if payload.axis_intercepts is not None:
+        values = [
+            component
+            for axis in (payload.axis_intercepts.x, payload.axis_intercepts.y)
+            if axis is not None
+            for component in (axis.x, axis.y)
+        ]
+        return [(solution.form, value) for value in values]
     if payload.parts:
         return [(solution.form, value) for value in payload.parts]
     if payload.relation is not None:
@@ -338,6 +355,8 @@ def test_every_supported_composition_plans_against_its_own_editor(
         verdict = planner("answerFitsEditor", entry.example, editor)
         assert verdict["code"] == "editor-option-answer"
         return
+    if entry.form == "axis-intercepts":
+        editor = editor["coordinateEditor"]
     # Nothing is typed into a graph. The value is turned into a plan against
     # the geometry the page's own graph reported, by the host's own rule.
     if editor["kind"] == "graph":

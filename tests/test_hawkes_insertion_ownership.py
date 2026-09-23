@@ -48,6 +48,7 @@ MODULES = (
     "common/transport.js",
     "common/page-actions.js",
     "common/table-actions.js",
+    "common/axis-actions.js",
     "common/graph-actions.js",
     "common/settings.js",
     "background.js",

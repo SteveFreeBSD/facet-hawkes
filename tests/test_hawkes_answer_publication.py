@@ -59,6 +59,19 @@ OPTION_EDITOR = {
 }
 
 GRAPH_EDITOR = {"ok": True, "kind": "graph", "context": {"family": "parabola"}}
+AXIS_EDITOR = {
+    "ok": True,
+    "kind": "axis-intercepts",
+    "coordinateEditor": {
+        "ok": True,
+        "kind": "textbox",
+        "enabled": True,
+        "allowedCharacters": "[0-9-]",
+        "maxLength": 6,
+        "templates": {"fraction": False, "radical": False, "exponent": False},
+        "pairedControl": True,
+    },
+}
 
 
 @pytest.fixture
@@ -195,6 +208,30 @@ def test_a_real_single_answer_is_published(page):
 
     assert page.json("state.phase") == "solved"
     assert page.json("state.answer") == "3y"
+
+
+def test_axis_intercepts_are_published_as_semantics_not_scalar_text(page):
+    rows = [
+        {"axis": "x", "fieldIds": ["x1", "x2"], "optionId": "xa", "option": "absent"},
+        {"axis": "y", "fieldIds": ["y1", "y2"], "optionId": "ya", "option": "absent"},
+    ]
+    solving(page, AXIS_EDITOR, ["x1", "x2", "y1", "y2"])
+    page.run(f"state.axisInterceptRows = {json.dumps(rows)};")
+
+    reply(
+        page,
+        {
+            "display_text": "x-intercept: absent; y-intercept: (0,2)",
+            "keyboard_entry": "",
+            "parts": [],
+            "axis_intercepts": {"x": None, "y": {"x": "0", "y": "2"}},
+        },
+    )
+
+    assert page.json("state.phase") == "solved"
+    assert page.json("state.entryText") == ""
+    assert page.json("state.answerParts") == []
+    assert page.json("state.answerIntercepts") == {"x": None, "y": ["0", "2"]}
 
 
 def test_a_named_answer_is_short_enough_to_be_a_name(page):

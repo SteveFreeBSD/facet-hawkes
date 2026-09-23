@@ -82,6 +82,14 @@ export const TRANSPORTS = Object.freeze({
     keypad: false,
     what: "the page-selected control owning each completion cell",
   }),
+  "hawkes-axis-intercepts": Object.freeze({
+    world: "MAIN",
+    // The distinctive first mutation; coordinate fields then use the same
+    // page-owned writer as every other plain multi-field surface.
+    writer: "selectAxisAbsences",
+    keypad: false,
+    what: "the page-owned coordinate fields and each row's absent control",
+  }),
   "native-contenteditable": Object.freeze({
     world: "isolated",
     writer: "enterPlainAnswer",
@@ -119,6 +127,9 @@ export function chooseTransport(editor, page = {}) {
   // named here only so that every question has exactly one answer to this.
   if (editor.kind === "graph") {
     return settled("hawkes-graph");
+  }
+  if (editor.kind === "axis-intercepts") {
+    return settled("hawkes-axis-intercepts");
   }
   // Choosing an option is answering, not filling a field in. There is no
   // transport for it, and inventing one is how an add-on comes to answer.

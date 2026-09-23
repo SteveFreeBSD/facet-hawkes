@@ -75,7 +75,7 @@ FACET_ENTRY_MODES: frozenset[str] = frozenset({"verbatim", "math", "auto"})
 #: Additive, and absent on an older Facet. An answer that names no form is read
 #: exactly as it always was, so this can never fail a solve on its own.
 FACET_ANSWER_FORMS: frozenset[str] = frozenset(
-    {"scalar", "ordered-pair", "parts", "choice", "relation"}
+    {"scalar", "ordered-pair", "parts", "choice", "relation", "axis-intercepts"}
 )
 
 #: The one family whose answer is an equation rather than a value, and which
@@ -83,6 +83,7 @@ FACET_ANSWER_FORMS: frozenset[str] = frozenset(
 #: has to choose between them, so the choice is named here rather than made by
 #: splitting a written form somewhere downstream.
 FACET_RELATION_FORM = "relation"
+FACET_AXIS_INTERCEPTS_FORM = "axis-intercepts"
 
 #: What Facet may be asked to produce. `value` is an answer to write down. The
 #: other two are *plans*: a proposal Ethnos proves for itself before anything
@@ -562,6 +563,9 @@ class FacetAnswer:
     #: Both sides of the answer, on the one family that is an equation. None on
     #: every other, which is what makes its presence the signal.
     relation: FacetRelation | None = None
+    #: Named x/y intercepts; a missing coordinate means that intercept is
+    #: mathematically absent, not an omitted string.
+    intercepts: FacetAxisIntercepts | None = None
     plan: dict[str, Any] | None = None
 
 
@@ -578,6 +582,18 @@ class FacetRelation:
 
     subject: str
     value: str
+
+
+@dataclass(frozen=True)
+class FacetCoordinate:
+    x: str
+    y: str
+
+
+@dataclass(frozen=True)
+class FacetAxisIntercepts:
+    x: FacetCoordinate | None
+    y: FacetCoordinate | None
 
 
 @dataclass(frozen=True)
@@ -666,11 +682,6 @@ def _answer(payload: Any, expected_kind: str) -> FacetAnswer:
         # it would decide, on no evidence, whether to rewrite a value that is
         # about to be typed into a real answer box.
         raise FacetProtocolError(f"Facet answer named an unknown entry_mode {mode!r}")
-    if bool(entry.strip()) == bool(parts):
-        # Both or neither: either two competing answers, or none at all.
-        raise FacetProtocolError(
-            "Facet answer must carry exactly one of a single entry or separate parts"
-        )
     form = payload.get("form", "")
     # A family this client does not know is a family it has no entry path for,
     # and acting on it as though it were a scalar is how an answer of the wrong
@@ -678,6 +689,13 @@ def _answer(payload: Any, expected_kind: str) -> FacetAnswer:
     # older Facet names no form at all, and that is the behaviour this replaced.
     if form != "" and form not in FACET_ANSWER_FORMS:
         raise FacetProtocolError(f"Facet answer named an unknown form {form!r}")
+    intercepts = _intercepts(payload, form)
+    carriers = int(bool(entry.strip())) + int(bool(parts)) + int(intercepts is not None)
+    if carriers != 1:
+        # More than one or none: competing answers, or no answer at all.
+        raise FacetProtocolError(
+            "Facet answer must carry exactly one value, parts list, or intercept set"
+        )
     return FacetAnswer(
         kind=kind,
         display=display,
@@ -686,7 +704,42 @@ def _answer(payload: Any, expected_kind: str) -> FacetAnswer:
         entry_mode=mode,
         form=form,
         relation=_relation(payload, form, entry),
+        intercepts=intercepts,
     )
+
+
+def _intercepts(payload: dict[str, Any], form: str) -> FacetAxisIntercepts | None:
+    stated = payload.get("intercepts")
+    if stated is None:
+        if form == FACET_AXIS_INTERCEPTS_FORM:
+            raise FacetProtocolError("Facet named axis intercepts but omitted them")
+        return None
+    if form != FACET_AXIS_INTERCEPTS_FORM or not isinstance(stated, dict):
+        raise FacetProtocolError("Facet carried axis intercepts under the wrong form")
+    if set(stated) != {"x", "y"}:
+        raise FacetProtocolError("Facet axis intercepts must name x and y")
+
+    def coordinate(axis: str) -> FacetCoordinate | None:
+        point = stated[axis]
+        if point is None:
+            return None
+        if not isinstance(point, dict) or set(point) != {"x", "y"}:
+            raise FacetProtocolError(f"Facet {axis}-intercept was not a coordinate")
+        x, y = point["x"], point["y"]
+        if (
+            not isinstance(x, str)
+            or not x.strip()
+            or not isinstance(y, str)
+            or not y.strip()
+        ):
+            raise FacetProtocolError(f"Facet {axis}-intercept omitted a coordinate")
+        if axis == "x" and y != "0":
+            raise FacetProtocolError("Facet x-intercept was not on the x-axis")
+        if axis == "y" and x != "0":
+            raise FacetProtocolError("Facet y-intercept was not on the y-axis")
+        return FacetCoordinate(x=x, y=y)
+
+    return FacetAxisIntercepts(x=coordinate("x"), y=coordinate("y"))
 
 
 def _relation(payload: dict[str, Any], form: str, entry: str) -> FacetRelation | None:

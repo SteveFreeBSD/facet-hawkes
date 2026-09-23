@@ -43,6 +43,10 @@ import { graphOperation } from "/common/graph-actions.js";
 import { enterPlan } from "/common/page-actions.js";
 import { chooseTransport, transportMatches } from "/common/transport.js";
 import { enterOwnedFields } from "/common/table-actions.js";
+import {
+  selectAxisAbsences,
+  verifyAxisInterceptInsertion,
+} from "/common/axis-actions.js";
 import { collectSources, foldSources } from "/common/build-marker.js";
 import { buildFailureRecord, recordFailure } from "/common/failure-record.js";
 import {
@@ -279,6 +283,9 @@ function blankState() {
     // separators, or by agreement between the DOM candidates and Hawkes'
     // published multi-editor model. Insertion must revalidate by the same proof.
     fieldIdentity: "",
+    // Two named coordinate rows and their per-row absent controls.  This is
+    // page representation only; the mathematics comes back separately.
+    axisInterceptRows: [],
     // The browser's own mapping for a completion table: semantic blank N, and
     // the control occupying that cell. Read by the question reader, held here
     // across the solve, and re-read and compared before anything is written.
@@ -299,6 +306,7 @@ function blankState() {
     displayText: "",
     entryText: "",
     answerParts: [],
+    answerIntercepts: null,
     graphPlan: null,
     graphCoefficients: [],
     // What insertion put in the field, kept for the panel to show and for
@@ -485,6 +493,7 @@ function withheldAnswer(next) {
     displayText: "",
     entryText: "",
     answerParts: [],
+    answerIntercepts: null,
     graphPlan: null,
     graphCoefficients: [],
     errorKey: "errorAnswerInvalid",
@@ -1319,6 +1328,9 @@ function answerShapeOf(editor, answerTable = null, tableTargets = [], choices = 
     return blanks.length;
   })();
   if (editor?.kind === "graph") return { kind: "graph", graph: editor.context };
+  if (editor?.kind === "axis-intercepts") {
+    return { kind: "axis-intercepts", count: 2 };
+  }
   // A group of option controls is one question's alternatives, not one
   // question's answers. The probe reports such a group as a single `option`
   // editor now; this is the same rule stated where the count is actually
@@ -1949,6 +1961,7 @@ async function prepare(windowId = state.windowId) {
     displayText: state.displayText,
     entryText: state.entryText,
     answerParts: Array.isArray(state.answerParts) ? state.answerParts : [],
+    answerIntercepts: state.answerIntercepts ?? null,
     // Carried so it can be *revalidated*, never so it can be adopted: the
     // reader refuses a table for reasons about the controls rather than about
     // the question, and re-reading is not the only honest way to keep a
@@ -2038,7 +2051,17 @@ async function prepare(windowId = state.windowId) {
       );
       return;
     }
-    const swept = answerFieldIds(choice, evidenceReport?.multiFieldEvidence, editor);
+    const axisInterceptRows = Array.isArray(chosenReport?.axisInterceptRows)
+      ? chosenReport.axisInterceptRows.map((row) => ({
+          axis: row.axis,
+          fieldIds: [...(row.fieldIds ?? [])],
+          optionId: row.optionId,
+          option: row.option,
+        }))
+      : [];
+    const swept = axisInterceptRows.length === 2
+      ? []
+      : answerFieldIds(choice, evidenceReport?.multiFieldEvidence, editor);
     if (
       swept.length > 0
       && (swept.length < 2
@@ -2127,8 +2150,14 @@ async function prepare(windowId = state.windowId) {
     // down its columns, so that order names a different cell for every blank.
     // Where a table has been accepted, its mapping is the answer surface and
     // the sweep is dropped rather than reconciled.
-    const fieldIds = tableTargets.length >= 2 ? [] : swept;
-    const fieldIdentity = answerFieldIdentity(choice, fieldIds);
+    const fieldIds = tableTargets.length >= 2
+      ? []
+      : axisInterceptRows.length === 2
+        ? axisInterceptRows.flatMap((row) => row.fieldIds)
+        : swept;
+    const fieldIdentity = axisInterceptRows.length === 2
+      ? "axis-intercepts"
+      : answerFieldIdentity(choice, fieldIds);
     // The alternatives this question publishes, as the frame that owns the
     // answer reported them. Read fresh with the question and never carried:
     // last question's choices are not this one's, and a stale list is worse
@@ -2160,11 +2189,11 @@ async function prepare(windowId = state.windowId) {
     // what the answer said. Where the surface is unchanged the answer is kept
     // exactly as before, which is what stops a re-prepare from discarding a
     // good answer and solving the question again.
-    const sameSurface =
-      (previous.editor?.kind === "option") === (editor?.kind === "option");
+    const sameSurface = previous.editor?.kind === editor?.kind;
     const hasAnswer = sameQuestion
       && sameSurface
-      && (previous.answer !== "" || previous.answerParts?.length >= 2);
+      && (previous.answer !== "" || previous.answerParts?.length >= 2
+        || previous.answerIntercepts !== null);
     // What was answered, and what answered it, describe a question that is
     // still on screen in both cases -- so they outlive the insertion that
     // consumed the answer itself. Without this the sidebar watcher blanked the
@@ -2190,6 +2219,7 @@ async function prepare(windowId = state.windowId) {
       // same stale proof. What the insertion holds the page to is the reading
       // this prepare made; a change after it is still refused there.
       fieldIdentity,
+      axisInterceptRows,
       tableTargets,
       answerChoices,
       editor: hasAnswer && previous.graphPlan ? previous.editor : editor,
@@ -2200,6 +2230,7 @@ async function prepare(windowId = state.windowId) {
       displayText: hasAnswer ? previous.displayText : "",
       entryText: hasAnswer ? previous.entryText : "",
       answerParts: hasAnswer ? previous.answerParts : [],
+      answerIntercepts: hasAnswer ? previous.answerIntercepts : null,
       graphPlan: hasAnswer ? previous.graphPlan : null,
       graphCoefficients: hasAnswer ? previous.graphCoefficients : [],
       promptSeen: hasAnswer ? previous.promptSeen : true,
@@ -2299,6 +2330,7 @@ async function solve(windowId = state.windowId) {
     displayText: "",
     entryText: "",
     answerParts: [],
+    answerIntercepts: null,
     graphPlan: null,
     graphCoefficients: [],
     placedText: "",
@@ -2600,6 +2632,31 @@ function readableAnswer(answer) {
   return mathNotation(readable.replace(/\\/g, "").trim()) || mathNotation(display);
 }
 
+/** Structured axis-intercept answer, rendered for this page but never flattened. */
+function axisInterceptsOf(answer) {
+  const stated = answer?.axis_intercepts;
+  if (!stated || typeof stated !== "object"
+      || !Object.prototype.hasOwnProperty.call(stated, "x")
+      || !Object.prototype.hasOwnProperty.call(stated, "y")) {
+    return null;
+  }
+  const point = (value, axis) => {
+    if (value === null) return null;
+    if (!value || typeof value !== "object") return undefined;
+    const pair = [value.x, value.y];
+    if (!pair.every((part) => typeof part === "string" && validateAnswer(part).ok)) {
+      return undefined;
+    }
+    if ((axis === "x" && pair[1] !== "0") || (axis === "y" && pair[0] !== "0")) {
+      return undefined;
+    }
+    return pair;
+  };
+  const x = point(stated.x, "x");
+  const y = point(stated.y, "y");
+  return x === undefined || y === undefined ? null : { x, y };
+}
+
 
 /**
  * The companion's refusals, as labels this file owns.
@@ -2728,6 +2785,22 @@ async function acceptReply(reply) {
     return;
   }
 
+  const answerIntercepts = axisInterceptsOf(shaped);
+  const carriesIntercepts = shaped.axis_intercepts !== null
+    && shaped.axis_intercepts !== undefined;
+  if (carriesIntercepts && answerIntercepts === null) {
+    fail("errorAnswerInvalid", { detail: "axis-intercepts-malformed" });
+    return;
+  }
+  const hasIntercepts = answerIntercepts !== null;
+  if (hasIntercepts && (
+    state.editor?.kind !== "axis-intercepts"
+    || !Array.isArray(state.axisInterceptRows)
+    || state.axisInterceptRows.length !== 2
+  )) {
+    fail("errorEditorUnknown", { detail: "axis-intercepts-surface-mismatch" });
+    return;
+  }
   const answerParts = Array.isArray(shaped.parts)
     ? shaped.parts.filter((value) => typeof value === "string")
     : [];
@@ -2765,7 +2838,9 @@ async function acceptReply(reply) {
       typeof value === "string"
       && (validateAnswer(value).ok || answersByChoosing(value))
   );
-  const answer = hasParts
+  const answer = hasIntercepts
+    ? displayText
+    : hasParts
     ? displayText
     : candidates.find((value) => answerFitsEditor(value, state.editor).insertable) ??
       candidates[0] ??
@@ -2779,7 +2854,7 @@ async function acceptReply(reply) {
     fail("errorAnswerInvalid", { detail: displayText.slice(0, 300) });
     return;
   }
-  const entryText = hasParts
+  const entryText = hasParts || hasIntercepts
     ? ""
     :
     typeof shaped.keyboard_entry === "string"
@@ -2794,6 +2869,7 @@ async function acceptReply(reply) {
     insertable: Boolean(certainty.insertable),
     answerLength: answer.length,
     answerParts: answerParts.length,
+    axisIntercepts: hasIntercepts,
     hostAnswerParts: Number.isInteger(certainty.answer_parts) ? certainty.answer_parts : 0,
     elapsedMs: state.startedAt ? Date.now() - state.startedAt : 0,
     // Which machinery answered. The panel has shown this in its provenance
@@ -2847,10 +2923,14 @@ async function acceptReply(reply) {
       ),
     });
   }
-  const fits = hasParts
+  const fits = hasIntercepts
+    ? { insertable: true, code: "axis-intercepts" }
+    : hasParts
     ? { insertable: partsFit, code: "answer-parts" }
     : answerFitsEditor(answer, state.editor);
-  const plan = hasParts
+  const plan = hasIntercepts
+    ? { ok: true, code: "axis-intercepts" }
+    : hasParts
     ? { ok: false, code: "answer-parts" }
     : planEntry(entryText, state.editor);
   if (!fits.insertable && plan.ok === false) {
@@ -2885,6 +2965,7 @@ async function acceptReply(reply) {
         : answer,
     entryText,
     answerParts: hasParts ? answerParts : [],
+    answerIntercepts: hasIntercepts ? answerIntercepts : null,
     problemText: reply.problem_text ?? "",
     source: answeredByBadge(certainty),
     // Absent means an older host that cannot report it; only an explicit false
@@ -2983,6 +3064,7 @@ async function buildStructured(answer, cadence, target, editor, routed) {
  * @property {string} reviewed the answer as shown and approved
  * @property {string} machineEntry the form the panel planned and offered
  * @property {string[]} answerParts independently planned roots, when present
+ * @property {{x: string[]|null, y: string[]|null}|null} answerIntercepts
  * @property {string} problemText exact instruction used to choose an answer separator
  */
 
@@ -3011,6 +3093,17 @@ function pinInsertionTarget() {
     reviewed: state.answer,
     machineEntry: state.entryText || state.answer,
     answerParts: Object.freeze([...(state.answerParts ?? [])]),
+    answerIntercepts: state.answerIntercepts === null
+      ? null
+      : Object.freeze({
+          x: state.answerIntercepts.x === null
+            ? null : Object.freeze([...state.answerIntercepts.x]),
+          y: state.answerIntercepts.y === null
+            ? null : Object.freeze([...state.answerIntercepts.y]),
+        }),
+    axisInterceptRows: Object.freeze((state.axisInterceptRows ?? []).map((row) =>
+      Object.freeze({ ...row, fieldIds: Object.freeze([...(row.fieldIds ?? [])]) })
+    )),
     problemText: state.problemText,
     // The readable form the card showed for review, kept so the settled
     // panel reports what was approved rather than whatever is live now.
@@ -3051,6 +3144,10 @@ const OWNERSHIP_COMPONENTS = Object.freeze({
   fieldIdentity: (target) => (state.fieldIdentity ?? "") === target.fieldIdentity,
   tableTargets: (target) => sameTableMapping(state.tableTargets ?? [], target.tableTargets),
   answerParts: (target) => sameStringArray(state.answerParts ?? [], target.answerParts),
+  answerIntercepts: (target) =>
+    JSON.stringify(state.answerIntercepts) === JSON.stringify(target.answerIntercepts),
+  axisInterceptRows: (target) =>
+    JSON.stringify(state.axisInterceptRows ?? []) === JSON.stringify(target.axisInterceptRows),
   signature: (target) => state.signature === target.signature,
   graphPlan: (target) => state.graphPlan === target.graphPlan,
   answer: (target) => state.answer === target.reviewed,
@@ -3080,6 +3177,8 @@ function ownershipSnapshot(target) {
     fieldIdentity: target.fieldIdentity,
     tableTargets: target.tableTargets.length,
     answerParts: target.answerParts.length,
+    axisIntercepts: target.answerIntercepts !== null,
+    axisRows: target.axisInterceptRows.length,
     signature: target.signature,
     graphPlan: target.graphPlan ?? "",
     graphSnapshot: target.graphSnapshot ? Object.keys(target.graphSnapshot).length : 0,
@@ -3293,6 +3392,99 @@ async function insert() {
   // A performance now runs for seconds, so how long it actually took is the
   // one thing worth recording. The answer itself never enters the log.
   const entryStartedAt = Date.now();
+  if (target.answerIntercepts !== null) {
+    if (!transportMatches(routed, "hawkes-axis-intercepts")
+        || editor.kind !== "axis-intercepts"
+        || target.axisInterceptRows.length !== 2) {
+      fail("errorEditorUnknown", { detail: "axis-intercepts-route-mismatch" });
+      return;
+    }
+    const reports = await runOperation(
+      { tabId: target.tabId, frameIds: [target.frameId] }, INSPECT_SCRIPT
+    );
+    const liveRows = reports.find(
+      (entry) => entry?.result?.code === "axis-intercepts-answer"
+    )?.result?.axisInterceptRows ?? [];
+    if (
+      JSON.stringify(liveRows) !== JSON.stringify(target.axisInterceptRows)
+      || !ownsTarget(target)
+    ) {
+      fail("errorQuestionChanged", { detail: "axis-intercepts-surface-changed" });
+      return;
+    }
+    const values = [];
+    const fields = [];
+    for (const row of target.axisInterceptRows) {
+      const point = target.answerIntercepts[row.axis];
+      if (Array.isArray(point)) {
+        values.push(...point);
+        fields.push(...row.fieldIds);
+      }
+    }
+    const coordinateEditor = editor.coordinateEditor;
+    if (values.some((value) => !(
+      answerFitsEditor(value, coordinateEditor).insertable
+      || planEntry(value, coordinateEditor).ok
+    ))) {
+      fail("errorEditorUnknown", { detail: "axis-coordinate-refused" });
+      return;
+    }
+    const [selected] = await runInjection({
+      target: { tabId: target.tabId, frameIds: [target.frameId] },
+      world: "MAIN",
+      func: selectAxisAbsences,
+      args: [target.axisInterceptRows, target.answerIntercepts],
+    });
+    if (!selected?.result?.ok || !ownsTarget(target)) {
+      fail(insertErrorKey(selected?.result?.code ?? "axis-option-not-settled"));
+      return;
+    }
+    let fieldOutcome = { ok: true, settled: 0, fields: [] };
+    if (values.length > 0) {
+      const [entry] = await runScoredEntry(
+        target,
+        values.map((text) => ({ op: "type", text })),
+        cadence,
+        () => runInjection({
+          target: { tabId: target.tabId, frameIds: [target.frameId] },
+          world: "MAIN",
+          func: enterOwnedFields,
+          args: [values, fields, cadence, "fields"],
+        })
+      );
+      fieldOutcome = entry?.result;
+      if (
+        !fieldOutcome?.ok
+        || fieldOutcome.code !== "entered-answer-fields"
+        || !sameStringArray(fieldOutcome.fields, fields)
+        || fieldOutcome.settled !== fields.length
+      ) {
+        fail(insertErrorKey(fieldOutcome?.code ?? "answer-parts-incomplete"));
+        return;
+      }
+    }
+    const [verified] = await runInjection({
+      target: { tabId: target.tabId, frameIds: [target.frameId] },
+      world: "MAIN",
+      func: verifyAxisInterceptInsertion,
+      args: [target.axisInterceptRows, target.answerIntercepts],
+    });
+    if (!verified?.result?.ok || !ownsTarget(target)) {
+      fail(insertErrorKey(verified?.result?.code ?? "axis-readback-failed"));
+      return;
+    }
+    log.info("inserted", {
+      via: "axis-intercepts",
+      transport: routed.transport,
+      rows: 2,
+      fields: verified.result.fields,
+      absent: verified.result.absent,
+      settled: fieldOutcome.settled,
+      elapsedMs: Date.now() - entryStartedAt,
+    });
+    await finishInsertion("entered both axis intercepts and verified the page", target);
+    return;
+  }
   if (target.tableTargets.length >= 2) {
     // The page publishes a completion table, so the table writer is the route
     // whatever the answer turned out to be. An answer that is not several
@@ -3835,6 +4027,7 @@ async function finishInsertion(detail, target) {
     displayText: "",
     entryText: "",
     answerParts: [],
+    answerIntercepts: null,
     graphPlan: null,
     graphCoefficients: [],
     // `problemText` and `source` are left as they are: both describe the
@@ -4192,6 +4385,8 @@ function markedCode() {
     "common/answer-session.js#ANSWER_SESSION_KEY": ANSWER_SESSION_KEY,
     "common/answer-session.js#restoreSolvedAnswer": restoreSolvedAnswer,
     "common/answer-session.js#snapshotSolvedAnswer": snapshotSolvedAnswer,
+    "common/axis-actions.js#selectAxisAbsences": selectAxisAbsences,
+    "common/axis-actions.js#verifyAxisInterceptInsertion": verifyAxisInterceptInsertion,
     "common/build-marker.js#collectSources": collectSources,
     "common/build-marker.js#foldSources": foldSources,
     "common/cadence-session.js#attachCadencePort": attachCadencePort,

@@ -253,6 +253,76 @@
     // disagreement visible in one run instead of inferable from an answer.
     drawn,
   };
+
+  /** The DOM states two axis rows, each with a coordinate and absent option. */
+  const axisInterceptSurface = (() => {
+    try {
+      const fields = [...document.querySelectorAll(HAWKES_FIELD_SELECTOR)].filter((node) => {
+        const box = node.getBoundingClientRect();
+        return box.width > 0 && box.height > 0;
+      });
+      const radios = [...document.querySelectorAll('input[type="radio"].opt')].filter((node) => {
+        const box = node.getBoundingClientRect();
+        return !node.disabled && box.width > 0 && box.height > 0;
+      });
+      const axes = [...document.querySelectorAll("*")]
+        .map((node) => /^([xy])[-\s]intercept\s*:?$/i.exec(
+          String(node.textContent ?? "").replace(/\s+/g, " ").trim()
+        ))
+        .filter(Boolean)
+        .map((match) => match[1].toLowerCase());
+      const names = radios.map((radio) => {
+        const labelled = String(radio.getAttribute?.("aria-label") ?? "").trim();
+        if (labelled) return labelled;
+        const escape = globalThis.CSS?.escape;
+        const label = radio.id && escape
+          ? document.querySelector?.(`label[for="${escape(radio.id)}"]`)
+          : radio.closest?.("label");
+        return String(label?.textContent ?? radio.value ?? "").trim();
+      });
+      return fields.length === 4
+        && radios.length === 2
+        && new Set(axes).size === 2
+        && axes.includes("x")
+        && axes.includes("y")
+        && names.every((name) => name.toLowerCase() === "absent");
+    } catch {
+      return false;
+    }
+  })();
+  if (axisInterceptSurface) {
+    const optionCount = usable.filter((editor) => editor.kind === "option").length;
+    const coordinateEditors = usable.filter((editor) => editor.kind !== "option");
+    const signature = (editor) => JSON.stringify({
+      kind: editor.kind,
+      enabled: editor.enabled,
+      allowedCharacters: editor.allowedCharacters,
+      maxLength: editor.maxLength,
+      templates: editor.templates,
+      limits: editor.limits,
+      slots: editor.slots,
+    });
+    if (
+      optionCount === 2
+      && coordinateEditors.length >= 4
+      && new Set(coordinateEditors.map(signature)).size === 1
+    ) {
+      return {
+        ok: true,
+        code: "described-axis-intercepts",
+        kind: "axis-intercepts",
+        coordinateEditor: {
+          ...coordinateEditors[0],
+          // Four drawn coordinate boxes publish eight controls on the live
+          // surface: each numerator has the denominator Hawkes reveals when
+          // a slash is entered. Preserve that generic box capability instead
+          // of making intercepts integer-only.
+          pairedControl: coordinateEditors.length > drawn,
+        },
+        collection: { ...collection, branch: "axis-intercepts" },
+      };
+    }
+  }
   // Five enabled controls is what lesson 2.1's table-completion question
   // publishes, one per blank cell. Bounded at four, this fell straight past
   // the multi branch to `focusedElementIndex` below and described a single

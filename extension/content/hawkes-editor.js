@@ -372,6 +372,93 @@ var ethnosHawkes = (function () {
       : [];
   }
 
+  /** Accessible name of one option control, through the same generic chain. */
+  function optionName(radio) {
+    const attribute = String(radio?.getAttribute?.("aria-label") ?? "").trim();
+    if (attribute) return attribute;
+    const owner = String(radio?.getAttribute?.("aria-labelledby") ?? "")
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((id) => document.getElementById(id))
+      .filter(Boolean)
+      .map((node) => String(node.textContent ?? "").trim())
+      .filter(Boolean)
+      .join(" ");
+    if (owner) return owner;
+    const escape = globalThis.CSS?.escape;
+    const explicit = radio?.id && escape
+      ? document.querySelector?.(`label[for="${escape(radio.id)}"]`)
+      : null;
+    const wrapped = radio?.closest?.("label") ?? null;
+    return String((explicit ?? wrapped)?.textContent ?? radio?.value ?? "").trim();
+  }
+
+  /**
+   * Two named axis rows, each offering either a coordinate or ``absent``.
+   *
+   * This is not one radio group and it is not four independent answers.  The
+   * page states the composition itself: two x/y labels, two fields level with
+   * each row's own absence control, and the literal alternative ``absent``.
+   * Geometry only associates controls already identified semantically; it
+   * never supplies the axis names or the alternative.
+   */
+  function axisInterceptSurface() {
+    const fields = solutionFieldCandidates();
+    const options = [...document.querySelectorAll('input[type="radio"].opt')]
+      .filter((radio) => !radio.disabled && rectangleOf(radio))
+      .sort((a, b) => rectangleOf(a).top - rectangleOf(b).top);
+    if (
+      fields.length !== 4
+      || options.length !== 2
+      || fields.some((field) => !field.id)
+      || options.some((radio) => !radio.id || optionName(radio).toLowerCase() !== "absent")
+    ) {
+      return null;
+    }
+    const labels = [...document.querySelectorAll("*")]
+      .map((node) => ({
+        node,
+        text: String(node.textContent ?? "").replace(/\s+/g, " ").trim(),
+        rect: rectangleOf(node),
+      }))
+      .map((item) => ({
+        ...item,
+        match: /^([xy])[-\s]intercept\s*:?$/i.exec(item.text),
+      }))
+      .filter((item) => item.match && item.rect)
+      .sort((a, b) => a.rect.top - b.rect.top);
+    if (labels.length < 2 || new Set(labels.map((item) => item.match[1].toLowerCase())).size !== 2) {
+      return null;
+    }
+    const used = new Set();
+    const rows = options.map((option) => {
+      const optionRect = rectangleOf(option);
+      const rowFields = fields.filter((field) => {
+        const rect = rectangleOf(field);
+        return rect && rect.bottom > optionRect.top && rect.top < optionRect.bottom;
+      });
+      const preceding = labels
+        .filter((item) => item.rect.top < optionRect.top)
+        .sort((a, b) => b.rect.top - a.rect.top)[0];
+      if (rowFields.length !== 2 || !preceding) return null;
+      rowFields.forEach((field) => used.add(field.id));
+      return {
+        axis: preceding.match[1].toLowerCase(),
+        fieldIds: rowFields.map((field) => field.id),
+        optionId: option.id,
+        option: "absent",
+      };
+    });
+    if (
+      rows.some((row) => row === null)
+      || used.size !== 4
+      || new Set(rows.map((row) => row.axis)).size !== 2
+    ) {
+      return null;
+    }
+    return rows.sort((a, b) => a.axis.localeCompare(b.axis));
+  }
+
   /** One member of the page's single unambiguous Hawkes option group. */
   function focusedOption() {
     const options = optionGroup();
@@ -616,6 +703,17 @@ var ethnosHawkes = (function () {
         fieldId: revealed.id || "",
         fieldKind: fieldKindOf(revealed),
         suppliedSubject: suppliedSubject(revealed),
+      };
+    }
+    const interceptRows = axisInterceptSurface();
+    if (interceptRows) {
+      const fieldIds = interceptRows.flatMap((row) => row.fieldIds);
+      return {
+        ready: true,
+        code: "axis-intercepts-answer",
+        fieldId: [...fieldIds, ...interceptRows.map((row) => row.optionId)].join("\u001f"),
+        fieldIds,
+        axisInterceptRows: interceptRows,
       };
     }
     const fields = solutionFields();

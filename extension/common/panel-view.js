@@ -144,6 +144,18 @@ function reviewOffer(state) {
   if (state.graphPlan && state.editor?.kind === "graph" && !state.errorKey) {
     return { insertable: true, status: { key: "statusSolved", args: [], kind: "ready" } };
   }
+  if (state.answerIntercepts && state.editor?.kind === "axis-intercepts" && !state.errorKey) {
+    const editor = state.editor.coordinateEditor;
+    const values = [state.answerIntercepts.x, state.answerIntercepts.y]
+      .filter((point) => Array.isArray(point))
+      .flat();
+    const insertable = values.every(
+      (value) => answerFitsEditor(value, editor).insertable || planEntry(value, editor).ok
+    );
+    return insertable
+      ? { insertable: true, status: { key: "statusSolved", args: [], kind: "ready" } }
+      : { insertable: false, status: { key: "errorEditorUnknown", args: [], kind: "error" } };
+  }
   if (
     Array.isArray(state.answerParts)
     && state.answerParts.length >= 2

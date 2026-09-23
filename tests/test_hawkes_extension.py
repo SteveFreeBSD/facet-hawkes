@@ -1952,17 +1952,19 @@ def test_a_completed_insertion_records_how_long_it_took():
     """
     background = (EXTENSION_DIR / "background.js").read_text()
 
-    assert background.count('log.info("inserted"') == 5
+    assert background.count('log.info("inserted"') == 6
     # `path:` is reserved -- a neighbouring test forbids it anywhere in this
     # file, so that a path can never be smuggled to the native host.
     assert 'via: "structured"' in background and 'via: "plain"' in background
     assert 'via: "structured-comma-parts"' in background
     # The completion table's own route: one authoritative cell per part.
     assert 'via: "table-cells"' in background
+    assert 'via: "axis-intercepts"' in background
     assert "elapsedMs: Date.now() - entryStartedAt" in background
-    inserted = background.split('log.info("inserted"', 1)[1].split("});", 1)[0]
-    assert "reviewed.length" in inserted
-    assert "answer:" not in inserted
+    assert "reviewed.length" in background
+    for inserted in background.split('log.info("inserted"')[1:]:
+        payload = inserted.split("});", 1)[0]
+        assert "answer:" not in payload
 
 
 def test_a_paced_entry_rechecks_its_target_on_every_beat():

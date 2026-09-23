@@ -145,6 +145,20 @@ SINGLE_COMMA_EDITOR = {
     "templates": {"fraction": True, "radical": True, "exponent": False},
 }
 
+AXIS_INTERCEPT_EDITOR = {
+    "ok": True,
+    "kind": "axis-intercepts",
+    "coordinateEditor": {
+        "ok": True,
+        "kind": "textbox",
+        "enabled": True,
+        "allowedCharacters": "[0-9-]",
+        "maxLength": 6,
+        "templates": {"fraction": False, "radical": False, "exponent": False},
+        "pairedControl": True,
+    },
+}
+
 
 def state(**overrides):
     """A state shaped exactly as `background.js` builds it."""
@@ -217,6 +231,22 @@ def test_insert_becomes_the_primary_action_once_there_is_an_answer(view):
     # stops carrying the emphasis.
     assert described["solve"]["primary"] is False
     assert described["status"]["kind"] == "ready"
+
+
+def test_structured_axis_intercepts_enable_insert_without_becoming_a_scalar(view):
+    described = view(
+        state(
+            phase="solved",
+            answer="x-intercept: absent; y-intercept: (0,2)",
+            displayText="x-intercept: absent; y-intercept: (0,2)",
+            answerIntercepts={"x": None, "y": ["0", "2"]},
+            editor=AXIS_INTERCEPT_EDITOR,
+        )
+    )
+
+    assert described["answer"]["text"] == "x-intercept: absent; y-intercept: (0,2)"
+    assert described["insert"] == {"enabled": True, "primary": True}
+    assert described["status"]["key"] == "statusSolved"
 
 
 def test_two_root_answer_keeps_friendly_display_and_enables_one_explicit_insert(view):

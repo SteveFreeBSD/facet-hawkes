@@ -22,6 +22,8 @@ const STATE_FIELDS = [
   "frameId",
   "fieldId",
   "fieldIds",
+  "fieldIdentity",
+  "axisInterceptRows",
   // A completion table's blank-to-control mapping. `prepare` re-reads it, and
   // where that read cannot state one -- a cell the owner has clicked into
   // shows two controls -- revalidates the mapping this same question was
@@ -33,6 +35,7 @@ const STATE_FIELDS = [
   "displayText",
   "entryText",
   "answerParts",
+  "answerIntercepts",
   "editor",
   "graphPlan",
   "graphCoefficients",

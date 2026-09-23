@@ -308,7 +308,7 @@ def required_answer_parts(shape, instruction: str) -> int:
     on the question as much as on the page, because a single box is still a
     two-value answer when the instruction says to separate them with a comma.
     """
-    if shape is not None and shape.kind == "multi":
+    if shape is not None and shape.kind in {"multi", "axis-intercepts"}:
         return shape.count
     # A question answered by choosing has one answer: the choice. Not even a
     # "separate multiple answers with a comma" instruction changes that -- an
@@ -958,6 +958,7 @@ def answer_payload(
     parts: tuple[str, ...] | list[str],
     entry_mode: str,
     relation: FacetRelation | None = None,
+    intercepts=None,
 ) -> AnswerPayload:
     """Turn one exactly-shaped answer into the page's answer model.
 
@@ -988,6 +989,20 @@ def answer_payload(
         if relation is not None
         else None
     )
+    from .hawkes_protocol import AnswerAxisIntercepts, AnswerCoordinate
+
+    written_intercepts = (
+        AnswerAxisIntercepts(
+            x=None
+            if intercepts.x is None
+            else AnswerCoordinate(x=render(intercepts.x.x), y=render(intercepts.x.y)),
+            y=None
+            if intercepts.y is None
+            else AnswerCoordinate(x=render(intercepts.y.x), y=render(intercepts.y.y)),
+        )
+        if intercepts is not None
+        else None
+    )
     return AnswerPayload(
         display_text=display,
         # A multi-part answer is carried in `parts`; there is no one string
@@ -1001,6 +1016,7 @@ def answer_payload(
         ),
         parts=[render(value) for value in parts],
         relation=written,
+        axis_intercepts=written_intercepts,
     )
 
 
@@ -1131,6 +1147,7 @@ def _solve_with_facet(
             solution.answer.parts,
             solution.answer.entry_mode,
             solution.answer.relation,
+            solution.answer.intercepts,
         ),
         certainty=Certainty(
             prompt_seen=prompt_seen,
@@ -1212,6 +1229,7 @@ def _solve_from_markup(
         solution.parts,
         solution.entry_mode,
         solution.relation,
+        solution.intercepts,
     ), ""
 
 
@@ -1248,6 +1266,7 @@ def _shaped(solution) -> AnswerPayload | None:
         solution.parts,
         solution.entry_mode,
         solution.relation,
+        solution.intercepts,
     )
 
 

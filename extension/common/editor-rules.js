@@ -446,6 +446,9 @@ export function insertErrorKey(code) {
     // world, which is where the boxes are actually looked at.
     "answer-fields-not-empty": "errorAnswerBoxesNotEmpty",
     "answer-parts-incomplete": "errorInsertRejected",
+    "axis-surface-changed": "errorQuestionChanged",
+    "axis-option-not-settled": "errorEditorUnknown",
+    "axis-readback-failed": "errorInsertRejected",
     "editor-multiple-answer": "errorEditorUnknown",
     // The transport and the writer disagreed about what this page is: a
     // writer handed a route it does not implement, a plan carrying a step
@@ -518,12 +521,35 @@ export function publishableAnswer(published, shape) {
     : [];
   const plan = published?.graphPlan ?? null;
   const kind = shape?.kind ?? "field";
+  const intercepts = published?.answerIntercepts ?? null;
 
   // Nothing is being offered as an answer. Every state before a solve lands
   // looks like this, and holding those to an answer's contract would refuse
   // the panel's own "Solving…".
-  if (!answer && !displayText && !entryText && parts.length === 0 && plan === null) {
+  if (!answer && !displayText && !entryText && parts.length === 0
+      && plan === null && intercepts === null) {
     return { ok: true };
+  }
+
+  if (kind === "axis-intercepts") {
+    const coordinate = (value, axis) => value === null || (
+      Array.isArray(value)
+      && value.length === 2
+      && value.every((part) => validateAnswer(part).ok)
+      && (axis === "x" ? value[1] === "0" : value[0] === "0")
+    );
+    const valid = intercepts
+      && typeof intercepts === "object"
+      && Object.keys(intercepts).length === 2
+      && coordinate(intercepts.x, "x")
+      && coordinate(intercepts.y, "y");
+    return valid
+      && parts.length === 0
+      && !entryText
+      && plan === null
+      && displayableAnswer(displayText || answer)
+      ? { ok: true }
+      : { ok: false, code: "answer-shape-axis-intercepts" };
   }
 
   // A choice question is answered with one of its own alternatives, in the

@@ -41,6 +41,21 @@ def pytest_configure() -> None:
                         "value": self.relation.value,
                     }
                 ),
+                "intercepts": (
+                    None
+                    if self.intercepts is None
+                    else {
+                        axis: (
+                            None
+                            if getattr(self.intercepts, axis) is None
+                            else {
+                                "x": getattr(self.intercepts, axis).x,
+                                "y": getattr(self.intercepts, axis).y,
+                            }
+                        )
+                        for axis in ("x", "y")
+                    }
+                ),
                 "method": self.method,
             }
         )

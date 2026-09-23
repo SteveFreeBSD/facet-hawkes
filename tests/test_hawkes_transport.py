@@ -140,6 +140,12 @@ def test_the_policy_table_is_the_page_model_and_nothing_else(policy):
         == "hawkes-table-cells"
     )
     assert chosen(policy, {"ok": True, "kind": "graph"})["transport"] == "hawkes-graph"
+    assert chosen(policy, {"ok": True, "kind": "axis-intercepts"}) == {
+        "ok": True,
+        "transport": "hawkes-axis-intercepts",
+        "world": "MAIN",
+        "writer": "selectAxisAbsences",
+    }
 
 
 def test_several_fields_are_routed_by_what_kind_of_fields_they_are(policy):
