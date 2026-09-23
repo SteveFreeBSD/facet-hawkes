@@ -2786,11 +2786,6 @@ async function acceptReply(reply) {
     reply.answer, state.editor, state.suppliedSubject ?? ""
   );
   const displayText = readableAnswer(shaped);
-  if (displayText.length === 0) {
-    fail("errorAnswerInvalid", { detail: JSON.stringify(shaped).slice(0, 300) });
-    return;
-  }
-
   const answerIntercepts = axisInterceptsOf(shaped);
   const carriesIntercepts = shaped.axis_intercepts !== null
     && shaped.axis_intercepts !== undefined;
@@ -2799,6 +2794,10 @@ async function acceptReply(reply) {
     return;
   }
   const hasIntercepts = answerIntercepts !== null;
+  if (displayText.length === 0 && !hasIntercepts) {
+    fail("errorAnswerInvalid", { detail: JSON.stringify(shaped).slice(0, 300) });
+    return;
+  }
   if (hasIntercepts && (
     state.editor?.kind !== "axis-intercepts"
     || !Array.isArray(state.axisInterceptRows)
