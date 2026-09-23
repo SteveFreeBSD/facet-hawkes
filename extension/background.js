@@ -2657,6 +2657,12 @@ function axisInterceptsOf(answer) {
   return x === undefined || y === undefined ? null : { x, y };
 }
 
+/** A reviewed rendering of already-validated intercept semantics. */
+function axisInterceptDisplay(intercepts) {
+  const point = (value) => value === null ? "absent" : `(${value.join(",")})`;
+  return `x-intercept: ${point(intercepts.x)}; y-intercept: ${point(intercepts.y)}`;
+}
+
 
 /**
  * The companion's refusals, as labels this file owns.
@@ -2838,8 +2844,9 @@ async function acceptReply(reply) {
       typeof value === "string"
       && (validateAnswer(value).ok || answersByChoosing(value))
   );
+  const interceptDisplay = hasIntercepts ? axisInterceptDisplay(answerIntercepts) : "";
   const answer = hasIntercepts
-    ? displayText
+    ? interceptDisplay
     : hasParts
     ? displayText
     : candidates.find((value) => answerFitsEditor(value, state.editor).insertable) ??
@@ -2959,8 +2966,9 @@ async function acceptReply(reply) {
     // The machine form is validated; the readable one is only preferred when
     // it is itself an answer. Falling back keeps the card honest without
     // failing a solve whose entry value was perfectly good all along.
-    displayText:
-      displayableAnswer(displayText) || answersByChoosing(displayText)
+    displayText: hasIntercepts
+      ? interceptDisplay
+      : displayableAnswer(displayText) || answersByChoosing(displayText)
         ? displayText
         : answer,
     entryText,
@@ -4436,6 +4444,7 @@ function markedCode() {
     "common/settings.js#resolveEntryCadence": resolveEntryCadence,
     "background.js#acceptReply": acceptReply,
     "background.js#answerFieldIds": answerFieldIds,
+    "background.js#axisInterceptDisplay": axisInterceptDisplay,
     "background.js#answerShapeOf": answerShapeOf,
     "background.js#askEthnos": askEthnos,
     "background.js#buildStructured": buildStructured,

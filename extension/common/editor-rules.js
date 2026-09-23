@@ -543,11 +543,16 @@ export function publishableAnswer(published, shape) {
       && Object.keys(intercepts).length === 2
       && coordinate(intercepts.x, "x")
       && coordinate(intercepts.y, "y");
+    const point = (value) => value === null ? "absent" : `(${value.join(",")})`;
+    const expected = valid
+      ? `x-intercept: ${point(intercepts.x)}; y-intercept: ${point(intercepts.y)}`
+      : "";
     return valid
       && parts.length === 0
       && !entryText
       && plan === null
-      && displayableAnswer(displayText || answer)
+      && answer === expected
+      && displayText === expected
       ? { ok: true }
       : { ok: false, code: "answer-shape-axis-intercepts" };
   }
