@@ -19,6 +19,14 @@ PLAN = {
     "vertex": {"x": "3", "y": "-1"},
     "points": [{"x": "4", "y": "0"}, {"x": "2", "y": "0"}],
 }
+LINE_PLAN = {
+    "kind": "line",
+    "coefficients": {"x": "0", "y": "1", "constant": "-2"},
+    "points": [
+        {"x": "0", "y": "2", "role": "y-intercept"},
+        {"x": "1", "y": "2", "role": "substitute"},
+    ],
+}
 CONTEXT = {
     "family": "parabola",
     "orientation": "vertical",
@@ -206,6 +214,40 @@ def test_graph_shape_and_truthful_panel_provenance(page):  # noqa: F811
     }
     page.run(f"acceptReply({json.dumps(reply)})")
     assert page.json("state.phase") == "failed"
+
+
+def test_an_exact_line_plan_is_published_on_a_two_point_graph(page):  # noqa: F811
+    editor = {
+        "ok": True,
+        "kind": "graph",
+        "context": {
+            "family": "points",
+            "bounds": [-10, 10, -10, 10],
+            "snap": [1, 1],
+            "controls": "draggable-points",
+            "count": 2,
+        },
+    }
+    page.run("update(" + json.dumps({"editor": editor}) + ")")
+    reply = {
+        "status": "ready",
+        "answer": {
+            "graph_plan": LINE_PLAN,
+            "graph_coefficients": ["0", "1", "-2"],
+            "display_text": "Line through (0,2), (1,2)",
+        },
+        "certainty": {
+            "answered_by": "exact",
+            "facet_invoked": True,
+            "insertable": True,
+        },
+    }
+
+    page.run(f"acceptReply({json.dumps(reply)})")
+
+    assert page.json("state.phase") == "solved"
+    assert page.json("state.graphPlan") == LINE_PLAN
+    assert page.json("state.graphCoefficients") == ["0", "1", "-2"]
 
 
 def test_graph_dom_is_detected_without_a_text_box():

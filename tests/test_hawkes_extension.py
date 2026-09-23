@@ -1952,7 +1952,7 @@ def test_a_completed_insertion_records_how_long_it_took():
     """
     background = (EXTENSION_DIR / "background.js").read_text()
 
-    assert background.count('log.info("inserted"') == 6
+    assert background.count('log.info("inserted"') == 7
     # `path:` is reserved -- a neighbouring test forbids it anywhere in this
     # file, so that a path can never be smuggled to the native host.
     assert 'via: "structured"' in background and 'via: "plain"' in background
@@ -1960,6 +1960,7 @@ def test_a_completed_insertion_records_how_long_it_took():
     # The completion table's own route: one authoritative cell per part.
     assert 'via: "table-cells"' in background
     assert 'via: "axis-intercepts"' in background
+    assert "via: target.graphPlan.kind" in background
     assert "elapsedMs: Date.now() - entryStartedAt" in background
     assert "reviewed.length" in background
     for inserted in background.split('log.info("inserted"')[1:]:

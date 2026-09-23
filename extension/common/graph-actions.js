@@ -327,12 +327,11 @@ export function graphOperation(offered = null) {
       enabled: model.getEnableState?.() === true,
     });
 
-    // --- a graph answered by placing stated points ---------------------------
+    // --- a graph answered by placing point controls --------------------------
     //
-    // Hawkes draws one draggable control per point the question names, and the
-    // question writes the points down. Nothing here is a curve: there is no
-    // path to pin and no coefficients to prove against, so what is proved is
-    // the coordinates themselves, which is what the question asks for.
+    // Hawkes uses the same draggable controls for literal points and for the
+    // two defining points of a derived line. The plans stay distinct; only the
+    // page-owned movement and read-back machinery is shared.
     //
     // Deliberately its own branch. The parabola path above and below is
     // untouched: a different family, different controls, and a plan of a
@@ -427,15 +426,39 @@ export function graphOperation(offered = null) {
         return v;
       };
       const has = (o, k) => o && Object.keys(o).sort().join() === k.split(" ").sort().join();
-      if (!has(plan, "kind points") || plan.kind !== "points"
-        || !Array.isArray(plan.points) || plan.points.length !== spots.length) {
+      const linePlan = plan?.kind === "line";
+      const pointPlan = plan?.kind === "points";
+      if ((!pointPlan || !has(plan, "kind points"))
+        && (!linePlan || !has(plan, "coefficients kind points"))) {
+        return refuse("graph-plan-invalid");
+      }
+      if (!Array.isArray(plan.points) || plan.points.length !== spots.length) {
         return refuse("graph-plan-invalid");
       }
       const wanted = plan.points.map((q) => {
-        if (!has(q, "x y")) throw Error("graph-plan-invalid");
+        if (pointPlan && !has(q, "x y")) throw Error("graph-plan-invalid");
+        if (linePlan && (!has(q, "role x y")
+          || !["x-intercept", "y-intercept", "substitute"].includes(q.role))) {
+          throw Error("graph-plan-invalid");
+        }
         return [num(q.x), num(q.y)];
       });
       const near = (a, b) => Math.abs(a - b) < 1e-9;
+      if (linePlan) {
+        if (!has(plan.coefficients, "constant x y")
+          || !Array.isArray(offered.coefficients)
+          || offered.coefficients.length !== 3
+          || offered.coefficients.join("\u001f") !== [
+            plan.coefficients.x, plan.coefficients.y, plan.coefficients.constant,
+          ].join("\u001f")) return refuse("graph-plan-invalid");
+        const coefficients = offered.coefficients.map(num);
+        if ((!coefficients[0] && !coefficients[1])
+          || wanted.length !== 2
+          || near(wanted[0][0], wanted[1][0]) && near(wanted[0][1], wanted[1][1])
+          || !wanted.every(([x, y]) => near(
+            coefficients[0] * x + coefficients[1] * y + coefficients[2], 0
+          ))) return refuse("graph-plan-invalid");
+      }
       if (!wanted.every(([x, y]) => x >= bounds[0] && x <= bounds[1]
         && y >= bounds[2] && y <= bounds[3])) return refuse("graph-plan-off-grid");
       // The answer is the set of places the controls end up, so which control
@@ -538,7 +561,22 @@ export function graphOperation(offered = null) {
         ? model.isAllGraphObjectsPlotted() === true
         : spots.every((q) => q.plotted === true);
       if (!complete) return refuse("graph-points-not-plotted");
-      return { ok: true, code: "graph-plotted", points: spots.length,
+      if (linePlan) {
+        const readback = new DOMParser().parseFromString(
+          model.userAnswer(), "application/xml"
+        );
+        const pagePoints = [...readback.querySelectorAll("point")].map((point) => [
+          Number(point.querySelector("x")?.textContent),
+          Number(point.querySelector("y")?.textContent),
+        ]).sort(order);
+        if (pagePoints.length !== targets.length
+          || !pagePoints.every(([x, y], i) =>
+            near(x, targets[i][0]) && near(y, targets[i][1]))) {
+          return refuse("graph-line-readback-failed");
+        }
+      }
+      return { ok: true, code: linePlan ? "graph-line-verified" : "graph-plotted",
+        points: spots.length,
         events: struck, plotKeys };
     }
 

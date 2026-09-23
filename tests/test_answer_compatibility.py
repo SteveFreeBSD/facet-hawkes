@@ -46,7 +46,12 @@ RUNTIME_ROOT = PROJECT_ROOT.parent / "facet-runtime"
 
 #: Plan kinds are proposals rather than values: nothing is typed, so they have
 #: no notation and no planner route to exercise.
-PLAN_FORMS = ("parabola_plan", "point_plot_plan", "quadratic_regression")
+PLAN_FORMS = (
+    "linear_graph_plan",
+    "parabola_plan",
+    "point_plot_plan",
+    "quadratic_regression",
+)
 
 
 @pytest.fixture(scope="module")

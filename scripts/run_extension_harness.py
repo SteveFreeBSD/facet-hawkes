@@ -587,6 +587,7 @@ def run(selected: str | None, headless: bool = True) -> int:
         if not selected:
             failures += judge_graph(marionette, site)
             failures += judge_plot_points(marionette, site)
+            failures += judge_linear_graph(marionette, site)
             failures += judge_scatter(marionette, site)
             failures += judge_unreadable_scatter(marionette, site)
             failures += judge_on_axis_scatter(marionette, site)
@@ -964,6 +965,58 @@ def judge_plot_points(marionette, site):
         "ok   plot-points: four stated points stepped onto the grid, plotted "
         "with the key the page sets its own flag from, and accepted as complete"
     )
+    return 0
+
+
+def judge_linear_graph(marionette, site):
+    """Two page-owned point controls define and verify one exact line."""
+    source = (
+        (PROJECT_ROOT / "extension/common/graph-actions.js")
+        .read_text()
+        .replace("export function", "function")
+        .replace("https://learn.hawkeslearning.com", site)
+    )
+    plan = {
+        "kind": "line",
+        "coefficients": {"x": "0", "y": "1", "constant": "-2"},
+        "points": [
+            {"x": "0", "y": "2", "role": "y-intercept"},
+            {"x": "1", "y": "2", "role": "substitute"},
+        ],
+    }
+    marionette.set_context("content")
+    marionette.navigate(f"{site}/plot-points.html?count=2")
+    result = marionette.execute(
+        source
+        + """
+      const probe = graphOperation();
+      if (!probe.ok) return {probe};
+      const outcome = graphOperation({snapshot: probe.snapshot, plan: """
+        + json.dumps(plan)
+        + """, coefficients: ["0", "1", "-2"]});
+      const model = Object.values(window.quant_wp_UI.controlsCollection)[0];
+      return {probe: probe.ok, context: probe.context, outcome,
+              plotted: window.plottedPoints(), accepts: model.isAllGraphObjectsPlotted(),
+              forbidden: window.forbiddenEvents};
+    """
+    )["value"]
+    problems = []
+    if not result.get("probe"):
+        problems.append(f"describe refused: {result.get('probe')}")
+    elif result["context"]["family"] != "points" or result["context"]["count"] != 2:
+        problems.append(f"described the wrong graph: {result['context']}")
+    if result.get("outcome", {}).get("code") != "graph-line-verified":
+        problems.append(f"actuation refused: {result.get('outcome')}")
+    if sorted(result.get("plotted", [])) != [[0, 2], [1, 2]]:
+        problems.append(f"page read back {result.get('plotted')}")
+    if result.get("accepts") is not True:
+        problems.append("the page does not consider the line complete")
+    if result.get("forbidden"):
+        problems.append(f"forbidden keys: {result['forbidden']}")
+    if problems:
+        say(f"FAIL linear-graph: {'; '.join(problems)}")
+        return 1
+    say("ok   linear-graph: exact defining points plotted and read back as y=2")
     return 0
 
 

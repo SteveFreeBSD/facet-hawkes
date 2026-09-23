@@ -10,6 +10,7 @@
     "axis-intercepts"
   ],
   "plan_kinds": [
+    "linear_graph_plan",
     "parabola_plan",
     "point_plot_plan",
     "quadratic_regression"
@@ -1078,6 +1079,24 @@
       "coverage": {
         "unit": "yes",
         "harness": "no",
+        "live": "yes"
+      }
+    },
+    {
+      "id": "plan-linear-graph",
+      "semantic": "exact linear graph plan",
+      "form": "linear_graph_plan",
+      "notation": [],
+      "example": "plan, no value",
+      "editor": "graph-surface",
+      "topology": "two draggable controls defining one exact line",
+      "mechanism": [
+        "graphOperation"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "yes",
         "live": "yes"
       }
     },

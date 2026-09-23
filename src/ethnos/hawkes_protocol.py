@@ -12,7 +12,13 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from .hawkes_graph import GraphPlan, GraphPoint, NumberLinePlan, PointPlotPlan
+from .hawkes_graph import (
+    GraphPlan,
+    GraphPoint,
+    LineGraphPlan,
+    NumberLinePlan,
+    PointPlotPlan,
+)
 
 PROTOCOL_VERSION = 1
 
@@ -370,7 +376,7 @@ class AnswerAxisIntercepts(BaseModel):
 class AnswerPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    graph_plan: GraphPlan | PointPlotPlan | NumberLinePlan | None = None
+    graph_plan: GraphPlan | PointPlotPlan | LineGraphPlan | NumberLinePlan | None = None
     graph_coefficients: list[str] = Field(default_factory=list, max_length=3)
     display_text: str = ""
     keyboard_entry: str = ""

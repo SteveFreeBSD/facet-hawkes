@@ -120,6 +120,7 @@ function that does the typing.
 | named alternative carrying a set notation | `choice` | group | `Infinite Solutions (ℝ)` | one radio group whose labels gloss themselves, `No Solution (∅)` | `answerFitsEditor` | yes | no | yes | `choice-notated` |
 | parabola graph plan | `parabola_plan` | *plan* | `plan, no value` | vertex and two symmetric controls | `graphOperation` | yes | no | yes | `plan-parabola` |
 | literal points graph plan | `point_plot_plan` | *plan* | `plan, no value` | one draggable control per point | `graphOperation` | yes | no | yes | `plan-point-plot` |
+| exact linear graph plan | `linear_graph_plan` | *plan* | `plan, no value` | two draggable controls defining one exact line | `graphOperation` | yes | yes | yes | `plan-linear-graph` |
 | quadratic regression plan | `quadratic_regression` | *plan* | `plan, no value` | coefficients checked, then read | `graphOperation` | yes | no | yes | `plan-quadratic-regression` |
 | factored form with an exponent | `scalar` | exponent+group | `-5*x*(2*y^2+3*y-5)` | one box, Exponent inside a parentheses template | `planRun` | yes | no | yes | `scalar-exponent-group` |
 | multipart complex rationals | `parts` | fraction+group | `(-4-6*i)/7` | one control per value, each a fraction over a bracketed sum | `planAnswerParts` → `planFractionTemplate` → `planRun` | yes | no | yes | `parts-fraction-group` |

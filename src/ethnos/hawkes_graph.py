@@ -45,6 +45,26 @@ class PointPlotPlan(BaseModel):
     points: list[GraphPoint] = Field(min_length=1, max_length=12)
 
 
+class LineCoefficients(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    x: str = Field(pattern=r"^-?(?:0|[1-9][0-9]*)$", max_length=30)
+    y: str = Field(pattern=r"^-?(?:0|[1-9][0-9]*)$", max_length=30)
+    constant: str = Field(pattern=r"^-?(?:0|[1-9][0-9]*)$", max_length=30)
+
+
+class LinePoint(GraphPoint):
+    role: Literal["x-intercept", "y-intercept", "substitute"]
+
+
+class LineGraphPlan(BaseModel):
+    """An exact line and the two page-owned controls that define it."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+    kind: Literal["line"]
+    coefficients: LineCoefficients
+    points: list[LinePoint] = Field(min_length=2, max_length=2)
+
+
 #: The four interval shapes a number line draws, named by their two ends.
 IntervalShape = Literal["open", "closed", "open-closed", "closed-open"]
 
@@ -230,6 +250,55 @@ def validate_graph_plan(plan: GraphPlan, mathml: list[str]) -> list[str]:
         if py != expression.subs(x, px) or (py - k) / (px - h) ** 2 != a:
             raise ValueError("Facet defining point does not match the exact function")
     return [str(value) for value in (a, b, c)]
+
+
+def validate_line_graph_plan(plan: LineGraphPlan, mathml: list[str]) -> list[str]:
+    """Prove the standard-form line, intercept roles and defining points."""
+    from facet_runtime.exact.intercepts import affine_line
+
+    expressions = [mathml_to_latex(item) for item in mathml]
+    line = affine_line(expressions)
+    coefficients = [line.a, line.b, line.c]
+    if [
+        plan.coefficients.x,
+        plan.coefficients.y,
+        plan.coefficients.constant,
+    ] != coefficients:
+        raise ValueError("Facet line coefficients do not match the exact equation")
+
+    exact_intercepts = {
+        "x-intercept": None
+        if line.intercepts.x is None
+        else (line.intercepts.x.x, line.intercepts.x.y),
+        "y-intercept": None
+        if line.intercepts.y is None
+        else (line.intercepts.y.x, line.intercepts.y.y),
+    }
+    expected_roles = []
+    used = set()
+    for role in ("x-intercept", "y-intercept"):
+        point = exact_intercepts[role]
+        if point is not None and point not in used:
+            expected_roles.append(role)
+            used.add(point)
+    if len(expected_roles) < 2:
+        expected_roles.append("substitute")
+    if [point.role for point in plan.points] != expected_roles:
+        raise ValueError("Facet line points do not carry the required intercept roles")
+
+    a, b, c = map(Fraction, coefficients)
+    points = [(Fraction(point.x), Fraction(point.y)) for point in plan.points]
+    if len(set(points)) != 2:
+        raise ValueError("a line requires two distinct defining points")
+    for stated, point in zip(plan.points, points, strict=True):
+        if a * point[0] + b * point[1] + c != 0:
+            raise ValueError("Facet defining point is not on the exact line")
+        if (
+            stated.role != "substitute"
+            and (stated.x, stated.y) != exact_intercepts[stated.role]
+        ):
+            raise ValueError("Facet intercept point does not match the exact equation")
+    return coefficients
 
 
 class RegressionPlan(BaseModel):

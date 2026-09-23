@@ -131,6 +131,16 @@ def solve(request: SolveRequest, report=None) -> SolveResponse:
         # A graph answered by placing the points the question wrote down. Its
         # own route, because there is nothing to derive: the answer is stated,
         # and no model is asked.
+        if (
+            problem.answer_shape.graph
+            and problem.answer_shape.graph.family == "points"
+            and re.search(
+                r"\bgraph\b[^.?!]*\bequation\b[^.?!]*\b(?:x|y)[-\s]?intercepts?\b",
+                instruction,
+                re.I,
+            )
+        ):
+            return _solve_linear_graph_with_facet(request, instruction, announce)
         if problem.answer_shape.graph and problem.answer_shape.graph.family == "points":
             return _solve_point_plot_with_facet(request, instruction, announce)
         # A solution set drawn on a number line. The set is Facet's to solve;
@@ -783,6 +793,68 @@ def _solve_point_plot_with_facet(request, instruction, announce):
             method=solution.method,
             runtime=solution.runtime,
             elapsed_ms=solution.elapsed_ms,
+        ),
+    )
+
+
+def _solve_linear_graph_with_facet(request, instruction, announce):
+    """Derive and prove two exact points for an intercept-directed line graph."""
+    from .facet_client import LINEAR_GRAPH_PLAN, safe_request_id, solve_math
+    from .hawkes_graph import LineGraphPlan, validate_line_graph_plan
+    from .hawkes_mathml import mathml_to_latex
+
+    problem = request.problem
+    graph = problem.answer_shape.graph
+    try:
+        if not problem.mathml or graph is None or graph.count != 2:
+            raise ValueError("a linear graph needs one equation and two point controls")
+        announce("solving", "Facet exact linear graph")
+        solution = solve_math(
+            instruction=instruction,
+            request_id=safe_request_id(request.request_id),
+            expressions=[mathml_to_latex(item) for item in problem.mathml],
+            result_kind=LINEAR_GRAPH_PLAN,
+            graph={
+                "family": "line",
+                "orientation": "cartesian",
+                "bounds": graph.bounds,
+                "snap": graph.snap,
+                "controls": "two-points",
+            },
+            accelerator_required=False,
+            allow_fallback=False,
+        )
+        plan = LineGraphPlan.model_validate(solution.answer.plan)
+        coefficients = validate_line_graph_plan(plan, problem.mathml)
+    except Exception as error:  # noqa: BLE001 - a refusal, never a host fault
+        return error_response(
+            request.request_id, f"Linear graph refused: {error}", "unsupported"
+        )
+    placed = ", ".join(f"({point.x},{point.y})" for point in plan.points)
+    return SolveResponse(
+        request_id=request.request_id,
+        status="ready",
+        problem_text="\n".join(
+            (instruction, *(mathml_to_latex(item) for item in problem.mathml))
+        ),
+        answer=AnswerPayload(
+            graph_plan=plan,
+            graph_coefficients=coefficients,
+            display_text=f"Line through {placed}",
+        ),
+        certainty=Certainty(
+            prompt_seen=True,
+            source=solution.source,
+            transcription="verified",
+            insertable=True,
+            answered_by="exact",
+            facet_invoked=True,
+            router=solution.router,
+            reading="mathml",
+            method=solution.method,
+            runtime=solution.runtime,
+            elapsed_ms=solution.elapsed_ms,
+            issues=["Line plan mathematically validated against exact MathML"],
         ),
     )
 

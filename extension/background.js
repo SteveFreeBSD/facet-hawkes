@@ -2685,6 +2685,7 @@ const REFUSAL_REASONS = Object.freeze([
   ["regression-refused", /^Regression refused/i],
   ["graph-plan-refused", /^Graph plan refused/i],
   ["point-plot-refused", /^Point plot refused/i],
+  ["linear-graph-refused", /^Linear graph refused/i],
   ["number-line-refused", /^Number line refused/i],
   ["invalid-request", /^Invalid request/i],
   ["malformed-message", /^Malformed message/i],
@@ -2750,7 +2751,8 @@ async function acceptReply(reply) {
 
 
   if (reply.answer.graph_plan) {
-    // Two graph plans, proved differently. A parabola is derived and carries
+    // Graph plans are proved according to their mathematical identity. A
+    // line and a parabola are derived and carry
     // the coefficients its geometry is checked against; a set of stated points
     // is the question's own words and has nothing to derive, so what stands in
     // for that proof is the live graph itself -- one control per stated point,
@@ -2758,15 +2760,22 @@ async function acceptReply(reply) {
     // A plan that places what the question states -- its points, or the
     // ends of a solution set Facet solved exactly -- is proved on the page, so
     // what has to agree here is only that it is a plan for this page's graph.
-    const stated = { points: "points", numberline: "numberline" }[
-      reply.answer.graph_plan.kind
-    ];
+    const planKind = reply.answer.graph_plan.kind;
+    const stated = { points: "points", numberline: "numberline" }[planKind];
+    const derived = ["line", "parabola"].includes(planKind);
     const wrong = stated
       ? state.editor?.context?.family !== stated
-      : certainty.answered_by !== "facet"
-        || !certainty.facet_invoked
-        || reply.answer.graph_coefficients?.length !== 3;
-    if (state.editor?.kind !== "graph" || !certainty.insertable || wrong) {
+      : planKind === "line"
+        ? state.editor?.context?.family !== "points"
+          || certainty.answered_by !== "exact"
+          || !certainty.facet_invoked
+          || reply.answer.graph_coefficients?.length !== 3
+        : planKind === "parabola"
+          ? certainty.answered_by !== "facet"
+            || !certainty.facet_invoked
+            || reply.answer.graph_coefficients?.length !== 3
+          : true;
+    if (state.editor?.kind !== "graph" || !certainty.insertable || !derived && !stated || wrong) {
       fail("errorAnswerInvalid");
       return;
     }
@@ -2776,7 +2785,17 @@ async function acceptReply(reply) {
       graphPlan: reply.answer.graph_plan,
       graphCoefficients: reply.answer.graph_coefficients ?? [],
       problemText: reply.problem_text, source: [answeredByBadge(certainty), certainty.model, certainty.device].filter(Boolean).join(" · "), detail: notes.join("\n"), errorKey: "" });
-    log.info("graph-plan-validated", { facetInvoked: true, facetModel: certainty.model, backend: certainty.actual_backend, device: certainty.device, elapsedMs: certainty.elapsed_ms });
+    log.info("graph-plan-validated", {
+      source: certainty.source,
+      answeredBy: certainty.answered_by,
+      router: certainty.router,
+      method: certainty.method,
+      facetInvoked: true,
+      facetModel: certainty.model,
+      backend: certainty.actual_backend,
+      device: certainty.device,
+      elapsedMs: certainty.elapsed_ms,
+    });
     lastSolve = { run: currentRun(), certainty, answerLength: reply.answer.display_text.length };
     return;
   }
@@ -3385,9 +3404,17 @@ async function insert() {
       return;
     }
     log.info("graph-verified", { events: entry.result.events, code: entry.result.code ?? "" });
+    log.info("inserted", {
+      via: target.graphPlan.kind,
+      transport: routed.transport,
+      code: entry.result.code ?? "",
+      events: entry.result.events,
+    });
     await finishInsertion(
       target.detail + (entry.result.code === "numberline-verified"
         ? "\nNumber line interval verified against the page's own answer"
+        : entry.result.code === "graph-line-verified"
+          ? "\nExact line verified from both page-owned defining points"
         : "\nGraph controls and coefficients verified"),
       target
     );

@@ -18,7 +18,8 @@
      answer, and `userAnswer()` carries only what is plotted.
    Four points at the four right coordinates with the flag unset is exactly
    the live failure: correct on screen, "your answer seems incomplete". */
-const points = [0,1,2,3].map(i => ({ID: "P"+i, title: "Point "+(i+1),
+const pointCount = Number(new URLSearchParams(location.search).get("count") || 4);
+const points = Array.from({length: pointCount}, (_, i) => ({ID: "P"+i, title: "Point "+(i+1),
   x: 0, y: 0, snapX: 1, snapY: 1, plotted: false}));
 const g = document.getElementById("controls");
 const NS = "http://www.w3.org/2000/svg";

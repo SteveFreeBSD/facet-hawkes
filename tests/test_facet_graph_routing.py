@@ -48,6 +48,19 @@ CONTEXT = {
     "snap": [0.5, 0.5],
     "controls": "vertex-and-symmetric-points",
 }
+LINE_MATH = "<math><mrow><mn>4</mn><mi>y</mi><mo>=</mo><mn>8</mn></mrow></math>"
+LINE_INSTRUCTION = (
+    "Graph the equation by plotting the x- and y-intercepts. "
+    "If an intercept does not exist, or is duplicated, use another point "
+    "on the line to plot the graph."
+)
+POINT_CONTEXT = {
+    "family": "points",
+    "bounds": [-10.0, 10.0, -10.0, 10.0],
+    "snap": [1.0, 1.0],
+    "controls": "draggable-points",
+    "count": 2,
+}
 POINTS = [("-5", "5"), ("-2", "-4"), ("-1", "5")]
 REGRESSION = '{"kind":"quadratic-regression","coefficients":["3","18","20"]}'
 REGRESSION_INSTRUCTION = "Use quadratic regression. Round to three decimal places."
@@ -80,6 +93,19 @@ def regression_request(**changes) -> dict:
     }
     request.update(changes)
     return request
+
+
+def line_request(prompt=LINE_INSTRUCTION) -> dict:
+    return {
+        "operation": "solve_hawkes_problem",
+        "request_id": "line-1",
+        "origin": "https://learn.hawkeslearning.com",
+        "problem": {
+            "prompt_text": prompt,
+            "mathml": [LINE_MATH],
+            "answer_shape": {"kind": "graph", "graph": POINT_CONTEXT},
+        },
+    }
 
 
 def answering(monkeypatch, text: str):
@@ -122,6 +148,45 @@ def test_a_regression_request_goes_through_solve_math(monkeypatch) -> None:
     assert "expressions" not in crossed["problem"]
     assert response.status == "ready"
     assert response.answer.keyboard_entry == "3x^2+18x+20"
+
+
+def test_an_intercept_directed_line_uses_a_separate_exact_plan(monkeypatch) -> None:
+    loopback = facet(monkeypatch)
+
+    response = handle(line_request())
+
+    assert loopback.prompts == []
+    assert loopback.problems[0]["result_kind"] == "linear_graph_plan"
+    assert loopback.problems[0]["graph"] == {
+        "family": "line",
+        "orientation": "cartesian",
+        "bounds": [-10.0, 10.0, -10.0, 10.0],
+        "snap": [1.0, 1.0],
+        "controls": "two-points",
+    }
+    assert response.status == "ready"
+    assert response.answer.graph_plan.model_dump() == {
+        "kind": "line",
+        "coefficients": {"x": "0", "y": "1", "constant": "-2"},
+        "points": [
+            {"x": "0", "y": "2", "role": "y-intercept"},
+            {"x": "1", "y": "2", "role": "substitute"},
+        ],
+    }
+    assert response.answer.graph_coefficients == ["0", "1", "-2"]
+    assert response.certainty.source == "Facet Exact"
+    assert response.certainty.answered_by == "exact"
+    assert response.certainty.model is None
+
+
+def test_explicit_stated_points_keep_their_original_contract(monkeypatch) -> None:
+    loopback = facet(monkeypatch)
+    request = line_request("Plot the points (0,2) and (1,2).")
+
+    response = handle(request)
+
+    assert loopback.problems[0]["result_kind"] == "point_plot_plan"
+    assert response.answer.graph_plan.kind == "points"
 
 
 def test_no_hawkes_path_writes_a_model_prompt_any_more() -> None:
