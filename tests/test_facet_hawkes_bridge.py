@@ -35,7 +35,7 @@ from ethnos.facet_client import (
     FacetProtocolError,
     FacetTransportError,
 )
-from ethnos.hawkes_host import handle
+from ethnos.hawkes_host import handle, wire_response
 from ethnos.hawkes_protocol import AnswerPayload, SolveRequest
 
 MATHML = "<math><msup><mi>x</mi><mn>2</mn></msup></math>"
@@ -505,6 +505,10 @@ def test_axis_intercepts_cross_exactly_and_never_reach_a_model(monkeypatch) -> N
     assert response.answer.axis_intercepts.x is None
     assert response.answer.axis_intercepts.y.x == "0"
     assert response.answer.axis_intercepts.y.y == "2"
+    assert wire_response(response)["answer"]["axis_intercepts"] == {
+        "x": None,
+        "y": {"x": "0", "y": "2"},
+    }
 
 
 # Retained failure f1:6079e2061820668f.  Only the page-owned shape is kept:

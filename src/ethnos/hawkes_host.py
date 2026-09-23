@@ -1323,6 +1323,21 @@ def handle(raw: dict, report=None) -> SolveResponse:
         return error_response(request.request_id, f"{type(exc).__name__}: {exc}")
 
 
+def wire_response(response: SolveResponse) -> dict:
+    """Serialize one native reply while preserving semantic absence.
+
+    The wire historically omits optional ``None`` fields.  An absent axis
+    intercept is not optional metadata, though: ``x: null`` is the answer for
+    that named axis.  Restore only that closed structured object after the
+    legacy-wide omission so every other response stays byte-shaped as before.
+    """
+    payload = response.model_dump(exclude_none=True)
+    intercepts = response.answer.axis_intercepts if response.answer else None
+    if intercepts is not None:
+        payload["answer"]["axis_intercepts"] = intercepts.model_dump()
+    return payload
+
+
 def main() -> int:
     stdin, stdout = sys.stdin.buffer, sys.stdout.buffer
     while True:
@@ -1354,7 +1369,7 @@ def main() -> int:
             except (ValueError, OSError):
                 pass  # progress is advisory; never fail a solve over it
 
-        write_message(stdout, handle(raw, report).model_dump(exclude_none=True))
+        write_message(stdout, wire_response(handle(raw, report)))
 
 
 if __name__ == "__main__":
