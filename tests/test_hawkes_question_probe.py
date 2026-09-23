@@ -107,6 +107,51 @@ def test_instructional_form_math_is_not_a_second_stated_equation():
     assert result["evidence"]["instructionalMath"] == 1
 
 
+def test_inline_instructional_form_before_sentence_period_is_not_an_equation():
+    """The live owner keeps its period after the inline MathJax container."""
+    result = read_question(
+        r"""
+        <div id="wrap-question">
+          <div class="row">
+            <div class="col-md-12 question_description_span12">
+              <div class="pull-left question_description_pull_left">
+                <div id="questionDescription"
+                     class="pull-left push-up10 question_description_pushup10">
+                  <p>Determine if the following equation is linear. If the equation
+                    is linear, convert it to standard form:
+                    <mjx-container><mjx-assistive-mml>
+                      <math><mi>a</mi><mi>x</mi><mo>+</mo><mi>b</mi><mi>y</mi>
+                        <mo>=</mo><mi>c</mi></math>
+                    </mjx-assistive-mml></mjx-container>.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="row">
+            <div class="col-md-12"><div class="question-area">
+              <div id="questionString" class="questionString_class"><p>
+                <mjx-container><mjx-assistive-mml>
+                  <math><msup><mrow><mo>(</mo><mn>8</mn><mo>+</mo><mi>y</mi>
+                    <mo>)</mo></mrow><mn>2</mn></msup><mo>-</mo>
+                    <msup><mi>y</mi><mn>2</mn></msup><mo>=</mo><mo>-</mo>
+                    <mn>3</mn><mi>x</mi><mo>+</mo><mn>4</mn></math>
+                </mjx-assistive-mml></mjx-container>
+              </p></div>
+              <div id="partInformation">Step 1 of 1 :</div>
+            </div></div>
+          </div>
+        </div>
+        <input type="radio" class="opt" name="answer" aria-label="Linear">
+        <input type="radio" class="opt" name="answer" aria-label="Not Linear">
+        """
+    )
+
+    assert len(result["expressions"]) == 1
+    assert "<mn>8</mn>" in result["expressions"][0]
+    assert "<mi>a</mi><mi>x</mi>" not in result["expressions"][0]
+    assert result["evidence"]["instructionalMath"] == 1
+
+
 def test_two_stated_equations_are_not_mistaken_for_an_output_template():
     result = read_question(
         r"""

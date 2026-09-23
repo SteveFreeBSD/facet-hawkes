@@ -61,13 +61,17 @@ def option_page():
         const documentElement = new Element();
         const nextButton = new Element({id: "next"});
         const answer = new HTMLInputElement({id: "txt1_num", type: "text", visible: false});
+        const controlled = new Element({id: "txt1", visible: false});
+        controlled.querySelectorAll = function(selector) {
+          return selector.includes("input.qbaseCSS") ? [answer] : [];
+        };
         const radios = [1, 2, 3].map((number) => {
           const radio = new HTMLInputElement({
             id: `answer_opt${number}_opt`,
             name: "answer_opt",
             type: "radio",
           });
-          if (number === 2) radio.attributes["aria-controls"] = "txt1_num";
+          if (number === 2) radio.attributes["aria-controls"] = "txt1";
           // What the page prints beside each button. These are the answer
           // contract for a choice question: the answer is one of them, and it
           // is matched by these exact words.
@@ -90,7 +94,11 @@ def option_page():
             if (selector.includes("input.qbaseCSS")) return [answer];
             return [];
           },
-          getElementById(id) { return id === answer.id ? answer : null; },
+          getElementById(id) {
+            if (id === answer.id) return answer;
+            if (id === controlled.id) return controlled;
+            return null;
+          },
         };
         globalThis.performance = { now: () => 0 };
         globalThis.ethnosCadence = {
@@ -123,6 +131,12 @@ def test_new_radio_group_is_found_even_when_navigation_kept_button_focus(option_
         "choices": ["Quadrant I", "Quadrant II", "Quadrant III"],
         "conditionalChoice": "Quadrant II",
     }
+
+
+def test_an_option_may_control_the_field_directly(option_page):
+    option_page.eval('radios[1].attributes["aria-controls"] = answer.id;')
+
+    assert inspect(option_page)["conditionalChoice"] == "Quadrant II"
 
 
 def test_the_published_choices_are_the_words_the_page_prints(option_page):

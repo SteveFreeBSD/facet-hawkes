@@ -23,7 +23,7 @@
   // every decision, and the observatory applies the same normalization to the
   // tree. Unlike the event-page marker, this proves which Hawkes reader was
   // injected into the authoritative page DOM.
-  const HAWKES_READER_BUILD = "2058f1533461";
+  const HAWKES_READER_BUILD = "79ec1235b611";
 
   const ANSWER_CONTROLS =
     'input.qbaseCSS, input[id^="txtAns"], input.boxStyle, input[id$="_optchk"], '
@@ -943,7 +943,13 @@
    * below it is the stated mathematics. Two actual equations under "solve the
    * equations" have no such form container and both remain.
    */
-  const TEMPLATE_CUE = /\b(?:form|format|notation|pattern|template|formula|example)\s*:\s*$/i;
+  // Inline MathJax may sit before the punctuation that ends its sentence.
+  // With MathJax excluded, Hawkes' live owner then reads `standard form: .`,
+  // while a block formula in the same wording reads `standard form:`.  Both
+  // say the same structural thing: the owner's only formula follows a target-
+  // form cue, with no prose after it.  Permit only sentence-ending punctuation
+  // after the cue so a later explanation cannot be mistaken for a template.
+  const TEMPLATE_CUE = /\b(?:form|format|notation|pattern|template|formula|example)\s*:\s*[.!?]?\s*$/i;
   const instructionalMath = new Set();
   if (mathNodes.length >= 2) {
     for (const math of mathNodes) {

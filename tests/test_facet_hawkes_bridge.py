@@ -1113,14 +1113,25 @@ def test_linearity_is_classified_after_exact_cancellation(monkeypatch) -> None:
     assert response.certainty.method == "SymPy exact linearity classification"
 
 
+@pytest.mark.parametrize(
+    ("equation", "written", "display"),
+    [
+        ("(-2 + y)^2 - y^2 = -9x + 4", "9x-4y=0", "Linear; 9x - 4y = 0"),
+        (
+            "(8 + y)^2 - y^2 = -3x + 4",
+            "3x+16y=-60",
+            "Linear; 3x + 16y = -60",
+        ),
+    ],
+)
 def test_live_linearity_and_standard_form_cross_as_one_conditional_answer(
-    monkeypatch,
+    monkeypatch, equation: str, written: str, display: str
 ) -> None:
     loopback = answering(monkeypatch, text="FINAL ANSWER: Not Linear")
 
     response = handle(
         request(
-            mathml=["<math><mtext>(-2 + y)^2 - y^2 = -9x + 4</mtext></math>"],
+            mathml=[f"<math><mtext>{equation}</mtext></math>"],
             instruction=(
                 "Determine if the following equation is linear. If the equation "
                 "is linear, convert it to standard form."
@@ -1132,12 +1143,13 @@ def test_live_linearity_and_standard_form_cross_as_one_conditional_answer(
     )
 
     assert loopback.prompts == []
-    assert response.answer.display_text == "Linear; 9x - 4y = 0"
-    assert response.answer.keyboard_entry == "9x-4y=0"
+    assert response.answer.display_text == display
+    assert response.answer.keyboard_entry == written
     assert response.answer.relation is None
     assert response.answer.conditional_choice.choice == "Linear"
     relation = response.answer.conditional_choice.relation
-    assert (relation.subject, relation.keyboard_entry) == ("9x-4y", "0")
+    subject, value = written.split("=", 1)
+    assert (relation.subject, relation.keyboard_entry) == (subject, value)
     assert response.certainty.source == "Facet Exact"
     assert response.certainty.model is None
 

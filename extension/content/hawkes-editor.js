@@ -293,17 +293,28 @@ var ethnosHawkes = (function () {
     return options.length > 0 && names.size === 1 ? options : [];
   }
 
+  /** Hawkes may point aria-controls at the field or at its QSimpleBox owner. */
+  function optionControlledFields(radio) {
+    const fields = String(radio.getAttribute("aria-controls") || "")
+      .split(/\s+/)
+      .filter((id) => id.length > 0)
+      .map((id) => document.getElementById(id))
+      .filter((owner) => owner !== null)
+      .flatMap((owner) => [
+        ...(owner.matches?.(HAWKES_FIELD_SELECTOR) ? [owner] : []),
+        ...(owner.querySelectorAll?.(HAWKES_FIELD_SELECTOR) ?? []),
+      ]);
+    return [...new Set(fields)];
+  }
+
   /** The one visible field explicitly owned by the selected option. */
   function revealedOptionField() {
     const controlled = optionGroup()
       .filter((radio) => radio.checked)
-      .flatMap((radio) => String(radio.getAttribute("aria-controls") || "").split(/\s+/))
-      .filter((id) => id.length > 0)
-      .map((id) => document.getElementById(id))
+      .flatMap((radio) => optionControlledFields(radio))
       .filter(
         (field) =>
-          field?.matches?.(HAWKES_FIELD_SELECTOR)
-          && field.getBoundingClientRect().width > 0
+          field.getBoundingClientRect().width > 0
           && field.getBoundingClientRect().height > 0
           && !field.disabled
           && !field.readOnly
@@ -313,12 +324,8 @@ var ethnosHawkes = (function () {
 
   /** The unique option that owns a conditional answer field, if there is one. */
   function conditionalOptionChoice() {
-    const linked = optionGroup().filter((radio) =>
-      String(radio.getAttribute("aria-controls") || "")
-        .split(/\s+/)
-        .filter((id) => id.length > 0)
-        .map((id) => document.getElementById(id))
-        .some((field) => field?.matches?.(HAWKES_FIELD_SELECTOR))
+    const linked = optionGroup().filter(
+      (radio) => optionControlledFields(radio).length > 0
     );
     return linked.length === 1 ? optionName(linked[0]) : "";
   }
