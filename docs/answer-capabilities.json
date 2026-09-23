@@ -1047,6 +1047,36 @@
       }
     },
     {
+      "id": "choice-hyphenated",
+      "semantic": "named alternative containing punctuation",
+      "form": "choice",
+      "notation": [
+        "plain"
+      ],
+      "example": "Non-Linear",
+      "editor": "radio-group",
+      "topology": "one radio group whose page-owned label contains punctuation",
+      "mechanism": [
+        "answerFitsEditor"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "no"
+      },
+      "probe": {
+        "instruction": "Determine if the following equation is linear.",
+        "expressions": [
+          "x*y=4"
+        ],
+        "choices": [
+          "linear",
+          "Non-Linear"
+        ]
+      }
+    },
+    {
       "id": "plan-parabola",
       "semantic": "parabola graph plan",
       "form": "parabola_plan",

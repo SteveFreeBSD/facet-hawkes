@@ -1064,6 +1064,28 @@ def test_the_family_engages_no_model_at_all(monkeypatch) -> None:
     assert response.certainty.method == "exact quadrant classification"
 
 
+def test_linearity_is_classified_after_exact_cancellation(monkeypatch) -> None:
+    """The live Lesson 2.3 equation is exact and remains a manual choice."""
+    loopback = answering(monkeypatch, text="FINAL ANSWER: Not Linear")
+
+    response = handle(
+        request(
+            mathml=["<math><mtext>7x(y + 5) = 11 - 7y(3 - x)</mtext></math>"],
+            instruction="Determine if the following equation is linear.",
+            shape="option",
+            choices=["Linear", "Not Linear"],
+        )
+    )
+
+    assert loopback.prompts == []
+    assert response.answer.display_text == "Linear"
+    assert response.answer.keyboard_entry == "Linear"
+    assert response.certainty.source == "Facet Exact"
+    assert response.certainty.answered_by == "exact"
+    assert response.certainty.model is None
+    assert response.certainty.method == "SymPy exact linearity classification"
+
+
 def test_the_answer_is_one_of_the_pages_own_choices(monkeypatch) -> None:
     answering(monkeypatch)
 
