@@ -75,7 +75,15 @@ FACET_ENTRY_MODES: frozenset[str] = frozenset({"verbatim", "math", "auto"})
 #: Additive, and absent on an older Facet. An answer that names no form is read
 #: exactly as it always was, so this can never fail a solve on its own.
 FACET_ANSWER_FORMS: frozenset[str] = frozenset(
-    {"scalar", "ordered-pair", "parts", "choice", "relation", "axis-intercepts"}
+    {
+        "scalar",
+        "ordered-pair",
+        "parts",
+        "choice",
+        "conditional-choice",
+        "relation",
+        "axis-intercepts",
+    }
 )
 
 #: The one family whose answer is an equation rather than a value, and which
@@ -83,6 +91,7 @@ FACET_ANSWER_FORMS: frozenset[str] = frozenset(
 #: has to choose between them, so the choice is named here rather than made by
 #: splitting a written form somewhere downstream.
 FACET_RELATION_FORM = "relation"
+FACET_CONDITIONAL_CHOICE_FORM = "conditional-choice"
 FACET_AXIS_INTERCEPTS_FORM = "axis-intercepts"
 
 #: What Facet may be asked to produce. `value` is an answer to write down. The
@@ -566,6 +575,8 @@ class FacetAnswer:
     #: Both sides of the answer, on the one family that is an equation. None on
     #: every other, which is what makes its presence the signal.
     relation: FacetRelation | None = None
+    #: The published alternative that conditionally enables `relation`.
+    choice: str = ""
     #: Named x/y intercepts; a missing coordinate means that intercept is
     #: mathematically absent, not an omitted string.
     intercepts: FacetAxisIntercepts | None = None
@@ -693,6 +704,16 @@ def _answer(payload: Any, expected_kind: str) -> FacetAnswer:
     if form != "" and form not in FACET_ANSWER_FORMS:
         raise FacetProtocolError(f"Facet answer named an unknown form {form!r}")
     intercepts = _intercepts(payload, form)
+    choice = payload.get("choice", "")
+    if not isinstance(choice, str):
+        raise FacetProtocolError("Facet answer choice was not a string")
+    if form == FACET_CONDITIONAL_CHOICE_FORM:
+        if not choice.strip():
+            raise FacetProtocolError("Facet conditional answer omitted its choice")
+    elif choice:
+        raise FacetProtocolError(
+            "Facet carried a conditional choice under another form"
+        )
     carriers = int(bool(entry.strip())) + int(bool(parts)) + int(intercepts is not None)
     if carriers != 1:
         # More than one or none: competing answers, or no answer at all.
@@ -707,6 +728,7 @@ def _answer(payload: Any, expected_kind: str) -> FacetAnswer:
         entry_mode=mode,
         form=form,
         relation=_relation(payload, form, entry),
+        choice=choice,
         intercepts=intercepts,
     )
 
@@ -757,12 +779,12 @@ def _relation(payload: dict[str, Any], form: str, entry: str) -> FacetRelation |
     """
     stated = payload.get("relation")
     if stated is None:
-        if form == FACET_RELATION_FORM:
+        if form in {FACET_RELATION_FORM, FACET_CONDITIONAL_CHOICE_FORM}:
             raise FacetProtocolError(
                 "Facet answered with an equation and named neither of its sides"
             )
         return None
-    if form != FACET_RELATION_FORM:
+    if form not in {FACET_RELATION_FORM, FACET_CONDITIONAL_CHOICE_FORM}:
         raise FacetProtocolError(
             f"Facet answer carried an equation's sides under the form {form!r}"
         )

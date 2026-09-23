@@ -77,6 +77,54 @@ def test_equation_only_math_stays_only_in_expressions():
     assert result["expressions"] == ["<math><mi>x</mi><mo>=</mo><mn>4</mn></math>"]
 
 
+def test_instructional_form_math_is_not_a_second_stated_equation():
+    result = read_question(
+        r"""
+        <div>Step 1 of 1</div>
+        <div class="instruction">
+          Determine if the following equation is linear. If the equation is
+          linear, convert it to standard form:
+          <mjx-container><mjx-assistive-mml>
+            <math><mi>a</mi><mi>x</mi><mo>+</mo><mi>b</mi><mi>y</mi>
+              <mo>=</mo><mi>c</mi></math>
+          </mjx-assistive-mml></mjx-container>
+        </div>
+        <div class="equation"><mjx-container><mjx-assistive-mml>
+          <math><msup><mrow><mo>(</mo><mo>-</mo><mn>2</mn><mo>+</mo><mi>y</mi>
+            <mo>)</mo></mrow><mn>2</mn></msup><mo>-</mo>
+            <msup><mi>y</mi><mn>2</mn></msup><mo>=</mo><mo>-</mo><mn>9</mn>
+            <mi>x</mi><mo>+</mo><mn>4</mn></math>
+        </mjx-assistive-mml></mjx-container></div>
+        <input type="radio" class="opt" name="answer" aria-label="Linear">
+        <input type="radio" class="opt" name="answer" aria-label="Not Linear">
+        """
+    )
+
+    assert "standard form" in result["promptText"]
+    assert len(result["expressions"]) == 1
+    assert "<mn>9</mn>" in result["expressions"][0]
+    assert "<mi>a</mi><mi>x</mi>" not in result["expressions"][0]
+    assert result["evidence"]["instructionalMath"] == 1
+
+
+def test_two_stated_equations_are_not_mistaken_for_an_output_template():
+    result = read_question(
+        r"""
+        <div>Solve the following equations.</div>
+        <div><mjx-container><mjx-assistive-mml>
+          <math><mi>x</mi><mo>+</mo><mi>y</mi><mo>=</mo><mn>4</mn></math>
+        </mjx-assistive-mml></mjx-container></div>
+        <div><mjx-container><mjx-assistive-mml>
+          <math><mi>x</mi><mo>-</mo><mi>y</mi><mo>=</mo><mn>2</mn></math>
+        </mjx-assistive-mml></mjx-container></div>
+        <input class="qbaseCSS" id="txtAns1">
+        """
+    )
+
+    assert len(result["expressions"]) == 2
+    assert result["evidence"]["instructionalMath"] == 0
+
+
 def test_option_radios_bound_the_question_before_their_caption_mathml():
     """The answer choices' ∅ and ℝ are not expressions to solve."""
     quickjs = pytest.importorskip("quickjs")

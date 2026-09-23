@@ -311,6 +311,18 @@ var ethnosHawkes = (function () {
     return controlled.length === 1 ? controlled[0] : null;
   }
 
+  /** The unique option that owns a conditional answer field, if there is one. */
+  function conditionalOptionChoice() {
+    const linked = optionGroup().filter((radio) =>
+      String(radio.getAttribute("aria-controls") || "")
+        .split(/\s+/)
+        .filter((id) => id.length > 0)
+        .map((id) => document.getElementById(id))
+        .some((field) => field?.matches?.(HAWKES_FIELD_SELECTOR))
+    );
+    return linked.length === 1 ? optionName(linked[0]) : "";
+  }
+
   /**
    * What each option in the group says, in the page's own words.
    *
@@ -688,6 +700,8 @@ var ethnosHawkes = (function () {
     // that relation is exact and does not weaken the one-target rule.
     const revealed = revealedOptionField();
     if (revealed) {
+      const selected = optionGroup().filter((radio) => radio.checked);
+      const conditionalChoice = selected.length === 1 ? optionName(selected[0]) : "";
       // Which branch claimed a single field, when the page has several.
       // Insertion additionally requires one field id per answer part, so a
       // question reporting one field while two solution fields exist can be
@@ -703,6 +717,8 @@ var ethnosHawkes = (function () {
         fieldId: revealed.id || "",
         fieldKind: fieldKindOf(revealed),
         suppliedSubject: suppliedSubject(revealed),
+        choices: optionChoices(),
+        ...(conditionalChoice ? { conditionalChoice } : {}),
       };
     }
     const interceptRows = axisInterceptSurface();
@@ -730,6 +746,7 @@ var ethnosHawkes = (function () {
     // worked out and shown; only the selecting stays the user's.
     const option = focusedOption();
     if (option) {
+      const conditionalChoice = conditionalOptionChoice();
       return {
         ready: true,
         code: "option-answer",
@@ -737,6 +754,7 @@ var ethnosHawkes = (function () {
         // The alternatives themselves, which are what an answer to this
         // question has to be one of.
         choices: optionChoices(),
+        ...(conditionalChoice ? { conditionalChoice } : {}),
       };
     }
     const target = focusedAnswerField();

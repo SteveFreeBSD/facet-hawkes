@@ -143,7 +143,9 @@ class AnswerShape(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    kind: Literal["field", "option", "multi", "graph", "axis-intercepts"] = "field"
+    kind: Literal[
+        "field", "option", "conditional", "multi", "graph", "axis-intercepts"
+    ] = "field"
     count: int = Field(default=1, ge=1, le=MAX_ANSWER_PARTS)
     graph: GraphContext | None = None
     representations: list[AnswerRepresentation] = Field(
@@ -159,6 +161,8 @@ class AnswerShape(BaseModel):
     #: would let a solver answer with one of four choices on a page showing
     #: five.
     choices: list[str] = Field(default_factory=list, max_length=MAX_ANSWER_CHOICES)
+    #: The published alternative that enables the conditional text entry.
+    conditional_choice: str = Field(default="", max_length=MAX_CHOICE_CHARS)
 
     @model_validator(mode="after")
     def count_matches_kind(self) -> AnswerShape:
@@ -174,9 +178,12 @@ class AnswerShape(BaseModel):
             )
         if self.representations and len(self.representations) != self.count:
             raise ValueError("answer representations must match the answer count")
-        if self.kind in {"option", "graph", "axis-intercepts"} and self.representations:
+        if (
+            self.kind in {"option", "conditional", "graph", "axis-intercepts"}
+            and self.representations
+        ):
             raise ValueError("only written answers may name representations")
-        if self.choices and self.kind != "option":
+        if self.choices and self.kind not in {"option", "conditional"}:
             raise ValueError("only an option answer is chosen from alternatives")
         if self.choices:
             if len(self.choices) < 2:
@@ -187,6 +194,16 @@ class AnswerShape(BaseModel):
                 raise ValueError("an alternative exceeds the size limit")
             if len(set(self.choices)) != len(self.choices):
                 raise ValueError("the alternatives must be distinct")
+        if self.kind == "conditional":
+            if (
+                not self.conditional_choice
+                or self.conditional_choice not in self.choices
+            ):
+                raise ValueError(
+                    "a conditional answer names the alternative that enables entry"
+                )
+        elif self.conditional_choice:
+            raise ValueError("only a conditional answer names an enabling choice")
         return self
 
 
@@ -359,6 +376,15 @@ class AnswerRelation(BaseModel):
     keyboard_entry: str = Field(min_length=1, max_length=200)
 
 
+class AnswerConditionalChoice(BaseModel):
+    """One published choice followed, only for that choice, by an equation."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    choice: str = Field(min_length=1, max_length=MAX_CHOICE_CHARS)
+    relation: AnswerRelation
+
+
 class AnswerCoordinate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -387,7 +413,19 @@ class AnswerPayload(BaseModel):
     #: every other answer, which is what makes its presence the signal that
     #: this one can be entered two ways.
     relation: AnswerRelation | None = None
+    conditional_choice: AnswerConditionalChoice | None = None
     axis_intercepts: AnswerAxisIntercepts | None = None
+
+    @model_validator(mode="after")
+    def conditional_answer_is_one_composite(self) -> AnswerPayload:
+        if self.conditional_choice is None:
+            return self
+        relation = self.conditional_choice.relation
+        if self.relation is not None or self.parts or self.axis_intercepts is not None:
+            raise ValueError("a conditional choice is one composite answer")
+        if self.keyboard_entry != f"{relation.subject}={relation.keyboard_entry}":
+            raise ValueError("conditional relation disagrees with its entry")
+        return self
 
 
 class Certainty(BaseModel):

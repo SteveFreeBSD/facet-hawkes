@@ -323,7 +323,7 @@ def required_answer_parts(shape, instruction: str) -> int:
     # A question answered by choosing has one answer: the choice. Not even a
     # "separate multiple answers with a comma" instruction changes that -- an
     # option group offers alternatives, and nothing is typed into it.
-    if shape is not None and shape.kind == "option":
+    if shape is not None and shape.kind in {"option", "conditional"}:
         return 1
     if COMMA_SEPARATED.search(instruction):
         return 2
@@ -395,7 +395,11 @@ def answer_choices_payload(shape) -> list[str] | None:
     one of four alternatives on a page showing five, and the answer would be
     wrong for a reason nothing downstream could see.
     """
-    if shape is None or shape.kind != "option" or len(shape.choices) < 2:
+    if (
+        shape is None
+        or shape.kind not in {"option", "conditional"}
+        or len(shape.choices) < 2
+    ):
         return None
     return list(shape.choices)
 
@@ -1031,6 +1035,7 @@ def answer_payload(
     entry_mode: str,
     relation: FacetRelation | None = None,
     intercepts=None,
+    choice: str = "",
 ) -> AnswerPayload:
     """Turn one exactly-shaped answer into the page's answer model.
 
@@ -1061,7 +1066,17 @@ def answer_payload(
         if relation is not None
         else None
     )
-    from .hawkes_protocol import AnswerAxisIntercepts, AnswerCoordinate
+    from .hawkes_protocol import (
+        AnswerAxisIntercepts,
+        AnswerConditionalChoice,
+        AnswerCoordinate,
+    )
+
+    conditional = (
+        AnswerConditionalChoice(choice=choice, relation=written)
+        if choice and written is not None
+        else None
+    )
 
     written_intercepts = (
         AnswerAxisIntercepts(
@@ -1087,7 +1102,8 @@ def answer_payload(
             else ""
         ),
         parts=[render(value) for value in parts],
-        relation=written,
+        relation=None if conditional is not None else written,
+        conditional_choice=conditional,
         axis_intercepts=written_intercepts,
     )
 
@@ -1220,6 +1236,7 @@ def _solve_with_facet(
             solution.answer.entry_mode,
             solution.answer.relation,
             solution.answer.intercepts,
+            solution.answer.choice,
         ),
         certainty=Certainty(
             prompt_seen=prompt_seen,

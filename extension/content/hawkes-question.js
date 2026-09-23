@@ -23,7 +23,7 @@
   // every decision, and the observatory applies the same normalization to the
   // tree. Unlike the event-page marker, this proves which Hawkes reader was
   // injected into the authoritative page DOM.
-  const HAWKES_READER_BUILD = "5606dc29cb89";
+  const HAWKES_READER_BUILD = "2058f1533461";
 
   const ANSWER_CONTROLS =
     'input.qbaseCSS, input[id^="txtAns"], input.boxStyle, input[id$="_optchk"], '
@@ -719,7 +719,7 @@
     };
   })();
 
-  const expressions = [];
+  const mathNodes = [];
   for (const math of document.querySelectorAll("math")) {
     if (!visible(math) || math.getBoundingClientRect().top >= limit) {
       continue;
@@ -728,8 +728,8 @@
     // stripped copy would mean creating and appending elements -- which the
     // build forbids in anything injected into the page, rightly. MathJax's
     // semantic attributes come along and are ignored by the converter.
-    expressions.push(new XMLSerializer().serializeToString(math).slice(0, 40000));
-    if (expressions.length >= 4) {
+    mathNodes.push(math);
+    if (mathNodes.length >= 4) {
       break;
     }
   }
@@ -931,6 +931,41 @@
     promptText = [part.querySelector(".part_status")?.textContent, spoken.join(" ")]
       .join(" ").replace(/\s+/g, " ").trim();
   }
+  /**
+   * Math used to describe an output form is not an equation the problem asks
+   * Facet to classify or solve.
+   *
+   * The distinction is structural, not a list of familiar templates: the
+   * MathML must be the sole formula inside a prose container whose words mark
+   * a form, notation, pattern, template, formula or example, and another
+   * formula must remain outside that container. Thus an instruction such as
+   * "standard form: [template]" is kept as prose while the displayed equation
+   * below it is the stated mathematics. Two actual equations under "solve the
+   * equations" have no such form container and both remain.
+   */
+  const TEMPLATE_CUE = /\b(?:form|format|notation|pattern|template|formula|example)\s*:\s*$/i;
+  const instructionalMath = new Set();
+  if (mathNodes.length >= 2) {
+    for (const math of mathNodes) {
+      let ancestor = math.closest?.("mjx-container")?.parentElement
+        ?? math.parentElement;
+      for (let depth = 0; ancestor && depth < 8; depth += 1) {
+        const contained = ancestor.querySelectorAll?.("math")?.length ?? 0;
+        if (contained === 1 && TEMPLATE_CUE.test(proseWords(ancestor))) {
+          instructionalMath.add(math);
+          break;
+        }
+        ancestor = ancestor.parentElement;
+      }
+    }
+  }
+  // Never remove every formula. A page whose only mathematics is a displayed
+  // template is unsupported, not an empty question silently sent elsewhere.
+  const statedMath = mathNodes.filter((math) => !instructionalMath.has(math));
+  const selectedMath = statedMath.length > 0 ? statedMath : mathNodes;
+  const expressions = selectedMath.map((math) =>
+    new XMLSerializer().serializeToString(math).slice(0, 40000)
+  );
   // Long enough for a word problem. A truncated instruction is not a shorter
   // question, it is a different one: lesson 3.3's revenue question states the
   // situation, then the table, then -- last -- says to fit a quadratic
@@ -951,6 +986,7 @@
       // A count, a selector name or a named disagreement -- never a cell.
       answerTable: answerTable.tableReason,
       answerTableDetail: answerTable.tableDetail,
+      instructionalMath: mathNodes.length - selectedMath.length,
       promptChars: promptText.length,
     },
     ...(graphPoints ? { graphPoints } : {}),

@@ -572,7 +572,8 @@ export function publishableAnswer(published, shape) {
   // not be collected publishes no contract, and inventing one from a partial
   // list is the failure this exists to prevent rather than a weaker form of
   // it: such a question falls through to the ordinary rules below.
-  const alternatives = kind === "option" && Array.isArray(shape.choices)
+  const alternatives = ["option", "conditional"].includes(kind)
+    && Array.isArray(shape.choices)
     && shape.choices.length >= 2
     ? shape.choices
     : null;
@@ -580,6 +581,18 @@ export function publishableAnswer(published, shape) {
     if (parts.length > 0 || plan !== null) {
       // Several typed values, or proved geometry, is not a choice.
       return { ok: false, code: "answer-shape-option" };
+    }
+    if (kind === "conditional") {
+      if (answer !== shape.conditional_choice) {
+        return alternatives.includes(answer)
+          ? { ok: true }
+          : { ok: false, code: "answer-not-a-published-choice" };
+      }
+      return alternatives.includes(answer)
+        && Boolean(displayText)
+        && validateAnswer(entryText).ok
+        ? { ok: true }
+        : { ok: false, code: "answer-shape-conditional" };
     }
     return alternatives.includes(answer) || alternatives.includes(displayText)
       ? { ok: true }

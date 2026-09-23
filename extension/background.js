@@ -295,6 +295,8 @@ function blankState() {
     // contract for a radio group: the answer to one is one of these strings
     // and is matched against them, never a form anybody writes.
     answerChoices: [],
+    // The one alternative whose page-owned control enables a text field.
+    conditionalChoice: "",
     // What the page prints in front of its answer box, when it prints
     // anything: `y =`, `f(x) =`. Read with the question and never carried, for
     // the same reason the choices are not -- last question's answer surface is
@@ -449,7 +451,9 @@ async function seedRememberedAnswer(windowId) {
  */
 function publicationShape(next) {
   const targets = next.tableTargets ?? [];
-  const shape = answerShapeOf(next.editor, null, targets, next.answerChoices ?? []);
+  const shape = answerShapeOf(
+    next.editor, null, targets, next.answerChoices ?? [], next.conditionalChoice ?? ""
+  );
   return shape.kind === "field" && isTableMapping(targets)
     ? { kind: "multi", count: targets.length }
     : shape;
@@ -1277,18 +1281,24 @@ function commaAnswerPlan(parts, editor, problemText) {
  * two readable ones is no contract at all: a partial list would let an answer
  * be checked against four alternatives on a page showing five.
  */
-function optionShape(choices) {
+function optionShape(choices, conditionalChoice = "") {
   const published = Array.isArray(choices)
     ? choices.filter((text) => typeof text === "string" && text.trim())
     : [];
+  const conditional = published.includes(conditionalChoice)
+    ? conditionalChoice
+    : "";
   return {
-    kind: "option",
+    kind: conditional ? "conditional" : "option",
     count: 1,
     ...(published.length >= 2 ? { choices: published } : {}),
+    ...(conditional ? { conditional_choice: conditional } : {}),
   };
 }
 
-function answerShapeOf(editor, answerTable = null, tableTargets = [], choices = []) {
+function answerShapeOf(
+  editor, answerTable = null, tableTargets = [], choices = [], conditionalChoice = ""
+) {
   // A validated completion table numbers its blanks in the order the
   // mathematics is read. Hawkes' live row-headed table publishes ten control
   // models (one for every value cell) even though the DOM has five answer
@@ -1355,7 +1365,7 @@ function answerShapeOf(editor, answerTable = null, tableTargets = [], choices = 
       && (options.length === editor.editors.length
         || editor.collection?.drawn === 0)
     ) {
-      return optionShape(choices);
+      return optionShape(choices, conditionalChoice);
     }
   }
   if (
@@ -1379,7 +1389,7 @@ function answerShapeOf(editor, answerTable = null, tableTargets = [], choices = 
   }
   if (tableParts > 0) return { kind: "multi", count: tableParts };
   if (editor?.kind === "option") {
-    return optionShape(choices);
+    return optionShape(choices, conditionalChoice);
   }
   const representation = editor?.kind === "textbox"
     && editor.allowedCharacters === "[0-9-]"
@@ -2165,6 +2175,9 @@ async function prepare(windowId = state.windowId) {
     const answerChoices = Array.isArray(chosenReport?.choices)
       ? chosenReport.choices.filter((text) => typeof text === "string" && text)
       : [];
+    const conditionalChoice = answerChoices.includes(chosenReport?.conditionalChoice)
+      ? chosenReport.conditionalChoice
+      : "";
     // What the other reading saw at the same moment, so a disagreement between
     // the two is visible without another run: the boxes the geometric sweep
     // found, and whichever of them it was willing to adopt.
@@ -2222,6 +2235,7 @@ async function prepare(windowId = state.windowId) {
       axisInterceptRows,
       tableTargets,
       answerChoices,
+      conditionalChoice,
       editor: hasAnswer && previous.graphPlan ? previous.editor : editor,
       signature,
       // Carried over only while the question is unchanged, so a previous
@@ -2385,6 +2399,7 @@ async function solve(windowId = state.windowId) {
       answerTable: question.evidence?.answerTable ?? "unknown",
       answerTableDetail: question.evidence?.answerTableDetail ?? null,
       promptChars: question.evidence?.promptChars ?? 0,
+      instructionalMath: question.evidence?.instructionalMath ?? 0,
     };
     log.info("question-read", {
       expressions: runFacts.evidence.expressions,
@@ -2393,6 +2408,7 @@ async function solve(windowId = state.windowId) {
       answerTable: runFacts.evidence.answerTable,
       answerTableDetail: runFacts.evidence.answerTableDetail,
       promptChars: runFacts.evidence.promptChars,
+      instructionalMath: runFacts.evidence.instructionalMath,
     });
     // The answer about to be solved belongs to the question just read, not to
     // whatever was on screen when the panel opened. The same is true of the
@@ -2446,7 +2462,8 @@ async function solve(windowId = state.windowId) {
 
     const solveDeadline = Date.now() + settings.solveTimeoutSeconds * 1000;
     const shape = answerShapeOf(
-      state.editor, question.answerTable, tableTargets, state.answerChoices ?? []
+      state.editor, question.answerTable, tableTargets, state.answerChoices ?? [],
+      state.conditionalChoice ?? ""
     );
     const askToSolve = (image, pipeline) => {
       log.info("host-request-shaped", {
@@ -2575,13 +2592,30 @@ async function solve(windowId = state.windowId) {
  * @param {string} suppliedSubject what the page prints in front of the box
  */
 function answerForSurface(answer, editor, suppliedSubject) {
-  const relation = answer?.relation;
+  const conditional = answer?.conditional_choice;
+  const conditionalRelation = conditional?.relation;
+  const carriesConditional = conditional !== null && conditional !== undefined;
+  if (carriesConditional && (
+    typeof conditional?.choice !== "string"
+    || !conditional.choice
+    || typeof conditionalRelation?.subject !== "string"
+    || typeof conditionalRelation?.display_text !== "string"
+    || typeof conditionalRelation?.keyboard_entry !== "string"
+    || `${conditionalRelation.subject}=${conditionalRelation.keyboard_entry}`
+      !== answer?.keyboard_entry
+  )) {
+    return { ...answer, conditional_malformed: true };
+  }
+  const prepared = carriesConditional
+    ? { ...answer, relation: conditionalRelation, choice_text: conditional.choice }
+    : answer;
+  const relation = prepared?.relation;
   if (
     typeof relation?.display_text !== "string"
     || typeof relation?.keyboard_entry !== "string"
     || !surfaceStatesSubject(editor, { suppliedSubject })
   ) {
-    return answer;
+    return prepared;
   }
   log.info("answer-side-chosen", {
     // Which of the two facts decided it, and what the answer's own subject was.
@@ -2591,7 +2625,7 @@ function answerForSurface(answer, editor, suppliedSubject) {
     subject: String(relation.subject ?? "").slice(0, 16),
   });
   return {
-    ...answer,
+    ...prepared,
     display_text: relation.display_text,
     keyboard_entry: relation.keyboard_entry,
   };
@@ -2805,6 +2839,19 @@ async function acceptReply(reply) {
     reply.answer, state.editor, state.suppliedSubject ?? ""
   );
   const displayText = readableAnswer(shaped);
+  const carriesConditional = reply.answer?.conditional_choice !== null
+    && reply.answer?.conditional_choice !== undefined;
+  const conditionalChoice = typeof shaped.choice_text === "string"
+    ? shaped.choice_text
+    : "";
+  if (carriesConditional && (
+    shaped.conditional_malformed === true
+    || conditionalChoice !== state.conditionalChoice
+    || !(state.answerChoices ?? []).includes(conditionalChoice)
+  )) {
+    fail("errorAnswerInvalid", { detail: "conditional-choice-malformed" });
+    return;
+  }
   const answerIntercepts = axisInterceptsOf(shaped);
   const carriesIntercepts = shaped.axis_intercepts !== null
     && shaped.axis_intercepts !== undefined;
@@ -2867,6 +2914,8 @@ async function acceptReply(reply) {
     ? interceptDisplay
     : hasParts
     ? displayText
+    : carriesConditional && state.editor?.kind === "option"
+    ? conditionalChoice
     : candidates.find((value) => answerFitsEditor(value, state.editor).insertable) ??
       candidates[0] ??
       "";
@@ -2986,6 +3035,8 @@ async function acceptReply(reply) {
     // failing a solve whose entry value was perfectly good all along.
     displayText: hasIntercepts
       ? interceptDisplay
+      : carriesConditional && state.editor?.kind === "option"
+        ? displayText
       : displayableAnswer(displayText) || answersByChoosing(displayText)
         ? displayText
         : answer,

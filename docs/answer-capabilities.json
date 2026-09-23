@@ -6,6 +6,7 @@
     "ordered-pair",
     "parts",
     "choice",
+    "conditional-choice",
     "relation",
     "axis-intercepts"
   ],
@@ -1073,6 +1074,38 @@
         "choices": [
           "linear",
           "Non-Linear"
+        ]
+      }
+    },
+    {
+      "id": "conditional-choice-plain",
+      "semantic": "named alternative with a conditionally enabled equation",
+      "form": "conditional-choice",
+      "notation": [
+        "plain"
+      ],
+      "example": "9x-4y=0",
+      "editor": "equation-box",
+      "topology": "a radio group whose Linear choice enables one standard-form equation box",
+      "mechanism": [
+        "answerForSurface",
+        "planEntry",
+        "enterPlan"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "no"
+      },
+      "probe": {
+        "instruction": "Determine if the following equation is linear. If the equation is linear, convert it to standard form.",
+        "expressions": [
+          "(-2+y)^2-y^2=-9x+4"
+        ],
+        "choices": [
+          "Linear",
+          "Not Linear"
         ]
       }
     },

@@ -31,6 +31,7 @@ const STATE_FIELDS = [
   // that fallback had nothing to revalidate and the held answer could not be
   // placed.
   "tableTargets",
+  "conditionalChoice",
   "answer",
   "displayText",
   "entryText",

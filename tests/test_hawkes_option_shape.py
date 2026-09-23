@@ -74,13 +74,14 @@ def shape(page, editor, choices=()):
     )
 
 
-def solving(page, editor, choices=()):
+def solving(page, editor, choices=(), conditional_choice=""):
     page.run(
         f"""
         state = {{
           ...blankState(), phase: "solving", windowId: 1, tabId: 11, frameId: 0,
           fieldId: "answer_opt", editor: {json.dumps(editor)},
           answerChoices: {json.dumps(list(choices))},
+          conditionalChoice: {json.dumps(conditional_choice)},
           signature: questionSignature({json.dumps(QUESTION_A)}),
         }};
         """
@@ -323,6 +324,50 @@ def test_a_group_that_could_not_be_read_publishes_no_contract(page):
     """No choices means the ordinary rules apply, not an invented contract."""
     assert "choices" not in shape(page, OPTION_EDITOR)
     assert "choices" not in shape(page, OPTION_EDITOR, ["only one"])
+
+
+def test_conditional_choice_carries_the_enabling_choice_and_equation(page):
+    choices = ["Linear", "Not Linear"]
+    solving(page, OPTION_EDITOR, choices, "Linear")
+
+    reply(
+        page,
+        {
+            "display_text": "Linear; 9x - 4y = 0",
+            "keyboard_entry": "9x-4y=0",
+            "parts": [],
+            "conditional_choice": {
+                "choice": "Linear",
+                "relation": {
+                    "subject": "9x-4y",
+                    "display_text": "0",
+                    "keyboard_entry": "0",
+                },
+            },
+        },
+    )
+
+    assert page.json("state.phase") == "solved"
+    assert page.json("state.answer") == "Linear"
+    assert page.json("state.entryText") == "9x-4y=0"
+    assert page.json("state.displayText") == "Linear; 9x - 4y = 0"
+
+
+def test_non_enabling_choice_needs_no_conditional_text(page):
+    choices = ["Linear", "Not Linear"]
+    solving(page, OPTION_EDITOR, choices, "Linear")
+
+    reply(
+        page,
+        {
+            "display_text": "Not Linear",
+            "keyboard_entry": "Not Linear",
+            "parts": [],
+        },
+    )
+
+    assert page.json("state.phase") == "solved"
+    assert page.json("state.answer") == "Not Linear"
 
 
 # --- a choice is selected, not typed ----------------------------------------

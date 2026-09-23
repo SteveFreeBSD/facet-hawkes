@@ -121,6 +121,7 @@ def test_new_radio_group_is_found_even_when_navigation_kept_button_focus(option_
         "fieldId": "answer_opt",
         # One radio group, one answer, and the alternatives it is chosen from.
         "choices": ["Quadrant I", "Quadrant II", "Quadrant III"],
+        "conditionalChoice": "Quadrant II",
     }
 
 
@@ -176,6 +177,8 @@ def test_selected_one_solution_hands_off_to_its_controlled_textbox(option_page):
         # Reported even when there is none: measured-and-empty and never-looked
         # are different facts, and only one of them is safe to act on.
         "suppliedSubject": "",
+        "choices": ["Quadrant I", "Quadrant II", "Quadrant III"],
+        "conditionalChoice": "Quadrant II",
     }
 
 
@@ -288,6 +291,7 @@ GROUP_INSPECT = {
     "code": "option-answer",
     "fieldId": "solution_kind",
     "choices": ["No Solution (∅)", "One Solution", "Infinite Solutions (ℝ)"],
+    "conditionalChoice": "One Solution",
 }
 #: The same page after the choice: the sweep has followed the radio to its box.
 #: `via` is the page's own linkage, measured live rather than assumed.
@@ -298,6 +302,8 @@ REVEALED_INSPECT = {
     "fieldId": "QBase1_input",
     "fieldKind": "native",
     "suppliedSubject": "",
+    "choices": ["No Solution (∅)", "One Solution", "Infinite Solutions (ℝ)"],
+    "conditionalChoice": "One Solution",
 }
 #: And what the page's own model then describes: the box, not the radio.
 REVEALED_EDITOR = {

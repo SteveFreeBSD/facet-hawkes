@@ -112,6 +112,7 @@ def entered(solution):
         solution.entry_mode,
         SimpleNamespace(**relation) if isinstance(relation, dict) else relation,
         intercepts,
+        getattr(solution, "choice", ""),
     )
     if payload.axis_intercepts is not None:
         values = [

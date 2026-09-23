@@ -20,7 +20,7 @@ that it cannot be.
 ## The wire
 
 Every exact answer carries `answer.form` -- one of `scalar`, `ordered-pair`,
-`parts`, `choice`, `relation` -- beside `entry_mode`. It is deliberately the
+`parts`, `choice`, `conditional-choice`, `relation` -- beside `entry_mode`. It is deliberately the
 *family* and not a description of the value: what notation a value is written in
 stays readable from the value, and what a consumer cannot cheaply recover is
 which of these it is holding. Plans are not values and keep their own `kind`
@@ -119,6 +119,7 @@ function that does the typing.
 | named alternative | `choice` | phrase | `Quadrant IV` | one radio group, N buttons | `answerFitsEditor` | yes | no | yes | `choice-phrase` |
 | named alternative carrying a set notation | `choice` | group | `Infinite Solutions (ℝ)` | one radio group whose labels gloss themselves, `No Solution (∅)` | `answerFitsEditor` | yes | no | yes | `choice-notated` |
 | named alternative containing punctuation | `choice` | plain | `Non-Linear` | one radio group whose page-owned label contains punctuation | `answerFitsEditor` | yes | no | no | `choice-hyphenated` |
+| named alternative with a conditionally enabled equation | `conditional-choice` | plain | `9x-4y=0` | a radio group whose Linear choice enables one standard-form equation box | `answerForSurface` → `planEntry` → `enterPlan` | yes | no | no | `conditional-choice-plain` |
 | parabola graph plan | `parabola_plan` | *plan* | `plan, no value` | vertex and two symmetric controls | `graphOperation` | yes | no | yes | `plan-parabola` |
 | literal points graph plan | `point_plot_plan` | *plan* | `plan, no value` | one draggable control per point | `graphOperation` | yes | no | yes | `plan-point-plot` |
 | exact linear graph plan | `linear_graph_plan` | *plan* | `plan, no value` | two draggable controls defining one exact line | `graphOperation` | yes | yes | yes | `plan-linear-graph` |

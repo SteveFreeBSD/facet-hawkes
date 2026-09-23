@@ -53,6 +53,7 @@ def request(
     shape_count=1,
     representations=None,
     choices=None,
+    conditional_choice=None,
 ):
     problem = {
         "prompt_text": instruction,
@@ -64,6 +65,8 @@ def request(
             problem["answer_shape"]["representations"] = representations
         if choices is not None:
             problem["answer_shape"]["choices"] = choices
+        if conditional_choice is not None:
+            problem["answer_shape"]["conditional_choice"] = conditional_choice
     return {
         "protocol_version": 1,
         "operation": "solve_hawkes_problem",
@@ -886,6 +889,30 @@ def test_the_browser_normalises_every_editor_into_one_shape_word(
     )
 
 
+def test_a_choice_with_one_controlled_field_crosses_as_conditional() -> None:
+    context = _normaliser()
+    shape = json.loads(
+        context.eval(
+            "JSON.stringify(answerShapeOf("
+            + json.dumps({"kind": "option"})
+            + ", null, [], "
+            + json.dumps(["Linear", "Not Linear"])
+            + ', "Linear"))'
+        )
+    )
+
+    assert shape == {
+        "kind": "conditional",
+        "count": 1,
+        "choices": ["Linear", "Not Linear"],
+        "conditional_choice": "Linear",
+    }
+    parsed = SolveRequest.model_validate(
+        {**request(), "problem": {"mathml": [MATHML], "answer_shape": shape}}
+    )
+    assert parsed.problem.answer_shape.conditional_choice == "Linear"
+
+
 def test_the_retained_numeric_pair_is_normalised_without_crossing_editor_rules() -> (
     None
 ):
@@ -1084,6 +1111,35 @@ def test_linearity_is_classified_after_exact_cancellation(monkeypatch) -> None:
     assert response.certainty.answered_by == "exact"
     assert response.certainty.model is None
     assert response.certainty.method == "SymPy exact linearity classification"
+
+
+def test_live_linearity_and_standard_form_cross_as_one_conditional_answer(
+    monkeypatch,
+) -> None:
+    loopback = answering(monkeypatch, text="FINAL ANSWER: Not Linear")
+
+    response = handle(
+        request(
+            mathml=["<math><mtext>(-2 + y)^2 - y^2 = -9x + 4</mtext></math>"],
+            instruction=(
+                "Determine if the following equation is linear. If the equation "
+                "is linear, convert it to standard form."
+            ),
+            shape="conditional",
+            choices=["Linear", "Not Linear"],
+            conditional_choice="Linear",
+        )
+    )
+
+    assert loopback.prompts == []
+    assert response.answer.display_text == "Linear; 9x - 4y = 0"
+    assert response.answer.keyboard_entry == "9x-4y=0"
+    assert response.answer.relation is None
+    assert response.answer.conditional_choice.choice == "Linear"
+    relation = response.answer.conditional_choice.relation
+    assert (relation.subject, relation.keyboard_entry) == ("9x-4y", "0")
+    assert response.certainty.source == "Facet Exact"
+    assert response.certainty.model is None
 
 
 def test_the_answer_is_one_of_the_pages_own_choices(monkeypatch) -> None:
