@@ -23,7 +23,11 @@ class Element {
     return {top: this.top, bottom: this.top + 20, left: this.left,
             right: this.left + 50, width: 50, height: 20};
   }
-  getAttribute(name) { return name === "aria-label" ? this.ariaLabel || "" : ""; }
+  getAttribute(name) {
+    if (name === "aria-label") return this.ariaLabel || "";
+    if (name === "aria-labelledby") return this.ariaLabelledby || "";
+    return "";
+  }
   matches(selector) { return selector.indexOf("input") >= 0; }
   closest() { return null; }
 }
@@ -55,12 +59,15 @@ var radios = [
   new HTMLInputElement("PracticeAbsent1", 120, 340, "radio"),
   new HTMLInputElement("PracticeAbsent2", 220, 340, "radio"),
 ];
-radios.forEach(radio => radio.ariaLabel = "absent");
 var labels = [new Element("xLabel", 95, 20, "x-intercept:"),
-              new Element("yLabel", 195, 20, "y-intercept:")];
+              new Element("yLabel", 195, 20, "y-intercept:"),
+              new Element("xAbsentLabel", 120, 390, "absent"),
+              new Element("yAbsentLabel", 220, 390, "absent")];
+radios[0].ariaLabelledby = "xAbsentLabel";
+radios[1].ariaLabelledby = "yAbsentLabel";
 var body = new Element("body", 0, 0);
 var documentElement = new Element("html", 0, 0);
-var all = [...fields, ...radios];
+var all = [...fields, ...radios, ...labels];
 var document = {
   activeElement: body, body, documentElement, baseURI: "https://learn.hawkeslearning.com/",
   getElementById: id => all.find(node => node.id === id) || null,

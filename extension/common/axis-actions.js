@@ -13,6 +13,15 @@ export async function selectAxisAbsences(rows, intercepts) {
   const nameOf = (radio) => {
     const direct = String(radio.getAttribute?.("aria-label") ?? "").trim();
     if (direct) return direct;
+    const owner = String(radio.getAttribute?.("aria-labelledby") ?? "")
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((id) => document.getElementById(id))
+      .filter(Boolean)
+      .map((node) => String(node.textContent ?? "").trim())
+      .filter(Boolean)
+      .join(" ");
+    if (owner) return owner;
     const escape = globalThis.CSS?.escape;
     const label = radio.id && escape
       ? document.querySelector?.(`label[for="${escape(radio.id)}"]`)
