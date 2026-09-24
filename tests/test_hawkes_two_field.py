@@ -49,6 +49,7 @@ def two_field_page():
             this.selectionEnd = 0;
             this.accept = true;
             this.textContent = "";
+            this.attributes = {};
           }
           getBoundingClientRect() {
             return {
@@ -61,6 +62,7 @@ def two_field_page():
             return event.type !== "beforeinput" || this.accept;
           }
           matches(selector) { return selector.includes("input"); }
+          getAttribute(name) { return this.attributes[name] ?? null; }
           closest() { return null; }
           focus() { document.activeElement = this; }
           setSelectionRange(start, end) {
@@ -85,6 +87,7 @@ def two_field_page():
         separator.textContent = "or";
         const separators = [separator];
         const extras = [];
+        const radios = [];
         globalThis.afterPlay = null;
         globalThis.window = {
           location: {origin: "https://learn.hawkeslearning.com"},
@@ -93,7 +96,7 @@ def two_field_page():
         globalThis.document = {
           activeElement: fields[0], body, documentElement,
           querySelectorAll(selector) {
-            if (selector.includes('input[type="radio"].opt')) return [];
+            if (selector.includes('input[type="radio"].opt')) return radios;
             if (selector.includes('customMessageBox')) return [];
             if (selector === "*") return separators;
             if (selector.includes("input.qbaseCSS")) return [...fields, ...extras];
@@ -134,6 +137,38 @@ def test_exact_pair_is_discovered_in_left_to_right_order(two_field_page):
         "code": "multi-answer-fields",
         "fieldId": "QBase1_input\u001fQBase2_input",
         "fieldIds": ["QBase1_input", "QBase2_input"],
+    }
+
+
+def test_two_fields_plus_semantic_and_or_are_one_composite_without_focus(
+    two_field_page,
+):
+    """The live Step 1 shape is not four answers: two editors and one choice."""
+    two_field_page.eval(
+        """
+        for (const semantic of ["and", "or"]) {
+          const radio = new HTMLInputElement({
+            id: `connector-${semantic}`, left: 185, top: 235, width: 20,
+          });
+          radio.name = "connector";
+          radio.attributes["aria-label"] = semantic;
+          radios.push(radio);
+        }
+        document.activeElement = body;
+        """
+    )
+
+    assert result(two_field_page, "ethnosHawkes.inspectField()") == {
+        "ready": True,
+        "code": "inequality-pair-answer",
+        "via": "inequality-pair",
+        "fieldId": "QBase1_input\u001fQBase2_input",
+        "fieldIds": ["QBase1_input", "QBase2_input"],
+        "connectorGroup": "connector",
+        "connectorChoices": [
+            {"id": "connector-and", "semantic": "and"},
+            {"id": "connector-or", "semantic": "or"},
+        ],
     }
 
 

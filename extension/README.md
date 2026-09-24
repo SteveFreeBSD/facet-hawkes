@@ -390,6 +390,13 @@ and the refusal paths without loading a model.
 A temporary add-on does not create a Firefox profile or change any preference,
 and Firefox removes it on restart.
 
+After the initial temporary load, do not return to `about:debugging` for source
+changes. Finish a coherent patch, run its offline tests, and reload exactly
+once with `python3 scripts/reload_live_hawkes.py`. The helper targets only the
+proved `ethnos-hawkes@local` temporary add-on in the already-running normal
+profile and verifies that its new build marker matches this tree. It never
+opens, navigates, reloads, or controls a Hawkes lesson page.
+
 ## Use it
 
 1. Open the question. If it has more than one visible answer box, click the

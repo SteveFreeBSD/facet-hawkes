@@ -130,6 +130,13 @@ def solve(request: SolveRequest, report=None) -> SolveResponse:
     if problem.answer_shape and problem.answer_shape.kind == "graph":
         if (
             problem.answer_shape.graph
+            and problem.answer_shape.graph.family == "linear-inequality-system"
+        ):
+            return _solve_linear_inequality_system_graph_with_facet(
+                request, instruction, announce
+            )
+        if (
+            problem.answer_shape.graph
             and problem.answer_shape.graph.family == "linear-inequality"
         ):
             return _solve_linear_inequality_graph_with_facet(
@@ -946,6 +953,79 @@ def _solve_linear_inequality_graph_with_facet(request, instruction, announce):
     )
 
 
+def _solve_linear_inequality_system_graph_with_facet(request, instruction, announce):
+    """Derive and prove a two-boundary union/intersection plan exactly."""
+    from .facet_client import (
+        LINEAR_INEQUALITY_SYSTEM_GRAPH_PLAN,
+        safe_request_id,
+        solve_math,
+    )
+    from .hawkes_graph import (
+        LinearInequalitySystemGraphPlan,
+        validate_linear_inequality_system_graph_plan,
+    )
+    from .hawkes_mathml import mathml_to_latex
+
+    problem = request.problem
+    graph = problem.answer_shape.graph
+    try:
+        if len(problem.mathml) != 2 or graph is None or graph.connector is None:
+            raise ValueError("a linear inequality system needs two exact inequalities")
+        announce("solving", "Facet exact linear inequality system")
+        solution = solve_math(
+            instruction=instruction,
+            request_id=safe_request_id(request.request_id),
+            expressions=[mathml_to_latex(item) for item in problem.mathml],
+            result_kind=LINEAR_INEQUALITY_SYSTEM_GRAPH_PLAN,
+            graph={
+                "family": "linear-inequality-system",
+                "controls": "mounted-boundaries-combined-regions",
+                "connector": graph.connector,
+            },
+            accelerator_required=False,
+            allow_fallback=False,
+        )
+        plan = LinearInequalitySystemGraphPlan.model_validate(solution.answer.plan)
+        validate_linear_inequality_system_graph_plan(plan, problem.mathml, graph)
+    except Exception as error:  # noqa: BLE001 - a refusal, never a host fault
+        return error_response(
+            request.request_id,
+            f"Linear inequality system graph refused: {error}",
+            "unsupported",
+        )
+    styles = " and ".join(member.boundary for member in plan.inequalities)
+    return SolveResponse(
+        request_id=request.request_id,
+        status="ready",
+        problem_text="\n".join(
+            (instruction, *(mathml_to_latex(item) for item in problem.mathml))
+        ),
+        answer=AnswerPayload(
+            graph_plan=plan,
+            display_text=(
+                f"{plan.operation.title()} of the two solution sets; "
+                f"preserve the existing {styles} boundaries"
+            ),
+        ),
+        certainty=Certainty(
+            prompt_seen=True,
+            source=solution.source,
+            transcription="verified",
+            insertable=True,
+            answered_by="exact",
+            facet_invoked=True,
+            router=solution.router,
+            reading="mathml",
+            method=solution.method,
+            runtime=solution.runtime,
+            elapsed_ms=solution.elapsed_ms,
+            issues=[
+                "Connector and both mounted boundaries validated against exact MathML"
+            ],
+        ),
+    )
+
+
 def _solve_number_line_with_facet(request, instruction, announce):
     """Draw an exactly solved solution set on the page's own number line.
 
@@ -1119,6 +1199,7 @@ def answer_payload(
     relation: FacetRelation | None = None,
     intercepts=None,
     choice: str = "",
+    inequality_pair=None,
 ) -> AnswerPayload:
     """Turn one exactly-shaped answer into the page's answer model.
 
@@ -1151,8 +1232,10 @@ def answer_payload(
     )
     from .hawkes_protocol import (
         AnswerAxisIntercepts,
+        AnswerComparison,
         AnswerConditionalChoice,
         AnswerCoordinate,
+        AnswerInequalityPair,
     )
 
     conditional = (
@@ -1173,6 +1256,31 @@ def answer_payload(
         if intercepts is not None
         else None
     )
+    written_pair = (
+        AnswerInequalityPair(
+            left=AnswerComparison(
+                left=inequality_pair.left.left,
+                relation=inequality_pair.left.relation,
+                right=inequality_pair.left.right,
+                keyboard_entry=render(
+                    f"{inequality_pair.left.left}{inequality_pair.left.relation}"
+                    f"{inequality_pair.left.right}"
+                ),
+            ),
+            connector=inequality_pair.connector,
+            right=AnswerComparison(
+                left=inequality_pair.right.left,
+                relation=inequality_pair.right.relation,
+                right=inequality_pair.right.right,
+                keyboard_entry=render(
+                    f"{inequality_pair.right.left}{inequality_pair.right.relation}"
+                    f"{inequality_pair.right.right}"
+                ),
+            ),
+        )
+        if inequality_pair is not None
+        else None
+    )
     return AnswerPayload(
         display_text=display,
         # A multi-part answer is carried in `parts`; there is no one string
@@ -1188,6 +1296,7 @@ def answer_payload(
         relation=None if conditional is not None else written,
         conditional_choice=conditional,
         axis_intercepts=written_intercepts,
+        inequality_pair=written_pair,
     )
 
 
@@ -1320,6 +1429,7 @@ def _solve_with_facet(
             solution.answer.relation,
             solution.answer.intercepts,
             solution.answer.choice,
+            solution.answer.inequality_pair,
         ),
         certainty=Certainty(
             prompt_seen=prompt_seen,
@@ -1402,6 +1512,8 @@ def _solve_from_markup(
         solution.entry_mode,
         solution.relation,
         solution.intercepts,
+        "",
+        solution.inequality_pair,
     ), ""
 
 
@@ -1439,6 +1551,8 @@ def _shaped(solution) -> AnswerPayload | None:
         solution.entry_mode,
         solution.relation,
         solution.intercepts,
+        "",
+        solution.inequality_pair,
     )
 
 

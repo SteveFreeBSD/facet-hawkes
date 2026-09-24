@@ -335,6 +335,47 @@ def test_a_graph_offering_some_other_number_of_controls_is_claimed_too():
     assert result["via"] == "graph-surface"
 
 
+def test_four_presentation_svgs_are_discovered_as_graph_choices_without_focus():
+    """The live Lesson 2.6 choice template has no ``#QGraph`` wrapper.
+
+    Hawkes publishes four complete, visible SVG graphs with ``role=presentation``
+    and no ordinary answer fields.  Discovery must hand that bounded collection
+    to the page-owned graph probe instead of falling through to focus recovery.
+    """
+    import quickjs
+
+    context = quickjs.Context()
+    context.eval("""
+      globalThis.HTMLIFrameElement = class {};
+      globalThis.HTMLFrameElement = class {};
+      globalThis.window = {location: {origin: 'https://learn.hawkeslearning.com'}};
+      const graphs = Array.from({length: 4}, () => ({
+        getBoundingClientRect: () => ({width: 290, height: 290}),
+      }));
+      globalThis.document = {
+        activeElement: null,
+        querySelectorAll: selector => selector === 'svg[role="presentation"]'
+          ? graphs : [],
+        getElementById: () => null,
+        querySelector: () => null,
+      };
+    """)
+    context.eval(
+        (
+            pathlib.Path(__file__).parents[1] / "extension/content/hawkes-editor.js"
+        ).read_text()
+    )
+
+    result = json.loads(context.eval("JSON.stringify(ethnosHawkes.inspectField())"))
+
+    assert result == {
+        "ready": True,
+        "code": "graph-answer",
+        "via": "rendered-graph-choice-surfaces",
+        "fieldId": "graph-choice:4",
+    }
+
+
 def test_a_visible_linear_inequality_surface_needs_no_focused_field():
     """The live Lesson 2.6 contract is one composite graph answer.
 

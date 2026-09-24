@@ -83,6 +83,7 @@ FACET_ANSWER_FORMS: frozenset[str] = frozenset(
         "conditional-choice",
         "relation",
         "axis-intercepts",
+        "inequality-pair",
     }
 )
 
@@ -93,6 +94,7 @@ FACET_ANSWER_FORMS: frozenset[str] = frozenset(
 FACET_RELATION_FORM = "relation"
 FACET_CONDITIONAL_CHOICE_FORM = "conditional-choice"
 FACET_AXIS_INTERCEPTS_FORM = "axis-intercepts"
+FACET_INEQUALITY_PAIR_FORM = "inequality-pair"
 
 #: What Facet may be asked to produce. `value` is an answer to write down. The
 #: other two are *plans*: a proposal Ethnos proves for itself before anything
@@ -103,6 +105,7 @@ QUADRATIC_REGRESSION = "quadratic_regression"
 POINT_PLOT_PLAN = "point_plot_plan"
 LINEAR_GRAPH_PLAN = "linear_graph_plan"
 LINEAR_INEQUALITY_GRAPH_PLAN = "linear_inequality_graph_plan"
+LINEAR_INEQUALITY_SYSTEM_GRAPH_PLAN = "linear_inequality_system_graph_plan"
 FACET_RESULT_KINDS: frozenset[str] = frozenset(
     {
         VALUE,
@@ -111,6 +114,7 @@ FACET_RESULT_KINDS: frozenset[str] = frozenset(
         POINT_PLOT_PLAN,
         LINEAR_GRAPH_PLAN,
         LINEAR_INEQUALITY_GRAPH_PLAN,
+        LINEAR_INEQUALITY_SYSTEM_GRAPH_PLAN,
     }
 )
 PLAN_KINDS: frozenset[str] = frozenset(
@@ -120,6 +124,7 @@ PLAN_KINDS: frozenset[str] = frozenset(
         POINT_PLOT_PLAN,
         LINEAR_GRAPH_PLAN,
         LINEAR_INEQUALITY_GRAPH_PLAN,
+        LINEAR_INEQUALITY_SYSTEM_GRAPH_PLAN,
     }
 )
 
@@ -129,7 +134,13 @@ PLAN_KINDS: frozenset[str] = frozenset(
 #: plan is a proposal about geometry nobody wrote out, which the exact solvers
 #: cannot make, so claiming one was exact would be a false provenance.
 EXACTLY_SOLVED_KINDS: frozenset[str] = frozenset(
-    {VALUE, POINT_PLOT_PLAN, LINEAR_GRAPH_PLAN, LINEAR_INEQUALITY_GRAPH_PLAN}
+    {
+        VALUE,
+        POINT_PLOT_PLAN,
+        LINEAR_GRAPH_PLAN,
+        LINEAR_INEQUALITY_GRAPH_PLAN,
+        LINEAR_INEQUALITY_SYSTEM_GRAPH_PLAN,
+    }
 )
 
 #: What the deterministic stage may report having done. `not-run` belongs only
@@ -594,6 +605,7 @@ class FacetAnswer:
     #: Named x/y intercepts; a missing coordinate means that intercept is
     #: mathematically absent, not an omitted string.
     intercepts: FacetAxisIntercepts | None = None
+    inequality_pair: FacetInequalityPair | None = None
     plan: dict[str, Any] | None = None
 
 
@@ -622,6 +634,24 @@ class FacetCoordinate:
 class FacetAxisIntercepts:
     x: FacetCoordinate | None
     y: FacetCoordinate | None
+
+
+@dataclass(frozen=True)
+class FacetComparison:
+    left: str
+    relation: str
+    right: str
+
+    @property
+    def written(self) -> str:
+        return f"{self.left}{self.relation}{self.right}"
+
+
+@dataclass(frozen=True)
+class FacetInequalityPair:
+    left: FacetComparison
+    connector: str
+    right: FacetComparison
 
 
 @dataclass(frozen=True)
@@ -718,6 +748,7 @@ def _answer(payload: Any, expected_kind: str) -> FacetAnswer:
     if form != "" and form not in FACET_ANSWER_FORMS:
         raise FacetProtocolError(f"Facet answer named an unknown form {form!r}")
     intercepts = _intercepts(payload, form)
+    inequality_pair = _inequality_pair(payload, form)
     choice = payload.get("choice", "")
     if not isinstance(choice, str):
         raise FacetProtocolError("Facet answer choice was not a string")
@@ -728,7 +759,12 @@ def _answer(payload: Any, expected_kind: str) -> FacetAnswer:
         raise FacetProtocolError(
             "Facet carried a conditional choice under another form"
         )
-    carriers = int(bool(entry.strip())) + int(bool(parts)) + int(intercepts is not None)
+    carriers = (
+        int(bool(entry.strip()))
+        + int(bool(parts))
+        + int(intercepts is not None)
+        + int(inequality_pair is not None)
+    )
     if carriers != 1:
         # More than one or none: competing answers, or no answer at all.
         raise FacetProtocolError(
@@ -744,6 +780,46 @@ def _answer(payload: Any, expected_kind: str) -> FacetAnswer:
         relation=_relation(payload, form, entry),
         choice=choice,
         intercepts=intercepts,
+        inequality_pair=inequality_pair,
+    )
+
+
+def _inequality_pair(payload: dict[str, Any], form: str) -> FacetInequalityPair | None:
+    """Read two comparisons without recovering their boundary from prose."""
+    stated = payload.get("inequality_pair")
+    if stated is None:
+        if form == FACET_INEQUALITY_PAIR_FORM:
+            raise FacetProtocolError("Facet named an inequality pair but omitted it")
+        return None
+    if form != FACET_INEQUALITY_PAIR_FORM or not isinstance(stated, dict):
+        raise FacetProtocolError(
+            "Facet carried an inequality pair under the wrong form"
+        )
+    if set(stated) != {"left", "connector", "right"}:
+        raise FacetProtocolError("Facet inequality pair has the wrong fields")
+    connector = stated["connector"]
+    if connector not in {"and", "or"}:
+        raise FacetProtocolError("Facet inequality pair has an unknown connector")
+
+    def comparison(value: Any) -> FacetComparison:
+        if not isinstance(value, dict) or set(value) != {"left", "relation", "right"}:
+            raise FacetProtocolError("Facet comparison has the wrong fields")
+        left, relation, right = value["left"], value["relation"], value["right"]
+        if relation not in {"<", "<=", ">", ">="}:
+            raise FacetProtocolError("Facet comparison has an unknown relation")
+        if (
+            not isinstance(left, str)
+            or not left.strip()
+            or not isinstance(right, str)
+            or not right.strip()
+        ):
+            raise FacetProtocolError("Facet comparison omitted one side")
+        return FacetComparison(left=left, relation=relation, right=right)
+
+    return FacetInequalityPair(
+        left=comparison(stated["left"]),
+        connector=connector,
+        right=comparison(stated["right"]),
     )
 
 
@@ -992,6 +1068,7 @@ def solve_math(
         PARABOLA_PLAN,
         LINEAR_GRAPH_PLAN,
         LINEAR_INEQUALITY_GRAPH_PLAN,
+        LINEAR_INEQUALITY_SYSTEM_GRAPH_PLAN,
     } or (result_kind == VALUE and not points):
         if not expressions or any(not item.strip() for item in expressions):
             raise FacetProtocolError("every expression must be non-empty")
@@ -1053,12 +1130,23 @@ def solve_math(
         # A plan carries no value for anybody to write down, so a requirement
         # on the form of one is a question about something else.
         raise FacetProtocolError("only a value question takes an answer shape")
-    if result_kind in {PARABOLA_PLAN, LINEAR_GRAPH_PLAN, LINEAR_INEQUALITY_GRAPH_PLAN}:
+    if result_kind in {
+        PARABOLA_PLAN,
+        LINEAR_GRAPH_PLAN,
+        LINEAR_INEQUALITY_GRAPH_PLAN,
+        LINEAR_INEQUALITY_SYSTEM_GRAPH_PLAN,
+    }:
         if not isinstance(graph, dict) or not graph:
             raise FacetProtocolError("a function plan needs normalised geometry")
         problem["graph"] = graph
     if (
-        result_kind in {PARABOLA_PLAN, LINEAR_GRAPH_PLAN, LINEAR_INEQUALITY_GRAPH_PLAN}
+        result_kind
+        in {
+            PARABOLA_PLAN,
+            LINEAR_GRAPH_PLAN,
+            LINEAR_INEQUALITY_GRAPH_PLAN,
+            LINEAR_INEQUALITY_SYSTEM_GRAPH_PLAN,
+        }
         and points
     ):
         # A parabola plan is drawn from a function on a grid. Points are a

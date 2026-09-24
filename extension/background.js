@@ -87,6 +87,31 @@ const GENERATION = `g${Date.now().toString(36)}${Math.floor(Math.random() * 0xff
   .toString(16)
   .padStart(4, "0")}`;
 
+/** Acknowledge the one-shot development reload that created this generation. */
+async function acknowledgeDevelopmentReload() {
+  const key = "facetDevelopmentReload";
+  const found = (await browser.storage.local.get(key))[key];
+  if (
+    found?.addonId !== browser.runtime.id
+    || !/^[a-f0-9]{32}$/.test(String(found?.nonce ?? ""))
+    || found?.phase !== "requested"
+    || !Number.isFinite(found?.requestedAt)
+    || Math.abs(Date.now() - found.requestedAt) > 30_000
+  ) {
+    return;
+  }
+  await browser.storage.local.set({
+    [key]: {
+      ...found,
+      phase: "completed",
+      generation: GENERATION,
+      completedAt: Date.now(),
+    },
+  });
+}
+
+const developmentReloadReady = acknowledgeDevelopmentReload();
+
 /** This build's declared version. Read once; it cannot change under us. */
 const MANIFEST_VERSION = browser.runtime.getManifest().version;
 
@@ -297,6 +322,7 @@ function blankState() {
     answerChoices: [],
     // The one alternative whose page-owned control enables a text field.
     conditionalChoice: "",
+    systemConnector: "",
     // What the page prints in front of its answer box, when it prints
     // anything: `y =`, `f(x) =`. Read with the question and never carried, for
     // the same reason the choices are not -- last question's answer surface is
@@ -308,6 +334,7 @@ function blankState() {
     displayText: "",
     entryText: "",
     answerParts: [],
+    answerConnector: "",
     answerIntercepts: null,
     graphPlan: null,
     graphCoefficients: [],
@@ -452,7 +479,8 @@ async function seedRememberedAnswer(windowId) {
 function publicationShape(next) {
   const targets = next.tableTargets ?? [];
   const shape = answerShapeOf(
-    next.editor, null, targets, next.answerChoices ?? [], next.conditionalChoice ?? ""
+    next.editor, null, targets, next.answerChoices ?? [], next.conditionalChoice ?? "",
+    next.systemConnector ?? ""
   );
   return shape.kind === "field" && isTableMapping(targets)
     ? { kind: "multi", count: targets.length }
@@ -497,6 +525,7 @@ function withheldAnswer(next) {
     displayText: "",
     entryText: "",
     answerParts: [],
+    answerConnector: "",
     answerIntercepts: null,
     graphPlan: null,
     graphCoefficients: [],
@@ -906,6 +935,7 @@ function questionSignature(question) {
     .replace(/\sdata-semantic-(?:id|parent|owns|children)="[^"]*"/g, "");
   const content = `${question.promptText}\u0000${question.expressions.map(render).join("\u0000")}`
     + (question.graphPoints ? JSON.stringify(question.graphPoints) : "")
+    + (question.systemConnector ?? "")
     // Two questions can share a prompt and differ only in their numbers, which
     // is exactly what a table of measurements is. Left out, the second would
     // be the first question to the panel, and the first answer would still be
@@ -1106,15 +1136,31 @@ function noteTableTargets(targets, question, extra = {}) {
 }
 
 /** Preflight every answer part against this question's published editors. */
+function inequalityEntryIsSafe(value) {
+  if (
+    typeof value !== "string"
+    || value.length === 0
+    || value.length > 120
+    || !/^[0-9A-Za-z+\-*/^(). <>=]+$/.test(value)
+  ) {
+    return false;
+  }
+  const relations = value.match(/<=|>=|<|>/g) ?? [];
+  return relations.length === 1 && !/(?<![<>])=(?!=)/.test(value);
+}
+
 function multiEntryPlans(parts, editor) {
+  const inequalityPair = editor?.kind === "inequality-pair";
   if (!(
     Array.isArray(parts)
     && parts.length >= 2
     && parts.length <= MAX_ANSWER_PARTS
-    && editor?.kind === "multi"
+    && (editor?.kind === "multi" || inequalityPair)
     && Array.isArray(editor.editors)
     && editor.editors.length === parts.length
-    && parts.every((part) => validateAnswer(part).ok)
+    && parts.every((part) =>
+      inequalityPair ? inequalityEntryIsSafe(part) : validateAnswer(part).ok
+    )
   )) {
     return null;
   }
@@ -1297,7 +1343,8 @@ function optionShape(choices, conditionalChoice = "") {
 }
 
 function answerShapeOf(
-  editor, answerTable = null, tableTargets = [], choices = [], conditionalChoice = ""
+  editor, answerTable = null, tableTargets = [], choices = [], conditionalChoice = "",
+  systemConnector = ""
 ) {
   // A validated completion table numbers its blanks in the order the
   // mathematics is read. Hawkes' live row-headed table publishes ten control
@@ -1337,9 +1384,18 @@ function answerShapeOf(
     }
     return blanks.length;
   })();
-  if (editor?.kind === "graph") return { kind: "graph", graph: editor.context };
+  if (editor?.kind === "graph") {
+    const graph = editor.context?.family === "linear-inequality-system"
+      && ["and", "or"].includes(systemConnector)
+      ? { ...editor.context, connector: systemConnector }
+      : editor.context;
+    return { kind: "graph", graph };
+  }
   if (editor?.kind === "axis-intercepts") {
     return { kind: "axis-intercepts", count: 2 };
+  }
+  if (editor?.kind === "inequality-pair") {
+    return { kind: "inequality-pair", count: 1 };
   }
   // A group of option controls is one question's alternatives, not one
   // question's answers. The probe reports such a group as a single `option`
@@ -1598,6 +1654,9 @@ function answerFieldIds(choice, evidence, editor) {
 function answerFieldIdentity(choice, fieldIds) {
   if (!Array.isArray(fieldIds) || fieldIds.length < 2) {
     return "";
+  }
+  if (choice?.code === "inequality-pair-answer") {
+    return "inequality-pair";
   }
   return Array.isArray(choice?.fieldIds) && choice.fieldIds.length > 0
     ? "separated"
@@ -1971,6 +2030,7 @@ async function prepare(windowId = state.windowId) {
     displayText: state.displayText,
     entryText: state.entryText,
     answerParts: Array.isArray(state.answerParts) ? state.answerParts : [],
+    answerConnector: state.answerConnector ?? "",
     answerIntercepts: state.answerIntercepts ?? null,
     // Carried so it can be *revalidated*, never so it can be adopted: the
     // reader refuses a table for reasons about the controls rather than about
@@ -2031,6 +2091,10 @@ async function prepare(windowId = state.windowId) {
       // What a frame drawing a number line saw of it, when none claimed it.
       numberLineEvidence: results.map((entry) => entry?.result?.numberLineEvidence)
         .find(Boolean) ?? null,
+      graphChoiceEvidence: results.map((entry) => entry?.result?.graphChoiceEvidence)
+        .find((value) => value && (value.exactQGraph > 0
+          || value.idMarked?.length > 0 || value.applications?.length > 0
+          || value.visibleSvgs?.length > 0)) ?? null,
     });
     if (!Number.isInteger(choice.frameId)) {
       fail(frameErrorKey(choice), {
@@ -2043,7 +2107,10 @@ async function prepare(windowId = state.windowId) {
     if (handedOn()) {
       return;
     }
-    if (choice.graph && (!editor?.ok || editor.kind !== "graph")) {
+    const describedGraphChoice = editor?.kind === "option"
+      && editor?.surface === "graph-choice";
+    if (choice.graph && (!editor?.ok
+      || (editor.kind !== "graph" && !describedGraphChoice))) {
       // What the page's own graph model says it is drawing. Titles, counts and
       // flags only -- never a coordinate, and never the question's words -- so
       // "this family is unsupported" names a gap instead of restating itself.
@@ -2072,11 +2139,17 @@ async function prepare(windowId = state.windowId) {
     const swept = axisInterceptRows.length === 2
       ? []
       : answerFieldIds(choice, evidenceReport?.multiFieldEvidence, editor);
+    if (swept.length >= 2 && ["multi", "inequality-pair"].includes(editor?.kind)) {
+      log.info("multi-editor-ownership", {
+        fieldIds: swept,
+        ownership: editor.ownership ?? null,
+      });
+    }
     if (
       swept.length > 0
       && (swept.length < 2
         || swept.length > MAX_ANSWER_PARTS
-        || editor?.kind !== "multi"
+        || !["multi", "inequality-pair"].includes(editor?.kind)
         || editor.editors?.length !== swept.length)
     ) {
       // Which of the four disagreements it was. This refusal fired live on a
@@ -2172,9 +2245,13 @@ async function prepare(windowId = state.windowId) {
     // answer reported them. Read fresh with the question and never carried:
     // last question's choices are not this one's, and a stale list is worse
     // than none because a solver would answer with one of its members.
-    const answerChoices = Array.isArray(chosenReport?.choices)
-      ? chosenReport.choices.filter((text) => typeof text === "string" && text)
-      : [];
+    const publishedChoices = Array.isArray(chosenReport?.choices)
+      ? chosenReport.choices
+      : describedGraphChoice && Array.isArray(editor?.choices)
+        ? editor.choices : [];
+    const answerChoices = publishedChoices.filter(
+      (text) => typeof text === "string" && text
+    );
     const conditionalChoice = answerChoices.includes(chosenReport?.conditionalChoice)
       ? chosenReport.conditionalChoice
       : "";
@@ -2236,6 +2313,7 @@ async function prepare(windowId = state.windowId) {
       tableTargets,
       answerChoices,
       conditionalChoice,
+      systemConnector: question.systemConnector ?? "",
       editor: hasAnswer && previous.graphPlan ? previous.editor : editor,
       signature,
       // Carried over only while the question is unchanged, so a previous
@@ -2244,6 +2322,7 @@ async function prepare(windowId = state.windowId) {
       displayText: hasAnswer ? previous.displayText : "",
       entryText: hasAnswer ? previous.entryText : "",
       answerParts: hasAnswer ? previous.answerParts : [],
+      answerConnector: hasAnswer ? previous.answerConnector : "",
       answerIntercepts: hasAnswer ? previous.answerIntercepts : null,
       graphPlan: hasAnswer ? previous.graphPlan : null,
       graphCoefficients: hasAnswer ? previous.graphCoefficients : [],
@@ -2400,6 +2479,9 @@ async function solve(windowId = state.windowId) {
       answerTableDetail: question.evidence?.answerTableDetail ?? null,
       promptChars: question.evidence?.promptChars ?? 0,
       instructionalMath: question.evidence?.instructionalMath ?? 0,
+      mathRelations: question.evidence?.mathRelations ?? [],
+      stepMathScope: question.evidence?.stepMathScope ?? "",
+      systemConnector: question.evidence?.systemConnector ?? "",
     };
     log.info("question-read", {
       expressions: runFacts.evidence.expressions,
@@ -2409,6 +2491,9 @@ async function solve(windowId = state.windowId) {
       answerTableDetail: runFacts.evidence.answerTableDetail,
       promptChars: runFacts.evidence.promptChars,
       instructionalMath: runFacts.evidence.instructionalMath,
+      mathRelations: runFacts.evidence.mathRelations,
+      stepMathScope: runFacts.evidence.stepMathScope,
+      systemConnector: runFacts.evidence.systemConnector,
     });
     // The answer about to be solved belongs to the question just read, not to
     // whatever was on screen when the panel opened. The same is true of the
@@ -2463,7 +2548,7 @@ async function solve(windowId = state.windowId) {
     const solveDeadline = Date.now() + settings.solveTimeoutSeconds * 1000;
     const shape = answerShapeOf(
       state.editor, question.answerTable, tableTargets, state.answerChoices ?? [],
-      state.conditionalChoice ?? ""
+      state.conditionalChoice ?? "", question.systemConnector ?? ""
     );
     const askToSolve = (image, pipeline) => {
       log.info("host-request-shaped", {
@@ -2536,6 +2621,7 @@ async function solve(windowId = state.windowId) {
     if (
       reply?.status === "unsupported"
       && shape?.kind !== "graph"
+      && state.editor?.surface !== "graph-choice"
       && !controller.signal.aborted
     ) {
       // The host says which decline this was; without it a live fallback
@@ -2720,6 +2806,7 @@ const REFUSAL_REASONS = Object.freeze([
   ["graph-plan-refused", /^Graph plan refused/i],
   ["point-plot-refused", /^Point plot refused/i],
   ["linear-graph-refused", /^Linear graph refused/i],
+  ["linear-inequality-system-graph-refused", /^Linear inequality system graph refused/i],
   ["linear-inequality-graph-refused", /^Linear inequality graph refused/i],
   ["number-line-refused", /^Number line refused/i],
   ["invalid-request", /^Invalid request/i],
@@ -2730,6 +2817,23 @@ const REFUSAL_REASONS = Object.freeze([
 
 /** Which refusal this was, named from the list above and never from the text. */
 function refusalReason(message) {
+  if (/^Linear inequality system graph refused:/i.test(message)) {
+    return "linear-inequality-system-graph-refused";
+  }
+  if (/^Linear inequality graph refused:/i.test(message)) {
+    const known = [
+      ["linear-inequality-not-requested", /not a request to graph a linear inequality/i],
+      ["linear-inequality-wrong-surface", /needs its Cartesian composite surface/i],
+      ["linear-inequality-expression-count", /requires one stated inequality/i],
+      ["linear-inequality-chained", /expression is not one inequality/i],
+      ["linear-inequality-missing-side", /inequality has a missing side/i],
+      ["linear-inequality-unreadable", /could not be read as an exact line/i],
+      ["linear-inequality-nonlinear", /boundary is not a rational affine line/i],
+      ["linear-inequality-out-of-bounds", /fewer than two exact boundary points/i],
+      ["linear-inequality-plan-mismatch", /plan does not match the exact inequality/i],
+    ].find(([, pattern]) => pattern.test(message));
+    if (known) return known[0];
+  }
   const found = REFUSAL_REASONS.find(([, pattern]) => pattern.test(message));
   return found ? found[0] : "unclassified";
 }
@@ -2797,7 +2901,9 @@ async function acceptReply(reply) {
     // what has to agree here is only that it is a plan for this page's graph.
     const planKind = reply.answer.graph_plan.kind;
     const stated = { points: "points", numberline: "numberline" }[planKind];
-    const derived = ["line", "parabola", "linear-inequality"].includes(planKind);
+    const derived = [
+      "line", "parabola", "linear-inequality", "linear-inequality-system",
+    ].includes(planKind);
     const wrong = stated
       ? state.editor?.context?.family !== stated
       : planKind === "line"
@@ -2810,6 +2916,11 @@ async function acceptReply(reply) {
             || certainty.answered_by !== "exact"
             || !certainty.facet_invoked
             || reply.answer.graph_coefficients?.length !== 3
+        : planKind === "linear-inequality-system"
+          ? state.editor?.context?.family !== "linear-inequality-system"
+            || certainty.answered_by !== "exact"
+            || !certainty.facet_invoked
+            || (reply.answer.graph_coefficients?.length ?? 0) !== 0
         : planKind === "parabola"
           ? certainty.answered_by !== "facet"
             || !certainty.facet_invoked
@@ -2841,9 +2952,34 @@ async function acceptReply(reply) {
   }
   // Decided before anything reads the answer, so that the card, the editor
   // check, the entry plan and the retained record are all about the same one.
-  const shaped = answerForSurface(
-    reply.answer, state.editor, state.suppliedSubject ?? ""
-  );
+  const carriedPair = reply.answer.inequality_pair;
+  const hasCarriedPair = carriedPair !== null && carriedPair !== undefined;
+  const pairConnector = hasCarriedPair && ["and", "or"].includes(carriedPair?.connector)
+    ? carriedPair.connector
+    : "";
+  const pairParts = hasCarriedPair
+    ? [carriedPair?.left?.keyboard_entry, carriedPair?.right?.keyboard_entry]
+    : [];
+  const pairChoices = Array.isArray(state.editor?.connector?.choices)
+    ? state.editor.connector.choices.map((choice) => choice?.semantic)
+    : [];
+  if (hasCarriedPair && (
+    state.editor?.kind !== "inequality-pair"
+    || certainty.answered_by !== "exact"
+    || !certainty.facet_invoked
+    || !pairConnector
+    || pairChoices.length !== 2
+    || new Set(pairChoices).size !== 2
+    || !pairChoices.includes(pairConnector)
+    || pairParts.length !== 2
+    || !pairParts.every(inequalityEntryIsSafe)
+  )) {
+    fail("errorAnswerInvalid", { detail: "inequality-pair-malformed" });
+    return;
+  }
+  const shaped = hasCarriedPair
+    ? { ...reply.answer, parts: pairParts }
+    : answerForSurface(reply.answer, state.editor, state.suppliedSubject ?? "");
   const displayText = readableAnswer(shaped);
   const carriesConditional = reply.answer?.conditional_choice !== null
     && reply.answer?.conditional_choice !== undefined;
@@ -2883,7 +3019,9 @@ async function acceptReply(reply) {
     : [];
   const hasParts = answerParts.length >= 2
     && answerParts.length <= MAX_ANSWER_PARTS
-    && answerParts.every((value) => validateAnswer(value).ok);
+    && answerParts.every((value) =>
+      hasCarriedPair ? inequalityEntryIsSafe(value) : validateAnswer(value).ok
+    );
   // What may be typed is a narrower question than what may be shown. A
   // multi-part answer keeps the readable equality only as its reviewed
   // identity; its entry values remain separate all the way to the field writer.
@@ -3048,6 +3186,7 @@ async function acceptReply(reply) {
         : answer,
     entryText,
     answerParts: hasParts ? answerParts : [],
+    answerConnector: hasCarriedPair ? pairConnector : "",
     answerIntercepts: hasIntercepts ? answerIntercepts : null,
     problemText: reply.problem_text ?? "",
     source: answeredByBadge(certainty),
@@ -3147,6 +3286,7 @@ async function buildStructured(answer, cadence, target, editor, routed) {
  * @property {string} reviewed the answer as shown and approved
  * @property {string} machineEntry the form the panel planned and offered
  * @property {string[]} answerParts independently planned roots, when present
+ * @property {string} answerConnector semantic connector for an inequality pair
  * @property {{x: string[]|null, y: string[]|null}|null} answerIntercepts
  * @property {string} problemText exact instruction used to choose an answer separator
  */
@@ -3176,6 +3316,15 @@ function pinInsertionTarget() {
     reviewed: state.answer,
     machineEntry: state.entryText || state.answer,
     answerParts: Object.freeze([...(state.answerParts ?? [])]),
+    answerConnector: state.answerConnector ?? "",
+    connectorSurface: state.editor?.kind === "inequality-pair"
+      ? Object.freeze({
+          group: state.editor.connector?.group ?? "",
+          choices: Object.freeze((state.editor.connector?.choices ?? []).map(
+            (choice) => Object.freeze({ ...choice })
+          )),
+        })
+      : null,
     answerIntercepts: state.answerIntercepts === null
       ? null
       : Object.freeze({
@@ -3227,6 +3376,7 @@ const OWNERSHIP_COMPONENTS = Object.freeze({
   fieldIdentity: (target) => (state.fieldIdentity ?? "") === target.fieldIdentity,
   tableTargets: (target) => sameTableMapping(state.tableTargets ?? [], target.tableTargets),
   answerParts: (target) => sameStringArray(state.answerParts ?? [], target.answerParts),
+  answerConnector: (target) => (state.answerConnector ?? "") === target.answerConnector,
   answerIntercepts: (target) =>
     JSON.stringify(state.answerIntercepts) === JSON.stringify(target.answerIntercepts),
   axisInterceptRows: (target) =>
@@ -3260,6 +3410,7 @@ function ownershipSnapshot(target) {
     fieldIdentity: target.fieldIdentity,
     tableTargets: target.tableTargets.length,
     answerParts: target.answerParts.length,
+    answerConnector: target.answerConnector,
     axisIntercepts: target.answerIntercepts !== null,
     axisRows: target.axisInterceptRows.length,
     signature: target.signature,
@@ -3429,7 +3580,7 @@ async function insert() {
       const now = editor.snapshot ?? {};
       log.warn("graph-target-stale-before-insert", {
         kind: editor.kind,
-        moved: ["question", "xml", "points", "answer"].filter(
+        moved: ["question", "xml", "points", "answer", "system", "radios"].filter(
           (part) => JSON.stringify(was[part]) !== JSON.stringify(now[part])
         ),
       });
@@ -3460,7 +3611,13 @@ async function insert() {
       fail("errorSolveRefused", { detail: code });
       return;
     }
-    log.info("graph-verified", { events: entry.result.events, code: entry.result.code ?? "" });
+    log.info("graph-verified", {
+      events: entry.result.events,
+      code: entry.result.code ?? "",
+      operation: entry.result.operation ?? "",
+      boundaries: entry.result.boundaries ?? null,
+      selectedRegions: entry.result.selectedRegions ?? null,
+    });
     log.info("inserted", {
       via: target.graphPlan.kind,
       transport: routed.transport,
@@ -3470,6 +3627,8 @@ async function insert() {
     await finishInsertion(
       target.detail + (entry.result.code === "numberline-verified"
         ? "\nNumber line interval verified against the page's own answer"
+        : entry.result.code === "graph-linear-inequality-system-verified"
+          ? "\nUnion/intersection and mounted boundaries verified in Hawkes' graph model"
         : entry.result.code === "graph-line-verified"
           ? "\nExact line verified from both page-owned defining points"
         : "\nGraph controls and coefficients verified"),
@@ -3726,6 +3885,15 @@ async function insert() {
     return;
   }
   if (target.answerParts.length >= 2) {
+    const inequalityPair = ["and", "or"].includes(target.answerConnector);
+    if (inequalityPair && (
+      editor.kind !== "inequality-pair"
+      || JSON.stringify(editor.connector ?? null)
+        !== JSON.stringify(target.connectorSurface ?? null)
+    )) {
+      fail("errorQuestionChanged", { detail: "inequality-pair-surface-changed" });
+      return;
+    }
     const commaPlan = transportMatches(routed, "hawkes-dynamic-keypad")
       ? commaAnswerPlan(target.answerParts, editor, target.problemText)
       : null;
@@ -3898,6 +4066,9 @@ async function insert() {
             cadence,
             target.fieldIds,
             routed.transport,
+            inequalityPair
+              ? { ...target.connectorSurface, semantic: target.answerConnector }
+              : null,
           ],
         }));
         outcome = results?.[0]?.result;
@@ -3907,9 +4078,10 @@ async function insert() {
       }
       if (
         !outcome?.ok
-        || outcome.code !== "entered-fields"
+        || outcome.code !== (inequalityPair ? "entered-inequality-pair" : "entered-fields")
         || !sameStringArray(outcome.enteredFields, target.fieldIds)
         || outcome.completed !== target.answerParts.length
+        || (inequalityPair && outcome.connector !== target.answerConnector)
       ) {
         fail(insertErrorKey(outcome?.code ?? "answer-parts-incomplete"));
         return;
@@ -3936,7 +4108,12 @@ async function insert() {
         : {}),
       elapsedMs: Date.now() - entryStartedAt,
     });
-    await finishInsertion(`entered all ${target.answerParts.length} answer fields`, target);
+    await finishInsertion(
+      inequalityPair
+        ? `entered both inequalities and selected ${target.answerConnector.toUpperCase()}`
+        : `entered all ${target.answerParts.length} answer fields`,
+      target
+    );
     return;
   }
   // One Hawkes answer box, of either kind. Both are written to in the page's
@@ -4308,9 +4485,12 @@ function watchQuestion() {
       const chosen = reports.find(
         (entry) => entry?.frameId === target.frameId
       )?.result;
+      const optionSurface = chosen?.code === "option-answer"
+        || (chosen?.code === "graph-answer"
+          && state.editor?.surface === "graph-choice");
       const surfaceChanged = state.phase !== "inserted"
         && chosen?.ready === true
-        && (state.editor?.kind === "option") !== (chosen.code === "option-answer");
+        && (state.editor?.kind === "option") !== optionSurface;
       const question = await readQuestion(state.tabId, state.frameId, 1);
       const now = questionSignature(question);
       watchFailures = 0;
@@ -4451,6 +4631,9 @@ settingsReady.then(() =>
     ...settings,
   })
 );
+developmentReloadReady.catch((error) =>
+  log.debug("development-reload-acknowledgement-failed", { error: describeError(error) })
+);
 
 /**
  * What the marker covers: every binding the event page imports, and its own
@@ -4526,6 +4709,7 @@ function markedCode() {
     "common/settings.js#readSettings": readSettings,
     "common/settings.js#resolveEntryCadence": resolveEntryCadence,
     "background.js#acceptReply": acceptReply,
+    "background.js#acknowledgeDevelopmentReload": acknowledgeDevelopmentReload,
     "background.js#answerFieldIds": answerFieldIds,
     "background.js#axisInterceptDisplay": axisInterceptDisplay,
     "background.js#answerShapeOf": answerShapeOf,

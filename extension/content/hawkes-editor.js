@@ -412,6 +412,37 @@ var ethnosHawkes = (function () {
     return String((explicit ?? wrapped)?.textContent ?? radio?.value ?? "").trim();
   }
 
+  /** Two expression boxes joined by the page's semantic AND/OR choice. */
+  function inequalityPairSurface() {
+    const fields = solutionFieldCandidates();
+    const radios = optionGroup();
+    if (
+      fields.length !== 2
+      || new Set(fields.map((field) => field.id)).size !== 2
+      || radios.length !== 2
+    ) {
+      return null;
+    }
+    const choices = radios.map((radio) => ({
+      id: radio.id || "",
+      semantic: optionName(radio).replace(/\s+/g, " ").trim().toLowerCase(),
+      group: radio.name || "",
+    }));
+    if (
+      choices.some((choice) => !choice.id || !choice.group)
+      || new Set(choices.map((choice) => choice.group)).size !== 1
+      || new Set(choices.map((choice) => choice.semantic)).size !== 2
+      || choices.some((choice) => !["and", "or"].includes(choice.semantic))
+    ) {
+      return null;
+    }
+    return {
+      fieldIds: fields.map((field) => field.id),
+      connectorGroup: choices[0].group,
+      connectorChoices: choices.map(({ id, semantic }) => ({ id, semantic })),
+    };
+  }
+
   /**
    * A Cartesian inequality answer composed by Hawkes from ordinary controls.
    *
@@ -667,6 +698,11 @@ var ethnosHawkes = (function () {
     const graphs = [...document.querySelectorAll('#QGraph')].filter(
       node => node.getBoundingClientRect().width > 0
     );
+    const renderedGraphChoices = [...document.querySelectorAll('svg[role="presentation"]')]
+      .filter((node) => {
+        const rect = node.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+      });
     // A later step can leave its graph mounted while the current step draws
     // ordinary answer fields.  Hawkes gives that future graph real geometry,
     // so geometry alone cannot make it the current answer surface.  The
@@ -701,6 +737,43 @@ var ethnosHawkes = (function () {
         code: "graph-answer",
         via: "graph-surface",
         fieldId: graphs[0].id || "QGraph",
+      };
+    }
+    // Some choice questions publish each alternative as a complete Cartesian
+    // graph.  They still have no answer box to focus: the collection of graph
+    // surfaces is the answer surface, and the MAIN-world graph probe decides
+    // whether Hawkes publishes enough ownership and geometry to describe it.
+    // Do not collapse these to an ordinary option group here.  The selectable
+    // owners may be outside each #QGraph and the graph models, not DOM order or
+    // screen position, are what can associate an alternative with its drawing.
+    if (
+      graphs.length >= 2
+      && graphs.length <= MAX_CHOICES
+      && fieldCandidates.length === 0
+    ) {
+      return {
+        ready: true,
+        code: "graph-answer",
+        via: "graph-choice-surfaces",
+        fieldId: graphs.map((graph) => graph.id || "QGraph").join("\u001f"),
+      };
+    }
+    // The newer rendered-choice template omits #QGraph altogether.  Each
+    // complete choice is instead one visible SVG explicitly marked by Hawkes
+    // as presentation. Claim only the bounded collection with no competing
+    // fields; the page-realm graph probe must still map every SVG to one graph
+    // model and one selectable owner before it becomes an answer contract.
+    if (
+      graphs.length === 0
+      && renderedGraphChoices.length >= 2
+      && renderedGraphChoices.length <= MAX_CHOICES
+      && fieldCandidates.length === 0
+    ) {
+      return {
+        ready: true,
+        code: "graph-answer",
+        via: "rendered-graph-choice-surfaces",
+        fieldId: `graph-choice:${renderedGraphChoices.length}`,
       };
     }
     // A number line is a graph too, drawn by a different Hawkes engine.
@@ -741,6 +814,32 @@ var ethnosHawkes = (function () {
       graphs: graphs.length,
       candidates: fieldCandidates.length,
     };
+    const visibleShape = (node) => {
+      const rect = node?.getBoundingClientRect?.();
+      return rect ? { width: Math.round(rect.width), height: Math.round(rect.height) } : null;
+    };
+    const graphChoiceEvidence = (() => {
+      const idMarked = [...document.querySelectorAll('[id*="QGraph" i]')];
+      const applications = [...document.querySelectorAll('[role="application"]')];
+      const svgs = [...document.querySelectorAll("svg")];
+      const summarize = (node) => ({
+        tag: String(node?.tagName ?? "").toLowerCase(),
+        id: String(node?.id ?? ""),
+        className: String(node?.getAttribute?.("class") ?? "").slice(0, 100),
+        role: String(node?.getAttribute?.("role") ?? ""),
+        shape: visibleShape(node),
+        svgs: node?.querySelectorAll?.("svg")?.length ?? 0,
+      });
+      return {
+        exactQGraph: document.querySelectorAll("#QGraph").length,
+        idMarked: idMarked.slice(0, MAX_CHOICES).map(summarize),
+        applications: applications.filter((node) => node.querySelector("svg"))
+          .slice(0, MAX_CHOICES * 2).map(summarize),
+        visibleSvgs: svgs.filter((node) => visibleShape(node)?.width > 0
+          && visibleShape(node)?.height > 0).slice(0, MAX_CHOICES * 3).map(summarize),
+        canvases: document.querySelectorAll("canvas").length,
+      };
+    })();
     if (
       graphs.length === 0
       && numberLines.length === 1
@@ -790,6 +889,18 @@ var ethnosHawkes = (function () {
         axisInterceptRows: interceptRows,
       };
     }
+    const inequalityPair = inequalityPairSurface();
+    if (inequalityPair) {
+      return {
+        ready: true,
+        code: "inequality-pair-answer",
+        via: "inequality-pair",
+        fieldId: inequalityPair.fieldIds.join("\u001f"),
+        fieldIds: inequalityPair.fieldIds,
+        connectorGroup: inequalityPair.connectorGroup,
+        connectorChoices: inequalityPair.connectorChoices,
+      };
+    }
     const fields = solutionFields();
     if (fields.length >= 2) {
       return {
@@ -821,6 +932,12 @@ var ethnosHawkes = (function () {
         ready: false,
         code: "no-focused-answer-field",
         ...(numberLineEvidence.svgs > 0 ? { numberLineEvidence } : {}),
+        ...(graphChoiceEvidence.exactQGraph > 0
+          || graphChoiceEvidence.idMarked.length > 0
+          || graphChoiceEvidence.applications.length > 0
+          || graphChoiceEvidence.visibleSvgs.length > 0
+          || graphChoiceEvidence.canvases > 0
+          ? { graphChoiceEvidence } : {}),
       };
       if (lastSolutionFieldEvidence.fields >= 2) {
         report.multiFieldEvidence = lastSolutionFieldEvidence;

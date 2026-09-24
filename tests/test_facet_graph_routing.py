@@ -65,12 +65,20 @@ INEQUALITY_MATH = (
     "<math><mrow><mn>2</mn><mi>x</mi><mo>+</mo><mn>6</mn><mi>y</mi>"
     "<mo>&lt;</mo><mn>6</mn></mrow></math>"
 )
+NON_STRICT_INEQUALITY_MATH = (
+    "<math><mrow><mn>2</mn><mi>x</mi><mo>+</mo><mn>6</mn><mi>y</mi>"
+    "<mo>≤</mo><mn>6</mn></mrow></math>"
+)
 INEQUALITY_CONTEXT = {
     "family": "linear-inequality",
     "bounds": [-10.0, 10.0, -10.0, 10.0],
     "snap": [1.0, 1.0],
     "controls": "boundary-two-points-regions",
 }
+SYSTEM_INEQUALITY_MATH = [
+    "<math><mrow><mi>x</mi><mo>&gt;</mo><mn>6</mn></mrow></math>",
+    "<math><mrow><mi>y</mi><mo>≥</mo><mn>5</mn></mrow></math>",
+]
 POINTS = [("-5", "5"), ("-2", "-4"), ("-1", "5")]
 REGRESSION = '{"kind":"quadratic-regression","coefficients":["3","18","20"]}'
 REGRESSION_INSTRUCTION = "Use quadratic regression. Round to three decimal places."
@@ -127,6 +135,26 @@ def inequality_request(*, mathml: list[str] | None = None) -> dict:
             "prompt_text": "Graph the solution set of the following linear inequality:",
             "mathml": mathml or [INEQUALITY_MATH],
             "answer_shape": {"kind": "graph", "graph": INEQUALITY_CONTEXT},
+        },
+    }
+
+
+def inequality_system_request(connector: str) -> dict:
+    return {
+        "operation": "solve_hawkes_problem",
+        "request_id": "inequality-system-1",
+        "origin": "https://learn.hawkeslearning.com",
+        "problem": {
+            "prompt_text": "Solve the system of two linear inequalities graphically.",
+            "mathml": SYSTEM_INEQUALITY_MATH,
+            "answer_shape": {
+                "kind": "graph",
+                "graph": {
+                    "family": "linear-inequality-system",
+                    "controls": "mounted-boundaries-combined-regions",
+                    "connector": connector,
+                },
+            },
         },
     }
 
@@ -236,6 +264,62 @@ def test_partial_graph_boundary_math_does_not_block_exact_resume(monkeypatch) ->
     assert loopback.problems[0]["expressions"] == ["2x+6y<6", r"y=-\frac{x}{3}+1"]
     assert response.status == "ready"
     assert response.answer.graph_plan.kind == "linear-inequality"
+    assert response.certainty.model is None
+
+
+def test_hawkes_unicode_non_strict_relation_is_an_exact_solid_boundary(
+    monkeypatch,
+) -> None:
+    loopback = facet(monkeypatch)
+
+    response = handle(inequality_request(mathml=[NON_STRICT_INEQUALITY_MATH]))
+
+    assert loopback.problems[0]["expressions"] == [r"2x+6y\leq6"]
+    assert response.status == "ready"
+    assert response.answer.graph_plan.boundary == "solid"
+    assert response.answer.graph_plan.relation == "<="
+    assert response.certainty.model is None
+
+
+@pytest.mark.parametrize(
+    ("connector", "operation"), [("or", "union"), ("and", "intersection")]
+)
+def test_a_mounted_linear_inequality_system_is_exact_and_preserves_connector(
+    monkeypatch, connector: str, operation: str
+) -> None:
+    loopback = facet(monkeypatch)
+
+    response = handle(inequality_system_request(connector))
+
+    crossed = loopback.problems[0]
+    assert loopback.prompts == []
+    assert crossed["result_kind"] == "linear_inequality_system_graph_plan"
+    assert crossed["expressions"] == ["x>6", r"y\geq5"]
+    assert crossed["graph"] == {
+        "family": "linear-inequality-system",
+        "controls": "mounted-boundaries-combined-regions",
+        "connector": connector,
+    }
+    assert response.status == "ready"
+    assert response.answer.graph_plan.model_dump() == {
+        "kind": "linear-inequality-system",
+        "connector": connector,
+        "operation": operation,
+        "inequalities": [
+            {
+                "coefficients": {"x": "1", "y": "0", "constant": "-6"},
+                "relation": ">",
+                "boundary": "dashed",
+            },
+            {
+                "coefficients": {"x": "0", "y": "1", "constant": "-5"},
+                "relation": ">=",
+                "boundary": "solid",
+            },
+        ],
+    }
+    assert response.certainty.source == "Facet Exact"
+    assert response.certainty.answered_by == "exact"
     assert response.certainty.model is None
 
 

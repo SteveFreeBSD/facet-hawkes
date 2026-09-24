@@ -76,6 +76,25 @@ class LinearInequalityGraphPlan(BaseModel):
     points: list[GraphPoint] = Field(min_length=2, max_length=2)
 
 
+class LinearInequalitySystemMember(BaseModel):
+    """One already-mounted boundary and the half-plane it contributes."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+    coefficients: LineCoefficients
+    relation: Literal["<", "<=", ">", ">="]
+    boundary: Literal["solid", "dashed"]
+
+
+class LinearInequalitySystemGraphPlan(BaseModel):
+    """Two exact inequalities combined on Hawkes' mounted Step 3 surface."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+    kind: Literal["linear-inequality-system"]
+    connector: Literal["and", "or"]
+    operation: Literal["intersection", "union"]
+    inequalities: list[LinearInequalitySystemMember] = Field(min_length=2, max_length=2)
+
+
 #: The four interval shapes a number line draws, named by their two ends.
 IntervalShape = Literal["open", "closed", "open-closed", "closed-open"]
 
@@ -332,6 +351,31 @@ def validate_linear_inequality_graph_plan(
     if plan.model_dump() != expected:
         raise ValueError("Facet inequality plan does not match the exact inequality")
     return [plan.coefficients.x, plan.coefficients.y, plan.coefficients.constant]
+
+
+def validate_linear_inequality_system_graph_plan(
+    plan: LinearInequalitySystemGraphPlan, mathml: list[str], context
+) -> None:
+    """Re-derive the connector, both boundaries, and both half-planes exactly."""
+    from facet_runtime.graph import (
+        GraphContext,
+        build_linear_inequality_system_graph_plan,
+    )
+
+    expected = build_linear_inequality_system_graph_plan(
+        "Solve the system of two linear inequalities graphically",
+        [mathml_to_latex(item) for item in mathml],
+        GraphContext(
+            family="linear-inequality-system",
+            orientation=None,
+            bounds=(),
+            snap=(),
+            controls="mounted-boundaries-combined-regions",
+            connector=context.connector,
+        ),
+    )
+    if plan.model_dump() != expected:
+        raise ValueError("Facet system plan does not match the exact inequalities")
 
 
 class RegressionPlan(BaseModel):

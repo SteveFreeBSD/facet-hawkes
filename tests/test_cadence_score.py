@@ -244,6 +244,7 @@ MAIN_FIXTURE = """
   var window = {quant_wp_UI:{controlsCollection:[{enabled:true}],focusedElementIndex:0}};
   class InputEvent { constructor(type, options) {this.type=type; Object.assign(this,options);} }
 class KeyboardEvent { constructor(type, options) { this.type = type; Object.assign(this, options); } }
+class MouseEvent { constructor(type, options) { this.type = type; Object.assign(this, options); } }
 class Event { constructor(type, options) { this.type = type; Object.assign(this, options); } }
   class CustomEvent { constructor(type, options) {this.type=type; Object.assign(this,options);} }
 """
@@ -442,6 +443,7 @@ STRUCTURED_FIXTURE = """
   var boxIds = ['answer'];
   var boxes = {};
   var bases = {};
+  var radios = [];
   class HTMLInputElement {
     constructor(id) {this.id=id; this.held='';}
     get value() {return this.held;} set value(v) {this.held=v;}
@@ -460,12 +462,14 @@ STRUCTURED_FIXTURE = """
   var document = {
     activeElement: null,
     querySelectorAll: selector => selector.includes('customMessageBox') ? []
+      : selector.includes('input[type="radio"]') ? radios
       : boxIds.map(id => boxes[id]),
     getElementById: id => boxes[id] ?? null,
     dispatchEvent: event => { cues.push([now, JSON.parse(event.detail)]); },
   };
   class InputEvent { constructor(type, options) {this.type=type; Object.assign(this,options);} }
 class KeyboardEvent { constructor(type, options) { this.type = type; Object.assign(this, options); } }
+class MouseEvent { constructor(type, options) { this.type = type; Object.assign(this, options); } }
 class Event { constructor(type, options) { this.type = type; Object.assign(this, options); } }
   class CustomEvent { constructor(type, options) {this.type=type; Object.assign(this,options);} }
   var TEMPLATES = ['Exponent','Fraction','Radical','IndexedRadical','PBrace','Mod','Clear','BS'];
@@ -534,6 +538,63 @@ def test_editor_structure_holds_the_phrase_instead_of_bursting_the_rest_of_it(cl
     assert value(clock, "completed.transport") == "hawkes-dynamic-keypad"
     assert value(clock, "completed.timing.keypadWrites") == 5
     assert value(clock, "completed.timing.nativeWrites") == 0
+
+
+def test_composite_insertion_settles_both_owned_editors_and_semantic_connector(clock):
+    load(clock, "page-actions.js")
+    clock.eval(STRUCTURED_FIXTURE)
+    clock.eval(
+        """
+        boxes.answer2 = new HTMLInputElement('answer2'); boxIds.push('answer2');
+        control.objMyDiv = {
+          querySelectorAll(){return [boxes.answer];}, querySelector(){return boxes.answer;}
+        };
+        var control2 = {enabled:true, arrChildObjects:[], keyPadButtonClick(name) {
+          const base = control2.CurrentBase;
+          const box = base && base.objMyDiv.querySelector('input.qbaseCSS');
+          if (box) { box.held += name; writes.push([box.id, now]); }
+        }};
+        control2.objMyDiv = {
+          querySelectorAll(){return [boxes.answer2];}, querySelector(){return boxes.answer2;}
+        };
+        bases.answer2 = {Type:'Base', loadExponent(){},
+          objMyDiv:{querySelector:()=>boxes.answer2},
+          setFocus(){control2.CurrentBase=bases.answer2;}, arrChildObjects:[]};
+        control2.arrChildObjects=[bases.answer2]; control2.CurrentBase=bases.answer2;
+        window.quant_wp_UI.controlsCollection=[control,control2];
+        radios = ['and','or'].map(semantic => ({
+          id:'join-'+semantic, name:'join', disabled:false, checked:false, value:semantic,
+          getAttribute(name){return name === 'aria-label' ? semantic : '';},
+          closest(){return null;},
+          dispatchEvent(event){
+            if(event.type==='click') {for(const radio of radios) radio.checked=false; this.checked=true;}
+            return true;
+          },
+        }));
+        var pairSteps = [
+          [{op:'type',text:'-8<x'}],
+          [{op:'type',text:'x<8'}],
+        ];
+        var pairPhrase = ethnosCadence.planSemanticPhrase(
+          pairSteps.flat(), {durationMinMs:2000,durationMaxMs:2000}
+        );
+        enterPlan(pairSteps,{score:pairPhrase},['answer','answer2'],
+          'hawkes-dynamic-keypad',{
+            group:'join', semantic:'and', choices:[
+              {id:'join-and',semantic:'and'},{id:'join-or',semantic:'or'}
+            ]
+          }).then(result => completed=result);
+        """
+    )
+    pump(clock)
+
+    assert value(clock, "completed.ok") is True, value(clock, "completed")
+    assert value(clock, "completed.code") == "entered-inequality-pair"
+    assert value(clock, "completed.connector") == "and"
+    assert value(clock, "boxes.answer.value") == "-8<x"
+    assert value(clock, "boxes.answer2.value") == "x<8"
+    assert value(clock, "radios[0].checked") is True
+    assert value(clock, "radios[1].checked") is False
 
 
 def test_the_device_places_voices_on_the_score_not_on_the_wake_up_jitter(clock):

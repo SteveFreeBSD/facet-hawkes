@@ -71,6 +71,13 @@ for (const window of workspace.windowList()) {{
     normalWindow: Boolean(window.normalWindow),
     minimized: Boolean(window.minimized),
     active: Boolean(window.active),
+    frame: {{
+      x: Number(window.frameGeometry.x),
+      y: Number(window.frameGeometry.y),
+      width: Number(window.frameGeometry.width),
+      height: Number(window.frameGeometry.height),
+    }},
+    cursor: {{x: Number(workspace.cursorPos.x), y: Number(workspace.cursorPos.y)}},
   }}));
 }}
 """

@@ -505,6 +505,25 @@ def test_a_choice_question_still_at_its_group_is_left_alone(solved_choice):
     assert solved_choice.json("state.editor.kind") == "option"
 
 
+def test_a_graph_choice_is_still_the_same_option_surface(solved_choice):
+    """Its discovery code is graph-answer, while its semantic answer is a choice."""
+    solved_choice.run("state.editor = {...state.editor, surface: 'graph-choice'};")
+
+    one_watch_tick(
+        solved_choice,
+        {
+            "ready": True,
+            "code": "graph-answer",
+            "via": "rendered-graph-choice-surfaces",
+            "fieldId": "graph-choice:4",
+        },
+    )
+
+    assert solved_choice.said("question-changed-while-open") == []
+    assert solved_choice.json("state.answer") == "One Solution"
+    assert solved_choice.json("state.editor.surface") == "graph-choice"
+
+
 def test_an_unreadable_frame_is_not_a_transition(solved_choice):
     """A tick that could not read the page says nothing about the surface."""
     one_watch_tick(solved_choice, {"ready": False, "code": "no-focused-answer-field"})

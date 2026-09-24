@@ -1,8 +1,8 @@
 "use strict";
 
-/** One bounded MAIN-world operation. Reads Hawkes' model; writes only arrow/space
- * keyboard events to the three identified SVG point anchors. No page state is
- * installed. The plan is data, never code or prose. */
+/** One bounded MAIN-world operation. Reads Hawkes' model and writes only to the
+ * identified page-owned graph controls. No page state is installed. The plan
+ * is data, never code or prose. */
 export function graphOperation(offered = null) {
   /**
    * Why this graph was refused, and what it actually is.
@@ -316,12 +316,25 @@ export function graphOperation(offered = null) {
     const radioChoices = grouped.map((group) => group.map(nameOf));
     const boundaryKind = (choice) => String(choice).trim().toLowerCase()
       .match(/^(solid|dashed)(?:\s|\(|$)/)?.[1] ?? "";
+    const setOperation = (choice) => {
+      const words = String(choice).toLowerCase().match(/[a-z]+/g) ?? [];
+      const named = ["union", "intersection"].filter((word) => words.includes(word));
+      return named.length === 1 ? named[0] : "";
+    };
     const boundaryGroup = radioChoices.findIndex((choices) =>
       choices.map(boundaryKind).sort().join("\u001f") === "dashed\u001fsolid");
     const graphModels = models.filter((one) => one?.isGraph === true);
     note({ models: models.length, isGraph: models[0]?.isGraph === true,
       graphModels: graphModels.length, fields: fields.length,
-      radioGroups: radioChoices });
+      radioGroups: radioChoices,
+      modelShapes: models.map((one) => ({
+        type: String(one?.constructor?.name ?? ""),
+        isGraph: one?.isGraph === true,
+        keys: Object.keys(one ?? {}).sort().slice(0, 64),
+        methods: ["allGraphObjects", "getUserAnswer", "setUserAnswer", "isEmpty",
+          "graphXML", "getEnableState"].filter((name) => typeof one?.[name] === "function"),
+      })),
+    });
     if (fields.length === 4 && grouped.length === 2 && grouped.every((group) => group.length === 2)
       && boundaryGroup >= 0 && graphModels.length === 1) {
       const model = graphModels[0];
@@ -449,18 +462,54 @@ export function graphOperation(offered = null) {
       };
       const relationHolds = (v) => ({ "<": v < -1e-9, "<=": v <= 1e-9,
         ">": v > 1e-9, ">=": v >= -1e-9 })[plan.relation];
+      const pointFrom = (point) => {
+        if (Number.isFinite(point?.x) && Number.isFinite(point?.y)) {
+          return { x: point.x, y: point.y };
+        }
+        const words = String(point?.description ?? "").toLowerCase();
+        if (!words.includes("origin")) return null;
+        if (words.includes("at the origin")) return { x: 0, y: 0 };
+        let x = 0;
+        let y = 0;
+        let found = false;
+        for (const match of words.matchAll(/([0-9]+(?:\.[0-9]+)?)\s+units?\s+(right|left|above|below)/g)) {
+          const distance = Number(match[1]);
+          if (match[2] === "right") x = distance;
+          if (match[2] === "left") x = -distance;
+          if (match[2] === "above") y = distance;
+          if (match[2] === "below") y = -distance;
+          found = true;
+        }
+        return found ? { x, y } : null;
+      };
       return new Promise((resolve) => {
         let regionPolls = 0;
-        const findRegions = () => descendants(Object.values(model.allGraphObjects?.() ?? {}))
-          .filter((one) => Array.isArray(one?.children)
-            && one.children.some((child) => Number.isFinite(child?.x) && Number.isFinite(child?.y)))
-          .map((region) => {
-            const point = region.children.find((child) => Number.isFinite(child?.x)
-              && Number.isFinite(child?.y));
-            return { label: String(region.label ?? "").trim(), point,
-              satisfies: relationHolds(coefficients[0] * point.x
-                + coefficients[1] * point.y + coefficients[2]) };
-          });
+        const findRegionChoice = () => {
+          const labels = regionControls.map(nameOf);
+          const regions = descendants(Object.values(model.allGraphObjects?.() ?? {}))
+            .filter((one) => labels.includes(String(one?.label ?? "").trim())
+              && Object.prototype.hasOwnProperty.call(one, "curvePlotOnSelect"));
+          if (regions.length !== labels.length
+            || new Set(regions.map((one) => String(one.label).trim())).size !== labels.length) return null;
+          // Hawkes puts its named Test Point under the region that contains it;
+          // the other page-owned region explicitly says that it does not. The
+          // point's accessible description remains populated even when the
+          // transient x/y getters do not, which is the normal live state after
+          // the boundary fields redraw a vertical line.
+          const containing = regions.map((region) => ({ region,
+            points: descendants(Array.isArray(region.children) ? region.children : [])
+              .filter((child) => String(child?.title ?? "").trim() === "Test Point")
+              .map(pointFrom).filter(Boolean),
+          })).filter((one) => one.points.length === 1);
+          if (containing.length !== 1) return null;
+          const point = containing[0].points[0];
+          const containsLabel = String(containing[0].region.label).trim();
+          const chosenLabel = relationHolds(coefficients[0] * point.x
+            + coefficients[1] * point.y + coefficients[2])
+            ? containsLabel
+            : labels.find((label) => label !== containsLabel);
+          return chosenLabel ? { label: chosenLabel, point, containsLabel } : null;
+        };
         const awaitRegions = () => {
           regionPolls += 1;
           if (!pinned() || !boundaryControl.checked
@@ -468,15 +517,19 @@ export function graphOperation(offered = null) {
             resolve(refuse("graph-linear-inequality-not-settled"));
             return;
           }
-          const regions = findRegions();
-          const satisfying = regions.filter((region) => region.satisfies);
-          const rejecting = regions.filter((region) => !region.satisfies);
-          if (satisfying.length !== 1 || rejecting.length < 1 || !satisfying[0].label) {
+          const chosen = findRegionChoice();
+          if (!chosen) {
             if (regionPolls < 20) { setTimeout(awaitRegions, 80); return; }
+            const objects = descendants(Object.values(model.allGraphObjects?.() ?? {}));
+            note({ regionModelShapes: objects.slice(0, 32).map((one) => ({
+              keys: Object.keys(one ?? {}).sort().slice(0, 40),
+              children: Array.isArray(one?.children) ? one.children.length : -1,
+              regions: Array.isArray(one?.Regions?.children) ? one.Regions.children.length : -1,
+            })) });
             resolve(refuse("graph-region-semantics-missing"));
             return;
           }
-          const regionControl = regionControls.find((radio) => nameOf(radio) === satisfying[0].label);
+          const regionControl = regionControls.find((radio) => nameOf(radio) === chosen.label);
           if (!regionControl) { resolve(refuse("graph-region-control-missing")); return; }
           if (regionControls.some((radio) => radio.checked && radio !== regionControl)) {
             resolve(refuse("graph-linear-inequality-not-empty"));
@@ -494,8 +547,8 @@ export function graphOperation(offered = null) {
             if (!holding) { resolve(refuse("graph-linear-inequality-not-settled")); return; }
             if (settlePolls >= 10) { resolve({ ok: true, code: "graph-linear-inequality-verified",
               boundary: plan.boundary, points: wanted,
-              region: satisfying[0].label,
-              testPoint: [satisfying[0].point.x, satisfying[0].point.y] }); return; }
+              region: chosen.label,
+              testPoint: [chosen.point.x, chosen.point.y] }); return; }
             setTimeout(settle, 80);
           };
           setTimeout(settle, 80);
@@ -512,16 +565,326 @@ export function graphOperation(offered = null) {
       && lineSurfaces.length > 0) {
       return numberLine(lineSurfaces);
     }
-    const roots = [...document.querySelectorAll('#QGraph')];
+    const legacyRoots = [...document.querySelectorAll('#QGraph')];
+    const renderedChoices = [...document.querySelectorAll('svg[role="presentation"]')]
+      .filter(visible);
+    const roots = legacyRoots.length > 0 ? legacyRoots
+      : renderedChoices.length >= 2 ? renderedChoices : [];
+    if (roots.length >= 2 && roots.every(visible)) {
+      // A rendered graph alternative is a three-way page-owned relation:
+      // its SVG is inside one selectable owner, and one QASystem's drawing
+      // group is inside that SVG.  Resolve those relations independently for
+      // every option; neither DOM/model order nor screen position participates.
+      const systemsOf = (model) => Object.values(model.allGraphObjects?.() ?? {})
+        .filter((one) => one?.type === "inequalities"
+          && Array.isArray(one?.children) && Array.isArray(one?.Regions?.children));
+      const choices = [];
+      const owners = [];
+      const usedModels = new Set();
+      const close = (left, right) => Math.abs(left - right) < 1e-8;
+      const writtenNumber = (value) => {
+        const fixed = (Math.abs(value) < 1e-12 ? 0 : value).toFixed(12)
+          .replace(/\.0+$/, "").replace(/(\.[0-9]*?)0+$/, "$1");
+        return fixed === "-0" ? "0" : fixed;
+      };
+      const xmlOf = (object) => {
+        if (typeof object?.objectXML !== "function") return null;
+        try {
+          return new DOMParser().parseFromString(String(object.objectXML()), "application/xml");
+        } catch {
+          return null;
+        }
+      };
+      for (const root of roots) {
+        const owner = root.closest?.('[role="radio"]');
+        const linked = graphModels.flatMap((model) => systemsOf(model)
+          .filter((system) => root.contains?.(system?.group))
+          .map((system) => ({ model, system })));
+        if (!owner || !owner.contains(root) || !visible(owner)
+          || owner.getAttribute?.("role") !== "radio"
+          || owner.getAttribute?.("aria-disabled") === "true"
+          || linked.length !== 1 || usedModels.has(linked[0].model)) {
+          return refuse("graph-choice-ownership-unreadable");
+        }
+        usedModels.add(linked[0].model);
+        owners.push(owner);
+        const { model, system } = linked[0];
+        if (model.getEnableState?.() !== true) return refuse("graph-choice-disabled");
+        const lines = system.children.filter((one) => Array.isArray(one?.Equation)
+          && one.Equation.length === 3 && xmlOf(one));
+        if (lines.length !== 2 || system.Regions.children.length !== 3) {
+          return refuse("graph-choice-system-unsupported");
+        }
+        const boundaries = lines.map((line) => {
+          const xml = xmlOf(line);
+          const name = String(line.ID
+            || xml?.querySelector("line > name")?.textContent || "").trim();
+          const stroke = String(xml?.querySelector("line > stroke")?.textContent || "").trim();
+          // QALine's mutable Equation coefficients are redrawn while the
+          // choice graph settles. Its serialized answer model states the
+          // invariant geometry directly: an inequality line defined by an
+          // x-intercept and its x-coordinate.
+          const x = Number(xml?.querySelector("xcoordinate")?.textContent);
+          const type = String(
+            xml?.querySelector("line > type")?.textContent || ""
+          ).trim();
+          return { name, x, stroke, vertical: Number.isFinite(x)
+            && type === "inequality" };
+        });
+        if (boundaries.some((line) => !line.name || !line.vertical
+          || !["solid", "dashed"].includes(line.stroke))
+          || new Set(boundaries.map((line) => line.name)).size !== 2
+          || close(boundaries[0].x, boundaries[1].x)) {
+          return refuse("graph-choice-boundaries-unreadable");
+        }
+        const byName = new Map(boundaries.map((line) => [line.name, line.x]));
+        const intervals = [];
+        for (const region of system.Regions.children) {
+          const xml = xmlOf(region);
+          if (!xml) return refuse("graph-choice-regions-unreadable");
+          if (xml.querySelector("region > shade")?.textContent !== "true") continue;
+          const references = (tag) => String(xml.querySelector(tag)?.textContent || "")
+            .split(",").map((one) => one.trim()).filter(Boolean);
+          const minimum = references("xminimum");
+          const maximum = references("xmaximum");
+          if ([...minimum, ...maximum].some((name) => !byName.has(name))) {
+            return refuse("graph-choice-region-boundary-missing");
+          }
+          const left = minimum.length ? Math.max(...minimum.map((name) => byName.get(name))) : -Infinity;
+          const right = maximum.length ? Math.min(...maximum.map((name) => byName.get(name))) : Infinity;
+          // Hawkes keeps a deliberately empty center region on an exterior
+          // choice (minimum at the right line, maximum at the left line).
+          // Its own boundary references prove it empty; it contributes no set.
+          if (left > right && !close(left, right)) continue;
+          intervals.push({ left, right });
+        }
+        const ordered = boundaries.slice().sort((a, b) => a.x - b.x);
+        const between = intervals.length === 1
+          && Number.isFinite(intervals[0].left) && Number.isFinite(intervals[0].right)
+          && close(intervals[0].left, ordered[0].x)
+          && close(intervals[0].right, ordered[1].x);
+        const outside = intervals.length === 2
+          && intervals.some((part) => part.left === -Infinity && close(part.right, ordered[0].x))
+          && intervals.some((part) => close(part.left, ordered[1].x) && part.right === Infinity);
+        if (between === outside) return refuse("graph-choice-shading-unreadable");
+        choices.push(`Graph: x=${writtenNumber(ordered[0].x)} ${ordered[0].stroke}; `
+          + `x=${writtenNumber(ordered[1].x)} ${ordered[1].stroke}; `
+          + `shade=${between ? "between" : "outside"}`);
+      }
+      if (usedModels.size !== roots.length || usedModels.size !== graphModels.length
+        || new Set(owners).size !== roots.length || new Set(choices).size !== roots.length) {
+        return refuse("graph-choice-contract-ambiguous");
+      }
+      return { ok: true, kind: "option", surface: "graph-choice",
+        code: "graph-choice-described", enabled: true, choices,
+        probe: { engine: "cartesian-graph-choice", choices: choices.length,
+          boundaries: 2, regions: 3, ownership: "model-group-inside-selectable-svg" } };
+    }
     if (roots.length !== 1 || roots[0].getBoundingClientRect().width <= 0) return refuse("graph-missing");
     const root = roots[0];
+    if (graphModels.length !== 1) return refuse("graph-model-missing");
+    const model = graphModels[0];
+    const structuralDescendants = (objects) => {
+      const all = [];
+      const visit = (one, depth = 0) => {
+        if (!one || depth > 5 || all.some((entry) => entry.object === one)) return;
+        all.push({ object: one, depth });
+        if (one.Regions) visit(one.Regions, depth + 1);
+        if (Array.isArray(one.children)) one.children.forEach((child) => visit(child, depth + 1));
+      };
+      objects.forEach((one) => visit(one));
+      return all;
+    };
+    const rawObjects = Object.values(model.allGraphObjects?.() ?? {});
+    const systemObjects = rawObjects.filter((one) => one?.type === "inequalities"
+      && Array.isArray(one?.children) && Array.isArray(one?.Regions?.children));
+    const systemChoices = grouped.length === 1 ? grouped[0].map(nameOf) : [];
+    const operations = systemChoices.map(setOperation);
+    if (fields.length === 0 && grouped.length === 1 && grouped[0].length === 2
+      && operations.slice().sort().join("\u001f") === "intersection\u001funion"
+      && systemObjects.length === 1) {
+      const nodes = ["questionDescription", "questionString", "partInformation"]
+        .map((id) => document.getElementById(id));
+      if (nodes.some((node) => !node)) return refuse("graph-question-missing");
+      const asked = () => nodes.map((node) => new XMLSerializer()
+        .serializeToString(node)).join("\u001f");
+      const system = systemObjects[0];
+      const lineObjects = system.children.filter((one) => Array.isArray(one?.Equation)
+        && one.Equation.length === 3 && typeof one?.objectXML === "function");
+      const regionObjects = system.Regions.children;
+      note({ systemContract: {
+        lines: lineObjects.length,
+        regions: regionObjects.length,
+        systemXML: typeof system.objectXML,
+        userAnswer: typeof system.userAnswer,
+        regionRole: String(system.Regions.interactiveRole ?? ""),
+        childRoles: regionObjects.map((region) => String(region?.interactiveRole ?? "")),
+        regionXML: regionObjects.filter((region) => typeof region?.objectXML === "function").length,
+      } });
+      if (lineObjects.length !== 2 || regionObjects.length !== 4
+        || typeof system.objectXML !== "function" || typeof system.userAnswer !== "function"
+        || system.Regions.interactiveRole !== "norole"
+        || regionObjects.some((region) => typeof region?.objectXML !== "function")) {
+        return refuse("graph-system-model-unsupported");
+      }
+      const radioState = () => grouped[0].map((radio) => ({
+        id: radio.id, name: radio.name, operation: setOperation(nameOf(radio)),
+        checked: radio.checked === true,
+      }));
+      const first = { question: asked(), radios: radioState(),
+        system: String(system.objectXML()), answer: String(system.userAnswer()) };
+      const context = { family: "linear-inequality-system",
+        controls: "mounted-boundaries-combined-regions" };
+      if (!offered) return { ok: true, kind: "graph", code: "graph-described",
+        enabled: true, context, snapshot: first,
+        probe: { engine: "cartesian-system", boundaries: lineObjects.length,
+          regions: regionObjects.length, operations: operations.slice().sort() } };
+      if (JSON.stringify(first) !== JSON.stringify(offered.snapshot)) {
+        return refuse("graph-target-stale");
+      }
+      const exactKeys = (object, names) => object && Object.keys(object).sort().join()
+        === names.split(" ").sort().join();
+      const plan = offered.plan;
+      if (!exactKeys(plan, "connector inequalities kind operation")
+        || plan.kind !== "linear-inequality-system"
+        || !["and", "or"].includes(plan.connector)
+        || plan.operation !== (plan.connector === "or" ? "union" : "intersection")
+        || !Array.isArray(plan.inequalities) || plan.inequalities.length !== 2
+        || plan.inequalities.some((member) => !exactKeys(member, "boundary coefficients relation")
+          || !exactKeys(member.coefficients, "constant x y")
+          || !["<", "<=", ">", ">="].includes(member.relation)
+          || member.boundary !== (["<", ">"].includes(member.relation) ? "dashed" : "solid"))) {
+        return refuse("graph-plan-invalid");
+      }
+      const rational = (text) => {
+        if (typeof text !== "string" || !/^-?(?:0|[1-9][0-9]*)(?:\/[1-9][0-9]*)?$/.test(text)) {
+          throw Error("graph-plan-invalid");
+        }
+        const [top, bottom = "1"] = text.split("/");
+        return Number(top) / Number(bottom);
+      };
+      const lineState = (line) => {
+        const xml = String(line.objectXML());
+        const parsed = new DOMParser().parseFromString(xml, "application/xml");
+        return { object: line, id: String(line.ID ?? ""), xml,
+          equation: line.Equation.map(Number),
+          stroke: String(parsed.querySelector("line > stroke")?.textContent ?? "").trim() };
+      };
+      const lines = lineObjects.map(lineState);
+      const proportional = (left, right) => {
+        if (!left.every(Number.isFinite) || !right.every(Number.isFinite)) return false;
+        const pivot = right.findIndex((value) => Math.abs(value) > 1e-9);
+        if (pivot < 0 || Math.abs(left[pivot]) < 1e-9) return false;
+        const scale = left[pivot] / right[pivot];
+        return right.every((value, index) => Math.abs(left[index] - scale * value) < 1e-9);
+      };
+      const matches = plan.inequalities.map((member) => {
+        const coefficients = [member.coefficients.x, member.coefficients.y,
+          member.coefficients.constant].map(rational);
+        return lines.filter((line) => line.stroke === member.boundary
+          && proportional(line.equation, coefficients));
+      });
+      if (matches.some((found) => found.length !== 1)
+        || matches[0][0] === matches[1][0]) return refuse("graph-system-boundaries-mismatch");
+      const wanted = grouped[0].find((radio) => setOperation(nameOf(radio)) === plan.operation);
+      if (!wanted) return refuse("graph-system-operation-missing");
+      if (grouped[0].some((radio) => radio.checked && radio !== wanted)) {
+        return refuse("graph-system-not-empty");
+      }
+      const pinned = () => root.isConnected && nodes.every((node) => node.isConnected)
+        && asked() === first.question
+        && grouped[0].every((radio, index) => radio.isConnected
+          && radio.id === first.radios[index].id)
+        && ![...document.querySelectorAll('[id*="customMessageBox"]')]
+          .some((node) => node.getBoundingClientRect().height > 0);
+      if (!pinned()) return refuse("graph-target-stale");
+      if (!wanted.checked) {
+        wanted.dispatchEvent(new MouseEvent("click", {
+          bubbles: true, cancelable: true, view: window,
+        }));
+      }
+      return new Promise((resolve) => {
+        let polls = 0;
+        const settle = () => {
+          polls += 1;
+          const currentModels = Object.values(window.quant_wp_UI?.controlsCollection ?? {})
+            .filter((one) => one?.isGraph === true);
+          const currentSystems = currentModels.length === 1
+            ? Object.values(currentModels[0].allGraphObjects?.() ?? {})
+              .filter((one) => one?.type === "inequalities"
+                && Array.isArray(one?.children) && Array.isArray(one?.Regions?.children))
+            : [];
+          const current = currentSystems[0];
+          const currentLines = current?.children?.filter((one) => Array.isArray(one?.Equation)
+            && one.Equation.length === 3 && typeof one?.objectXML === "function") ?? [];
+          const currentRegions = current?.Regions?.children ?? [];
+          const selected = currentRegions.map((region) => ({
+            region, id: String(region?.index ?? ""),
+          })).filter(({ region }) => region.select === true);
+          const expectedCount = plan.operation === "union" ? 3 : 1;
+          const answer = String(current?.userAnswer?.() ?? "");
+          // Hawkes owns these IDs. They are not positions and are not inferred
+          // from the drawing; QARegions.userAnswer serializes the same `index`
+          // values from its selected QARegion children.
+          const selectedText = selected.map(({ id }) => id).join("");
+          const regionStateAgrees = selected.length === expectedCount
+            && selected.every(({ id }) => id !== "")
+            && new Set(selected.map(({ id }) => id)).size === selected.length
+            && selected.every(({ region }) => {
+              const xml = new DOMParser().parseFromString(String(region.objectXML()), "application/xml");
+              return xml.querySelector("region > isselected")?.textContent === "true"
+                && xml.querySelector("region > shade")?.textContent === "true";
+            })
+            && answer === `<selectedregions>${selectedText}</selectedregions><emptycheck>false</emptycheck>`;
+          const boundariesHeld = currentLines.length === 2
+            && currentLines.map((line) => String(line.objectXML())).join("\u001f")
+              === lines.map((line) => line.xml).join("\u001f");
+          note({ systemReadback: {
+            operationSelected: wanted.checked === true,
+            selected: selected.length,
+            selectedIds: selectedText,
+            answer,
+            regionStateAgrees,
+            boundariesHeld,
+          } });
+          if (pinned() && wanted.checked && regionStateAgrees && boundariesHeld) {
+            if (polls < 8) { setTimeout(settle, 100); return; }
+            resolve({ ok: true, code: "graph-linear-inequality-system-verified",
+              operation: plan.operation, boundaries: 2, selectedRegions: selected.length,
+              events: 1 });
+            return;
+          }
+          if (polls < 20) { setTimeout(settle, 100); return; }
+          resolve(refuse(boundariesHeld
+            ? "graph-system-region-not-settled" : "graph-system-boundaries-changed"));
+        };
+        setTimeout(settle, 100);
+      });
+    }
+    const objectShapes = structuralDescendants(rawObjects).slice(0, 32).map(({ object, depth }) => ({
+      depth,
+      type: String(object?.constructor?.name ?? ""),
+      keys: Object.keys(object ?? {}).sort().slice(0, 64),
+      propertyTypes: Object.fromEntries(Object.keys(object ?? {}).sort().slice(0, 64)
+        .map((key) => [key, typeof object[key]])),
+      prototype: Object.getOwnPropertyNames(Object.getPrototypeOf(object) ?? {})
+        .filter((name) => name !== "constructor").sort().slice(0, 96),
+      children: Array.isArray(object?.children) ? object.children.length : -1,
+      regions: Array.isArray(object?.Regions?.children) ? object.Regions.children.length : -1,
+      index: Number.isInteger(object?.Index) ? object.Index : null,
+    }));
+    const graphXml = new DOMParser().parseFromString(String(model.graphXML?.() ?? ""), "application/xml");
+    note({
+      rootShapes: [...root.querySelectorAll(":scope > *, :scope > * > *")].slice(0, 32)
+        .map((node) => `${node.tagName}.${String(node.getAttribute?.("class") ?? "").trim()}`),
+      graphXmlTags: [...new Set([...graphXml.querySelectorAll("*")].map((node) => node.tagName))].slice(0, 64),
+      objectShapes,
+    });
     const plotRect = root.querySelector("svg defs clipPath rect");
     if (!plotRect) return refuse("graph-renderer-unsupported");
     const plotWidth = Number(plotRect.getAttribute("width"));
     const plotHeight = Number(plotRect.getAttribute("height"));
     if (!(plotWidth > 0 && plotHeight > 0)) return refuse("graph-renderer-unsupported");
-    if (models.length !== 1 || models[0].isGraph !== true) return refuse("graph-model-missing");
-    const model = models[0];
     const objects = Object.values(model.allGraphObjects());
     const renderedCurve = root.querySelector("svg g.parabola > path");
     note({

@@ -56,6 +56,23 @@ def pytest_configure() -> None:
                         for axis in ("x", "y")
                     }
                 ),
+                "inequality_pair": (
+                    None
+                    if self.inequality_pair is None
+                    else {
+                        "left": {
+                            "left": self.inequality_pair.left.left,
+                            "relation": self.inequality_pair.left.relation,
+                            "right": self.inequality_pair.left.right,
+                        },
+                        "connector": self.inequality_pair.connector,
+                        "right": {
+                            "left": self.inequality_pair.right.left,
+                            "relation": self.inequality_pair.right.relation,
+                            "right": self.inequality_pair.right.right,
+                        },
+                    }
+                ),
                 "method": self.method,
             }
         )

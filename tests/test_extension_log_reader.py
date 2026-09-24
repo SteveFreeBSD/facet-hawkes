@@ -9,6 +9,7 @@ Firefox's structured clone the log uses -- so both are pinned here.
 from __future__ import annotations
 
 import importlib.util
+import math
 import struct
 from pathlib import Path
 
@@ -18,6 +19,15 @@ SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "read_extension_log.p
 spec = importlib.util.spec_from_file_location("read_extension_log", SCRIPT)
 reader = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(reader)
+
+
+def test_negative_infinity_is_a_nan_boxed_double_not_a_clone_tag():
+    clone = struct.pack("<II", 0, reader.TAG_FLOOR)
+
+    value = reader.Clone(clone).value(0, reader.TAG_FLOOR)
+
+    assert math.isinf(value)
+    assert value < 0
 
 
 def _literal(payload: bytes) -> bytes:

@@ -55,9 +55,12 @@
  * @param {object} cadence
  * @param {string[]} targetFieldIds exact multi-field target, empty for one editor
  * @param {string} transport the route chosen in `common/transport.js`
+ * @param {{group?: string, semantic?: string, choices?: object[]}|null} connector
  * @returns {Promise<{ok: boolean, code: string, entered?: string, detail?: string}>}
  */
-export async function enterPlan(steps, cadence = {}, targetFieldIds = [], transport = "") {
+export async function enterPlan(
+  steps, cadence = {}, targetFieldIds = [], transport = "", connector = null
+) {
   const SETTLE_MS = 4000;
   // The two routes this writer implements. Anything else -- including the
   // empty string a caller that forgot to say would pass -- is refused before
@@ -83,6 +86,18 @@ export async function enterPlan(steps, cadence = {}, targetFieldIds = [], transp
   // handed several targets was routed against some other page.
   if (multi && !viaKeypad) {
     return { ok: false, code: "transport-unavailable", detail: transport };
+  }
+  const hasConnector = connector !== null && connector !== undefined;
+  if (hasConnector && (
+    !multi
+    || !viaKeypad
+    || !["and", "or"].includes(connector?.semantic)
+    || typeof connector?.group !== "string"
+    || !connector.group
+    || !Array.isArray(connector?.choices)
+    || connector.choices.length !== 2
+  )) {
+    return { ok: false, code: "answer-invalid" };
   }
   const plans = multi ? steps : [steps];
   if (
@@ -199,6 +214,47 @@ export async function enterPlan(steps, cadence = {}, targetFieldIds = [], transp
     [...document.querySelectorAll('[id*="customMessageBox"]')].some(
       (node) => node.getBoundingClientRect().height > 0
     );
+
+  const optionName = (radio) => {
+    const direct = String(radio?.getAttribute?.("aria-label") ?? "").trim();
+    if (direct) return direct;
+    const labelled = String(radio?.getAttribute?.("aria-labelledby") ?? "")
+      .split(/\s+/).filter(Boolean)
+      .map((id) => document.getElementById(id)?.textContent ?? "").join(" ").trim();
+    if (labelled) return labelled;
+    const escaped = globalThis.CSS?.escape;
+    const explicit = radio?.id && escaped
+      ? document.querySelector?.(`label[for="${escaped(radio.id)}"]`)
+      : null;
+    return String(
+      (explicit ?? radio?.closest?.("label"))?.textContent ?? radio?.value ?? ""
+    ).replace(/\s+/g, " ").trim();
+  };
+
+  /** Re-resolve the exact semantic connector group without using option order. */
+  const connectorControls = () => {
+    if (!hasConnector) return null;
+    const radios = [...document.querySelectorAll('input[type="radio"]')].filter(
+      (radio) => !radio.disabled && radio.name === connector.group
+    );
+    const read = radios.map((radio) => ({
+      radio,
+      id: radio.id || "",
+      semantic: optionName(radio).toLowerCase(),
+    }));
+    const expected = connector.choices.map((choice) => ({
+      id: String(choice?.id ?? ""),
+      semantic: String(choice?.semantic ?? "").toLowerCase(),
+    }));
+    const normalize = (items) => items.map(({ id, semantic }) => `${id}\u001f${semantic}`).sort();
+    if (
+      read.length !== 2
+      || expected.some((choice) => !choice.id || !["and", "or"].includes(choice.semantic))
+      || JSON.stringify(normalize(read)) !== JSON.stringify(normalize(expected))
+    ) return null;
+    const target = read.filter((choice) => choice.semantic === connector.semantic);
+    return target.length === 1 ? { radios: read, target: target[0].radio } : null;
+  };
 
   /**
    * How long the page is given to accept or undo what was just written, as a
@@ -522,6 +578,9 @@ export async function enterPlan(steps, cadence = {}, targetFieldIds = [], transp
   }
   if (dialogUp()) {
     return { ok: false, code: "editor-dialog-open" };
+  }
+  if (hasConnector && connectorControls() === null) {
+    return { ok: false, code: "answer-fields-changed" };
   }
 
 
@@ -987,6 +1046,51 @@ export async function enterPlan(steps, cadence = {}, targetFieldIds = [], transp
       )
     ) {
       return await abandon("answer-parts-incomplete");
+    }
+    if (hasConnector) {
+      const controls = connectorControls();
+      if (controls === null) {
+        return await abandon("answer-fields-changed");
+      }
+      try {
+        controls.target.dispatchEvent(new MouseEvent("click", {
+          bubbles: true,
+          cancelable: true,
+          view: window,
+        }));
+      } catch {
+        return await abandon("connector-not-settled");
+      }
+      let settled = false;
+      for (let poll = 0; poll < PERSIST_POLLS; poll += 1) {
+        await new Promise((resolve) => setTimeout(resolve, PERSIST_INTERVAL_MS));
+        const current = connectorControls();
+        if (
+          current
+          && current.target.checked
+          && current.radios.filter((choice) => choice.radio.checked).length === 1
+        ) {
+          settled = true;
+          break;
+        }
+      }
+      if (
+        !settled
+        || pinnedControls.some((control) => !controlHasAnswer(control))
+        || dialogUp()
+      ) {
+        return await abandon("connector-not-settled");
+      }
+      return {
+        ok: true,
+        code: "entered-inequality-pair",
+        transport,
+        connector: connector.semantic,
+        entered: enteredParts,
+        enteredFields: [...targetFieldIds],
+        completed: enteredParts.length,
+        timing: measured(),
+      };
     }
     return {
       ok: true,

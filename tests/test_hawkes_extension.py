@@ -1923,8 +1923,8 @@ def test_structured_keypad_entry_performs_on_the_same_cadence():
     background = (EXTENSION_DIR / "background.js").read_text()
 
     assert (
-        "export async function enterPlan(steps, cadence = {}, targetFieldIds = [],"
-        ' transport = "")' in actions
+        "export async function enterPlan(\n  steps, cadence = {}, targetFieldIds = [],"
+        ' transport = "", connector = null\n)' in actions
     )
     assert "const typeInto = async (id, text)" in actions
     assert "await waitForNote()" in actions

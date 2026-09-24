@@ -155,10 +155,11 @@ def test_the_message_itself_is_never_written_to_the_ring():
 
 def test_an_unknown_refusal_is_named_as_unknown_not_quoted():
     background = BACKGROUND.read_text(encoding="utf-8")
-    reason = background[background.index("function refusalReason") :][:400]
+    reason = background[background.index("function refusalReason") :]
+    reason = reason[: reason.index("async function acceptReply")]
 
     assert '"unclassified"' in reason
-    assert "message" not in reason.split("return")[-1]
+    assert "return message" not in reason
 
 
 def test_the_status_the_browser_records_is_a_closed_set():

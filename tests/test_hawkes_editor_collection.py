@@ -101,6 +101,81 @@ def test_live_dynamic_box_reports_its_radical_object_limit() -> None:
     assert described["limits"] == {"radicals": 1, "radicandLength": 5}
 
 
+def test_live_four_model_two_field_shape_is_one_inequality_pair() -> None:
+    """Two dynamic owners surround the two models of one AND/OR group."""
+    quickjs = pytest.importorskip("quickjs")
+    context = quickjs.Context()
+    context.eval(
+        r"""
+        const visible = () => ({width: 80, height: 24});
+        const fields = [
+          {id: "QBase1_input", getBoundingClientRect: visible},
+          {id: "QBase2_input", getBoundingClientRect: visible},
+        ];
+        const radios = ["and", "or"].map((semantic, index) => ({
+          id: `join-${semantic}`, name: "join", value: semantic, disabled: false,
+          getBoundingClientRect: visible,
+          getAttribute(name) { return name === "aria-label" ? semantic : ""; },
+          closest() { return null; },
+        }));
+        const base = (field) => ({
+          Type: "Base",
+          objMyDiv: {querySelector() { return field; }},
+          arrChildObjects: [],
+        });
+        const dynamic = (field) => ({
+          Type: "QDyText", enabled: true, qdyBaseMaxChars: 32,
+          qdyBase_AllowedChar: "0123456789x-+<>=",
+          arrChildObjects: [base(field)],
+        });
+        const controls = [dynamic(fields[0]), {enabled: true}, {enabled: true}, dynamic(fields[1])];
+        const data = [
+          {Name: "txtAns", isQDy: true, boxValue: "", enableState: true},
+          {Name: "join", isQDy: false, enableState: true},
+          {Name: "join", isQDy: false, enableState: true},
+          {Name: "txtAns", isQDy: true, boxValue: "", enableState: true},
+        ];
+        globalThis.window = {quant_wp_UI: {
+          focusedElementIndex: -1,
+          controlsCollection: controls,
+          controlsCollectionData: data,
+        }};
+        globalThis.document = {
+          querySelectorAll(selector) {
+            if (selector.includes('input[type="radio"]')) return radios;
+            if (selector.includes('input.qbaseCSS')) return fields;
+            return [];
+          },
+          getElementById() { return null; },
+          querySelector() { return null; },
+        };
+        """
+    )
+
+    described = json.loads(context.eval(PROBE.read_text(encoding="utf-8")).json())
+
+    assert described["kind"] == "inequality-pair"
+    assert described["code"] == "described-inequality-pair"
+    assert [model["index"] for model in described["ownership"]["models"]] == [
+        0,
+        1,
+        2,
+        3,
+    ]
+    assert described["ownership"]["fields"] == [
+        {"id": "QBase1_input", "owners": [0]},
+        {"id": "QBase2_input", "owners": [3]},
+    ]
+    assert [editor["kind"] for editor in described["editors"]] == ["dynamic", "dynamic"]
+    assert described["connector"] == {
+        "group": "join",
+        "choices": [
+            {"id": "join-and", "semantic": "and"},
+            {"id": "join-or", "semantic": "or"},
+        ],
+    }
+
+
 # --- the four shapes that all describe one textbox --------------------------
 
 

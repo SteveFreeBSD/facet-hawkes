@@ -158,7 +158,7 @@ class Clone:
         return chars.decode("latin-1" if latin1 else "utf-16-le", errors="replace")
 
     def value(self, data: int, tag: int):
-        if tag < TAG_FLOOR:
+        if tag <= TAG_FLOOR:
             return struct.unpack("<d", struct.pack("<II", data, tag))[0]
         if tag == TAG_STRING:
             return self.string(data)

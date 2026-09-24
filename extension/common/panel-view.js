@@ -169,7 +169,8 @@ function reviewOffer(state) {
     const tableInsertable = tableAnswerFits(
       state.answerParts, state.tableTargets ?? [], state.editor
     );
-    const editors = state.editor?.kind === "multi" ? state.editor.editors : [];
+    const editors = ["multi", "inequality-pair"].includes(state.editor?.kind)
+      ? state.editor.editors : [];
     const multiInsertable = Array.isArray(editors)
       && editors.length === state.answerParts.length
       && state.answerParts.every(

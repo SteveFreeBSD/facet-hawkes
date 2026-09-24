@@ -233,6 +233,74 @@
   };
   const drawn = drawnBoxes();
 
+  /** Which published model owns each visible field, and which options coexist.
+   * Read-only diagnostic evidence for composite answer surfaces. */
+  const ownershipProbe = () => {
+    try {
+      const fields = [...document.querySelectorAll(HAWKES_FIELD_SELECTOR)].filter((node) => {
+        const box = node.getBoundingClientRect();
+        return box.width > 0 && box.height > 0;
+      });
+      const fieldsOf = (control) => {
+        const ids = [];
+        const seen = new Set();
+        const walk = (node, depth = 0) => {
+          if (!node || depth > 8 || seen.has(node)) return;
+          seen.add(node);
+          if (node.Type === "Base") {
+            const div = node.objMyDiv?.jquery ? node.objMyDiv[0] : node.objMyDiv;
+            const input = div?.querySelector?.("input.qbaseCSS, input[id^=\"txtAns\"], input.boxStyle");
+            if (input?.id) ids.push(input.id);
+          }
+          if (node.arrChildObjects) {
+            for (let at = 0; at < node.arrChildObjects.length; at += 1) {
+              walk(node.arrChildObjects[at], depth + 1);
+            }
+          }
+        };
+        walk(control);
+        return [...new Set(ids)];
+      };
+      const labelOf = (radio) => {
+        const direct = String(radio.getAttribute?.("aria-label") ?? "").trim();
+        if (direct) return direct;
+        const labelled = String(radio.getAttribute?.("aria-labelledby") ?? "")
+          .split(/\s+/).filter(Boolean)
+          .map((id) => document.getElementById?.(id)?.textContent ?? "").join(" ").trim();
+        if (labelled) return labelled;
+        const escaped = globalThis.CSS?.escape;
+        const label = radio.id && escaped
+          ? document.querySelector?.(`label[for="${escaped(radio.id)}"]`)
+          : radio.closest?.("label");
+        return String(label?.textContent ?? radio.value ?? "").replace(/\s+/g, " ").trim();
+      };
+      const models = candidates.map((index, position) => ({
+        index,
+        kind: described[position]?.kind ?? "",
+        name: described[position]?.name ?? "",
+        enabled: described[position]?.enabled === true,
+        fields: fieldsOf(ui.controlsCollection[index]),
+      }));
+      const radios = [...document.querySelectorAll('input[type="radio"]')]
+        .filter((radio) => {
+          const box = radio.getBoundingClientRect();
+          return !radio.disabled && box.width > 0 && box.height > 0;
+        })
+        .map((radio) => ({ id: radio.id ?? "", group: radio.name ?? "", label: labelOf(radio) }));
+      return {
+        fields: fields.map((field) => ({
+          id: field.id,
+          owners: models.filter((model) => model.fields.includes(field.id))
+            .map((model) => model.index),
+        })),
+        radios,
+        models,
+      };
+    } catch {
+      return null;
+    }
+  };
+
   const collection = {
     // `length` as the loop above sees it, or -1 when there is no usable one.
     controls: Number.isInteger(ui.controlsCollection?.length)
@@ -443,6 +511,49 @@
       },
     };
   }
+  // Two owned expression editors plus one semantic AND/OR group are one
+  // composite answer. Hawkes publishes each radio as a model entry, which is
+  // why the live surface has four entries for two visible answer fields.
+  // Ownership, not the count or model order, decides which two are typeable.
+  const pairOwnership = ownershipProbe();
+  if (pairOwnership && pairOwnership.fields.length === 2) {
+    const owners = pairOwnership.fields.map((field) => field.owners);
+    const ownerIndexes = owners.flat();
+    const owned = ownerIndexes.map((index) =>
+      pairOwnership.models.find((model) => model.index === index)
+    );
+    const optionModels = pairOwnership.models.filter((model) => model.kind === "option");
+    const radios = pairOwnership.radios.map((radio) => ({
+      ...radio,
+      semantic: String(radio.label ?? "").trim().toLowerCase(),
+    }));
+    const groups = new Set(radios.map((radio) => radio.group).filter(Boolean));
+    if (
+      owners.every((indexes) => indexes.length === 1)
+      && new Set(ownerIndexes).size === 2
+      && owned.every((model) => ["dynamic", "textbox"].includes(model?.kind))
+      && optionModels.length === 2
+      && pairOwnership.models.length === 4
+      && radios.length === 2
+      && groups.size === 1
+      && new Set(radios.map((radio) => radio.semantic)).size === 2
+      && radios.every((radio) => ["and", "or"].includes(radio.semantic))
+    ) {
+      const byIndex = new Map(candidates.map((index, position) => [index, described[position]]));
+      return {
+        ok: true,
+        code: "described-inequality-pair",
+        kind: "inequality-pair",
+        editors: ownerIndexes.map((index) => byIndex.get(index)),
+        connector: {
+          group: [...groups][0],
+          choices: radios.map(({ id, semantic }) => ({ id, semantic })),
+        },
+        collection: { ...collection, branch: "inequality-pair" },
+        ownership: pairOwnership,
+      };
+    }
+  }
   if (usable.length >= 2 && usable.length <= MAX_ANSWER_PARTS) {
     return described.every(Boolean)
       ? {
@@ -451,6 +562,7 @@
           kind: "multi",
           editors: usable,
           collection: { ...collection, branch: "multi" },
+          ownership: ownershipProbe(),
         }
       : {
           ok: false,

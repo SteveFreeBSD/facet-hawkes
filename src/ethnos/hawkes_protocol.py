@@ -17,6 +17,7 @@ from .hawkes_graph import (
     GraphPoint,
     LineGraphPlan,
     LinearInequalityGraphPlan,
+    LinearInequalitySystemGraphPlan,
     NumberLinePlan,
     PointPlotPlan,
 )
@@ -31,19 +32,27 @@ MAX_MESSAGE_BYTES = 1024 * 1024
 
 class GraphContext(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)
-    family: Literal["parabola", "points", "numberline", "linear-inequality"]
+    family: Literal[
+        "parabola",
+        "points",
+        "numberline",
+        "linear-inequality",
+        "linear-inequality-system",
+    ]
     #: A parabola states which way it opens. A set of points has no orientation.
     orientation: Literal["vertical"] | None = None
     #: `[xmin, xmax, ymin, ymax]` on a plane; `[min, max]` on a number line.
-    bounds: list[float] = Field(min_length=2, max_length=4)
+    bounds: list[float] = Field(default_factory=list, max_length=4)
     #: One step per axis: two on a plane, one on a number line.
-    snap: list[float] = Field(min_length=1, max_length=2)
+    snap: list[float] = Field(default_factory=list, max_length=2)
     controls: Literal[
         "vertex-and-symmetric-points",
         "draggable-points",
         "interval-buttons",
         "boundary-two-points-regions",
+        "mounted-boundaries-combined-regions",
     ]
+    connector: Literal["and", "or"] | None = None
     #: How many draggable controls a plotting graph offers, one per point; on a
     #: number line, how many intervals it will plot.
     count: int | None = None
@@ -54,6 +63,22 @@ class GraphContext(BaseModel):
 
     @model_validator(mode="after")
     def valid_grid(self) -> GraphContext:
+        if self.family == "linear-inequality-system":
+            if (
+                self.bounds
+                or self.snap
+                or self.orientation is not None
+                or self.controls != "mounted-boundaries-combined-regions"
+                or self.connector is None
+                or self.count is not None
+                or self.intervals is not None
+            ):
+                raise ValueError(
+                    "a linear inequality system states its connector and mounted controls"
+                )
+            return self
+        if self.connector is not None:
+            raise ValueError("only a linear inequality system carries a connector")
         # A number line is one axis. It states its own controls and the shapes
         # it offers, and borrows nothing from a plane's.
         if self.family == "numberline":
@@ -154,7 +179,13 @@ class AnswerShape(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     kind: Literal[
-        "field", "option", "conditional", "multi", "graph", "axis-intercepts"
+        "field",
+        "option",
+        "conditional",
+        "multi",
+        "graph",
+        "axis-intercepts",
+        "inequality-pair",
     ] = "field"
     count: int = Field(default=1, ge=1, le=MAX_ANSWER_PARTS)
     graph: GraphContext | None = None
@@ -409,6 +440,23 @@ class AnswerAxisIntercepts(BaseModel):
     y: AnswerCoordinate | None
 
 
+class AnswerComparison(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    left: str = Field(min_length=1, max_length=120)
+    relation: Literal["<", "<=", ">", ">="]
+    right: str = Field(min_length=1, max_length=120)
+    keyboard_entry: str = Field(min_length=1, max_length=260)
+
+
+class AnswerInequalityPair(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    left: AnswerComparison
+    connector: Literal["and", "or"]
+    right: AnswerComparison
+
+
 class AnswerPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -417,6 +465,7 @@ class AnswerPayload(BaseModel):
         | PointPlotPlan
         | LineGraphPlan
         | LinearInequalityGraphPlan
+        | LinearInequalitySystemGraphPlan
         | NumberLinePlan
         | None
     ) = None
@@ -432,13 +481,28 @@ class AnswerPayload(BaseModel):
     relation: AnswerRelation | None = None
     conditional_choice: AnswerConditionalChoice | None = None
     axis_intercepts: AnswerAxisIntercepts | None = None
+    inequality_pair: AnswerInequalityPair | None = None
 
     @model_validator(mode="after")
     def conditional_answer_is_one_composite(self) -> AnswerPayload:
+        if self.inequality_pair is not None:
+            if (
+                self.relation is not None
+                or self.parts
+                or self.axis_intercepts is not None
+                or self.conditional_choice is not None
+                or self.keyboard_entry
+            ):
+                raise ValueError("an inequality pair is one composite answer")
         if self.conditional_choice is None:
             return self
         relation = self.conditional_choice.relation
-        if self.relation is not None or self.parts or self.axis_intercepts is not None:
+        if (
+            self.relation is not None
+            or self.parts
+            or self.axis_intercepts is not None
+            or self.inequality_pair is not None
+        ):
             raise ValueError("a conditional choice is one composite answer")
         if self.keyboard_entry != f"{relation.subject}={relation.keyboard_entry}":
             raise ValueError("conditional relation disagrees with its entry")

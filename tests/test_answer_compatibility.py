@@ -49,6 +49,7 @@ RUNTIME_ROOT = PROJECT_ROOT.parent / "facet-runtime"
 PLAN_FORMS = (
     "linear_graph_plan",
     "linear_inequality_graph_plan",
+    "linear_inequality_system_graph_plan",
     "parabola_plan",
     "point_plot_plan",
     "quadratic_regression",
@@ -114,7 +115,21 @@ def entered(solution):
         SimpleNamespace(**relation) if isinstance(relation, dict) else relation,
         intercepts,
         getattr(solution, "choice", ""),
+        (
+            SimpleNamespace(
+                left=SimpleNamespace(**solution.inequality_pair["left"]),
+                connector=solution.inequality_pair["connector"],
+                right=SimpleNamespace(**solution.inequality_pair["right"]),
+            )
+            if isinstance(getattr(solution, "inequality_pair", None), dict)
+            else getattr(solution, "inequality_pair", None)
+        ),
     )
+    if payload.inequality_pair is not None:
+        return [
+            (solution.form, payload.inequality_pair.left.keyboard_entry),
+            (solution.form, payload.inequality_pair.right.keyboard_entry),
+        ]
     if payload.axis_intercepts is not None:
         values = [
             component
@@ -364,6 +379,15 @@ def test_every_supported_composition_plans_against_its_own_editor(
         return
     if entry.form == "axis-intercepts":
         editor = editor["coordinateEditor"]
+    if entry.form == "inequality-pair":
+        results = [
+            planner("planEntry", value, one)
+            for value, one in zip(
+                entry.example.split(" AND "), editor["editors"], strict=True
+            )
+        ]
+        assert all(result.get("ok") is True for result in results), results
+        return
     # Nothing is typed into a graph. The value is turned into a plan against
     # the geometry the page's own graph reported, by the host's own rule.
     if editor["kind"] == "graph":

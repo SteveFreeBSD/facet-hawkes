@@ -446,6 +446,7 @@ export function insertErrorKey(code) {
     // world, which is where the boxes are actually looked at.
     "answer-fields-not-empty": "errorAnswerBoxesNotEmpty",
     "answer-parts-incomplete": "errorInsertRejected",
+    "connector-not-settled": "errorInsertRejected",
     "axis-surface-changed": "errorQuestionChanged",
     "axis-option-not-settled": "errorEditorUnknown",
     "axis-readback-failed": "errorInsertRejected",
@@ -522,6 +523,7 @@ export function publishableAnswer(published, shape) {
   const plan = published?.graphPlan ?? null;
   const kind = shape?.kind ?? "field";
   const intercepts = published?.answerIntercepts ?? null;
+  const connector = published?.answerConnector ?? "";
 
   // Nothing is being offered as an answer. Every state before a solve lands
   // looks like this, and holding those to an answer's contract would refuse
@@ -555,6 +557,29 @@ export function publishableAnswer(published, shape) {
       && displayText === expected
       ? { ok: true }
       : { ok: false, code: "answer-shape-axis-intercepts" };
+  }
+
+  if (kind === "inequality-pair") {
+    const comparison = (value) => {
+      if (
+        typeof value !== "string"
+        || value.length === 0
+        || value.length > 120
+        || !/^[0-9A-Za-z+\-*/^(). <>=]+$/.test(value)
+      ) return false;
+      const relations = value.match(/<=|>=|<|>/g) ?? [];
+      return relations.length === 1 && !/(?<![<>])=(?!=)/.test(value);
+    };
+    return ["and", "or"].includes(connector)
+      && parts.length === 2
+      && parts.every(comparison)
+      && Boolean(answer)
+      && Boolean(displayText)
+      && !entryText
+      && plan === null
+      && intercepts === null
+      ? { ok: true }
+      : { ok: false, code: "answer-shape-inequality-pair" };
   }
 
   // A choice question is answered with one of its own alternatives, in the

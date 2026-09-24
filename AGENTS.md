@@ -202,9 +202,13 @@ needing mode A.
   process and wait. Clicking again cancels it — that control is Cancel while a
   solve is running.
 - A fix that "did not work" is a stale build until the observatory says
-  otherwise. `about:debugging`'s Reload re-reads whichever directory was first
-  selected, and a temporary add-on's version never moves; the marker is what
-  tells the two apart. Two afternoons went into this before it existed.
+  otherwise. **Never visually drive `about:debugging` to reload Facet.** Finish
+  a coherent extension patch and its focused offline tests first, then run
+  `python3 scripts/reload_live_hawkes.py` once. It addresses only the existing
+  temporary `ethnos-hawkes@local` add-on in the proved normal Firefox profile
+  and verifies the new build marker. Do not reload again unless extension
+  source changed after that verified reload. A temporary add-on's version
+  never moves; the marker is what tells two builds apart.
 - Prefer the offline gates before reaching for a browser. `tests/` runs the
   panel decision under QuickJS, the coverage sweep answers "would this question
   have gone to a model?" in about a second, and both catch more than a

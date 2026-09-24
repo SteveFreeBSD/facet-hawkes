@@ -23,7 +23,7 @@
   // every decision, and the observatory applies the same normalization to the
   // tree. Unlike the event-page marker, this proves which Hawkes reader was
   // injected into the authoritative page DOM.
-  const HAWKES_READER_BUILD = "e46e43d81eb8";
+  const HAWKES_READER_BUILD = "82a7ee43e292";
 
   const ANSWER_CONTROLS =
     'input.qbaseCSS, input[id^="txtAns"], input.boxStyle, input[id$="_optchk"], '
@@ -1002,7 +1002,29 @@
   // template is unsupported, not an empty question silently sent elsewhere.
   const statedMath = mathNodes.filter((math) => !instructionalMath.has(math));
   const selectedMath = statedMath.length > 0 ? statedMath : mathNodes;
-  const expressions = selectedMath.map((math) =>
+  const ordinalInequality = promptText.match(
+    /\b(first|second)\b[^.?!]{0,100}\b(?:linear\s+)?inequalit/i
+  )?.[1]?.toLowerCase();
+  const ordinalIndex = { first: 0, second: 1 }[ordinalInequality];
+  // Multi-step system questions keep both stated inequalities mounted.  A
+  // step that explicitly names the first or second owns exactly that member;
+  // an unqualified system keeps both and is refused downstream rather than
+  // silently guessing which boundary the one-line surface is asking for.
+  const scopedMath = Number.isInteger(ordinalIndex) && selectedMath[ordinalIndex]
+    ? [selectedMath[ordinalIndex]] : selectedMath;
+  const systemOwner = scopedMath.length === 2
+    ? primaryQuestionOwners.find((owner) => scopedMath.every((math) => owner.contains(math)))
+    : null;
+  const connectorWords = systemOwner
+    ? [...proseWords(systemOwner).matchAll(/\b(and|or)\b/gi)]
+      .map((match) => match[1].toLowerCase())
+    : [];
+  const systemConnector = connectorWords.length === 1 ? connectorWords[0] : "";
+  const mathRelations = scopedMath.map((math) => [...(math.querySelectorAll?.("mo") ?? [])]
+    .map((operator) => String(operator.textContent ?? "").trim())
+    .filter((operator) => ["<", "≤", ">", "≥", "="].includes(operator))
+    .join(""));
+  const expressions = scopedMath.map((math) =>
     new XMLSerializer().serializeToString(math).slice(0, 40000)
   );
   // Long enough for a word problem. A truncated instruction is not a shorter
@@ -1026,9 +1048,16 @@
       answerTable: answerTable.tableReason,
       answerTableDetail: answerTable.tableDetail,
       instructionalMath: mathNodes.length - selectedMath.length,
+      // Operators only, never operands: enough to distinguish a duplicate
+      // inequality from answer-generated boundary math without retaining the
+      // coursework expression in the diagnostic ring.
+      mathRelations,
+      stepMathScope: Number.isInteger(ordinalIndex) ? ordinalInequality : "",
+      systemConnector,
       promptChars: promptText.length,
     },
     ...(graphPoints ? { graphPoints } : {}),
+    ...(systemConnector ? { systemConnector } : {}),
     // The node stays here. What crosses is the reading of the table.
     ...(dataTable
       ? { dataTable: { columns: dataTable.columns, rows: dataTable.rows } }

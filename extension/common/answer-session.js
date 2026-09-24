@@ -36,6 +36,7 @@ const STATE_FIELDS = [
   "displayText",
   "entryText",
   "answerParts",
+  "answerConnector",
   "answerIntercepts",
   "editor",
   "graphPlan",

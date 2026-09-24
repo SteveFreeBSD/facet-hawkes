@@ -42,6 +42,10 @@ MATHML = "<math><msup><mi>x</mi><mn>2</mn></msup></math>"
 QUARTIC = (
     "<math><mrow><msup><mi>y</mi><mn>4</mn></msup><mo>=</mo><mn>400</mn></mrow></math>"
 )
+ABSOLUTE_INEQUALITY = (
+    "<math><mrow><mo>|</mo><mn>9</mn><mi>x</mi><mo>+</mo><mn>1</mn>"
+    "<mo>|</mo><mo>&lt;</mo><mn>8</mn></mrow></math>"
+)
 
 
 def request(
@@ -99,6 +103,37 @@ def test_a_hawkes_question_succeeds_through_the_new_bridge(monkeypatch) -> None:
     assert response.answer.keyboard_entry == "x^2"
     assert response.certainty.insertable is True
     assert response.certainty.transcription == "exact"
+
+
+def test_absolute_value_rewrite_crosses_as_two_comparisons_and_and(monkeypatch) -> None:
+    loopback = answering(monkeypatch)
+
+    response = handle(
+        request(
+            mathml=[ABSOLUTE_INEQUALITY],
+            instruction="Rewrite the given inequality as two linear inequalities.",
+            shape="inequality-pair",
+        )
+    )
+
+    assert loopback.prompts == []
+    assert response.status == "ready"
+    assert response.certainty.answered_by == "exact"
+    assert response.answer.inequality_pair.model_dump() == {
+        "left": {
+            "left": "-8",
+            "relation": "<",
+            "right": "9*x + 1",
+            "keyboard_entry": "-8<9*x+1",
+        },
+        "connector": "and",
+        "right": {
+            "left": "9*x + 1",
+            "relation": "<",
+            "right": "8",
+            "keyboard_entry": "9*x+1<8",
+        },
+    }
 
 
 def test_the_panel_reports_where_the_work_actually_ran(monkeypatch) -> None:

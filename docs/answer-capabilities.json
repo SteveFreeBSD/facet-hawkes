@@ -8,11 +8,13 @@
     "choice",
     "conditional-choice",
     "relation",
-    "axis-intercepts"
+    "axis-intercepts",
+    "inequality-pair"
   ],
   "plan_kinds": [
     "linear_graph_plan",
     "linear_inequality_graph_plan",
+    "linear_inequality_system_graph_plan",
     "parabola_plan",
     "point_plot_plan",
     "quadratic_regression"
@@ -203,6 +205,16 @@
         "templates": {}
       }
     },
+    "graph-choice": {
+      "note": "Several complete Cartesian graphs, each owned by one role=radio control and one page graph model. Facet describes and chooses by boundary and region semantics; the add-on never clicks the owner.",
+      "description": {
+        "kind": "option",
+        "surface": "graph-choice",
+        "enabled": true,
+        "allowedCharacters": "",
+        "templates": {}
+      }
+    },
     "table-cells": {
       "note": "One control per blank cell of a grid. Each cell is planned on its own, against its own published rules.",
       "description": {
@@ -298,6 +310,50 @@
             "absoluteValue": false
           },
           "pairedControl": true
+        }
+      }
+    },
+    "inequality-pair": {
+      "note": "Two page-owned inequality editors plus one semantic AND/OR radio group. Hawkes publishes four model entries: the left editor, both connector options, and the right editor.",
+      "description": {
+        "kind": "inequality-pair",
+        "enabled": true,
+        "allowedCharacters": "",
+        "templates": {},
+        "editors": [
+          {
+            "kind": "dynamic",
+            "enabled": true,
+            "allowedCharacters": "0123456789x-+<>=",
+            "maxLength": 32,
+            "templates": {
+              "fraction": false,
+              "radical": false,
+              "exponent": false,
+              "parentheses": false,
+              "absoluteValue": false
+            }
+          },
+          {
+            "kind": "dynamic",
+            "enabled": true,
+            "allowedCharacters": "0123456789x-+<>=",
+            "maxLength": 32,
+            "templates": {
+              "fraction": false,
+              "radical": false,
+              "exponent": false,
+              "parentheses": false,
+              "absoluteValue": false
+            }
+          }
+        ],
+        "connector": {
+          "group": "page-owned",
+          "choices": [
+            {"id": "page-and", "semantic": "and"},
+            {"id": "page-or", "semantic": "or"}
+          ]
         }
       }
     },
@@ -775,6 +831,33 @@
       }
     },
     {
+      "id": "absolute-value-inequality-rewrite",
+      "semantic": "two affine inequalities joined by their exact logical connector",
+      "form": "inequality-pair",
+      "notation": [
+        "plain"
+      ],
+      "example": "-6<2*x + 10 AND 2*x + 10<6",
+      "editor": "inequality-pair",
+      "topology": "two owned expression editors plus one semantic AND/OR group",
+      "mechanism": [
+        "answer_payload",
+        "enterPlan"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "no"
+      },
+      "probe": {
+        "instruction": "Rewrite the given inequality as two linear inequalities.",
+        "expressions": [
+          "|2x+10|<6"
+        ]
+      }
+    },
+    {
       "id": "axis-intercepts-plain",
       "semantic": "axis intercepts, including a semantically absent intercept",
       "form": "axis-intercepts",
@@ -1018,6 +1101,38 @@
       }
     },
     {
+      "id": "absolute-value-inequality-graph-choice",
+      "semantic": "one rendered graph chosen by exact boundary and shaded-region semantics",
+      "form": "choice",
+      "notation": [
+        "plain"
+      ],
+      "example": "Graph: x=-4 dashed; x=3 dashed; shade=between",
+      "editor": "graph-choice",
+      "topology": "several complete Cartesian SVGs, each joined to one QADispatcher model and one role=radio owner",
+      "mechanism": [
+        "answerFitsEditor"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "yes"
+      },
+      "probe": {
+        "instruction": "Determine which graph represents the original inequality.",
+        "expressions": [
+          "|8x+4|<28"
+        ],
+        "choices": [
+          "Graph: x=-4 dashed; x=3 dashed; shade=outside",
+          "Graph: x=-3 dashed; x=4 dashed; shade=between",
+          "Graph: x=-4 dashed; x=3 dashed; shade=between",
+          "Graph: x=-3 dashed; x=4 dashed; shade=outside"
+        ]
+      }
+    },
+    {
       "id": "choice-notated",
       "semantic": "named alternative carrying a set notation",
       "form": "choice",
@@ -1172,6 +1287,24 @@
       "example": "plan, no value",
       "editor": "graph-surface",
       "topology": "boundary style, two coordinate pairs, and one page-defined region",
+      "mechanism": [
+        "graphOperation"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "no"
+      }
+    },
+    {
+      "id": "plan-linear-inequality-system-graph",
+      "semantic": "exact linear inequality system graph plan",
+      "form": "linear_inequality_system_graph_plan",
+      "notation": [],
+      "example": "plan, no value",
+      "editor": "graph-surface",
+      "topology": "two mounted boundaries, a union/intersection choice, and page-owned combined regions",
       "mechanism": [
         "graphOperation"
       ],

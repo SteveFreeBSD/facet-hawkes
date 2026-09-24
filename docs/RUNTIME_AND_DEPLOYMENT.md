@@ -166,9 +166,28 @@ Restart Firefox after installing or changing the native host.
 
 ### The add-on — after a change to `extension/`
 
-A temporary add-on's version never moves, and `about:debugging`'s Reload
-re-reads whichever directory was first selected, so "the fix did not work" is a
-stale build until the observatory's build marker says otherwise. Permanent
+Batch extension edits into one coherent patch and run focused offline tests
+before reloading. Never visually drive `about:debugging` for this. Reload the
+existing temporary add-on in the already-running normal profile with:
+
+```console
+$ python3 scripts/reload_live_hawkes.py
+reloaded: yes
+previous marker: 0123456789ab
+current marker: fedcba987654
+running-this-tree: yes
+```
+
+The helper proves the manifest ID is `ethnos-hawkes@local`, resolves Firefox's
+profile-scoped D-Bus service to the same locked normal profile, proves the
+target is temporary, invokes that extension's own `browser.runtime.reload()`,
+and verifies a new event-page generation and build marker. It never launches a
+browser, navigates or reloads Hawkes, or uses screen coordinates. Ambiguity is
+a refusal and does nothing. Do not run it again unless extension source has
+changed since the verified reload.
+
+A temporary add-on's version never moves, so "the fix did not work" is a stale
+build until this command or the observatory says otherwise. Permanent
 installation into a normal profile needs a Mozilla-signed XPI; follow the
 [release and installation runbook](../extension/RELEASE.md) and do not weaken
 Firefox's signature enforcement.

@@ -136,7 +136,7 @@ export function chooseTransport(editor, page = {}) {
   if (editor.kind === "option") {
     return { ok: false, code: "editor-option-answer" };
   }
-  if (editor.kind === "multi") {
+  if (editor.kind === "multi" || editor.kind === "inequality-pair") {
     const editors = Array.isArray(editor.editors) ? editor.editors : [];
     if (editors.length < 2) {
       return { ok: false, code: "editor-unknown" };
@@ -147,7 +147,7 @@ export function chooseTransport(editor, page = {}) {
     if (editors.every((one) => one?.kind === "dynamic")) {
       return settled("hawkes-dynamic-keypad");
     }
-    if (editors.every((one) => one?.kind === "textbox")) {
+    if (editor.kind === "multi" && editors.every((one) => one?.kind === "textbox")) {
       return settled("hawkes-plain-fields");
     }
     // Two editors of different kinds need two different writers for one

@@ -228,6 +228,57 @@ def test_answer_controls_inside_part_information_bound_partial_graph_math():
     assert len(result["expressions"]) == 1
     assert "<mo><</mo>" in result["expressions"][0]
     assert "<mfrac>" not in result["expressions"][0]
+    assert result["evidence"]["mathRelations"] == ["<"]
+
+
+@pytest.mark.parametrize(
+    ("ordinal", "kept", "relation"),
+    [("first", "<mn>2</mn>", ">"), ("second", "<mn>4</mn>", "≥")],
+)
+def test_system_graph_step_owns_the_named_inequality(ordinal, kept, relation):
+    result = read_question(
+        f"""
+        <div id="questionDescription">Solve the system of two linear inequalities graphically.</div>
+        <div id="questionString">
+          <math><mi>x</mi><mo>&gt;</mo><mn>2</mn></math>
+          <span>or</span>
+          <math><mi>y</mi><mo>≥</mo><mn>4</mn></math>
+        </div>
+        <div id="partInformation">Step 1 of 3: Graph the solution set of the
+          {ordinal} linear inequality.</div>
+        <input class="qbaseCSS" id="txtUserAnswer11_num">
+        """
+    )
+
+    assert len(result["expressions"]) == 1
+    assert kept in result["expressions"][0]
+    assert result["evidence"]["mathRelations"] == [relation]
+    assert result["evidence"]["stepMathScope"] == ordinal
+
+
+@pytest.mark.parametrize(("connector", "expected"), [("or", "or"), ("and", "and")])
+def test_system_final_step_preserves_both_inequalities_and_the_connector(
+    connector, expected
+):
+    result = read_question(
+        f"""
+        <div id="questionDescription">Solve the system of two linear inequalities graphically.</div>
+        <div id="questionString">
+          <math><mi>x</mi><mo>&gt;</mo><mn>6</mn></math>
+          <span>{connector}</span>
+          <math><mi>y</mi><mo>≥</mo><mn>5</mn></math>
+        </div>
+        <div id="partInformation">Step 3 of 3: Select and graph the option that
+          describes the overall solution set.</div>
+        <div id="QGraph"></div>
+        """
+    )
+
+    assert len(result["expressions"]) == 2
+    assert result["systemConnector"] == expected
+    assert result["evidence"]["systemConnector"] == expected
+    assert result["evidence"]["mathRelations"] == [">", "≥"]
+    assert result["evidence"]["stepMathScope"] == ""
 
 
 def test_partial_graph_math_is_excluded_without_canonical_question_ids():
