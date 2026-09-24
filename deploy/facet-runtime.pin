@@ -7,10 +7,9 @@
 # tests/test_runtime_pin.py fails if any document quotes a different commit.
 #
 # Raise it in the same change that starts depending on something newer. This
-# commit also answers affine indexed-radical equations exactly and converts a
-# stated finite decimal to a reduced fraction when the instruction requires
-# one. Without it those equations fall through to reasoning and the answer
-# may have a form Hawkes cannot enter.
+# commit owns Cartesian linear inequalities exactly, returning the normalized
+# relation, boundary style and two exact in-bounds boundary points with no
+# model call.
 # The tip of that repository may be ahead of it, and that is fine -- the pin is
 # a floor, and the test checks the sibling is not below it.
-9fd44f20b3c0e4034ca33a089f2743fbea4f7e82
+03ef568f4b0a89086e0ac87fa6d6f28861547ef4

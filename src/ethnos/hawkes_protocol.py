@@ -16,6 +16,7 @@ from .hawkes_graph import (
     GraphPlan,
     GraphPoint,
     LineGraphPlan,
+    LinearInequalityGraphPlan,
     NumberLinePlan,
     PointPlotPlan,
 )
@@ -30,7 +31,7 @@ MAX_MESSAGE_BYTES = 1024 * 1024
 
 class GraphContext(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)
-    family: Literal["parabola", "points", "numberline"]
+    family: Literal["parabola", "points", "numberline", "linear-inequality"]
     #: A parabola states which way it opens. A set of points has no orientation.
     orientation: Literal["vertical"] | None = None
     #: `[xmin, xmax, ymin, ymax]` on a plane; `[min, max]` on a number line.
@@ -38,7 +39,10 @@ class GraphContext(BaseModel):
     #: One step per axis: two on a plane, one on a number line.
     snap: list[float] = Field(min_length=1, max_length=2)
     controls: Literal[
-        "vertex-and-symmetric-points", "draggable-points", "interval-buttons"
+        "vertex-and-symmetric-points",
+        "draggable-points",
+        "interval-buttons",
+        "boundary-two-points-regions",
     ]
     #: How many draggable controls a plotting graph offers, one per point; on a
     #: number line, how many intervals it will plot.
@@ -90,6 +94,12 @@ class GraphContext(BaseModel):
             or not 1 <= self.count <= 12
         ):
             raise ValueError("a plotting graph states one control per stated point")
+        if self.family == "linear-inequality" and (
+            self.orientation is not None
+            or self.controls != "boundary-two-points-regions"
+            or self.count is not None
+        ):
+            raise ValueError("a linear inequality states its composite graph controls")
         return self
 
 
@@ -402,7 +412,14 @@ class AnswerAxisIntercepts(BaseModel):
 class AnswerPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    graph_plan: GraphPlan | PointPlotPlan | LineGraphPlan | NumberLinePlan | None = None
+    graph_plan: (
+        GraphPlan
+        | PointPlotPlan
+        | LineGraphPlan
+        | LinearInequalityGraphPlan
+        | NumberLinePlan
+        | None
+    ) = None
     graph_coefficients: list[str] = Field(default_factory=list, max_length=3)
     display_text: str = ""
     keyboard_entry: str = ""

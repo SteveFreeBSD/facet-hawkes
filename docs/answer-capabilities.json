@@ -12,6 +12,7 @@
   ],
   "plan_kinds": [
     "linear_graph_plan",
+    "linear_inequality_graph_plan",
     "parabola_plan",
     "point_plot_plan",
     "quadratic_regression"
@@ -1161,6 +1162,24 @@
         "unit": "yes",
         "harness": "yes",
         "live": "yes"
+      }
+    },
+    {
+      "id": "plan-linear-inequality-graph",
+      "semantic": "exact linear inequality graph plan",
+      "form": "linear_inequality_graph_plan",
+      "notation": [],
+      "example": "plan, no value",
+      "editor": "graph-surface",
+      "topology": "boundary style, two coordinate pairs, and one page-defined region",
+      "mechanism": [
+        "graphOperation"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "no"
       }
     },
     {

@@ -2720,6 +2720,7 @@ const REFUSAL_REASONS = Object.freeze([
   ["graph-plan-refused", /^Graph plan refused/i],
   ["point-plot-refused", /^Point plot refused/i],
   ["linear-graph-refused", /^Linear graph refused/i],
+  ["linear-inequality-graph-refused", /^Linear inequality graph refused/i],
   ["number-line-refused", /^Number line refused/i],
   ["invalid-request", /^Invalid request/i],
   ["malformed-message", /^Malformed message/i],
@@ -2796,7 +2797,7 @@ async function acceptReply(reply) {
     // what has to agree here is only that it is a plan for this page's graph.
     const planKind = reply.answer.graph_plan.kind;
     const stated = { points: "points", numberline: "numberline" }[planKind];
-    const derived = ["line", "parabola"].includes(planKind);
+    const derived = ["line", "parabola", "linear-inequality"].includes(planKind);
     const wrong = stated
       ? state.editor?.context?.family !== stated
       : planKind === "line"
@@ -2804,6 +2805,11 @@ async function acceptReply(reply) {
           || certainty.answered_by !== "exact"
           || !certainty.facet_invoked
           || reply.answer.graph_coefficients?.length !== 3
+        : planKind === "linear-inequality"
+          ? state.editor?.context?.family !== "linear-inequality"
+            || certainty.answered_by !== "exact"
+            || !certainty.facet_invoked
+            || reply.answer.graph_coefficients?.length !== 3
         : planKind === "parabola"
           ? certainty.answered_by !== "facet"
             || !certainty.facet_invoked

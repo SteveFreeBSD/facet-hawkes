@@ -128,6 +128,13 @@ def solve(request: SolveRequest, report=None) -> SolveResponse:
         return _solve_regression_with_facet(request, instruction, announce)
 
     if problem.answer_shape and problem.answer_shape.kind == "graph":
+        if (
+            problem.answer_shape.graph
+            and problem.answer_shape.graph.family == "linear-inequality"
+        ):
+            return _solve_linear_inequality_graph_with_facet(
+                request, instruction, announce
+            )
         # A graph answered by placing the points the question wrote down. Its
         # own route, because there is nothing to derive: the answer is stated,
         # and no model is asked.
@@ -859,6 +866,82 @@ def _solve_linear_graph_with_facet(request, instruction, announce):
             runtime=solution.runtime,
             elapsed_ms=solution.elapsed_ms,
             issues=["Line plan mathematically validated against exact MathML"],
+        ),
+    )
+
+
+def _solve_linear_inequality_graph_with_facet(request, instruction, announce):
+    """Derive and prove an exact composite linear-inequality graph plan."""
+    from .facet_client import (
+        LINEAR_INEQUALITY_GRAPH_PLAN,
+        safe_request_id,
+        solve_math,
+    )
+    from .hawkes_graph import (
+        LinearInequalityGraphPlan,
+        validate_linear_inequality_graph_plan,
+    )
+    from .hawkes_mathml import mathml_to_latex
+
+    problem = request.problem
+    graph = problem.answer_shape.graph
+    try:
+        if not problem.mathml or graph is None:
+            raise ValueError("a linear inequality graph needs exact mathematics")
+        announce("solving", "Facet exact linear inequality graph")
+        solution = solve_math(
+            instruction=instruction,
+            request_id=safe_request_id(request.request_id),
+            expressions=[mathml_to_latex(item) for item in problem.mathml],
+            result_kind=LINEAR_INEQUALITY_GRAPH_PLAN,
+            graph={
+                "family": "linear-inequality",
+                "orientation": "cartesian",
+                "bounds": graph.bounds,
+                "snap": graph.snap,
+                "controls": "boundary-two-points-regions",
+            },
+            accelerator_required=False,
+            allow_fallback=False,
+        )
+        plan = LinearInequalityGraphPlan.model_validate(solution.answer.plan)
+        coefficients = validate_linear_inequality_graph_plan(
+            plan, problem.mathml, graph
+        )
+    except Exception as error:  # noqa: BLE001 - a refusal, never a host fault
+        return error_response(
+            request.request_id,
+            f"Linear inequality graph refused: {error}",
+            "unsupported",
+        )
+    placed = ", ".join(f"({point.x},{point.y})" for point in plan.points)
+    return SolveResponse(
+        request_id=request.request_id,
+        status="ready",
+        problem_text="\n".join(
+            (instruction, *(mathml_to_latex(item) for item in problem.mathml))
+        ),
+        answer=AnswerPayload(
+            graph_plan=plan,
+            graph_coefficients=coefficients,
+            display_text=(
+                f"{plan.boundary.title()} boundary through {placed}; "
+                f"shade the region satisfying {plan.coefficients.x}x + "
+                f"{plan.coefficients.y}y + {plan.coefficients.constant} {plan.relation} 0"
+            ),
+        ),
+        certainty=Certainty(
+            prompt_seen=True,
+            source=solution.source,
+            transcription="verified",
+            insertable=True,
+            answered_by="exact",
+            facet_invoked=True,
+            router=solution.router,
+            reading="mathml",
+            method=solution.method,
+            runtime=solution.runtime,
+            elapsed_ms=solution.elapsed_ms,
         ),
     )
 

@@ -170,6 +170,41 @@ def test_two_stated_equations_are_not_mistaken_for_an_output_template():
     assert result["evidence"]["instructionalMath"] == 0
 
 
+def test_math_generated_by_a_partial_graph_answer_is_not_question_math():
+    result = read_question(
+        r"""
+        <div id="questionDescription">Graph the solution set.</div>
+        <div id="questionString"><math><mi>x</mi><mo>+</mo><mi>y</mi>
+          <mo>&lt;</mo><mn>4</mn></math></div>
+        <div id="partInformation">Step 1 of 1
+          <div id="answerTemplateContainer"><math><mi>y</mi><mo>=</mo>
+            <mo>-</mo><mi>x</mi><mo>+</mo><mn>4</mn></math></div>
+        </div>
+        <input class="qbaseCSS" id="txtUserAnswer11_num">
+        """
+    )
+
+    assert len(result["expressions"]) == 1
+    assert "<mo><</mo>" in result["expressions"][0]
+
+
+def test_partial_graph_math_is_excluded_without_canonical_question_ids():
+    result = read_question(
+        r"""
+        <div>Graph the solution set.</div>
+        <div class="equation"><math><mi>x</mi><mo>+</mo><mi>y</mi>
+          <mo>&lt;</mo><mn>4</mn></math></div>
+        <div id="answerTemplateContainer">
+          <math><mi>y</mi><mo>=</mo><mo>-</mo><mi>x</mi><mo>+</mo><mn>4</mn></math>
+          <input class="qbaseCSS" id="txtUserAnswer11_num">
+        </div>
+        """
+    )
+
+    assert len(result["expressions"]) == 1
+    assert "<mo><</mo>" in result["expressions"][0]
+
+
 def test_option_radios_bound_the_question_before_their_caption_mathml():
     """The answer choices' ∅ and ℝ are not expressions to solve."""
     quickjs = pytest.importorskip("quickjs")

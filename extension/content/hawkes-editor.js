@@ -413,6 +413,43 @@ var ethnosHawkes = (function () {
   }
 
   /**
+   * A Cartesian inequality answer composed by Hawkes from ordinary controls.
+   *
+   * Unlike a point-plot graph, this surface deliberately has answer fields
+   * beside the graph: two coordinate pairs define the boundary, one native
+   * radio group chooses solid/dashed, and another chooses one of the two
+   * regions the page's graph model describes.  The whole contract is needed.
+   * Four unrelated fields (including a current intercept step with a future
+   * graph still mounted) are not enough to claim it.  The live inequality
+   * renderer does not expose its visible graph under the older `#QGraph`
+   * wrapper, so the answer controls and the question's own wording are the
+   * stable discovery contract here; the page-realm graph probe subsequently
+   * proves that exactly one enabled graph model owns them.
+   */
+  function linearInequalityGraphSurface(fields) {
+    if (fields.length !== 4) return null;
+    const radios = [...document.querySelectorAll('input[type="radio"]')]
+      .filter((node) => rectangleOf(node) && !node.disabled);
+    const grouped = Object.values(radios.reduce((all, radio) => ({
+      ...all,
+      [radio.name]: [...(all[radio.name] ?? []), radio],
+    }), {}));
+    if (grouped.length !== 2 || grouped.some((group) => group.length !== 2)) return null;
+    const boundary = grouped.find((group) => group.map((radio) => optionName(radio)
+      .replace(/\s+/g, " ").trim().toLowerCase())
+      .every((name) => /^(?:solid|dashed)(?:\s|\(|$)/.test(name)));
+    if (!boundary || new Set(boundary.map((radio) => optionName(radio)
+      .replace(/\s+/g, " ").trim().toLowerCase().match(/^(solid|dashed)(?:\s|\(|$)/)?.[1]))
+      .size !== 2) return null;
+    const pageText = String(document.body?.innerText ?? document.body?.textContent ?? "")
+      .replace(/\s+/g, " ").toLowerCase();
+    if (!/boundary line/.test(pageText)
+      || !/(?:two|2) points?/.test(pageText)
+      || !/region[^.]{0,80}shad/.test(pageText)) return null;
+    return { fieldIds: fields.map((field) => field.id) };
+  }
+
+  /**
    * Two named axis rows, each offering either a coordinate or ``absent``.
    *
    * This is not one radio group and it is not four independent answers.  The
@@ -627,7 +664,7 @@ var ethnosHawkes = (function () {
     // editor probe's decision and is made against the page's own graph model,
     // not guessed from the markup here.
     const controls = 'svg g.parabola g.point a[draggable="true"][role="button"]';
-    const graphs = [...document.querySelectorAll('#QGraph[role="application"]')].filter(
+    const graphs = [...document.querySelectorAll('#QGraph')].filter(
       node => node.getBoundingClientRect().width > 0
     );
     // A later step can leave its graph mounted while the current step draws
@@ -637,6 +674,15 @@ var ethnosHawkes = (function () {
     // generic multi-answer joined by "or" or a more specific mixed surface
     // such as the two coordinate/absence rows used for axis intercepts.
     const fieldCandidates = solutionFieldCandidates();
+    const inequalitySurface = linearInequalityGraphSurface(fieldCandidates);
+    if (inequalitySurface) {
+      return {
+        ready: true,
+        code: "graph-answer",
+        via: "linear-inequality-graph-surface",
+        fieldId: inequalitySurface.fieldIds.join("\u001f"),
+      };
+    }
     if (graphs.length === 1 && fieldCandidates.length === 0) {
       const ids = [...graphs[0].querySelectorAll(controls)].map(node => node.id);
       if (ids.length === 3 && ids.every(Boolean)) {

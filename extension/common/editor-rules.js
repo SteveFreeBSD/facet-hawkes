@@ -599,18 +599,10 @@ export function publishableAnswer(published, shape) {
       : { ok: false, code: "answer-not-a-published-choice" };
   }
 
-  // Whichever field carries it, what reaches a reader has to read as an
-  // answer. Checked before anything else, because it is the only rule that
-  // applies to every shape and it is the one that was missing.
-  for (const readable of [answer, displayText]) {
-    if (readable && !displayableAnswer(readable)) {
-      return { ok: false, code: "answer-not-an-answer" };
-    }
-  }
-
-  // A plan is proved geometry and carries no writable value. It belongs to a
-  // graph question and to no other, and a graph question is answered by no
-  // other means -- a value published for one would be a value nothing proved.
+  // A plan is proved geometry and carries no writable value. Its display is a
+  // review summary (for example, boundary style, defining points and shaded
+  // side), not text destined for an answer box. Validate the plan's ownership
+  // before applying the written-answer prose guard below.
   if (plan !== null) {
     return kind === "graph" && parts.length === 0 && !entryText
       ? { ok: true }
@@ -618,6 +610,14 @@ export function publishableAnswer(published, shape) {
   }
   if (kind === "graph") {
     return { ok: false, code: "answer-shape-graph" };
+  }
+
+  // Whichever field carries a written answer, what reaches a reader has to
+  // read as an answer.
+  for (const readable of [answer, displayText]) {
+    if (readable && !displayableAnswer(readable)) {
+      return { ok: false, code: "answer-not-an-answer" };
+    }
   }
 
   if (parts.length > 0) {

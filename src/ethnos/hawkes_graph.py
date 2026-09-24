@@ -65,6 +65,17 @@ class LineGraphPlan(BaseModel):
     points: list[LinePoint] = Field(min_length=2, max_length=2)
 
 
+class LinearInequalityGraphPlan(BaseModel):
+    """An exact boundary line, its style, and the satisfying half-plane."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+    kind: Literal["linear-inequality"]
+    coefficients: LineCoefficients
+    relation: Literal["<", "<=", ">", ">="]
+    boundary: Literal["solid", "dashed"]
+    points: list[GraphPoint] = Field(min_length=2, max_length=2)
+
+
 #: The four interval shapes a number line draws, named by their two ends.
 IntervalShape = Literal["open", "closed", "open-closed", "closed-open"]
 
@@ -299,6 +310,28 @@ def validate_line_graph_plan(plan: LineGraphPlan, mathml: list[str]) -> list[str
         ):
             raise ValueError("Facet intercept point does not match the exact equation")
     return coefficients
+
+
+def validate_linear_inequality_graph_plan(
+    plan: LinearInequalityGraphPlan, mathml: list[str], context
+) -> list[str]:
+    """Re-derive the exact plan and compare every semantic field."""
+    from facet_runtime.graph import GraphContext, build_linear_inequality_graph_plan
+
+    expected = build_linear_inequality_graph_plan(
+        "Graph the linear inequality",
+        [mathml_to_latex(item) for item in mathml],
+        GraphContext(
+            family="linear-inequality",
+            orientation="cartesian",
+            bounds=tuple(context.bounds),
+            snap=tuple(context.snap),
+            controls="boundary-two-points-regions",
+        ),
+    )
+    if plan.model_dump() != expected:
+        raise ValueError("Facet inequality plan does not match the exact inequality")
+    return [plan.coefficients.x, plan.coefficients.y, plan.coefficients.constant]
 
 
 class RegressionPlan(BaseModel):

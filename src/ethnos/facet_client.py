@@ -102,11 +102,25 @@ PARABOLA_PLAN = "parabola_plan"
 QUADRATIC_REGRESSION = "quadratic_regression"
 POINT_PLOT_PLAN = "point_plot_plan"
 LINEAR_GRAPH_PLAN = "linear_graph_plan"
+LINEAR_INEQUALITY_GRAPH_PLAN = "linear_inequality_graph_plan"
 FACET_RESULT_KINDS: frozenset[str] = frozenset(
-    {VALUE, PARABOLA_PLAN, QUADRATIC_REGRESSION, POINT_PLOT_PLAN, LINEAR_GRAPH_PLAN}
+    {
+        VALUE,
+        PARABOLA_PLAN,
+        QUADRATIC_REGRESSION,
+        POINT_PLOT_PLAN,
+        LINEAR_GRAPH_PLAN,
+        LINEAR_INEQUALITY_GRAPH_PLAN,
+    }
 )
 PLAN_KINDS: frozenset[str] = frozenset(
-    {PARABOLA_PLAN, QUADRATIC_REGRESSION, POINT_PLOT_PLAN, LINEAR_GRAPH_PLAN}
+    {
+        PARABOLA_PLAN,
+        QUADRATIC_REGRESSION,
+        POINT_PLOT_PLAN,
+        LINEAR_GRAPH_PLAN,
+        LINEAR_INEQUALITY_GRAPH_PLAN,
+    }
 )
 
 #: What the exact route may return. A value, obviously -- and a plotting plan,
@@ -115,7 +129,7 @@ PLAN_KINDS: frozenset[str] = frozenset(
 #: plan is a proposal about geometry nobody wrote out, which the exact solvers
 #: cannot make, so claiming one was exact would be a false provenance.
 EXACTLY_SOLVED_KINDS: frozenset[str] = frozenset(
-    {VALUE, POINT_PLOT_PLAN, LINEAR_GRAPH_PLAN}
+    {VALUE, POINT_PLOT_PLAN, LINEAR_GRAPH_PLAN, LINEAR_INEQUALITY_GRAPH_PLAN}
 )
 
 #: What the deterministic stage may report having done. `not-run` belongs only
@@ -974,9 +988,11 @@ def solve_math(
         )
     if result_kind == POINT_PLOT_PLAN and expressions:
         problem["expressions"] = expressions
-    if result_kind in {PARABOLA_PLAN, LINEAR_GRAPH_PLAN} or (
-        result_kind == VALUE and not points
-    ):
+    if result_kind in {
+        PARABOLA_PLAN,
+        LINEAR_GRAPH_PLAN,
+        LINEAR_INEQUALITY_GRAPH_PLAN,
+    } or (result_kind == VALUE and not points):
         if not expressions or any(not item.strip() for item in expressions):
             raise FacetProtocolError("every expression must be non-empty")
         problem["expressions"] = expressions
@@ -1037,11 +1053,14 @@ def solve_math(
         # A plan carries no value for anybody to write down, so a requirement
         # on the form of one is a question about something else.
         raise FacetProtocolError("only a value question takes an answer shape")
-    if result_kind in {PARABOLA_PLAN, LINEAR_GRAPH_PLAN}:
+    if result_kind in {PARABOLA_PLAN, LINEAR_GRAPH_PLAN, LINEAR_INEQUALITY_GRAPH_PLAN}:
         if not isinstance(graph, dict) or not graph:
             raise FacetProtocolError("a function plan needs normalised geometry")
         problem["graph"] = graph
-    if result_kind in {PARABOLA_PLAN, LINEAR_GRAPH_PLAN} and points:
+    if (
+        result_kind in {PARABOLA_PLAN, LINEAR_GRAPH_PLAN, LINEAR_INEQUALITY_GRAPH_PLAN}
+        and points
+    ):
         # A parabola plan is drawn from a function on a grid. Points are a
         # different question's evidence, and passing them silently would have
         # sent a question Facet reads as being about something else.

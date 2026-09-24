@@ -335,6 +335,67 @@ def test_a_graph_offering_some_other_number_of_controls_is_claimed_too():
     assert result["via"] == "graph-surface"
 
 
+def test_a_visible_linear_inequality_surface_needs_no_focused_field():
+    """The live Lesson 2.6 contract is one composite graph answer.
+
+    Its four coordinate boxes are not four unrelated written answers, and
+    their presence must not hide the graph they configure.
+    """
+    import quickjs
+
+    context = quickjs.Context()
+    context.eval("""
+      globalThis.HTMLIFrameElement = class {};
+      globalThis.HTMLFrameElement = class {};
+      globalThis.window = {location: {origin: 'https://learn.hawkeslearning.com'}};
+      const rect = () => ({width: 60, height: 20, top: 100, bottom: 120, left: 10, right: 70});
+      const fields = Array.from({length: 4}, (_, i) => ({
+        id: 'txtUserAnswer1' + (i + 1) + '_num', disabled: false, readOnly: false,
+        getBoundingClientRect: rect,
+      }));
+      const radio = (id, name, label) => ({
+        id, name, value: label, disabled: false, checked: false,
+        getBoundingClientRect: rect,
+        getAttribute: key => key === 'aria-label' ? label : '',
+        closest: () => null,
+      });
+      const radios = [
+        radio('line-solid', 'line-style', 'Solid'),
+        radio('line-dashed', 'line-style', 'Dashed'),
+        radio('region-first', 'region', 'A'),
+        radio('region-second', 'region', 'B'),
+      ];
+      const word = text => ({textContent: text, getBoundingClientRect: rect});
+      const words = [word('Solid (—)'), word('Dashed (---)')];
+      globalThis.document = {
+        activeElement: null,
+        body: {innerText: 'Choose the type of boundary line. Enter two points. Select the region to be shaded.'},
+        querySelectorAll: selector => selector.startsWith('#QGraph') ? []
+          : selector === 'input[type="radio"]' ? radios
+          : selector === '*' ? words
+          : selector.includes('input.qbaseCSS') ? fields : [],
+        getElementById: () => null,
+        querySelector: () => null,
+      };
+    """)
+    context.eval(
+        (
+            pathlib.Path(__file__).parents[1] / "extension/content/hawkes-editor.js"
+        ).read_text()
+    )
+    result = json.loads(context.eval("JSON.stringify(ethnosHawkes.inspectField())"))
+
+    assert result["ready"] is True
+    assert result["code"] == "graph-answer"
+    assert result["via"] == "linear-inequality-graph-surface"
+    assert result["fieldId"].split("\u001f") == [
+        "txtUserAnswer11_num",
+        "txtUserAnswer12_num",
+        "txtUserAnswer13_num",
+        "txtUserAnswer14_num",
+    ]
+
+
 def test_a_graph_beside_a_text_box_never_takes_that_questions_answer():
     """A scatter plot drawn beside a box is that question's data, not its
     answer surface, and the box is still where the answer goes."""

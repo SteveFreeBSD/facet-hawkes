@@ -61,6 +61,16 @@ POINT_CONTEXT = {
     "controls": "draggable-points",
     "count": 2,
 }
+INEQUALITY_MATH = (
+    "<math><mrow><mn>2</mn><mi>x</mi><mo>+</mo><mn>6</mn><mi>y</mi>"
+    "<mo>&lt;</mo><mn>6</mn></mrow></math>"
+)
+INEQUALITY_CONTEXT = {
+    "family": "linear-inequality",
+    "bounds": [-10.0, 10.0, -10.0, 10.0],
+    "snap": [1.0, 1.0],
+    "controls": "boundary-two-points-regions",
+}
 POINTS = [("-5", "5"), ("-2", "-4"), ("-1", "5")]
 REGRESSION = '{"kind":"quadratic-regression","coefficients":["3","18","20"]}'
 REGRESSION_INSTRUCTION = "Use quadratic regression. Round to three decimal places."
@@ -104,6 +114,19 @@ def line_request(prompt=LINE_INSTRUCTION) -> dict:
             "prompt_text": prompt,
             "mathml": [LINE_MATH],
             "answer_shape": {"kind": "graph", "graph": POINT_CONTEXT},
+        },
+    }
+
+
+def inequality_request(*, mathml: list[str] | None = None) -> dict:
+    return {
+        "operation": "solve_hawkes_problem",
+        "request_id": "inequality-1",
+        "origin": "https://learn.hawkeslearning.com",
+        "problem": {
+            "prompt_text": "Graph the solution set of the following linear inequality:",
+            "mathml": mathml or [INEQUALITY_MATH],
+            "answer_shape": {"kind": "graph", "graph": INEQUALITY_CONTEXT},
         },
     }
 
@@ -176,6 +199,43 @@ def test_an_intercept_directed_line_uses_a_separate_exact_plan(monkeypatch) -> N
     assert response.answer.graph_coefficients == ["0", "1", "-2"]
     assert response.certainty.source == "Facet Exact"
     assert response.certainty.answered_by == "exact"
+    assert response.certainty.model is None
+
+
+def test_a_cartesian_linear_inequality_is_exact_and_structured(monkeypatch) -> None:
+    loopback = facet(monkeypatch)
+
+    response = handle(inequality_request())
+
+    assert loopback.prompts == []
+    assert loopback.problems[0]["result_kind"] == "linear_inequality_graph_plan"
+    assert response.status == "ready"
+    assert response.answer.graph_plan.model_dump() == {
+        "kind": "linear-inequality",
+        "coefficients": {"x": "1", "y": "3", "constant": "-3"},
+        "relation": "<",
+        "boundary": "dashed",
+        "points": [{"x": "3", "y": "0"}, {"x": "0", "y": "1"}],
+    }
+    assert response.answer.graph_coefficients == ["1", "3", "-3"]
+    assert response.certainty.source == "Facet Exact"
+    assert response.certainty.answered_by == "exact"
+    assert response.certainty.model is None
+
+
+def test_partial_graph_boundary_math_does_not_block_exact_resume(monkeypatch) -> None:
+    """A drawn boundary may add answer-owned equality MathJax to the page."""
+    loopback = facet(monkeypatch)
+    boundary_math = (
+        "<math><mrow><mi>y</mi><mo>=</mo><mo>-</mo><mfrac><mi>x</mi>"
+        "<mn>3</mn></mfrac><mo>+</mo><mn>1</mn></mrow></math>"
+    )
+
+    response = handle(inequality_request(mathml=[INEQUALITY_MATH, boundary_math]))
+
+    assert loopback.problems[0]["expressions"] == ["2x+6y<6", r"y=-\frac{x}{3}+1"]
+    assert response.status == "ready"
+    assert response.answer.graph_plan.kind == "linear-inequality"
     assert response.certainty.model is None
 
 

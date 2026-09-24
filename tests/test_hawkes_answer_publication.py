@@ -210,6 +210,28 @@ def test_a_real_single_answer_is_published(page):
     assert page.json("state.answer") == "3y"
 
 
+def test_a_graph_plan_publishes_its_review_summary_without_treating_it_as_typed_text(
+    page,
+):
+    """Geometry summaries are for review; the proved plan is what gets entered."""
+    solving(page, GRAPH_EDITOR)
+
+    reply(
+        page,
+        {
+            "display_text": "Dashed boundary through (3,0), (0,1); shade region A",
+            "keyboard_entry": "",
+            "parts": [],
+            "graph_plan": {"kind": "parabola"},
+            "graph_coefficients": ["1", "0", "0"],
+        },
+    )
+
+    assert page.json("state.phase") == "solved"
+    assert page.json("state.graphPlan.kind") == "parabola"
+    assert page.json("state.displayText").startswith("Dashed boundary")
+
+
 def test_axis_intercepts_are_published_as_semantics_not_scalar_text(page):
     rows = [
         {"axis": "x", "fieldIds": ["x1", "x2"], "optionId": "xa", "option": "absent"},

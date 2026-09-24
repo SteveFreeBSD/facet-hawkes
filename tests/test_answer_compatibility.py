@@ -48,6 +48,7 @@ RUNTIME_ROOT = PROJECT_ROOT.parent / "facet-runtime"
 #: no notation and no planner route to exercise.
 PLAN_FORMS = (
     "linear_graph_plan",
+    "linear_inequality_graph_plan",
     "parabola_plan",
     "point_plot_plan",
     "quadratic_regression",
