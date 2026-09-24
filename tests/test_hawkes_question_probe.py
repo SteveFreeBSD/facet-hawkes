@@ -207,6 +207,29 @@ def test_question_string_owns_the_expression_over_description_math():
     assert "<mi>A</mi>" not in result["expressions"][0]
 
 
+def test_answer_controls_inside_part_information_bound_partial_graph_math():
+    result = read_question(
+        r"""
+        <div id="questionDescription">Graph the linear inequality.</div>
+        <div id="questionString">
+          <math><mn>2</mn><mi>x</mi><mo>+</mo><mn>6</mn><mi>y</mi>
+            <mo>&lt;</mo><mn>6</mn></math>
+          <div id="partInformation">
+            <input type="radio" class="opt" name="boundary" aria-label="Dashed">
+            <input class="qbaseCSS" id="txtUserAnswer11_num">
+            <div class="boundary-equation"><math><mi>y</mi><mo>=</mo>
+              <mo>-</mo><mfrac><mi>x</mi><mn>3</mn></mfrac>
+              <mo>+</mo><mn>1</mn></math></div>
+          </div>
+        </div>
+        """
+    )
+
+    assert len(result["expressions"]) == 1
+    assert "<mo><</mo>" in result["expressions"][0]
+    assert "<mfrac>" not in result["expressions"][0]
+
+
 def test_partial_graph_math_is_excluded_without_canonical_question_ids():
     result = read_question(
         r"""

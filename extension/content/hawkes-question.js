@@ -23,7 +23,7 @@
   // every decision, and the observatory applies the same normalization to the
   // tree. Unlike the event-page marker, this proves which Hawkes reader was
   // injected into the authoritative page DOM.
-  const HAWKES_READER_BUILD = "4424d3ca052d";
+  const HAWKES_READER_BUILD = "e46e43d81eb8";
 
   const ANSWER_CONTROLS =
     'input.qbaseCSS, input[id^="txtAns"], input.boxStyle, input[id$="_optchk"], '
@@ -42,7 +42,6 @@
   const answerTop = () => {
     const tops = [...document.querySelectorAll(ANSWER_CONTROLS)]
       .filter(visible)
-      .filter((element) => !element.closest?.("#partInformation"))
       .map((element) => element.getBoundingClientRect().top);
     return tops.length > 0 ? Math.min(...tops) : Number.POSITIVE_INFINITY;
   };
