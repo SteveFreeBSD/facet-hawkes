@@ -350,6 +350,15 @@ class AnswerTable(BaseModel):
         return self
 
 
+class LabeledPoint(GraphPoint):
+    """One exact point and the short SVG label associated with it."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    label: str = Field(min_length=1, max_length=16, pattern=r"^\S+$")
+    reading: Literal["svg", "page-model"]
+
+
 class ProblemPayload(BaseModel):
     """What the add-on saw. Every field is optional except the screenshot."""
 
@@ -362,6 +371,11 @@ class ProblemPayload(BaseModel):
     # no transcription at all: it is exact, and costs nothing.
     mathml: list[str] = Field(default_factory=list, max_length=8)
     graph_points: list[GraphPoint] = Field(default_factory=list, max_length=32)
+    #: One label-associated Cartesian point read from page-owned graph geometry.
+    #: Kept separate from ``graph_points`` because those are an unlabeled data
+    #: series for regression; conflating the two routes made one point look
+    #: like an incomplete regression.
+    labeled_point: LabeledPoint | None = None
     #: The question's own data table, when it stated its numbers in one. Like
     #: `mathml`, this is the page saying what the question is rather than the
     #: host reading it back off a picture.
@@ -472,6 +486,22 @@ class AnswerPayload(BaseModel):
     graph_coefficients: list[str] = Field(default_factory=list, max_length=3)
     display_text: str = ""
     keyboard_entry: str = ""
+    #: The mathematical family Facet returned.  The components of an ordered
+    #: pair may travel in ``parts`` when this page owns separate x/y fields;
+    #: the family remains an ordered pair rather than becoming generic parts.
+    form: (
+        Literal[
+            "scalar",
+            "ordered-pair",
+            "parts",
+            "choice",
+            "conditional-choice",
+            "relation",
+            "axis-intercepts",
+            "inequality-pair",
+        ]
+        | None
+    ) = None
     # Distinct values for a multi-value answer. Keeping these structured avoids
     # recovering mathematical boundaries from display prose later.
     parts: list[str] = Field(default_factory=list, max_length=MAX_ANSWER_PARTS)
@@ -528,6 +558,7 @@ class Certainty(BaseModel):
     #: page reached Facet as five requested parts rather than collapsing on
     #: either side of the native-host boundary.
     answer_parts: int | None = Field(default=None, ge=1, le=MAX_ANSWER_PARTS)
+    model_calls: int | None = Field(default=None, ge=0)
     #: Which engine's answer this is. `exact` is SymPy and the polynomial
     #: solver -- deterministic, checkable, and not a model. `facet` is the
     #: remote reasoner. `model` is the local vision-and-model fallback. Kept
@@ -543,7 +574,7 @@ class Certainty(BaseModel):
     #: transcribed from a picture of it. `table` is the page's own data table,
     #: read as a table -- exact in the same way `mathml` is, and for the same
     #: reason: the page wrote it down and nothing had to look at pixels.
-    reading: Literal["mathml", "screenshot", "svg", "table"] | None = None
+    reading: Literal["mathml", "screenshot", "svg", "page-model", "table"] | None = None
     #: The named method behind the answer -- a solver's name when `answered_by`
     #: is `exact`, a model's name otherwise. Never a model name for a solver.
     method: str = ""

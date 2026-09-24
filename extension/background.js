@@ -224,6 +224,7 @@ const EDITOR_SCRIPT = "/content/hawkes-editor.js";
 const INSPECT_SCRIPT = "/content/inspect-field.js";
 const DESCRIBE_SCRIPT = "/content/hawkes-describe.js";
 const QUESTION_SCRIPT = "/content/hawkes-question.js";
+const GRAPH_MODEL_SCRIPT = "/content/hawkes-graph-model.js";
 // How often an open panel checks whether the question has changed. The read
 // is a same-frame DOM query costing a millisecond or so.
 const QUESTION_WATCH_MS = 1500;
@@ -873,8 +874,43 @@ async function readQuestion(tabId, frameId, attempts = 6) {
       const [read] = await runOperation({ tabId, frameIds: [frameId] }, QUESTION_SCRIPT, {
         alone: true,
       });
-      const question = read?.result;
+      let question = read?.result;
       if (question && Array.isArray(question.expressions)) {
+        if (
+          !question.labeledPoint
+          && question.evidence?.graphQuestion === "labeled-point"
+          && question.evidence?.graphDecision === "unavailable"
+        ) {
+          // Hawkes sometimes renders the graph outside #partInformation while
+          // retaining its exact <graph> specification in the page-owned
+          // question model. Read that model in MAIN only after SVG was truly
+          // unavailable; ambiguity there is terminal and never becomes a
+          // screenshot guess.
+          const [modeled] = await runOperation(
+            { tabId, frameIds: [frameId] },
+            GRAPH_MODEL_SCRIPT,
+            { alone: true, world: "MAIN" },
+          );
+          const graphModel = modeled?.result;
+          if (graphModel?.graphQuestion === "labeled-point") {
+            question = {
+              ...question,
+              ...(graphModel.labeledPoint
+                ? { labeledPoint: graphModel.labeledPoint }
+                : {}),
+              evidence: {
+                ...question.evidence,
+                graph: graphModel.graphReason
+                  || (graphModel.labeledPoint ? "labeled-point-model" : question.evidence.graph),
+                graphQuestion: graphModel.graphQuestion,
+                graphDecision: graphModel.graphDecision,
+                ...(graphModel.graphReading
+                  ? { graphReading: graphModel.graphReading }
+                  : {}),
+              },
+            };
+          }
+        }
         last = question;
         if (readableQuestion(question)) {
           return question;
@@ -937,6 +973,7 @@ function questionSignature(question) {
     .replace(/\sdata-semantic-(?:id|parent|owns|children)="[^"]*"/g, "");
   const content = `${question.promptText}\u0000${question.expressions.map(render).join("\u0000")}`
     + (question.graphPoints ? JSON.stringify(question.graphPoints) : "")
+    + (question.labeledPoint ? JSON.stringify(question.labeledPoint) : "")
     + (question.systemConnector ?? "")
     // Two questions can share a prompt and differ only in their numbers, which
     // is exactly what a table of measurements is. Left out, the second would
@@ -1024,15 +1061,17 @@ function revalidatedTableTargets(retained, swept) {
 /**
  * Whether the page stated this question rather than merely drawing it.
  *
- * Three ways it can: MathJax's MathML, the exact coordinates of a plotted
- * scatter, or a data table with its own column headings. Any one of them is
- * an exact reading and skips the screenshot entirely.
+ * Four ways it can: MathJax's MathML, the exact coordinates of a plotted
+ * scatter, one label-associated Cartesian point, or a data table with its own
+ * column headings. Any one of them is an exact reading and skips the screenshot
+ * entirely.
  */
 function readableQuestion(question) {
   return Boolean(
     question
       && (question.expressions?.length > 0
         || question.graphPoints?.length >= 3
+        || question.labeledPoint
         || question.dataTable)
   );
 }
@@ -1507,6 +1546,9 @@ function provenanceNotes(certainty) {
   }
   if (certainty?.method) {
     lines.push(`${engine === "exact" ? "Method" : "Reasoner"}: ${certainty.method}`);
+  }
+  if (Number.isInteger(certainty?.model_calls)) {
+    lines.push(`Model calls: ${certainty.model_calls}`);
   }
   if (certainty?.router === "solved" || certainty?.router === "declined") {
     // Whose deterministic stage made the call. Facet owns the routing for every
@@ -2496,6 +2538,9 @@ async function solve(windowId = state.windowId) {
       read: "markup",
       expressions: question.expressions.length,
       graph: question.evidence?.graph ?? "unknown",
+      graphQuestion: question.evidence?.graphQuestion ?? "",
+      graphDecision: question.evidence?.graphDecision ?? "",
+      graphReading: question.evidence?.graphReading ?? "",
       table: question.evidence?.table ?? "unknown",
       answerTable: question.evidence?.answerTable ?? "unknown",
       answerTableDetail: question.evidence?.answerTableDetail ?? null,
@@ -2508,6 +2553,9 @@ async function solve(windowId = state.windowId) {
     log.info("question-read", {
       expressions: runFacts.evidence.expressions,
       graph: runFacts.evidence.graph,
+      graphQuestion: runFacts.evidence.graphQuestion,
+      graphDecision: runFacts.evidence.graphDecision,
+      graphReading: runFacts.evidence.graphReading,
       table: runFacts.evidence.table,
       answerTable: runFacts.evidence.answerTable,
       answerTableDetail: runFacts.evidence.answerTableDetail,
@@ -2531,6 +2579,19 @@ async function solve(windowId = state.windowId) {
     runFacts.evidence.signature = state.signature ?? "";
 
     let screenshot = "";
+    if (
+      question.evidence?.graphQuestion === "labeled-point"
+      && question.evidence?.graphDecision === "ambiguous"
+    ) {
+      // A picture cannot resolve two structural owners or a point that does
+      // not land on the page's own grid.  That would replace a named
+      // disagreement with a model's guess, so ambiguity is terminal while a
+      // genuinely absent SVG or label may still use the ordinary image path.
+      fail("errorSolveRefused", {
+        detail: "The labeled point could not be identified unambiguously from the page's graph.",
+      });
+      return;
+    }
     if (!readableQuestion(question)) {
       // The page stated nothing this add-on could read exactly, and the next
       // forty-five seconds are a model looking at a picture. Which reading was
@@ -2542,6 +2603,9 @@ async function solve(windowId = state.windowId) {
         read: "refused",
         expressions: question.expressions?.length ?? 0,
         graph: question.evidence?.graph ?? "unknown",
+        graphQuestion: question.evidence?.graphQuestion ?? "",
+        graphDecision: question.evidence?.graphDecision ?? "",
+        graphReading: question.evidence?.graphReading ?? "",
         table: question.evidence?.table ?? "unknown",
         answerTable: question.evidence?.answerTable ?? "unknown",
         answerTableDetail: question.evidence?.answerTableDetail ?? null,
@@ -2551,6 +2615,9 @@ async function solve(windowId = state.windowId) {
       log.info("evidence-refused", {
         expressions: runFacts.evidence.expressions,
         graph: runFacts.evidence.graph,
+        graphQuestion: runFacts.evidence.graphQuestion,
+        graphDecision: runFacts.evidence.graphDecision,
+        graphReading: runFacts.evidence.graphReading,
         table: runFacts.evidence.table,
         answerTable: runFacts.evidence.answerTable,
         answerTableDetail: runFacts.evidence.answerTableDetail,
@@ -2601,6 +2668,7 @@ async function solve(windowId = state.windowId) {
             prompt_text: question.promptText || "",
             mathml: question.expressions,
             ...(question.graphPoints ? { graph_points: question.graphPoints } : {}),
+            ...(question.labeledPoint ? { labeled_point: question.labeledPoint } : {}),
             // The table's own reading of itself: headings and cells, exactly
             // as the page wrote them. No element, no selector, no geometry.
             ...(question.dataTable ? { data_table: question.dataTable } : {}),
@@ -2644,6 +2712,7 @@ async function solve(windowId = state.windowId) {
       reply?.status === "unsupported"
       && shape?.kind !== "graph"
       && state.editor?.surface !== "graph-choice"
+      && !question.labeledPoint
       && !controller.signal.aborted
     ) {
       // The host says which decline this was; without it a live fallback
@@ -2824,6 +2893,7 @@ const REFUSAL_REASONS = Object.freeze([
   ["facet-transport-misconfigured", /^Facet transport misconfigured/i],
   ["no-final-answer", /^Ethnos produced no final answer/i],
   ["table-question-refused", /^Table question refused/i],
+  ["labeled-point-refused", /^Labeled point refused/i],
   ["regression-refused", /^Regression refused/i],
   ["graph-plan-refused", /^Graph plan refused/i],
   ["point-plot-refused", /^Point plot refused/i],
@@ -3039,6 +3109,14 @@ async function acceptReply(reply) {
   const answerParts = Array.isArray(shaped.parts)
     ? shaped.parts.filter((value) => typeof value === "string")
     : [];
+  if (
+    shaped.form === "ordered-pair"
+    && answerParts.length > 0
+    && answerParts.length !== 2
+  ) {
+    fail("errorAnswerInvalid", { detail: "ordered-pair-components-malformed" });
+    return;
+  }
   const hasParts = answerParts.length >= 2
     && answerParts.length <= MAX_ANSWER_PARTS
     && answerParts.every((value) =>
@@ -3109,6 +3187,7 @@ async function acceptReply(reply) {
     insertable: Boolean(certainty.insertable),
     answerLength: answer.length,
     answerParts: answerParts.length,
+    answerForm: shaped.form ?? "",
     axisIntercepts: hasIntercepts,
     hostAnswerParts: Number.isInteger(certainty.answer_parts) ? certainty.answer_parts : 0,
     elapsedMs: state.startedAt ? Date.now() - state.startedAt : 0,
@@ -3125,6 +3204,7 @@ async function acceptReply(reply) {
     facetReading: certainty.reading ?? "",
     facetRouter: certainty.router ?? "",
     facetMethod: certainty.method ?? "",
+    modelCalls: Number.isInteger(certainty.model_calls) ? certainty.model_calls : -1,
     facetRuntime: certainty.runtime ?? "",
     facetModel: certainty.model ?? "",
     facetRequestedBackend: certainty.requested_backend ?? "",

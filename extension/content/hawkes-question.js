@@ -23,7 +23,7 @@
   // every decision, and the observatory applies the same normalization to the
   // tree. Unlike the event-page marker, this proves which Hawkes reader was
   // injected into the authoritative page DOM.
-  const HAWKES_READER_BUILD = "7d7fff731710";
+  const HAWKES_READER_BUILD = "d4eaeada54d8";
 
   const ANSWER_CONTROLS =
     'input.qbaseCSS, input[id^="txtAns"], input.boxStyle, input[id$="_optchk"], '
@@ -47,26 +47,46 @@
   };
 
   // A graph in the instruction is evidence, not an answer surface. Read only
-  // the disabled scatter points; never infer values from screenshot pixels.
+  // disabled page-owned points; never infer values from screenshot pixels.
   //
   // Every refusal is named. The codes carry no coursework -- a count, a
   // selector, or the size of a disagreement -- and exist because "no readable
   // markup" told a live sweep nothing at all about which of nine conditions
   // had not held.
   const graph = (() => {
-    const refuse = (graphReason) => ({ points: null, graphReason });
+    const refuse = (graphReason, graphQuestion = "", graphDecision = "unavailable") => ({
+      points: null, labeledPoint: null, graphReason, graphQuestion, graphDecision,
+    });
     const parts = [...document.querySelectorAll("#partInformation")];
     if (parts.length !== 1) return refuse(`part-count-${parts.length}`);
-    if (!/quadratic regression/i.test(parts[0].textContent)) {
+    const words = String(parts[0].textContent ?? "").replace(/\s+/g, " ").trim();
+    const coordinateRequest = (
+      /\b(?:identify|find|determine|give|state|read|what\s+are)\b[^.?!]{0,200}\bcoordinates?\s+of\s+(?:the\s+)?(?:labeled\s+)?point\s+([^\s.,;:!?()[\]{}]{1,16})(?=\s|[.,;:!?]|$)/i.exec(words)
+      || /\b(?:identify|find|determine|give|state|read|what\s+are)\b[^.?!]{0,200}\bpoint\s+([^\s.,;:!?()[\]{}'’]{1,16})(?:['’]s)?\s+coordinates?\b/i.exec(words)
+    );
+    const graphQuestion = coordinateRequest ? "labeled-point" : "";
+    const regression = /quadratic regression/i.test(words);
+    if (!regression && !coordinateRequest) {
       return refuse("no-regression-instruction");
     }
     const svgs = [...parts[0].querySelectorAll("svg")];
-    if (svgs.length !== 1) return refuse(`svg-count-${svgs.length}`);
+    if (svgs.length !== 1) {
+      return refuse(
+        `svg-count-${svgs.length}`,
+        graphQuestion,
+        svgs.length > 1 ? "ambiguous" : "unavailable"
+      );
+    }
     const svg = svgs[0];
-    const points = [...svg.querySelectorAll("g.graph-objects > g.point.disable")];
+    const points = [...svg.querySelectorAll("g.point.disable")].filter(
+      (point) => point.parentElement?.matches("g.graph-objects")
+    );
     const axes = ["horizontal", "vertical"].map(axis => {
-      const text = svg.querySelector(`g.${axis}-axis desc`)?.textContent ?? "";
-      const match = text.match(/starts at (-?\d+), and ends at (-?\d+);/);
+      const text = svg.querySelector(`g.${axis}-axis`)?.querySelector("desc")
+        ?.textContent ?? "";
+      const match = text.match(
+        /starts at (-?(?:\d+(?:\.\d+)?|\.\d+)), and ends at (-?(?:\d+(?:\.\d+)?|\.\d+));/
+      );
       return match ? [Number(match[1]), Number(match[2])] : null;
     });
     const grid = svg.querySelector("g.cartesian-grid");
@@ -79,14 +99,124 @@
     // to do with the data. A client rect is the same space for both whatever
     // transforms lie between them.
     const rect = grid?.getBoundingClientRect();
-    if (points.length < 3 || points.length > 32) return refuse(`point-count-${points.length}`);
-    if (axes.some(a => !a)) {
-      return refuse(`axis-desc-${axes.map(a => (a ? "ok" : "missing")).join("-")}`);
+    const minimum = regression ? 3 : 1;
+    if (points.length < minimum || points.length > 32) {
+      return refuse(`point-count-${points.length}`, graphQuestion);
     }
-    if (!rect) return refuse("no-cartesian-grid");
+    if (axes.some(a => !a)) {
+      return refuse(
+        `axis-desc-${axes.map(a => (a ? "ok" : "missing")).join("-")}`,
+        graphQuestion
+      );
+    }
+    if (!rect) return refuse("no-cartesian-grid", graphQuestion);
     const width = rect.width;
     const height = rect.height;
-    if (!(width > 0 && height > 0)) return refuse("grid-has-no-size");
+    if (!(width > 0 && height > 0)) {
+      return refuse("grid-has-no-size", graphQuestion);
+    }
+    const [horizontal, vertical] = axes;
+    // One coordinate system, derived from the graph's own bounds and box.
+    // The origin and one-unit grid spacing are consequences of those values;
+    // no viewport size, range or origin position is assumed.
+    const spacingX = width / (horizontal[1] - horizontal[0]);
+    const spacingY = height / (vertical[1] - vertical[0]);
+    const originX = rect.left - horizontal[0] * spacingX;
+    const originY = rect.top + vertical[1] * spacingY;
+    const position = (point) => {
+      const circle = point.querySelector("circle");
+      if (!circle || point.querySelector("a")) return null;
+      const dot = circle.getBoundingClientRect();
+      const centerX = dot.left + dot.width / 2;
+      const centerY = dot.top + dot.height / 2;
+      const measuredX = (centerX - originX) / spacingX;
+      const measuredY = (originY - centerY) / spacingY;
+      const x = Math.round(measuredX);
+      const y = Math.round(measuredY);
+      return { centerX, centerY, measuredX, measuredY, x, y };
+    };
+
+    if (coordinateRequest) {
+      if (
+        horizontal[0] > 0 || horizontal[1] < 0
+        || vertical[0] > 0 || vertical[1] < 0
+      ) {
+        return refuse("axis-has-no-origin", graphQuestion, "ambiguous");
+      }
+      const target = coordinateRequest[1];
+      // A label is page-owned SVG text. It has to occur exactly once, and its
+      // nearest point has to be unique and close on the graph's own unit grid.
+      // Axis names, tick labels and other annotations cannot match by
+      // proximity alone because the instruction's exact target text is the
+      // first gate.
+      const labels = [...svg.querySelectorAll("text")].filter(
+        (label) => String(label.textContent ?? "").trim() === target && visible(label)
+      );
+      if (labels.length === 0) {
+        return refuse("point-label-missing", graphQuestion, "unavailable");
+      }
+      if (labels.length !== 1) {
+        return refuse(`point-label-count-${labels.length}`, graphQuestion, "ambiguous");
+      }
+      const labelBox = labels[0].getBoundingClientRect();
+      const labelX = labelBox.left + labelBox.width / 2;
+      const labelY = labelBox.top + labelBox.height / 2;
+      const candidates = points.map((point) => {
+        const placed = position(point);
+        if (placed === null) return null;
+        const distance = Math.hypot(
+          (placed.centerX - labelX) / spacingX,
+          (placed.centerY - labelY) / spacingY
+        );
+        return { point, placed, distance };
+      }).filter(Boolean).sort((left, right) => left.distance - right.distance);
+      if (candidates.length === 0) {
+        return refuse("point-geometry-missing", graphQuestion, "unavailable");
+      }
+      if (
+        candidates[0].distance > 2.5
+        || (candidates[1] && candidates[1].distance - candidates[0].distance < 0.25)
+      ) {
+        return refuse("point-label-association-ambiguous", graphQuestion, "ambiguous");
+      }
+      const chosen = candidates[0];
+      const { measuredX, measuredY, x, y } = chosen.placed;
+      if (
+        Math.abs(measuredX - x) > 0.2
+        || Math.abs(measuredY - y) > 0.2
+        || x < horizontal[0] || x > horizontal[1]
+        || y < vertical[0] || y > vertical[1]
+      ) {
+        return refuse("point-not-on-grid", graphQuestion, "ambiguous");
+      }
+
+      // Hawkes often publishes the same coordinates in an accessible point
+      // description. Geometry is the source; where this independent statement
+      // exists, disagreement is an ambiguity and never a tie-breaker.
+      const desc = chosen.point.querySelector("desc")?.textContent ?? "";
+      const drawn = /^A dot drawn (?:at )?(.*?)\s*the origin\.$/i.exec(desc);
+      const xClause = drawn && /(\d+)\s+units?\s+(left|right)\s+of\b/i.exec(drawn[1]);
+      const yClause = drawn && /(\d+)\s+units?\s+(above|below)\b/i.exec(drawn[1]);
+      if (drawn) {
+        const statedX = xClause
+          ? Number(xClause[1]) * (xClause[2].toLowerCase() === "left" ? -1 : 1)
+          : 0;
+        const statedY = yClause
+          ? Number(yClause[1]) * (yClause[2].toLowerCase() === "below" ? -1 : 1)
+          : 0;
+        if (statedX !== x || statedY !== y) {
+          return refuse("point-description-disagrees", graphQuestion, "ambiguous");
+        }
+      }
+      return {
+        points: null,
+        labeledPoint: { label: target, x: String(x), y: String(y), reading: "svg" },
+        graphReason: "",
+        graphQuestion,
+        graphDecision: "accepted",
+      };
+    }
+
     const result = [];
     let worst = 0;
     for (const point of points) {
@@ -128,11 +258,9 @@
       // true of a hand-authored fixture and of no real SVG, which is why the
       // cross-check passed offline and could not pass live. A bbox origin has
       // to come off the coordinate before it is scaled.
-      const dot = circle.getBoundingClientRect();
-      const drawnX = axes[0][0]
-        + (dot.left + dot.width / 2 - rect.left) * (axes[0][1]-axes[0][0]) / width;
-      const drawnY = axes[1][1]
-        - (dot.top + dot.height / 2 - rect.top) * (axes[1][1]-axes[1][0]) / height;
+      const placed = position(point);
+      const drawnX = placed.measuredX;
+      const drawnY = placed.measuredY;
       worst = Math.max(worst, Math.abs(drawnX - x), Math.abs(drawnY - y));
       // A rendered position is measured in fractional pixels, so exact
       // equality is not available and never was: the old 1e-9 only ever held
@@ -147,9 +275,13 @@
       }
       result.push({ x: String(x), y: String(y) });
     }
-    return { points: result, graphReason: "" };
+    return {
+      points: result, labeledPoint: null, graphReason: "",
+      graphQuestion: "regression", graphDecision: "accepted",
+    };
   })();
   const graphPoints = graph.points;
+  const labeledPoint = graph.labeledPoint;
 
   const limit = answerTop();
 
@@ -1061,7 +1193,9 @@
     // diagnostic log can say which condition did not hold, instead of leaving
     // "no readable markup" to stand for nine different faults.
     evidence: {
-      graph: graph.graphReason,
+      graph: graph.graphReason || (labeledPoint ? "labeled-point-exact" : ""),
+      graphQuestion: graph.graphQuestion,
+      graphDecision: graph.graphDecision,
       table: dataTable === null ? "no-data-table" : "",
       // Which condition stopped a completion table being read, when one did.
       // A count, a selector name or a named disagreement -- never a cell.
@@ -1077,6 +1211,7 @@
       promptChars: promptText.length,
     },
     ...(graphPoints ? { graphPoints } : {}),
+    ...(labeledPoint ? { labeledPoint } : {}),
     ...(systemConnector ? { systemConnector } : {}),
     // The node stays here. What crosses is the reading of the table.
     ...(dataTable

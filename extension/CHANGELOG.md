@@ -6,6 +6,37 @@ name the add-on as it was called at the time.
 
 ## Unreleased
 
+- **A labeled Cartesian point is read from Hawkes' own graph evidence and entered as a
+  typed coordinate pair.** Chapter 2 Review asks for the coordinates of a
+  labeled point, owns an exact Cartesian graph model and rendering, and exposes two
+  signed-integer answer fields. The exact reader previously recognized SVG
+  points only as a three-or-more-point quadratic-regression data set, so it
+  declined this family, photographed the page, and received untyped model text
+  that the two-field insertion contract correctly refused.
+
+  The reader now takes the requested label from the instruction, derives the
+  coordinate system from the graph's axis bounds, origin, grid spacing and point
+  geometry, uniquely associates that label with one point, and requires
+  the point to land on the page's grid. It does not assume a label, coordinate,
+  range, question number or viewport size. Negative and positive coordinates,
+  either axis and the origin take the same path. Duplicate labels, tied points,
+  off-grid geometry and a conflicting accessible point description fail
+  closed; only genuinely unavailable structural evidence may reach the image
+  capability.
+
+  Hawkes may publish those facts in its rendered SVG or in the exact
+  `questionGraphHTML` model that owns the rendering; the model reader runs only
+  when SVG evidence is unavailable and enforces the same bounds, origin, interval,
+  label, visibility and ambiguity checks. The browser carries one `labeled_point`
+  to the native host. Facet returns an
+  exact `ordered-pair` with two preserved components and `model_calls=0`; the
+  host independently checks both components against its structural reading, and the
+  existing multipart owned-field writer places and reads back x and y. On
+  2026-09-24 the current Chapter 2 Review question took both fields through this
+  route, settled both page-owned read-backs, and Hawkes displayed `Correct!`
+  after Steve's submission. No grading or navigation control was driven by the
+  add-on or the development proof.
+
 - **A future graph step cannot take ownership from the current intercept
   step.** Lesson 2.3 briefly left Step 2's two-point graph mounted with real
   geometry while Step 1 was visibly asking for x- and y-intercepts. The field

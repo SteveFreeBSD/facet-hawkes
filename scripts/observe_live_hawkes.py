@@ -626,6 +626,9 @@ def summarize_run(group: dict, reference: dict) -> dict:
                 "read": "refused",
                 "expressions": data.get("expressions"),
                 "graph": data.get("graph"),
+                "graph_question": data.get("graphQuestion"),
+                "graph_decision": data.get("graphDecision"),
+                "graph_reading": data.get("graphReading"),
                 "table": data.get("table"),
                 "answer_table": data.get("answerTable"),
                 "answer_table_detail": data.get("answerTableDetail"),
@@ -691,6 +694,7 @@ def summarize_run(group: dict, reference: dict) -> dict:
                 "router": data.get("facetRouter"),
                 "method": data.get("facetMethod"),
                 "reading": data.get("facetReading"),
+                "model_calls": data.get("modelCalls"),
                 "insertable": data.get("insertable"),
                 "elapsed_ms": data.get("elapsedMs"),
             }
@@ -704,6 +708,7 @@ def summarize_run(group: dict, reference: dict) -> dict:
             }
             run["answer_length"] = data.get("answerLength")
             run["answer_parts"] = data.get("answerParts")
+            run["answer_form"] = data.get("answerForm")
             run["host_answer_parts"] = data.get("hostAnswerParts")
             if data.get("stages"):
                 run["stages"] = str(data["stages"]).split(">")

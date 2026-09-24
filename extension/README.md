@@ -4,11 +4,12 @@ A Firefox add-on that reads the Hawkes question on screen, asks Facet to solve
 it, shows you the problem and answer together, and places the answer in the
 field you focused — only when you ask.
 
-The add-on reads Hawkes' own MathML and hands it to Facet, which decides how
+The add-on reads Hawkes' own MathML or exact page-owned graph geometry and hands
+it to Facet, which decides how
 the question gets answered: exact mathematics first, a reasoning model only for
 what those decline, and a parabola or quadratic-regression specialist for a
-graph. It sends only the instruction and the MathML-derived expressions, never
-a screenshot, and exposes no destination, model, or device to the browser. The
+graph. It sends only the instruction and normalized mathematics, never a
+screenshot on the Facet route, and exposes no destination, model, or device to the browser. The
 Facet host is this machine unless the companion has been configured otherwise.
 
 Only a question the page draws as a picture rather than stating as mathematics
@@ -43,8 +44,9 @@ What it does:
 
 - has standing permission for only `https://learn.hawkeslearning.com`, but
   injects nothing until you open its toolbar panel or sidebar;
-- reads the visible question's MathML on demand and captures only an isolated
-  question region when that exact path explicitly declines;
+- reads the visible question's MathML and page-owned SVG or graph-model geometry on demand,
+  and captures only an isolated question region when structural evidence is
+  genuinely unavailable or the exact mathematics path explicitly declines;
 - shows the problem it read back beside the answer, so you can check the
   transcription before trusting the answer;
 - inserts that answer at the caret of the field you focused, after a second,
@@ -345,7 +347,7 @@ screenshot is sent to that companion, the required category is
 ```
 
 The companion uses the material only to answer the requested question. Exact
-MathML cases stay within the companion process. Screenshot/model fallbacks are
+markup and SVG-geometry cases stay within the companion process. Screenshot/model fallbacks are
 sent to the Ollama endpoint the companion is configured for; keep that endpoint
 on loopback for a fully local setup. Nothing is sold, shared for advertising, or
 used for analytics. See [`PRIVACY.md`](PRIVACY.md) for the complete disclosure.
@@ -604,6 +606,20 @@ extension/
 ├── options/                  preferences page
 └── popup/                    toolbar panel
 ```
+
+### Page-owned graph evidence
+
+A question asking for the coordinates of a labeled Cartesian point is read
+without a picture. The reader takes the target label from the instruction,
+requires one matching label and one uniquely identified visible point, and
+derives the point from the graph's axis bounds, origin and grid spacing. It
+prefers rendered SVG; when Hawkes keeps that rendering outside the question DOM,
+it reads the exact `questionGraphHTML` model that owns the same graph. The
+point must land on the grid; any duplicate label, tied association, off-grid
+point, or conflicting accessible description is refused rather than rounded or
+sent to a model. Facet returns a typed `ordered-pair` with x and y preserved as
+separate components, which the existing multipart writer places into the
+page-owned coordinate fields and reads back before settling.
 
 ### Parabola graphs
 

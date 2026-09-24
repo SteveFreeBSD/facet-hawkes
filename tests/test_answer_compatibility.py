@@ -348,15 +348,21 @@ def test_the_runtime_tests_reach_every_declared_interval_through_the_router(
     )
 
 
-def test_a_multi_value_answer_always_says_it_is_one(authority):
-    """The invariant the regression defect broke: `parts` and `form` agree."""
+def test_a_multi_value_answer_names_parts_or_the_pair_its_components_belong_to(
+    authority,
+):
+    """Parts are generic values, except two explicit ordered-pair components."""
     for entry in authority.entries:
         if entry.probe is None:
             continue
         solution, _ = solve(entry.probe)
         if solution is None or not solution.parts:
             continue
-        assert solution.form == "parts", f"{entry.id} carries parts as {solution.form}"
+        assert solution.form in {"parts", "ordered-pair"}, (
+            f"{entry.id} carries parts as {solution.form}"
+        )
+        if solution.form == "ordered-pair":
+            assert len(solution.parts) == 2, entry.id
 
 
 # --- what Hawkes can enter -------------------------------------------------
@@ -558,9 +564,14 @@ def test_a_row_that_names_a_writer_names_the_one_its_page_is_routed_to(
         if not named:
             continue
         editor = {"ok": True, **authority.editor_for(entry)}
+        split_across_fields = entry.form == "parts" or (
+            entry.form == "ordered-pair"
+            and entry.composition == "ordered-pair/plain"
+            and "enterOwnedFields" in entry.mechanism
+        )
         page = (
             {"ok": True, "kind": "multi", "editors": [editor, editor]}
-            if entry.form == "parts"
+            if split_across_fields
             else editor
         )
         routed = routing(f"chooseTransport({json.dumps(page)}, {{}})")

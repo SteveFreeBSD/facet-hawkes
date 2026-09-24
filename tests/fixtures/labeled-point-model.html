@@ -1,0 +1,34 @@
+<!doctype html>
+<meta charset="utf-8">
+<div id="partInformation">
+  <div id="partDescription">Identify point Q's coordinates on the Cartesian graph.</div>
+</div>
+<div>Answer: Q: (
+  <input class="boxStyle" id="txtAns1_num" pattern="[0-9-]">,
+  <input class="boxStyle" id="txtAns2_num" pattern="[0-9-]">)
+</div>
+<script>
+const closeScript = "</scr" + "ipt>";
+const observable = (value) => Object.assign(() => value, { observable: true });
+window.ko = { isObservable: (value) => value?.observable === true };
+window.questionPartViewModel = {
+  partDescription: observable("<p>Identify point Q's coordinates on the Cartesian graph.</p>"),
+  questionGraphHTML: observable(`<span class="QGraphContainer"><graph>
+    <isqagraph>true</isqagraph>
+    <grid><type>cartesian</type><cartesian>
+      <xmin>-12</xmin><xmax>12</xmax><ymin>-8</ymin><ymax>8</ymax>
+      <xinterval>2</xinterval><yinterval>2</yinterval>
+    </cartesian></grid>
+    <graphobjects>
+      <point id="first"><type>point</type><coordinatestype>cartesian</coordinatestype>
+        <x>-6</x><y>0</y><visible>true</visible>
+        <label><script type="text"><![CDATA[Q]]>${closeScript}</label><showlabel>true</showlabel>
+      </point>
+      <point id="second"><type>point</type><coordinatestype>cartesian</coordinatestype>
+        <x>4</x><y>2</y><visible>true</visible>
+        <label><script type="text"><![CDATA[R]]>${closeScript}</label><showlabel>true</showlabel>
+      </point>
+    </graphobjects>
+  </graph></span>`),
+};
+</script>

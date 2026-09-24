@@ -787,6 +787,38 @@
       }
     },
     {
+      "id": "ordered-pair-split-plain",
+      "semantic": "ordered pair split across x and y fields",
+      "form": "ordered-pair",
+      "notation": [
+        "plain"
+      ],
+      "example": "4",
+      "editor": "plain-box",
+      "topology": "two page-owned signed-integer coordinate fields, one component per field",
+      "mechanism": [
+        "multiEntryPlans",
+        "enterOwnedFields"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "yes",
+        "live": "yes"
+      },
+      "probe": {
+        "instruction": "Identify the coordinates of the point Q on the graph.",
+        "expressions": [],
+        "points": [
+          [
+            "4",
+            "2"
+          ]
+        ],
+        "answer_parts": 2
+      }
+    },
+    {
       "id": "ordered-pair-group-comma",
       "semantic": "ordered pair, integer components",
       "form": "ordered-pair",

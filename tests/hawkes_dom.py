@@ -110,6 +110,16 @@ def _place(root: dict) -> None:
             }
         else:
             node["rect"] = {"top": order[0] * 10, "left": 0, "width": 200, "height": 20}
+        # SVG probe fixtures may state the synthetic client rectangle directly.
+        # A real-browser harness lays the same SVG out from cx/cy/path data;
+        # these attributes exist only so this deliberately layout-light DOM can
+        # exercise the reader's geometry decisions too.
+        attrs = node.get("attrs", {})
+        if all(f"data-{name}" in attrs for name in ("top", "left", "width", "height")):
+            node["rect"] = {
+                name: float(attrs[f"data-{name}"])
+                for name in ("top", "left", "width", "height")
+            }
         if "hidden" in node.get("attrs", {}):
             node["rect"] = {"top": 0, "left": 0, "width": 0, "height": 0}
         if node["tag"] == "table" and inherited is None:

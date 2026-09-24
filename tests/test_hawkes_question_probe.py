@@ -9,9 +9,113 @@ from pathlib import Path
 import pytest
 
 from hawkes_dom import read_question
+from hawkes_dom import read_fixture
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_a_labeled_cartesian_point_is_read_from_page_owned_svg_geometry():
+    result = read_fixture("labeled-point.html")
+
+    assert result["labeledPoint"] == {
+        "label": "Q",
+        "x": "-4",
+        "y": "2",
+        "reading": "svg",
+    }
+    assert "graphPoints" not in result
+    assert result["evidence"]["graph"] == "labeled-point-exact"
+    assert result["evidence"]["graphQuestion"] == "labeled-point"
+    assert result["evidence"]["graphDecision"] == "accepted"
+
+
+@pytest.mark.parametrize(
+    ("description", "center", "label", "expected"),
+    [
+        (
+            "A dot drawn 3 units below the origin.",
+            (200, 252.5),
+            (190, 230),
+            ("0", "-3"),
+        ),
+        (
+            "A dot drawn 6 units right of the origin.",
+            (305, 200),
+            (295, 178),
+            ("6", "0"),
+        ),
+        ("A dot drawn at the origin.", (200, 200), (190, 178), ("0", "0")),
+    ],
+)
+def test_axis_points_and_the_origin_are_derived_without_special_coordinates(
+    description, center, label, expected
+):
+    markup = (PROJECT_ROOT / "tests/fixtures/labeled-point.html").read_text()
+    markup = (
+        markup.replace(
+            "A dot drawn 4 units left of and 2 units above the origin.", description
+        )
+        .replace(
+            'cx="130" cy="165" r="5" data-left="125" data-top="160"',
+            f'cx="{center[0]}" cy="{center[1]}" r="5" '
+            f'data-left="{center[0] - 5}" data-top="{center[1] - 5}"',
+        )
+        .replace(
+            'x="123" y="146" data-left="120" data-top="134"',
+            f'x="{label[0]}" y="{label[1]}" data-left="{label[0]}" data-top="{label[1]}"',
+        )
+    )
+
+    result = read_question(markup)
+
+    assert (result["labeledPoint"]["x"], result["labeledPoint"]["y"]) == expected
+
+
+def test_duplicate_target_labels_fail_closed_as_ambiguous():
+    markup = (PROJECT_ROOT / "tests/fixtures/labeled-point.html").read_text()
+    markup = markup.replace(
+        "</svg>",
+        '<text x="200" y="200" data-left="195" data-top="188" '
+        'data-width="10" data-height="14">Q</text></svg>',
+    )
+
+    result = read_question(markup)
+
+    assert "labeledPoint" not in result
+    assert result["evidence"]["graphDecision"] == "ambiguous"
+    assert result["evidence"]["graph"] == "point-label-count-2"
+
+
+def test_a_point_between_grid_lines_fails_closed_instead_of_rounding():
+    markup = (
+        (PROJECT_ROOT / "tests/fixtures/labeled-point.html")
+        .read_text()
+        .replace(
+            'cx="130" cy="165" r="5" data-left="125" data-top="160"',
+            'cx="138" cy="165" r="5" data-left="133" data-top="160"',
+        )
+    )
+
+    result = read_question(markup)
+
+    assert "labeledPoint" not in result
+    assert result["evidence"]["graphDecision"] == "ambiguous"
+    assert result["evidence"]["graph"] == "point-not-on-grid"
+
+
+def test_a_missing_svg_label_is_structurally_unavailable_not_guessed():
+    markup = (
+        (PROJECT_ROOT / "tests/fixtures/labeled-point.html")
+        .read_text()
+        .replace(">Q</text>", ">S</text>")
+    )
+
+    result = read_question(markup)
+
+    assert "labeledPoint" not in result
+    assert result["evidence"]["graphDecision"] == "unavailable"
+    assert result["evidence"]["graph"] == "point-label-missing"
 
 
 def test_mixed_mathjax_word_problem_keeps_all_surrounding_prose_once():

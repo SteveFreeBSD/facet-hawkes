@@ -107,7 +107,10 @@ def solve(request: SolveRequest, report=None) -> SolveResponse:
 
     problem = request.problem
     if problem is None or not (
-        problem.screenshot_png_base64 or problem.mathml or problem.graph_points
+        problem.screenshot_png_base64
+        or problem.mathml
+        or problem.graph_points
+        or problem.labeled_point
     ):
         return error_response(
             request.request_id, "No question content was supplied.", "unsupported"
@@ -120,6 +123,9 @@ def solve(request: SolveRequest, report=None) -> SolveResponse:
     # may still be right, and the panel reviews every one before insertion.
     prompt_seen = bool(problem.prompt_text.strip())
     instruction = problem.prompt_text.strip() or "Solve the question in the image."
+
+    if problem.labeled_point is not None:
+        return _solve_labeled_point_with_facet(request, instruction, announce)
 
     if problem.data_table is not None and asks_for_an_optimum(instruction):
         return _solve_table_optimum_with_facet(request, instruction, announce)
@@ -502,6 +508,99 @@ def optimum_direction(instruction: str) -> str | None:
 def asks_for_an_optimum(instruction: str) -> bool:
     """Whether this question fits a curve to data and then reads its turning point."""
     return optimum_direction(instruction) is not None
+
+
+def _model_calls(solution) -> int | None:
+    """The count Facet measured, when its evidence names one."""
+    value = solution.evidence.get("model_calls")
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def _solve_labeled_point_with_facet(request, instruction, announce):
+    """Return and independently verify one page-owned labeled graph point."""
+    from .facet_client import FacetError, safe_request_id, solve_math
+
+    problem = request.problem
+    point = problem.labeled_point
+    try:
+        parts_required = required_answer_parts(problem.answer_shape, instruction)
+        if parts_required != 2:
+            raise ValueError(
+                "a labeled Cartesian point requires exactly two coordinate fields"
+            )
+        announce("reading", f"page-owned labeled Cartesian point from {point.reading}")
+        announce("solving", "Facet exact labeled-point coordinates")
+        solution = solve_math(
+            instruction=instruction_with_answer_representation(
+                instruction, problem.answer_shape
+            ),
+            request_id=safe_request_id(request.request_id),
+            points=[{"x": point.x, "y": point.y}],
+            answer_parts=2,
+            answer_representation=answer_representation_payload(problem.answer_shape),
+            label=problem.question_label,
+            accelerator_required=False,
+            allow_fallback=False,
+        )
+        if solution.route != "exact":
+            raise ValueError("page-owned point geometry must be answered exactly")
+        if solution.answer.form != "ordered-pair":
+            raise ValueError("Facet did not return a typed ordered pair")
+        if solution.answer.parts != (point.x, point.y):
+            raise ValueError(
+                "Facet's coordinate components disagree with the SVG point"
+            )
+        if solution.answer.display != f"({point.x},{point.y})":
+            raise ValueError(
+                "Facet's displayed ordered pair disagrees with its components"
+            )
+        if _model_calls(solution) != 0:
+            raise ValueError(
+                "Facet did not prove that the exact route made zero model calls"
+            )
+        announce("checking", "coordinates agree with the page-owned SVG point")
+    except (FacetError, ValueError, TypeError) as error:
+        return error_response(
+            request.request_id, f"Labeled point refused: {error}", "unsupported"
+        )
+
+    return SolveResponse(
+        request_id=request.request_id,
+        status="ready",
+        problem_text=instruction,
+        answer=answer_payload(
+            solution.answer.display,
+            solution.answer.entry,
+            solution.answer.parts,
+            solution.answer.entry_mode,
+            form=solution.answer.form,
+        ),
+        certainty=Certainty(
+            prompt_seen=True,
+            answer_parts=2,
+            model_calls=0,
+            source=solution.source,
+            transcription="exact",
+            insertable=True,
+            issues=[
+                "Label association, graph bounds, origin, grid spacing, and point geometry read from the page-owned graph",
+                "Facet coordinate components independently matched the structural graph reading",
+            ],
+            answered_by="exact",
+            router=solution.router,
+            router_detail=solution.router_detail,
+            reading=point.reading,
+            method=solution.method,
+            facet_invoked=True,
+            requested_backend=solution.requested_backend,
+            actual_backend=solution.actual_backend,
+            fallback=solution.fallback,
+            model=solution.model,
+            runtime=solution.runtime,
+            device=solution.device,
+            elapsed_ms=solution.elapsed_ms,
+        ),
+    )
 
 
 def _solve_table_optimum_with_facet(request, instruction, announce):
@@ -1174,6 +1273,7 @@ def _plan_certainty(solution, *, reading: str, issues: list[str]) -> Certainty:
         source=solution.source,
         transcription="exact",
         insertable=True,
+        model_calls=_model_calls(solution),
         answered_by="facet",
         router=solution.router,
         router_detail=solution.router_detail,
@@ -1200,6 +1300,7 @@ def answer_payload(
     intercepts=None,
     choice: str = "",
     inequality_pair=None,
+    form: str | None = None,
 ) -> AnswerPayload:
     """Turn one exactly-shaped answer into the page's answer model.
 
@@ -1283,6 +1384,7 @@ def answer_payload(
     )
     return AnswerPayload(
         display_text=display,
+        form=form,
         # A multi-part answer is carried in `parts`; there is no one string
         # that can be typed into several separate boxes.
         keyboard_entry=(
@@ -1430,10 +1532,12 @@ def _solve_with_facet(
             solution.answer.intercepts,
             solution.answer.choice,
             solution.answer.inequality_pair,
+            solution.answer.form,
         ),
         certainty=Certainty(
             prompt_seen=prompt_seen,
             answer_parts=parts_required,
+            model_calls=_model_calls(solution),
             # Facet's own identity for the route it took, reported rather than
             # assembled here: "Facet Exact", or "Facet Reasoning · GPU".
             source=solution.source,
@@ -1514,6 +1618,7 @@ def _solve_from_markup(
         solution.intercepts,
         "",
         solution.inequality_pair,
+        solution.form,
     ), ""
 
 
@@ -1553,6 +1658,7 @@ def _shaped(solution) -> AnswerPayload | None:
         solution.intercepts,
         "",
         solution.inequality_pair,
+        solution.form,
     )
 
 

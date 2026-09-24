@@ -355,10 +355,16 @@ export function questionEvidence(evidence) {
   if (!evidence || typeof evidence !== "object") {
     return null;
   }
+  const graphQuestion = bounded(evidence.graphQuestion, 24);
+  const graphDecision = bounded(evidence.graphDecision, 16);
+  const graphReading = bounded(evidence.graphReading, 16);
   return {
     read: bounded(evidence.read) || "unread",
     expressions: integer(evidence.expressions),
     graph: bounded(evidence.graph, 16),
+    ...(graphQuestion ? { graphQuestion } : {}),
+    ...(graphDecision ? { graphDecision } : {}),
+    ...(graphReading ? { graphReading } : {}),
     table: bounded(evidence.table, 16),
     // Why a completion table was not read, when one was not. A count or a
     // named disagreement, bounded like every other code here; a cell of one
@@ -384,6 +390,7 @@ export function routeEvidence(certainty) {
     facetInvoked: Boolean(certainty.facet_invoked ?? certainty.facetInvoked),
     router: bounded(certainty.router ?? certainty.facetRouter),
     method: bounded(certainty.method ?? certainty.facetMethod),
+    modelCalls: integer(certainty.model_calls ?? certainty.modelCalls),
     reading: bounded(certainty.reading ?? certainty.facetReading),
     insertable: certainty.insertable === true,
   };

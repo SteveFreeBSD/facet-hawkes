@@ -191,6 +191,20 @@ column headings, and not which column is which. Naming the columns is a reading
 of the question, and Ethnos does it in `src/ethnos/hawkes_table.py` before
 anything crosses.
 
+A labeled-point question has one earlier browser-side proof. The reader takes
+the target label from the instruction, associates it with exactly one visible
+Cartesian point, and derives its integer coordinates from the graph's own axis
+bounds, origin, grid spacing, and point geometry. It prefers rendered SVG and,
+when that is structurally unavailable, reads the same facts from Hawkes' exact
+page-owned `questionGraphHTML` model. The native
+request carries this as `labeled_point: {label, x, y}`; the host sends only the
+normalized `{x, y}` point to Facet. Facet returns an `ordered-pair` with two
+components, and the host requires those components to reproduce its own structural
+reading before exposing them to the existing multipart field writer. Duplicate
+labels, tied associations, off-grid geometry, and accessibility descriptions
+that disagree with geometry are refusals, not screenshot prompts. A genuinely
+absent SVG or label may still take the ordinary screenshot capability path.
+
 A quadratic regression *plan* still sends `"result_kind":
 "quadratic_regression"` with the same `points`. The two are different questions
 about the same page: one asks for the curve, and comes back as a plan Ethnos

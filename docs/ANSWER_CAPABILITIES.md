@@ -107,6 +107,7 @@ function that does the typing.
 | rationalized radical | `scalar` | fraction+radical | `sqrt(5)/5` | one box, Fraction over a Radical | `planEntry` → `planFractionTemplate` → `planRun` | yes | no | yes | `scalar-fraction-radical` |
 | radical with an exponent | `scalar` | radical+exponent | `2*i*x^4*sqrt(2*x)` | one box, Radical inside a run of templates | `planRun` | yes | no | yes | `scalar-radical-exponent` |
 | named phrase, typed | `scalar` | phrase | `trinomial` | one box accepting letters | `planEntry` → `enterPlan` | yes | no | no | `scalar-phrase` |
+| ordered pair split across x and y fields | `ordered-pair` | plain | `4` | two page-owned signed-integer coordinate fields, one component per field | `multiEntryPlans` → `enterOwnedFields` | yes | yes | yes | `ordered-pair-split-plain` |
 | ordered pair, integer components | `ordered-pair` | group+comma | `(3,-1)` | page draws ( [box] ), no parentheses template | `pageBracketedPair` → `planAnswerParts` | yes | no | yes | `ordered-pair-group-comma` |
 | ordered pair, rational components | `ordered-pair` | fraction+group+comma | `(17/2,-1/2)` | one box, PBrace and Fraction | `planCommaList` → `planFractionTemplate` | yes | no | yes | `ordered-pair-fraction-group-comma` |
 | two structure-preserving affine inequalities joined by their exact logical connector | `inequality-pair` | plain | `-9y+10<=-34 OR -9y+10>=34` | two owned expression editors plus one semantic AND/OR group | `answer_payload` → `planEntry` → `enterPlan` | yes | no | yes | `absolute-value-inequality-rewrite` |

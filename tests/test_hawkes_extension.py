@@ -675,8 +675,28 @@ def test_injected_paths_are_root_absolute():
     assert problems == []
 
     background = (EXTENSION_DIR / "background.js").read_text()
-    for name in ("hawkes-editor", "inspect-field", "hawkes-describe"):
+    for name in (
+        "hawkes-editor",
+        "hawkes-graph-model",
+        "inspect-field",
+        "hawkes-describe",
+    ):
         assert f'"/content/{name}.js"' in background
+
+
+def test_page_owned_graph_model_is_read_only_after_svg_is_unavailable():
+    background = (EXTENSION_DIR / "background.js").read_text()
+    reader = (EXTENSION_DIR / "content" / "hawkes-graph-model.js").read_text()
+
+    assert 'world: "MAIN"' in background
+    assert 'question.evidence?.graphDecision === "unavailable"' in background
+    assert "questionPartViewModel" in reader
+    assert "questionGraphHTML" in reader
+    assert "isObservable" in reader
+    assert "xinterval" in reader and "yinterval" in reader
+    assert "labeledPoint" in reader
+    for mutation in ("setAttribute", "append(", "click(", "submit("):
+        assert mutation not in reader
 
 
 def test_changelog_matches_the_manifest_version(manifest):
@@ -1233,7 +1253,21 @@ def test_the_question_read_waits_for_mathjax() -> None:
     readable = source.split("function readableQuestion(", 1)[1].split("\n}", 1)[0]
     assert "question.expressions?.length > 0" in readable
     assert "question.graphPoints?.length >= 3" in readable
+    assert "question.labeledPoint" in readable
     assert "question.dataTable" in readable
+
+
+def test_page_owned_labeled_point_geometry_never_falls_back_to_a_screenshot() -> None:
+    source = (EXTENSION_DIR / "background.js").read_text(encoding="utf-8")
+    request = source.split("const askToSolve = (image, pipeline) => {", 1)[1].split(
+        "// Facet is asked", 1
+    )[0]
+    fallback = source.split('if (\n      reply?.status === "unsupported"', 1)[1].split(
+        ") {", 1
+    )[0]
+
+    assert "labeled_point: question.labeledPoint" in request
+    assert "!question.labeledPoint" in fallback
 
 
 def test_every_injected_script_path_is_declared() -> None:

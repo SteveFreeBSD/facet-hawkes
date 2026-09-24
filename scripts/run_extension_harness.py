@@ -515,6 +515,14 @@ def run(selected: str | None, headless: bool = True) -> int:
     shutil.copyfile(
         PROJECT_ROOT / "tests/fixtures/plot-points.html", Path(web, "plot-points.html")
     )
+    shutil.copyfile(
+        PROJECT_ROOT / "tests/fixtures/labeled-point.html",
+        Path(web, "labeled-point.html"),
+    )
+    shutil.copyfile(
+        PROJECT_ROOT / "tests/fixtures/labeled-point-model.html",
+        Path(web, "labeled-point-model.html"),
+    )
     for scatter in (
         "scatter.html",
         "scatter-unreadable.html",
@@ -592,6 +600,7 @@ def run(selected: str | None, headless: bool = True) -> int:
             failures += judge_unreadable_scatter(marionette, site)
             failures += judge_on_axis_scatter(marionette, site)
             failures += judge_translated_scatter(marionette, site)
+            failures += judge_labeled_point(marionette, site)
             failures += judge_table(marionette, site)
             failures += judge_table_completion(marionette, site)
     except ActionButtonMissing as error:
@@ -621,7 +630,7 @@ def run(selected: str | None, headless: bool = True) -> int:
     checks = (
         len(scenarios)
         + len({s.distinct for s in scenarios if s.distinct})
-        + (0 if selected else 9)
+        + (0 if selected else 10)
     )
     print(f"\n{checks - failures}/{checks} checks passed")
     return 1 if failures else 0
@@ -647,6 +656,88 @@ def judge_translated_scatter(marionette, site):
         say(f"     refusal: {(result.get('evidence') or {}).get('graph', '')!r}")
         return 1
     say("ok   scatter-translated: dots in a translated group read correctly")
+    return 0
+
+
+def judge_labeled_point(marionette, site):
+    """One label, one grid point, with ambiguity refused before a model."""
+    marionette.set_context("content")
+    marionette.navigate(f"{site}/labeled-point.html")
+    source = (PROJECT_ROOT / "extension/content/hawkes-question.js").read_text()
+    probe = "return " + source[source.index("(() => {") :]
+    result = marionette.execute(probe)["value"]
+    problems = []
+    if result.get("labeledPoint") != {
+        "label": "Q",
+        "x": "-4",
+        "y": "2",
+        "reading": "svg",
+    }:
+        problems.append(f"point read as {result.get('labeledPoint')}")
+    if result.get("graphPoints"):
+        problems.append("the labeled point was exposed as regression data")
+    evidence = result.get("evidence") or {}
+    if evidence.get("graphDecision") != "accepted":
+        problems.append(f"accepted geometry reported {evidence.get('graphDecision')}")
+
+    marionette.execute(
+        "const copy=document.querySelector('svg text').cloneNode(true);"
+        "document.querySelector('svg').append(copy);"
+    )
+    ambiguous = marionette.execute(probe)["value"]
+    if (
+        ambiguous.get("labeledPoint")
+        or (ambiguous.get("evidence") or {}).get("graphDecision") != "ambiguous"
+    ):
+        problems.append("a duplicate target label was not refused as ambiguous")
+
+    marionette.navigate(f"{site}/labeled-point.html")
+    marionette.execute(
+        "document.querySelector('g.point circle').setAttribute('cx','138')"
+    )
+    off_grid = marionette.execute(probe)["value"]
+    if (
+        off_grid.get("labeledPoint")
+        or (off_grid.get("evidence") or {}).get("graph") != "point-not-on-grid"
+    ):
+        problems.append("a point between grid lines was rounded instead of refused")
+
+    marionette.navigate(f"{site}/labeled-point-model.html")
+    dom_only = marionette.execute(probe)["value"]
+    if (dom_only.get("evidence") or {}).get("graphDecision") != "unavailable":
+        problems.append("missing SVG was not left for the page-model reader")
+    model_source = (
+        PROJECT_ROOT / "extension/content/hawkes-graph-model.js"
+    ).read_text()
+    model_probe = "return " + model_source[model_source.index("(() => {") :]
+    modeled = marionette.execute(model_probe)["value"]
+    if modeled.get("labeledPoint") != {
+        "label": "Q",
+        "x": "-6",
+        "y": "0",
+        "reading": "page-model",
+    }:
+        problems.append(f"page-model point read as {modeled}")
+    if modeled.get("graphReading") != "page-model":
+        problems.append("page-model provenance was not preserved")
+    marionette.execute(
+        "const changed = questionPartViewModel.questionGraphHTML()"
+        ".replace('<x>-6</x>', '<x>-5</x>');"
+        "const replacement = () => changed; replacement.observable = true;"
+        "questionPartViewModel.questionGraphHTML = replacement"
+    )
+    model_off_grid = marionette.execute(model_probe)["value"]
+    if model_off_grid.get("graphDecision") != "ambiguous":
+        problems.append("page-model geometry between its grid lines was accepted")
+
+    if problems:
+        say(f"FAIL labeled-point: {'; '.join(problems)}")
+        return 1
+    say(
+        "ok   labeled-point: label, bounds, origin, grid spacing and point "
+        "geometry read exactly from SVG or the page model; duplicate and off-grid "
+        "evidence refused"
+    )
     return 0
 
 
