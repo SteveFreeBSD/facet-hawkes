@@ -183,7 +183,7 @@ requires, and is the only place it is decided. CI reads it;
 `tests/test_runtime_pin.py` holds every document that quotes it to the same
 value and fails if the sibling checkout is behind.
 
-The pinned commit is **published** as of 2026-09-08. See *Where the code is
+The pinned commit is **published** as of 2026-09-24. See *Where the code is
 published* below for which branch, and why the default one is not it.
 
 → [Runtime, models and deployment](RUNTIME_AND_DEPLOYMENT.md#the-runtime-pin)
@@ -215,9 +215,11 @@ all passing. That was the audit ledger's last outstanding fresh-clone gate.
 
 Add-on **0.46.0**, an unsigned candidate. It has passed the package,
 repository, Mozilla-lint, reproducibility and clean-profile gates, but the
-source line has moved since that audit and no external publication action is
-authorized. Signing and signed-artifact physical acceptance remain later
-external gates.
+source line has moved since that audit. The owner authorized source pushes of
+the Chapter 2 graph and bounded-coordinate work on 2026-09-24; this does not
+authorize signing or an add-on release. Signing and signed-artifact physical
+acceptance remain later external gates. Further live proof of the bounded
+coordinate step was waived; Hawkes grading acceptance remains unconfirmed.
 
 → [Release audit ledger](HAWKES_RELEASE_AUDIT.md),
 [Firefox release runbook](../extension/RELEASE.md)

@@ -24,9 +24,11 @@ name the add-on as it was called at the time.
   normal-profile coordinate run `rmug65gxzd559` proved structural bounds, exact
   substitution and zero models. Its page-owned read-back retained a leading
   zero from the preexisting field; the nonempty-field guard was added afterwards.
-  The owner changed questions before a clean empty-field repeat. Clean live
-  insertion and Steve's Hawkes acceptance remain unclaimed. No grading or
-  navigation action was performed by the development proof.
+  The owner changed questions before a clean empty-field repeat, then explicitly
+  waived further live proof and authorized documentation, commits and source
+  pushes. Clean live insertion after the guard and Steve's Hawkes acceptance
+  remain unclaimed; this is not marked Fixed live. No grading or navigation
+  action was performed by the development proof.
 
 - **A line's two page-owned labeled points now produce an exact typed slope.**
   Chapter 2 Review asks for the slope of a displayed line and publishes both
