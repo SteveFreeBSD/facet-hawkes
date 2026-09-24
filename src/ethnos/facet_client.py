@@ -1005,6 +1005,7 @@ def solve_math(
     answer_table: dict[str, Any] | None = None,
     answer_representation: dict[str, Any] | None = None,
     answer_choices: list[str] | None = None,
+    coordinate_task: dict[str, Any] | None = None,
     accelerator_required: bool = True,
     allow_fallback: bool = False,
     timeout: float = DEFAULT_TIMEOUT_SECONDS,
@@ -1101,6 +1102,10 @@ def solve_math(
                 "match answer_parts"
             )
         problem["answer_table"] = answer_table
+    if coordinate_task is not None:
+        if result_kind != VALUE:
+            raise FacetProtocolError("a coordinate task requires a scalar value")
+        problem["coordinate_task"] = coordinate_task
     if result_kind == VALUE and answer_choices:
         if len(answer_choices) < 2 or any(
             not isinstance(choice, str) or not choice.strip()

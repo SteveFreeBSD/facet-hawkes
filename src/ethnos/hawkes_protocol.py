@@ -359,6 +359,17 @@ class LabeledPoint(GraphPoint):
     reading: Literal["svg", "page-model"]
 
 
+class CoordinateTask(BaseModel):
+    """An affine coordinate step with page-owned visible domain constraints."""
+
+    model_config = ConfigDict(extra="forbid")
+    axis: Literal["x", "y"]
+    given: str | None
+    bounds: list[str] = Field(min_length=4, max_length=4)
+    steps: list[str] = Field(min_length=2, max_length=2)
+    allow_rational: bool = False
+
+
 class ProblemPayload(BaseModel):
     """What the add-on saw. Every field is optional except the screenshot."""
 
@@ -380,6 +391,7 @@ class ProblemPayload(BaseModel):
     #: Separate from regression data and from a single requested point so the
     #: host never has to infer a graph question's meaning from point count.
     line_points: list[LabeledPoint] = Field(default_factory=list, max_length=2)
+    coordinate_task: CoordinateTask | None = None
     #: The question's own data table, when it stated its numbers in one. Like
     #: `mathml`, this is the page saying what the question is rather than the
     #: host reading it back off a picture.

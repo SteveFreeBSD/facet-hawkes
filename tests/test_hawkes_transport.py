@@ -395,6 +395,19 @@ def test_a_plain_box_is_written_by_its_own_input_handling():
     assert outcome["timing"]["keypadWrites"] == 0
 
 
+def test_plain_insertion_preserves_a_nonempty_field_instead_of_appending():
+    live = editor_page()
+    live.eval("boxes.QBase1_input.held = '0';")
+
+    outcome = perform(live, [{"op": "type", "text": "3"}], "hawkes-plain-box")
+
+    assert outcome["ok"] is False
+    assert outcome["code"] == "answer-fields-not-empty"
+    assert value(live, "boxes.QBase1_input.held") == "0"
+    assert value(live, "assigned") == []
+    assert value(live, "pressed") == []
+
+
 def test_characters_and_templates_take_the_same_entry_point():
     """A structured answer is one sequence of editor operations, not two kinds."""
     live = editor_page()

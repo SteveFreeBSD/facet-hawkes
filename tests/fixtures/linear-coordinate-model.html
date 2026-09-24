@@ -1,0 +1,20 @@
+<!doctype html>
+<meta charset="utf-8">
+<div id="partInformation"><div id="partDescription">Given x = 2, determine the value for y.</div></div>
+<div>y = <input class="qbaseCSS" id="txtAns1_num" maxlength="4"></div>
+<script>
+window.observable = (value) => Object.assign(() => value, { observable: true });
+window.ko = { isObservable: (value) => value?.observable === true };
+window.questionPartViewModel = {
+  partDescription: observable('<p>Given <math><mi>x</mi><mo>=</mo><mn>2</mn></math>, determine the value for <var>y</var>.</p>'),
+  questionString: observable('<math><mn>3</mn><mi>x</mi><mo>+</mo><mn>2</mn><mi>y</mi><mo>=</mo><mn>8</mn></math>'),
+  questionGraphHTML: observable(null),
+};
+window.quant_wp_UI = { controlsCollectionData: {
+  num: { isInputBox: true, Name: 'txtAns', Index: 1, visibleState: true, enableState: true,
+    prefix: '<math><mi>y</mi><mo>=</mo></math>', validString: '[0-9-]', blnMaxMinAllowed: true, minValue: '-3', maxValue: '5' },
+  graph: { isGraph: true, visibleState: true, initGraph: '<graph><isqagraph>true</isqagraph><grid><type>cartesian</type><cartesian><xmin>-4</xmin><xmax>6</xmax><ymin>-3</ymin><ymax>5</ymax><xinterval>1</xinterval><yinterval>1</yinterval></cartesian></grid><graphobjects></graphobjects></graph>' },
+} };
+// The real page may publish two references to one numerator/denominator control.
+quant_wp_UI.controlsCollectionData.den = quant_wp_UI.controlsCollectionData.num;
+</script>

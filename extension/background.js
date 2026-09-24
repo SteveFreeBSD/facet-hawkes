@@ -879,7 +879,7 @@ async function readQuestion(tabId, frameId, attempts = 6) {
         if (
           !question.labeledPoint
           && !question.linePoints
-          && ["labeled-point", "line-slope"].includes(question.evidence?.graphQuestion)
+          && ["labeled-point", "line-slope", "linear-coordinate"].includes(question.evidence?.graphQuestion)
           && question.evidence?.graphDecision === "unavailable"
         ) {
           // Hawkes sometimes renders the graph outside #partInformation while
@@ -893,9 +893,14 @@ async function readQuestion(tabId, frameId, attempts = 6) {
             { alone: true, world: "MAIN" },
           );
           const graphModel = modeled?.result;
-          if (["labeled-point", "line-slope"].includes(graphModel?.graphQuestion)) {
+          if (["labeled-point", "line-slope", "linear-coordinate"].includes(graphModel?.graphQuestion)) {
             question = {
               ...question,
+              ...(graphModel.coordinateTask ? {
+                coordinateTask: graphModel.coordinateTask,
+                expressions: graphModel.coordinateExpressions,
+                promptText: graphModel.coordinateInstruction,
+              } : {}),
               ...(graphModel.labeledPoint
                 ? { labeledPoint: graphModel.labeledPoint }
                 : {}),
@@ -909,7 +914,7 @@ async function readQuestion(tabId, frameId, attempts = 6) {
                     ? "labeled-point-model"
                     : graphModel.linePoints
                       ? "line-slope-model"
-                      : question.evidence.graph),
+                      : graphModel.coordinateTask ? "linear-coordinate-model" : question.evidence.graph),
                 graphQuestion: graphModel.graphQuestion,
                 graphDecision: graphModel.graphDecision,
                 ...(graphModel.graphReading
@@ -983,6 +988,7 @@ function questionSignature(question) {
     + (question.graphPoints ? JSON.stringify(question.graphPoints) : "")
     + (question.labeledPoint ? JSON.stringify(question.labeledPoint) : "")
     + (question.linePoints ? JSON.stringify(question.linePoints) : "")
+    + (question.coordinateTask ? JSON.stringify(question.coordinateTask) : "")
     + (question.systemConnector ?? "")
     // Two questions can share a prompt and differ only in their numbers, which
     // is exactly what a table of measurements is. Left out, the second would
@@ -2603,14 +2609,14 @@ async function solve(windowId = state.windowId) {
       return;
     }
     if (
-      question.evidence?.graphQuestion === "line-slope"
+      ["line-slope", "linear-coordinate"].includes(question.evidence?.graphQuestion)
       && question.evidence?.graphDecision !== "accepted"
     ) {
       // The line owns its two defining points in the page model. If that
       // authority is missing or inconsistent, pixels and a model cannot safely
       // reconstruct the lost identity relation.
       fail("errorSolveRefused", {
-        detail: "The line's two labeled points could not be verified from the page's graph model.",
+        detail: "The requested graph facts could not be verified from the page's graph model.",
       });
       return;
     }
@@ -2692,6 +2698,7 @@ async function solve(windowId = state.windowId) {
             ...(question.graphPoints ? { graph_points: question.graphPoints } : {}),
             ...(question.labeledPoint ? { labeled_point: question.labeledPoint } : {}),
             ...(question.linePoints ? { line_points: question.linePoints } : {}),
+            ...(question.coordinateTask ? { coordinate_task: question.coordinateTask } : {}),
             // The table's own reading of itself: headings and cells, exactly
             // as the page wrote them. No element, no selector, no geometry.
             ...(question.dataTable ? { data_table: question.dataTable } : {}),
@@ -2737,6 +2744,7 @@ async function solve(windowId = state.windowId) {
       && state.editor?.surface !== "graph-choice"
       && !question.labeledPoint
       && !question.linePoints
+      && !question.coordinateTask
       && !controller.signal.aborted
     ) {
       // The host says which decline this was; without it a live fallback
@@ -2919,6 +2927,7 @@ const REFUSAL_REASONS = Object.freeze([
   ["table-question-refused", /^Table question refused/i],
   ["labeled-point-refused", /^Labeled point refused/i],
   ["graph-slope-refused", /^Graph slope refused/i],
+  ["coordinate-step-refused", /^Coordinate step requires/i],
   ["regression-refused", /^Regression refused/i],
   ["graph-plan-refused", /^Graph plan refused/i],
   ["point-plot-refused", /^Point plot refused/i],

@@ -527,6 +527,10 @@ def run(selected: str | None, headless: bool = True) -> int:
         PROJECT_ROOT / "tests/fixtures/line-slope-model.html",
         Path(web, "line-slope-model.html"),
     )
+    shutil.copyfile(
+        PROJECT_ROOT / "tests/fixtures/linear-coordinate-model.html",
+        Path(web, "linear-coordinate-model.html"),
+    )
     for scatter in (
         "scatter.html",
         "scatter-unreadable.html",
@@ -606,6 +610,7 @@ def run(selected: str | None, headless: bool = True) -> int:
             failures += judge_translated_scatter(marionette, site)
             failures += judge_labeled_point(marionette, site)
             failures += judge_line_slope_model(marionette, site)
+            failures += judge_linear_coordinate_model(marionette, site)
             failures += judge_table(marionette, site)
             failures += judge_table_completion(marionette, site)
     except ActionButtonMissing as error:
@@ -830,6 +835,74 @@ def judge_line_slope_model(marionette, site):
     say(
         "ok   line-slope-model: two labeled child points read exactly; "
         "off-grid, duplicate-label, wrong-count and missing-authority evidence refused"
+    )
+    return 0
+
+
+def judge_linear_coordinate_model(marionette, site):
+    """Graph bounds, given value and target come from page-owned authorities."""
+    marionette.set_context("content")
+    problems = []
+
+    def read(name):
+        source = (PROJECT_ROOT / f"extension/content/{name}.js").read_text()
+        return marionette.execute("return " + source[source.index("(() => {") :])[
+            "value"
+        ]
+
+    def reset():
+        marionette.navigate(f"{site}/linear-coordinate-model.html")
+
+    reset()
+    if read("hawkes-question")["evidence"]["graphQuestion"] != "linear-coordinate":
+        problems.append("coordinate family not recognized")
+    modeled = read("hawkes-graph-model")
+    expected = {
+        "axis": "y",
+        "given": "2",
+        "bounds": ["-4", "6", "-3", "5"],
+        "steps": ["1", "1"],
+        "allow_rational": False,
+    }
+    if (
+        modeled.get("coordinateTask") != expected
+        or len(modeled.get("coordinateExpressions", [])) != 1
+    ):
+        problems.append(f"coordinate evidence read as {modeled}")
+    for prompt, axis, given in [
+        ("Select a value for x.", "x", None),
+        ("Given y = -2, determine the value for x.", "x", "-2"),
+        (
+            "Given x = <math><mfrac><mn>1</mn><mn>2</mn></mfrac></math>, find the value for y.",
+            "y",
+            "1/2",
+        ),
+    ]:
+        reset()
+        marionette.execute(
+            f"questionPartViewModel.partDescription = observable({prompt!r}); quant_wp_UI.controlsCollectionData.num.prefix = '{axis}='; quant_wp_UI.controlsCollectionData.num.blnMaxMinAllowed = false;"
+        )
+        task = read("hawkes-graph-model").get("coordinateTask", {})
+        if task.get("axis") != axis or task.get("given") != given:
+            problems.append("target or given coordinate was misread")
+    for change in [
+        "delete quant_wp_UI.controlsCollectionData.graph",
+        "quant_wp_UI.controlsCollectionData.num.prefix = 'x='",
+        "quant_wp_UI.controlsCollectionData.num.validString = '[0-9.]'",
+        "quant_wp_UI.controlsCollectionData.second = {...quant_wp_UI.controlsCollectionData.num, Index:2}",
+        "questionPartViewModel.partDescription = observable('Given x = 2 and given x = 3, find the value for y.')",
+        "quant_wp_UI.controlsCollectionData.graph.initGraph = quant_wp_UI.controlsCollectionData.graph.initGraph.replace('<xinterval>1', '<xinterval>0')",
+        "quant_wp_UI.controlsCollectionData.other = {...quant_wp_UI.controlsCollectionData.graph, initGraph: quant_wp_UI.controlsCollectionData.graph.initGraph.replace('<xmax>6', '<xmax>7')}",
+    ]:
+        reset()
+        marionette.execute(change)
+        if read("hawkes-graph-model").get("graphDecision") == "accepted":
+            problems.append(f"unsafe evidence accepted: {change}")
+    if problems:
+        say(f"FAIL linear-coordinate-model: {'; '.join(problems)}")
+        return 1
+    say(
+        "ok   linear-coordinate-model: given/free axes and page bounds read; ambiguous/missing authority refused"
     )
     return 0
 

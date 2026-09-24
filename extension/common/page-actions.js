@@ -873,6 +873,14 @@ export async function enterPlan(
   if (!multi && new Set(ids().map(baseOf)).size > 1) {
     return { ok: false, code: "editor-multiple-answer" };
   }
+  // Plain characters append through the page's own input handler. An old
+  // value must not become a prefix of the new answer (even "0" + "3").
+  // Preserve existing work and refuse before the first write, as multipart
+  // insertion already does, rather than reporting the combined value as a
+  // settled insertion of the proposed answer.
+  if (!viaKeypad && !answerIsEmpty()) {
+    return { ok: false, code: "answer-fields-not-empty" };
+  }
 
   const enteredParts = [];
   for (let planIndex = 0; planIndex < plans.length; planIndex += 1) {

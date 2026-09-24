@@ -1599,6 +1599,11 @@ def _solve_with_facet(
             # them. Facet answers with one of them exactly; nothing here has
             # to recognise what the choices mean.
             answer_choices=answer_choices_payload(problem.answer_shape),
+            coordinate_task=(
+                problem.coordinate_task.model_dump()
+                if problem.coordinate_task
+                else None
+            ),
             label=problem.question_label,
             accelerator_required=True,
             allow_fallback=False,
@@ -1620,6 +1625,18 @@ def _solve_with_facet(
         # local answer: a substituted answer would carry a provenance nobody
         # asked for.
         return error_response(request.request_id, f"Facet did not answer: {error}")
+
+    if problem.coordinate_task is not None and (
+        solution.route != "exact"
+        or _model_calls(solution) != 0
+        or solution.answer.form != "scalar"
+        or solution.answer.parts
+    ):
+        return error_response(
+            request.request_id,
+            "Coordinate step requires one exact scalar and no model calls.",
+            "unsupported",
+        )
 
     # Fail closed on a result of the wrong shape. Facet already refuses to
     # return the wrong number of reasoned answers; Ethnos checks it too,

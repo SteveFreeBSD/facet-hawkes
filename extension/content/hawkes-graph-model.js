@@ -21,7 +21,12 @@
     .trim();
   const htmlText = (value) => {
     const parsed = new DOMParser().parseFromString(String(value ?? ""), "text/html");
-    return String(parsed.body?.textContent ?? "").replace(/\s+/g, " ").trim();
+    for (const fraction of [...parsed.querySelectorAll("mfrac")].reverse()) {
+      if (fraction.children.length === 2) {
+        fraction.replaceWith(`${fraction.children[0].textContent}/${fraction.children[1].textContent}`);
+      }
+    }
+    return String(parsed.body?.textContent ?? "").replace(/\u2212/g, "-").replace(/\s+/g, " ").trim();
   };
   const gcd = (left, right) => {
     let a = left < 0n ? -left : left;
@@ -72,15 +77,23 @@
     || /\b(?:identify|find|determine|give|state|read|what\s+are)\b[^.?!]{0,200}\bpoint\s+([^\s.,;:!?()[\]{}'’]{1,16})(?:['’]s)?\s+coordinates?\b/i.exec(instruction)
   );
   const slopeRequest = /\b(?:find|determine|calculate|compute)\b[^.?!]{0,160}\bslope\b(?![-\s]?intercept)/i.test(instruction);
-  const graphQuestion = coordinateRequest ? "labeled-point" : slopeRequest ? "line-slope" : "";
+  const linearCoordinate = /\b(?:value|coordinate)\s+(?:for|of)\s+[xy]\b|\b[xy][- ]coordinate\b/i.test(instruction)
+    && /\b(?:given|when|if|choose|select)\b/i.test(instruction);
+  const graphQuestion = coordinateRequest ? "labeled-point" : slopeRequest ? "line-slope" : linearCoordinate ? "linear-coordinate" : "";
   if (!graphQuestion) return unavailable("", "question-model-not-supported");
 
+  const controls = readOwned(window.quant_wp_UI?.controlsCollectionData);
+  const controlValues = controls && typeof controls === "object" ? Object.values(controls) : [];
+  const graphSources = [...new Set(controlValues.filter((control) =>
+    readOwned(control?.isGraph) === true && readOwned(control?.visibleState) === true
+  ).map((control) => readOwned(control.initGraph)).filter((source) => typeof source === "string"))];
   const graphHTML = readOwned(view.questionGraphHTML);
   const source = typeof graphHTML === "string" && /<graph\b/i.test(graphHTML)
     ? graphHTML
     : typeof partSource === "string" && /<graph\b/i.test(partSource)
       ? partSource
-      : null;
+      : linearCoordinate && graphSources.length === 1 ? graphSources[0] : null;
+  if (linearCoordinate && graphSources.length > 1) return ambiguous(graphQuestion, "coordinate-graph-owners-ambiguous");
   if (source === null || source.length === 0 || source.length > 200000) {
     return unavailable(graphQuestion, "question-graph-model-missing");
   }
@@ -112,8 +125,50 @@
   ) {
     return ambiguous(graphQuestion, "question-graph-scale-invalid");
   }
-  if (xmin.number > 0 || xmax.number < 0 || ymin.number > 0 || ymax.number < 0) {
+  if (!linearCoordinate && (xmin.number > 0 || xmax.number < 0 || ymin.number > 0 || ymax.number < 0)) {
     return ambiguous(graphQuestion, "question-graph-origin-missing");
+  }
+  if (linearCoordinate) {
+    if (directText(grid, "type").toLowerCase() !== "cartesian") return ambiguous(graphQuestion, "coordinate-grid-kind-invalid");
+    const targets = [...instruction.matchAll(/\b(?:value|coordinate)\s+(?:for|of)\s+([xy])\b|\b([xy])[- ]coordinate\b/gi)]
+      .map((match) => (match[1] || match[2]).toLowerCase());
+    if (new Set(targets).size !== 1) return ambiguous(graphQuestion, "coordinate-target-ambiguous");
+    const axis = targets[0];
+    const givens = [...instruction.matchAll(/\b(?:given|when|if)\s+([xy])\s*=\s*(-?\s*(?:\d+\s*\/\s*\d+|\d+(?:\.\d+)?))(?![\d./])/gi)];
+    const free = /\b(?:choose|select)\b/i.test(instruction);
+    if ((free && givens.length) || (!free && givens.length !== 1)
+      || (givens.length && givens[0][1].toLowerCase() === axis)) {
+      return ambiguous(graphQuestion, "coordinate-given-ambiguous");
+    }
+    const fields = [...new Map(controlValues.filter((control) =>
+      readOwned(control?.isInputBox) === true && readOwned(control?.visibleState) === true
+      && readOwned(control?.enableState) === true
+    ).map((control) => [`${readOwned(control.Name)}:${readOwned(control.Index)}`, control])).values()];
+    if (fields.length !== 1 || htmlText(readOwned(fields[0].prefix)).replace(/\s/g, "") !== `${axis}=`) {
+      return ambiguous(graphQuestion, "coordinate-field-axis-unverified");
+    }
+    // Only integer entry is currently proved for this graph-step editor.
+    // Fraction toggles alone do not establish graph acceptance of rationals.
+    if (readOwned(fields[0].validString) !== "[0-9-]") return ambiguous(graphQuestion, "coordinate-editor-unverified");
+    const bounds = [xmin, xmax, ymin, ymax];
+    if (readOwned(fields[0].blnMaxMinAllowed) === true) {
+      const lower = exactNumber({ textContent: readOwned(fields[0].minValue) });
+      const upper = exactNumber({ textContent: readOwned(fields[0].maxValue) });
+      if (!lower || !upper || lower.number >= upper.number) return ambiguous(graphQuestion, "coordinate-editor-range-invalid");
+      const offset = axis === "x" ? 0 : 2;
+      if (lower.number > bounds[offset].number) bounds[offset] = lower;
+      if (upper.number < bounds[offset + 1].number) bounds[offset + 1] = upper;
+      if (bounds[offset].number >= bounds[offset + 1].number) return ambiguous(graphQuestion, "coordinate-editor-range-disjoint");
+    }
+    const equation = new DOMParser().parseFromString(String(readOwned(view.questionString) ?? ""), "text/html");
+    const maths = [...equation.querySelectorAll("math")];
+    if (maths.length !== 1) return ambiguous(graphQuestion, "coordinate-equation-ambiguous");
+    return result(graphQuestion, "accepted", "", {
+      coordinateTask: { axis, given: givens.length ? givens[0][2].replace(/\s/g, "") : null,
+        bounds: bounds.map((value) => value.exact), steps: [xinterval.exact, yinterval.exact], allow_rational: false },
+      coordinateExpressions: maths.map((math) => new XMLSerializer().serializeToString(math)),
+      coordinateInstruction: instruction, graphReading: "page-model",
+    });
   }
   const objects = direct(graph, "graphobjects");
   if (!objects) return unavailable(graphQuestion, "question-graph-objects-missing");

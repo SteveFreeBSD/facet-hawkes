@@ -6,6 +6,28 @@ name the add-on as it was called at the time.
 
 ## Unreleased
 
+- **Linear-equation coordinate steps use exact substitution and bounded point
+  choices.** The shared page-owned Cartesian reader identifies the requested
+  axis, any given other coordinate, the original equation, visible graph
+  bounds, grid spacing, and the matching field's range. A separate Facet Exact
+  family substitutes the given value or selects a complete visible point,
+  preferring simple integers. It returns a typed scalar with `model_calls=0`.
+  Missing graph authority, ambiguous constraints, nonlinear equations and no
+  safe representable point fail closed without reasoning or screenshots.
+  Rational grid choices require explicit permission; this Hawkes step currently
+  publishes only a proved integer-entry contract, so no fraction is guessed.
+
+  The existing scalar writer now refuses a nonempty plain field before writing,
+  preserving its contents rather than appending an answer to an old value.
+  Offline evidence: 1,000 runtime tests, 2,164 companion tests, and 27 isolated
+  browser checks passed, including prior graph and coordinate routes. The
+  normal-profile coordinate run `rmug65gxzd559` proved structural bounds, exact
+  substitution and zero models. Its page-owned read-back retained a leading
+  zero from the preexisting field; the nonempty-field guard was added afterwards.
+  The owner changed questions before a clean empty-field repeat. Clean live
+  insertion and Steve's Hawkes acceptance remain unclaimed. No grading or
+  navigation action was performed by the development proof.
+
 - **A line's two page-owned labeled points now produce an exact typed slope.**
   Chapter 2 Review asks for the slope of a displayed line and publishes both
   defining points as labeled children of that line in Hawkes' Cartesian graph

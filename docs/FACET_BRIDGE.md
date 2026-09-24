@@ -218,6 +218,25 @@ Missing or ambiguous line authority is terminal: this family never falls back
 to pixels because a screenshot cannot restore which points the page model said
 belonged to the requested line.
 
+A linear-equation coordinate step uses the same Cartesian model reader, but
+does not consume labeled points or request a slope. It sends `coordinate_task`:
+the requested `axis`, the explicitly `given` other coordinate (or null for a
+free choice), four ordered `bounds`, two positive lattice `steps`, and an
+`allow_rational` flag. These are mathematical constraints, not page selectors.
+The browser proves a unique graph, equation and axis-labeled field, intersects
+the visible bounds with any stricter field range, and currently permits only
+integer points for this editor. A fraction toggle does not prove rational
+graph acceptance. Missing or inconsistent authority refuses without pixels.
+
+Facet's separate exact affine-coordinate solver substitutes a supplied value,
+or searches the bounded grid for a complete point satisfying the equation.
+It prefers simple integer points and returns one typed `scalar`, never an
+equation rewrite. Both coordinates must satisfy the supplied bounds and grid;
+an ambiguous relation or a domain with no safe point is an exact refusal, not
+a reasoning request. The normal scalar insertion and settled read-back routes
+remain responsible for the editor. Bounds participate in the question
+signature, so a changed domain cannot reuse an old saved answer.
+
 A quadratic regression *plan* still sends `"result_kind":
 "quadratic_regression"` with the same `points`. The two are different questions
 about the same page: one asks for the curve, and comes back as a plan Ethnos

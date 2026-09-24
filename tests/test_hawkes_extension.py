@@ -1282,7 +1282,10 @@ def test_page_owned_line_points_never_fall_back_to_a_screenshot() -> None:
 
     assert "line_points: question.linePoints" in request
     assert "!question.linePoints" in fallback
-    assert 'question.evidence?.graphQuestion === "line-slope"' in source
+    assert (
+        '["line-slope", "linear-coordinate"].includes(question.evidence?.graphQuestion)'
+        in source
+    )
     assert 'question.evidence?.graphDecision !== "accepted"' in source
 
 

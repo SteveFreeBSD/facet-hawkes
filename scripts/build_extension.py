@@ -294,13 +294,14 @@ INJECTED_PATH = re.compile(r"""_SCRIPT = ["']([^"']+)["']""")
 # and building structure both require it.
 MAIN_WORLD_SCRIPT = Path("content/hawkes-describe.js")  # reads only
 MAIN_WORLD_DIAGNOSTIC = Path("development/probe-main.js")  # development reads only
+MAIN_WORLD_GRAPH_MODEL = Path("content/hawkes-graph-model.js")  # graph facts only
 MAIN_WORLD_WRITER = Path("common/page-actions.js")  # builds structured answers
 MAIN_WORLD_TABLE = Path("common/table-actions.js")  # types page-owned answer boxes
 
 
 def _check_main_world(problems: list[str]) -> None:
     """The page-world probe must read and never write."""
-    read_only_paths = (MAIN_WORLD_SCRIPT, MAIN_WORLD_DIAGNOSTIC)
+    read_only_paths = (MAIN_WORLD_SCRIPT, MAIN_WORLD_DIAGNOSTIC, MAIN_WORLD_GRAPH_MODEL)
     if any(not (EXTENSION_DIR / candidate).is_file() for candidate in read_only_paths):
         problems.append("the MAIN-world read-only probes are incomplete")
         return
@@ -345,6 +346,7 @@ def _check_main_world(problems: list[str]) -> None:
     allowed = {
         MAIN_WORLD_SCRIPT,
         MAIN_WORLD_DIAGNOSTIC,
+        MAIN_WORLD_GRAPH_MODEL,
         MAIN_WORLD_WRITER,
         MAIN_WORLD_TABLE,
         Path("common/graph-actions.js"),

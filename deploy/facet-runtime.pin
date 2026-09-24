@@ -8,8 +8,8 @@
 #
 # Raise it in the same change that starts depending on something newer. This
 # commit also owns labeled Cartesian points and exact slope from a line's two
-# structurally identified points, along with the earlier Lesson 2.5 and 2.6
-# exact families, all with no model call.
+# structurally identified points, and bounded affine-coordinate substitution
+# and free choices, all with no model call.
 # The tip of that repository may be ahead of it, and that is fine -- the pin is
 # a floor, and the test checks the sibling is not below it.
-00a762cadaa4d03756d7513557ad2ee57cf83591
+fab053febe6805a8898e1b2d7c1f27792bcb3433
