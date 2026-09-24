@@ -149,7 +149,9 @@ def test_inline_instructional_form_before_sentence_period_is_not_an_equation():
     assert len(result["expressions"]) == 1
     assert "<mn>8</mn>" in result["expressions"][0]
     assert "<mi>a</mi><mi>x</mi>" not in result["expressions"][0]
-    assert result["evidence"]["instructionalMath"] == 1
+    # Canonical ownership excludes description math before the generic
+    # instructional-template filter has to classify it.
+    assert result["evidence"]["instructionalMath"] == 0
 
 
 def test_two_stated_equations_are_not_mistaken_for_an_output_template():
@@ -186,6 +188,23 @@ def test_math_generated_by_a_partial_graph_answer_is_not_question_math():
 
     assert len(result["expressions"]) == 1
     assert "<mo><</mo>" in result["expressions"][0]
+
+
+def test_question_string_owns_the_expression_over_description_math():
+    result = read_question(
+        r"""
+        <div id="questionDescription">Graph the linear inequality
+          <math><mi>A</mi><mi>x</mi><mo>+</mo><mi>B</mi><mi>y</mi>
+            <mo>&lt;</mo><mi>C</mi></math></div>
+        <div id="questionString"><math><mn>2</mn><mi>x</mi><mo>+</mo>
+          <mn>6</mn><mi>y</mi><mo>&lt;</mo><mn>6</mn></math></div>
+        <div id="partInformation">Step 1 of 1</div>
+        """
+    )
+
+    assert len(result["expressions"]) == 1
+    assert "<mn>2</mn>" in result["expressions"][0]
+    assert "<mi>A</mi>" not in result["expressions"][0]
 
 
 def test_partial_graph_math_is_excluded_without_canonical_question_ids():
