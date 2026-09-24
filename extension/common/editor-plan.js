@@ -148,9 +148,6 @@ export function planEntry(answer, editor) {
   // Display answers may contain spacing for readability; Hawkes treats it as
   // formatting, and its per-question character set often excludes spaces.
   answer = answer.replace(/\s+/g, "");
-  // Explicit multiplication is Ethnos's ASCII convention; the editor wants
-  // juxtaposition, and "*" is in no question's character set.
-  answer = answer.replace(/\*/g, "");
 
   // Choosing an option is answering, not filling a field in.
   if (editor?.kind === "option") {
@@ -195,6 +192,21 @@ export function planEntry(answer, editor) {
     return relational;
   }
 
+  // A sum may contain more than one native fraction even when it is not a
+  // relation.  Preserve explicit multiplication until this point so a
+  // rational coefficient (`-4/7*x`) has an unambiguous boundary between its
+  // denominator and the following factor.
+  const fractionalSum = planFractionalSum(answer, editor);
+  if (fractionalSum !== null) {
+    return fractionalSum;
+  }
+
+  // Explicit multiplication is Facet's ASCII convention; the editor wants
+  // juxtaposition, and "*" is in no question's character set. Structure has
+  // now been found, if there was any, so dropping it cannot turn `4/7*x` into
+  // the different parse `4/(7x)`.
+  answer = answer.replace(/\*/g, "");
+
   const fraction = splitFraction(answer);
   if (fraction !== null) {
     if (editor?.templates?.fraction === true) {
@@ -206,20 +218,20 @@ export function planEntry(answer, editor) {
   return planRun(answer, editor);
 }
 
-/** Plan one top-level relation when either side is a fraction. */
+/** Plan one top-level relation when either side contains native fractions. */
 function planFractionalRelation(answer, editor) {
   const relation = splitRelation(answer);
   if (relation === null) {
     return null;
   }
-  const leftFraction = splitFraction(relation.left);
-  const rightFraction = splitFraction(relation.right);
-  if (leftFraction === null && rightFraction === null) {
+  const leftStructured = planFractionalSum(relation.left, editor);
+  const rightStructured = planFractionalSum(relation.right, editor);
+  if (leftStructured === null && rightStructured === null) {
     return null;
   }
-  const left = planSegment(relation.left, editor, "base");
+  const left = leftStructured ?? planRun(relation.left.replace(/\*/g, ""), editor, "base");
   const operator = planRun(relation.operator, editor, "base");
-  const right = planSegment(relation.right, editor, "base");
+  const right = rightStructured ?? planRun(relation.right.replace(/\*/g, ""), editor, "base");
   const failure = [left, operator, right].find((plan) => plan.ok === false);
   if (failure) {
     return failure;
@@ -230,6 +242,100 @@ function planFractionalRelation(answer, editor) {
   }
   steps.push(...operator.steps, ...right.steps);
   return { ok: true, steps: coalesced(steps) };
+}
+
+/**
+ * Plan an additive expression containing one or more rational terms.
+ *
+ * This is deliberately a bounded composition, not an algebra parser. Facet's
+ * exact machine form writes a rational linear coefficient as `a/b*x` and a
+ * rational constant as `c/d`. Hawkes publishes Fraction as an object, not `/`
+ * as a base character, so each rational term is built with that object and
+ * the caret returns to the surrounding base before a factor or the next term.
+ * Anything outside this grammar returns null and follows the established
+ * planner paths; an unconsumed slash is still refused rather than improvised.
+ */
+function planFractionalSum(answer, editor) {
+  if (editor?.templates?.fraction !== true) {
+    return null;
+  }
+  const terms = splitAdditive(answer);
+  const recognized = terms.map((term) => rationalTerm(term));
+  if (!recognized.some((term) => term !== null)) {
+    return null;
+  }
+  const limit = editor?.limits?.fractions;
+  const count = recognized.filter((term) => term !== null).length;
+  if (Number.isInteger(limit) && count > limit) {
+    return { ok: false, code: "editor-fraction-limit" };
+  }
+
+  const steps = [];
+  for (const [index, source] of terms.entries()) {
+    const parsed = recognized[index];
+    if (parsed === null) {
+      const plain = planRun(source.replace(/\*/g, ""), editor, "base");
+      if (plain.ok === false) return plain;
+      steps.push(...plain.steps);
+      continue;
+    }
+
+    // A leading negative is part of the first numerator. On later terms the
+    // sign is the operation joining two terms and therefore belongs at the
+    // outer base, not inside the new fraction's numerator.
+    if (index > 0 && parsed.sign) {
+      const operator = planRun(parsed.sign, editor, "base");
+      if (operator.ok === false) return operator;
+      steps.push(...operator.steps);
+    }
+    const numerator = `${index === 0 ? parsed.sign : ""}${parsed.numerator}`;
+    const fraction = planFractionTemplate(
+      { numerator, denominator: parsed.denominator }, editor
+    );
+    if (fraction.ok === false) return fraction;
+    steps.push(...fraction.steps);
+
+    const continues = Boolean(parsed.factor) || index < terms.length - 1;
+    if (continues) steps.push({ op: "base" });
+    if (parsed.factor) {
+      const factor = planRun(parsed.factor, editor, "base");
+      if (factor.ok === false) return factor;
+      steps.push(...factor.steps);
+    }
+  }
+  return { ok: true, steps: coalesced(steps) };
+}
+
+/** Split a top-level sum, retaining each term's leading sign. */
+function splitAdditive(value) {
+  const terms = [];
+  let depth = 0;
+  let start = 0;
+  for (let index = 1; index < value.length; index += 1) {
+    const character = value[index];
+    if (OPENERS.includes(character)) {
+      depth += 1;
+    } else if (CLOSERS.includes(character)) {
+      depth -= 1;
+    } else if (depth === 0 && "+-".includes(character)) {
+      terms.push(value.slice(start, index));
+      start = index;
+    }
+  }
+  terms.push(value.slice(start));
+  return terms;
+}
+
+/** One exact rational, optionally multiplied by a one-letter monomial. */
+function rationalTerm(value) {
+  const match = /^([+-]?)([0-9]+)\/([1-9][0-9]*)(?:\*?([A-Za-z](?:\^[0-9]+)?))?$/.exec(value);
+  if (match === null) return null;
+  return {
+    sign: match[1],
+    numerator: match[2],
+    denominator: match[3],
+    factor: match[4] ?? "",
+  };
 }
 
 /**

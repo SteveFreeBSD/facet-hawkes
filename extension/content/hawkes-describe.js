@@ -101,6 +101,8 @@
       // second Radical is otherwise refused after part of the answer is in.
       limits: dynamic
         ? {
+            fractions: Number.isInteger(Number(control.qdyFrac_MaximumObjects))
+              ? Number(control.qdyFrac_MaximumObjects) : null,
             radicals: Number.isInteger(Number(control.qdyRoot_MaximumObjects))
               ? Number(control.qdyRoot_MaximumObjects) : null,
             radicandLength: Number.isInteger(Number(control.qdyRoot_AllowedRadicandLen))

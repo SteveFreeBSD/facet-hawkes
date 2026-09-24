@@ -1881,8 +1881,39 @@
       "why": "Every observed page that names a function prints `f(x) =` beside its box, so the right side alone is what it takes and this is never asked for. The one box that does take an equation publishes `xy=+-` and digits: a name and its brackets are both outside it."
     },
     {
+      "id": "relation-fraction",
+      "semantic": "slope-intercept equation with rational coefficients, whole",
+      "form": "relation",
+      "notation": [
+        "fraction"
+      ],
+      "example": "y=-4/7*x+13/7",
+      "editor": "equation-box",
+      "topology": "one bare QDy equation box offering native Fraction objects but no slash character",
+      "mechanism": [
+        "surfaceStatesSubject",
+        "planEntry",
+        "planFractionalRelation",
+        "planFractionalSum",
+        "enterPlan"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "yes"
+      },
+      "probe": {
+        "instruction": "Express the given equation in slope-intercept form. Simplify your answer.",
+        "expressions": [
+          "4x+7y=13"
+        ]
+      },
+      "note": "Accepted live on a parallel-line-through-point construction. The explicit multiplication in Facet's machine form fixes the rational coefficient boundary. The planner builds each rational as the page's Fraction object, returns to the outer base, and then types the variable or joining sign; `/` is never typed into the base slot."
+    },
+    {
       "id": "relation-fraction-group",
-      "semantic": "equation with a rational coefficient, whole",
+      "semantic": "parenthesized rational coefficient in a whole equation",
       "form": "relation",
       "notation": [
         "fraction",
@@ -1903,7 +1934,7 @@
         "live": "n/a"
       },
       "refusal": "template-refused-by-question",
-      "why": "A rational coefficient is parenthesised so that `1/2x` cannot be read as `1/(2x)`, and parentheses can only come from a template. The observed equation box offers Fraction and no other, so this is refused by name rather than entered as a different number."
+      "why": "The older line-from-properties renderer parenthesizes a rational coefficient so `1/2x` cannot be misread as `1/(2x)`. Parentheses require a template, and this equation box offers none. The equation-rewrite route uses an explicit multiplication machine form and is declared separately as `relation-fraction`."
     }
   ]
 }

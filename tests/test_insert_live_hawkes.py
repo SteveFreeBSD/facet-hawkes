@@ -24,13 +24,12 @@ def test_extension_page_is_exactly_scoped_to_existing_solve_insert_contract():
     assert 'TARGET_ADDON_ID = "ethnos-hawkes@local"' in source
     assert "candidates.length !== 1" in source
     assert "browser.tabs.getCurrent()" in source
-    assert 'type: "ethnos:development-insert-pair"' in source
+    assert 'type: "ethnos:development-insert-reviewed"' in source
     assert "targetTabId: target.id" in source
     for forbidden in (
         ".click(",
         ".submit(",
         "Submit Answer",
-        "tabs.update",
         "tabs.create",
         'type: "ethnos:insert"',
         'type: "ethnos:solve"',
@@ -39,17 +38,32 @@ def test_extension_page_is_exactly_scoped_to_existing_solve_insert_contract():
         "location.href =",
     ):
         assert forbidden not in source
+    assert "tabs.update" not in source
 
     background = BACKGROUND.read_text(encoding="utf-8")
-    assert 'case "ethnos:development-insert-pair"' in background
-    assert "await browser.tabs.remove(helperTabId)" in background
+    assert 'case "ethnos:development-insert-reviewed"' in background
+    assert "await browser.tabs.remove(helperTabId)" not in background
+    assert "Keep\n            // the helper and its port alive" in background
     assert "the exact lesson tab was not proved" in background
     assert "state = { ...blankState(), windowId: asking }" in background
     assert "await prepare(asking, targetTabId)" in background
-    assert "browser.tabs.update" not in background
+    assert (
+        "browser.tabs.highlight({ windowId: asking, tabs: target.index })" in background
+    )
+    assert "browser.tabs.update(targetTabId, { url:" not in background
+    assert "developmentInsertInFlight = true" in background
+    assert "developmentInsertInFlight = false" in background
     assert "await solve(asking)" in background
     assert "await insert()" in background
     assert 'state.phase !== "inserted"' in background
+
+
+def test_internal_page_keeps_the_event_page_alive_until_insert_finishes():
+    source = PAGE.read_text(encoding="utf-8")
+
+    assert "browser.storage.onChanged.addListener" in source
+    assert '["completed", "refused"].includes(value?.phase)' in source
+    assert "setTimeout(closeThisTab, 8000)" in source
 
 
 def test_cli_reuses_the_proved_normal_profile_target_without_gui_input():
@@ -62,7 +76,7 @@ def test_cli_reuses_the_proved_normal_profile_target_without_gui_input():
         assert forbidden not in source
 
 
-def test_cli_correlates_the_existing_insert_pin_with_its_settled_record(monkeypatch):
+def test_cli_correlates_a_structured_pair_pin_with_its_settled_record(monkeypatch):
     module = load_script()
     entries = [
         {
@@ -86,9 +100,40 @@ def test_cli_correlates_the_existing_insert_pin_with_its_settled_record(monkeypa
     ]
     monkeypatch.setattr(module.reload_helper, "_entries", lambda _profile: entries)
 
-    assert module._settled_pair_insertion(Path("/unused"), 1000) == {
+    assert module._settled_insertion(Path("/unused"), 1000) == {
         "run": "pair-run",
+        "via": "structured-fields",
+        "fields": 2,
+        "parts": 2,
         "connector": "and",
         "settled": True,
     }
-    assert module._settled_pair_insertion(Path("/unused"), 1700) is None
+    assert module._settled_insertion(Path("/unused"), 1700) is None
+
+
+def test_cli_correlates_a_single_structured_answer(monkeypatch):
+    module = load_script()
+    entries = [
+        {
+            "t": 1200,
+            "run": "single-run",
+            "event": "insertion-pinned",
+            "data": {"fieldIds": 1, "answerParts": 0, "answerConnector": ""},
+        },
+        {
+            "t": 1600,
+            "run": "single-run",
+            "event": "inserted",
+            "data": {"via": "structured", "answerLength": 15},
+        },
+    ]
+    monkeypatch.setattr(module.reload_helper, "_entries", lambda _profile: entries)
+
+    assert module._settled_insertion(Path("/unused"), 1000) == {
+        "run": "single-run",
+        "via": "structured",
+        "fields": 1,
+        "parts": 0,
+        "connector": "",
+        "settled": True,
+    }

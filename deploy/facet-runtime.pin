@@ -7,9 +7,9 @@
 # tests/test_runtime_pin.py fails if any document quotes a different commit.
 #
 # Raise it in the same change that starts depending on something newer. This
-# commit owns the Lesson 2.6 inequality families exactly: individual and
-# combined Cartesian inequality plans, absolute-value rewrites, and semantic
-# graph-choice matching, all with no model call.
+# commit owns the Lesson 2.6 inequality families and Lesson 2.5
+# slope-intercept rewrites and parallel-line construction exactly, all with no
+# model call.
 # The tip of that repository may be ahead of it, and that is fine -- the pin is
 # a floor, and the test checks the sibling is not below it.
-3b40e6071d647766cbf3b2ffd0ed9976aa9e9556
+28a6f30bd9c53ab74702ca74da77639cae59b642

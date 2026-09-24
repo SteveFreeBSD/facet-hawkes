@@ -77,6 +77,38 @@ def test_equation_only_math_stays_only_in_expressions():
     assert result["expressions"] == ["<math><mi>x</mi><mo>=</mo><mn>4</mn></math>"]
 
 
+def test_parallel_line_keeps_inline_point_beside_separate_source_equation():
+    """Live Lesson 2.5 shape: both canonical owners contribute question data."""
+    result = read_question(
+        r"""
+        <div id="partDescription">
+          <p>Find the equation of the line which passes through the point
+            <mjx-container><mjx-assistive-mml>
+              <math><mo>(</mo><mrow><mrow><mo>−</mo><mn>8</mn></mrow>
+                <mo>,</mo><mn>11</mn></mrow><mo>)</mo></math>
+            </mjx-assistive-mml></mjx-container>
+            and is <strong>parallel</strong> to the given line. Express your
+            answer in slope-intercept form. Simplify your answer.</p>
+        </div>
+        <div id="questionString"><p>
+          <mjx-container><mjx-assistive-mml>
+            <math><mrow><mrow><mn>4</mn><mi>x</mi></mrow><mo>+</mo>
+              <mrow><mn>8</mn><mi>y</mi></mrow></mrow><mo>=</mo>
+              <mn>19</mn></math>
+          </mjx-assistive-mml></mjx-container>
+        </p></div>
+        <div id="partInformation">Step 1 of 2</div>
+        <input class="qbaseCSS" id="txtAns1">
+        """
+    )
+
+    assert "parallel to the given line" in result["promptText"]
+    assert len(result["expressions"]) == 2
+    assert "<mn>4</mn><mi>x</mi>" in result["expressions"][0]
+    assert "<mo>−</mo><mn>8</mn>" in result["expressions"][1]
+    assert result["evidence"]["mathRelations"] == ["=", ""]
+
+
 def test_instructional_form_math_is_not_a_second_stated_equation():
     result = read_question(
         r"""

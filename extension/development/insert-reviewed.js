@@ -30,6 +30,27 @@ async function finish(phase, fields) {
   }, 8000);
 }
 
+// Keep this internal page (and therefore its panel port) alive until the
+// background has finished the existing Insert operation. Firefox's event page
+// is non-persistent: closing the only development port while paced entry is in
+// flight can let it unload halfway through a Fraction plan. The lesson tab
+// does not need to be active for a pinned MAIN-world write, so there is no
+// reason to close this page early.
+browser.storage.onChanged.addListener((changes, area) => {
+  const value = changes?.[STATE_KEY]?.newValue;
+  if (
+    area !== "local"
+    || value?.nonce !== NONCE
+    || !["completed", "refused"].includes(value?.phase)
+    || finished
+  ) {
+    return;
+  }
+  finished = true;
+  status.textContent = "Insertion proof complete; closing…";
+  setTimeout(closeThisTab, 8000);
+});
+
 async function insertReviewed() {
   if (browser.runtime.id !== TARGET_ADDON_ID || !/^[a-f0-9]{32}$/.test(NONCE)) {
     await finish("refused", { reason: "extension identity or request is invalid" });
@@ -64,7 +85,7 @@ async function insertReviewed() {
   });
   port.postMessage({ type: "ethnos:hello", windowId: target.windowId });
   port.postMessage({
-    type: "ethnos:development-insert-pair",
+    type: "ethnos:development-insert-reviewed",
     windowId: target.windowId,
     tabId: helper.id,
     targetTabId: target.id,

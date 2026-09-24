@@ -88,7 +88,8 @@ def test_live_dynamic_box_reports_its_radical_object_limit() -> None:
         'qdyFrac_AllowedNumeChar: "01213456789-+y",'
         'qdyFrac_AllowedDenoChar: "0123456789-y",'
         'qdyRoot_AllowedRadicandChar: "01213456789-+y",'
-        "qdyRoot_AllowedRadicandLen: 5, qdyRoot_MaximumObjects: 1,"
+        "qdyFrac_MaximumObjects: 2, qdyRoot_AllowedRadicandLen: 5, "
+        "qdyRoot_MaximumObjects: 1,"
         "qdyFractionAllowed: true, qdyRadicalAllowed: true,"
         "qdyExponentAllowed: true}], controlsCollectionData: ["
         '{Name: "qdy", isQDy: true, boxValue: "", enableState: true}]}',
@@ -98,7 +99,11 @@ def test_live_dynamic_box_reports_its_radical_object_limit() -> None:
     assert described["kind"] == "dynamic"
     assert described["collection"]["branch"] == "one-usable"
     assert described["templates"]["radical"] is True
-    assert described["limits"] == {"radicals": 1, "radicandLength": 5}
+    assert described["limits"] == {
+        "fractions": 2,
+        "radicals": 1,
+        "radicandLength": 5,
+    }
 
 
 def test_live_four_model_populated_fraction_shape_is_one_inequality_pair() -> None:

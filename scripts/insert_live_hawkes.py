@@ -28,17 +28,14 @@ def _state(profile: Path) -> dict:
     return value if isinstance(value, dict) else {}
 
 
-def _settled_pair_insertion(profile: Path, started_ms: float) -> dict | None:
-    """The paired pin and success record emitted by the existing Insert path."""
+def _settled_insertion(profile: Path, started_ms: float) -> dict | None:
+    """The pinned success record emitted by the existing reviewed Insert path."""
     entries = reload_helper._entries(profile)
     pins = {
         entry.get("run"): entry
         for entry in entries
         if entry.get("event") == "insertion-pinned"
         and float(entry.get("t", 0)) >= started_ms
-        and entry.get("data", {}).get("fieldIds") == 2
-        and entry.get("data", {}).get("answerParts") == 2
-        and entry.get("data", {}).get("answerConnector") in {"and", "or"}
     }
     for entry in reversed(entries):
         data = entry.get("data", {})
@@ -47,13 +44,24 @@ def _settled_pair_insertion(profile: Path, started_ms: float) -> dict | None:
             entry.get("event") == "inserted"
             and float(entry.get("t", 0)) >= started_ms
             and run in pins
-            and data.get("via") == "structured-fields"
-            and data.get("fields") == 2
-            and data.get("parts") == 2
+            and data.get("via")
+            in {
+                "structured",
+                "plain",
+                "structured-fields",
+                "plain-fields",
+                "structured-comma-parts",
+                "axis-intercepts",
+                "table-cells",
+            }
         ):
+            pin = pins[run]["data"]
             return {
                 "run": run,
-                "connector": pins[run]["data"]["answerConnector"],
+                "via": data.get("via"),
+                "fields": pin.get("fieldIds", 0),
+                "parts": pin.get("answerParts", 0),
+                "connector": pin.get("answerConnector", ""),
                 "settled": True,
             }
     return None
@@ -82,13 +90,13 @@ def main() -> int:
             raise reload_helper.ReloadRefused(
                 "the Insert proof did not prove the target ID"
             )
-        inserted = _settled_pair_insertion(target.profile, started_ms)
+        inserted = _settled_insertion(target.profile, started_ms)
         if inserted is not None:
             state = {
                 "addonId": reload_helper.TARGET_ADDON_ID,
                 "nonce": nonce,
                 "phase": "completed",
-                "evidence": "paired diagnostic pin and settled Insert record",
+                "evidence": "diagnostic pin and settled reviewed Insert record",
                 **inserted,
             }
         print(json.dumps(state, indent=2, ensure_ascii=False))

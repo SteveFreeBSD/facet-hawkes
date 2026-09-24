@@ -74,6 +74,7 @@ import {
 
 const NATIVE_HOST = "ethnos_hawkes";
 const DEVELOPMENT_INSERT_STATE_KEY = "facetDevelopmentReviewedInsertion";
+let developmentInsertInFlight = false;
 
 /**
  * This load of this event page.
@@ -4633,21 +4634,24 @@ browser.runtime.onConnect.addListener((port) => {
       case "ethnos:hello":
         break;
       case "ethnos:prepare":
+        if (developmentInsertInFlight) return;
         begin(() => prepare(asking));
         break;
       case "ethnos:solve":
+        if (developmentInsertInFlight) return;
         begin(async () => {
           await claim(asking);
           await solve(asking);
         });
         break;
       case "ethnos:insert":
+        if (developmentInsertInFlight) return;
         begin(async () => {
           await claim(asking);
           try { await insert(); } finally { finishIdleCadence(); }
         });
         break;
-      case "ethnos:development-insert-pair": {
+      case "ethnos:development-insert-reviewed": {
         const nonce = String(incoming?.nonce ?? "");
         const helperTabId = incoming?.tabId;
         const targetTabId = incoming?.targetTabId;
@@ -4661,6 +4665,12 @@ browser.runtime.onConnect.addListener((port) => {
           && Number.isInteger(targetTabId)
           && Number.isInteger(asking);
         if (!proved) break;
+        if (developmentInsertInFlight) break;
+        // Claim the shared operation state before making the lesson visible.
+        // Activating it reconnects the real sidebar, whose ordinary prepare
+        // message must not replace a pinned development proof halfway through
+        // its native Fraction plan.
+        developmentInsertInFlight = true;
         begin(async () => {
           const report = async (phase, fields = {}) => {
             await browser.storage.local.set({
@@ -4684,11 +4694,17 @@ browser.runtime.onConnect.addListener((port) => {
               await report("refused", { reason: "the exact lesson tab was not proved" });
               return;
             }
-            await browser.tabs.remove(helperTabId);
+            // Select only the already-proved tab. The highlight API cannot
+            // change its URL, unlike the general tab mutation API, which is
+            // intentionally forbidden. Hawkes needs to be visible for its
+            // editor models to report stable layout.
+            await browser.tabs.highlight({ windowId: asking, tabs: target.index });
             // A development page can wake a suspended event page with blank
             // or stale operation state. Rebuild it through the same reader as
-            // the real panel, pinned to the proved normal-profile tab. The
-            // target need not be activated and is never navigated.
+            // the real panel, pinned to the proved normal-profile tab. Keep
+            // the helper and its port alive through paced entry so Firefox
+            // cannot unload this non-persistent event page mid-plan. The
+            // target is selected without navigating or reloading it.
             inFlight?.abort();
             inFlight = null;
             state = { ...blankState(), windowId: asking };
@@ -4697,23 +4713,22 @@ browser.runtime.onConnect.addListener((port) => {
             if (state.phase === "ready") {
               await solve(asking);
             }
-            // Closing the helper reactivates the lesson and may let the
-            // sidebar's existing auto-solve win the same event-loop turn.
-            // `solve` deliberately returns when one is already running; wait
-            // for that one instead of mistaking its in-flight phase for a
-            // malformed answer.
+            // The sidebar's existing auto-solve may already own this event-
+            // loop turn. `solve` deliberately returns when one is already
+            // running; wait for that one instead of mistaking its in-flight
+            // phase for a malformed answer.
             const solveDeadline = Date.now() + 15000;
             while (state.phase === "solving" && Date.now() < solveDeadline) {
               await new Promise((resolve) => setTimeout(resolve, 100));
             }
-            const reviewedPair = state.phase === "solved"
+            const reviewedExactAnswer = state.phase === "solved"
               && !state.errorKey
-              && Array.isArray(state.answerParts)
-              && state.answerParts.length === 2
-              && ["and", "or"].includes(state.answerConnector);
-            if (!reviewedPair) {
+              && state.source === "Facet Exact"
+              && typeof state.answer === "string"
+              && state.answer.length > 0;
+            if (!reviewedExactAnswer) {
               await report("refused", {
-                reason: state.errorKey || "the exact solve did not produce an inequality pair",
+                reason: state.errorKey || "the solve did not produce an insertable exact answer",
                 observedPhase: state.phase,
               });
               return;
@@ -4730,12 +4745,15 @@ browser.runtime.onConnect.addListener((port) => {
             await report("completed", {
               windowId: asking,
               connector,
+              answerParts: state.answerParts?.length ?? 0,
               placed: Boolean(state.placedText),
             });
           } catch (error) {
             await report("refused", {
               reason: String(error?.message ?? error).slice(0, 300),
             });
+          } finally {
+            developmentInsertInFlight = false;
           }
         });
         break;

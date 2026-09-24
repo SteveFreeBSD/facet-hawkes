@@ -157,6 +157,28 @@ INEQUALITY_PAIR_EDITOR = {
     },
 }
 
+# Lesson 2.5 question 1 publishes `/` in none of its slots. It instead offers
+# exactly two Fraction objects, which are the two rational coefficients in a
+# canonical slope-intercept equation.
+SLOPE_INTERCEPT_EDITOR = {
+    "kind": "dynamic",
+    "enabled": True,
+    "allowedCharacters": "-+0123456789xy=",
+    "maxLength": 16,
+    "slots": {
+        "base": "-+0123456789xy=",
+        "numerator": "-0123456789xy+",
+        "denominator": "0123456789",
+    },
+    "templates": {
+        "fraction": True,
+        "radical": False,
+        "exponent": False,
+        "parentheses": False,
+    },
+    "limits": {"fractions": 2},
+}
+
 
 def test_adjacent_square_roots_fit_the_page_owned_one_root_box(plan):
     assert plan("-8*sqrt(3)*sqrt(y)/(3*y)", ONE_ROOT_BOX) == {
@@ -263,6 +285,53 @@ def test_fraction_on_left_returns_to_outer_base_before_relation(plan):
             {"op": "base"},
             {"op": "type", "text": "<x"},
         ],
+    }
+
+
+def test_slope_intercept_relation_builds_both_rationals_as_native_fractions(plan):
+    assert plan("y=-4/7*x+13/7", SLOPE_INTERCEPT_EDITOR) == {
+        "ok": True,
+        "steps": [
+            {"op": "type", "text": "y="},
+            {"op": "template", "name": "Fraction"},
+            {"op": "type", "text": "-4"},
+            {"op": "slot", "name": "denominator"},
+            {"op": "type", "text": "7"},
+            {"op": "base"},
+            {"op": "type", "text": "x+"},
+            {"op": "template", "name": "Fraction"},
+            {"op": "type", "text": "13"},
+            {"op": "slot", "name": "denominator"},
+            {"op": "type", "text": "7"},
+        ],
+    }
+
+
+def test_fractional_linear_expression_preserves_negative_intercept_at_base(plan):
+    assert plan("y=1/2*x-3/2", SLOPE_INTERCEPT_EDITOR) == {
+        "ok": True,
+        "steps": [
+            {"op": "type", "text": "y="},
+            {"op": "template", "name": "Fraction"},
+            {"op": "type", "text": "1"},
+            {"op": "slot", "name": "denominator"},
+            {"op": "type", "text": "2"},
+            {"op": "base"},
+            {"op": "type", "text": "x-"},
+            {"op": "template", "name": "Fraction"},
+            {"op": "type", "text": "3"},
+            {"op": "slot", "name": "denominator"},
+            {"op": "type", "text": "2"},
+        ],
+    }
+
+
+def test_page_owned_fraction_object_limit_is_enforced(plan):
+    editor = {**SLOPE_INTERCEPT_EDITOR, "limits": {"fractions": 1}}
+
+    assert plan("y=-4/7*x+13/7", editor) == {
+        "ok": False,
+        "code": "editor-fraction-limit",
     }
 
 
