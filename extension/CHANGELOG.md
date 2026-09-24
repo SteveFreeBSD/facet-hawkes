@@ -6,6 +6,22 @@ name the add-on as it was called at the time.
 
 ## Unreleased
 
+- **A future graph step cannot take ownership from the current intercept
+  step.** Lesson 2.3 briefly left Step 2's two-point graph mounted with real
+  geometry while Step 1 was visibly asking for x- and y-intercepts. The field
+  reader tested that graph before it tested the four coordinate boxes and
+  asked whether those boxes formed a generic answer joined by “or”; intercept
+  rows do not, so it sent the equation under a graph contract and Facet's
+  point-plot guard correctly refused it.
+
+  Any visible Hawkes answer field now keeps a Cartesian graph from claiming
+  the current step. This is the graph rule the reader already intended, applied
+  to raw field candidates instead of only generic multi-answer fields. A page
+  with no fields still takes every existing graph route unchanged. The
+  regression mounts a later two-point graph beside the two coordinate/absence
+  rows and proves the rows win; a second regression proves coincident x- and
+  y-intercepts fill both rows and select neither `absent` option.
+
 - **An equation is entered whole, or as its right side, and the page decides
   which.** Lesson 2.4 asks for "the equation of the line in slope-intercept
   form" and draws a bare answer box. The answer that reached it was `-2x+5`,

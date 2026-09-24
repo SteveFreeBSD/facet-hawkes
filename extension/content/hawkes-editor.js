@@ -630,7 +630,14 @@ var ethnosHawkes = (function () {
     const graphs = [...document.querySelectorAll('#QGraph[role="application"]')].filter(
       node => node.getBoundingClientRect().width > 0
     );
-    if (graphs.length === 1) {
+    // A later step can leave its graph mounted while the current step draws
+    // ordinary answer fields.  Hawkes gives that future graph real geometry,
+    // so geometry alone cannot make it the current answer surface.  The
+    // current step's visible fields win, regardless of whether they form a
+    // generic multi-answer joined by "or" or a more specific mixed surface
+    // such as the two coordinate/absence rows used for axis intercepts.
+    const fieldCandidates = solutionFieldCandidates();
+    if (graphs.length === 1 && fieldCandidates.length === 0) {
       const ids = [...graphs[0].querySelectorAll(controls)].map(node => node.id);
       if (ids.length === 3 && ids.every(Boolean)) {
         return {
@@ -643,14 +650,12 @@ var ethnosHawkes = (function () {
       // Only where nothing else on the page takes an answer. A scatter plot
       // drawn beside a text box is that question's *data*, and the box is
       // still where its answer goes.
-      if (solutionFields().length === 0) {
-        return {
-          ready: true,
-          code: "graph-answer",
-          via: "graph-surface",
-          fieldId: graphs[0].id || "QGraph",
-        };
-      }
+      return {
+        ready: true,
+        code: "graph-answer",
+        via: "graph-surface",
+        fieldId: graphs[0].id || "QGraph",
+      };
     }
     // A number line is a graph too, drawn by a different Hawkes engine.
     //
@@ -688,12 +693,12 @@ var ethnosHawkes = (function () {
       applications: document.querySelectorAll('[role="application"]').length,
       surfaces: numberLines.length,
       graphs: graphs.length,
-      candidates: solutionFieldCandidates().length,
+      candidates: fieldCandidates.length,
     };
     if (
       graphs.length === 0
       && numberLines.length === 1
-      && solutionFieldCandidates().length === 0
+      && fieldCandidates.length === 0
     ) {
       return {
         ready: true,
