@@ -22,6 +22,21 @@ quickjs = pytest.importorskip("quickjs", reason="pip install quickjs")
 
 RULES_JS = PROJECT_ROOT / "extension" / "common" / "editor-rules.js"
 CONFIG_JS = PROJECT_ROOT / "extension" / "common" / "config.js"
+BACKGROUND_JS = PROJECT_ROOT / "extension" / "background.js"
+
+
+def _lift(source: str, name: str) -> str:
+    """Lift one brace-balanced event-page function into the QuickJS probe."""
+    start = source.index(f"function {name}(")
+    depth = 0
+    for cursor in range(source.index("{", start), len(source)):
+        if source[cursor] == "{":
+            depth += 1
+        elif source[cursor] == "}":
+            depth -= 1
+            if depth == 0:
+                return source[start : cursor + 1]
+    raise AssertionError(f"{name} is not brace-balanced")
 
 
 @pytest.fixture(scope="module")
@@ -35,6 +50,9 @@ def plan():
     context.eval(re.sub(r"^export ", "", CONFIG_JS.read_text(), flags=re.MULTILINE))
     context.eval(rules)
     context.eval(source)
+    background = BACKGROUND_JS.read_text(encoding="utf-8")
+    for name in ("inequalityEntryIsSafe", "multiEntryPlans"):
+        context.eval(_lift(background, name))
 
     def call(answer, editor):
         return json.loads(
@@ -61,6 +79,16 @@ def plan():
         )
 
     call.fits = fits
+
+    def multi(parts, editor):
+        return json.loads(
+            context.eval(
+                f"JSON.stringify(multiEntryPlans({json.dumps(parts)}, "
+                f"{json.dumps(editor)}))"
+            )
+        )
+
+    call.multi = multi
 
     return call
 
@@ -106,6 +134,27 @@ ONE_ROOT_BOX = {
     },
     "templates": {"fraction": True, "radical": True, "exponent": True},
     "limits": {"radicals": 1, "radicandLength": 5},
+}
+
+# Lesson 2.6's four-model/two-visible-field inequality-pair editors. The base
+# accepts the relation; fraction slots deliberately do not. That distinction
+# exposed the regression where the entire inequality was put in a numerator.
+INEQUALITY_PAIR_EDITOR = {
+    "kind": "dynamic",
+    "enabled": True,
+    "allowedCharacters": "0123456789=-+xy≤≥<>",
+    "maxLength": 16,
+    "slots": {
+        "base": "0123456789=-+xy≤≥<>",
+        "numerator": "0123456789-+xy",
+        "denominator": "0123456789",
+    },
+    "templates": {
+        "fraction": True,
+        "radical": False,
+        "exponent": False,
+        "parentheses": False,
+    },
 }
 
 
@@ -179,6 +228,101 @@ def test_the_fraction_plan_matches_what_worked_live(plan):
             {"op": "type", "text": "y"},
         ],
     }
+
+
+@pytest.mark.parametrize(
+    ("answer", "outer", "numerator", "denominator"),
+    [
+        ("x>-11/3", "x>", "-11", "3"),
+        ("x<11/9", "x<", "11", "9"),
+    ],
+)
+def test_fractional_inequality_keeps_the_relation_outside_the_fraction(
+    plan, answer, outer, numerator, denominator
+):
+    assert plan(answer, INEQUALITY_PAIR_EDITOR) == {
+        "ok": True,
+        "steps": [
+            {"op": "type", "text": outer},
+            {"op": "template", "name": "Fraction"},
+            {"op": "type", "text": numerator},
+            {"op": "slot", "name": "denominator"},
+            {"op": "type", "text": denominator},
+        ],
+    }
+
+
+def test_fraction_on_left_returns_to_outer_base_before_relation(plan):
+    assert plan("-11/3<x", INEQUALITY_PAIR_EDITOR) == {
+        "ok": True,
+        "steps": [
+            {"op": "template", "name": "Fraction"},
+            {"op": "type", "text": "-11"},
+            {"op": "slot", "name": "denominator"},
+            {"op": "type", "text": "3"},
+            {"op": "base"},
+            {"op": "type", "text": "<x"},
+        ],
+    }
+
+
+def test_plain_inequality_plan_is_unchanged(plan):
+    assert plan("x>-8", INEQUALITY_PAIR_EDITOR) == {
+        "ok": True,
+        "steps": [{"op": "type", "text": "x>-8"}],
+    }
+
+
+@pytest.mark.parametrize(
+    ("answer", "native"),
+    [
+        ("-9y+10>=34", "-9y+10≥34"),
+        ("-9y+10<=-34", "-9y+10≤-34"),
+    ],
+)
+def test_non_strict_inequality_uses_hawkes_native_relation_token(plan, answer, native):
+    assert plan(answer, INEQUALITY_PAIR_EDITOR) == {
+        "ok": True,
+        "steps": [{"op": "type", "text": native}],
+    }
+
+
+def test_ascii_only_editor_keeps_ascii_non_strict_relation(plan):
+    editor = {
+        **INEQUALITY_PAIR_EDITOR,
+        "allowedCharacters": "0123456789=-+xy<>",
+        "slots": {"base": "0123456789=-+xy<>"},
+    }
+
+    assert plan("x>=3", editor) == {
+        "ok": True,
+        "steps": [{"op": "type", "text": "x>=3"}],
+    }
+
+
+def test_live_fractional_pair_is_preflighted_as_insertable_without_focus(plan):
+    editor = {
+        "kind": "inequality-pair",
+        "editors": [INEQUALITY_PAIR_EDITOR, INEQUALITY_PAIR_EDITOR],
+        "connector": {
+            "group": "UITemplateContainer_answerTemplateContainer_optANDorOR",
+            "choices": [
+                {"id": "optANDorOR1", "semantic": "and"},
+                {"id": "optANDorOR2", "semantic": "or"},
+            ],
+        },
+    }
+
+    planned = plan.multi(["x>-11/3", "x<11/9"], editor)
+
+    assert planned["directlyTypeable"] is False
+    assert [item["ok"] for item in planned["plans"]] == [True, True]
+    assert [
+        step["name"]
+        for item in planned["plans"]
+        for step in item["steps"]
+        if step["op"] == "template"
+    ] == ["Fraction", "Fraction"]
 
 
 def test_prefixed_formula_plans_only_the_rhs_in_the_live_q3_editor(plan):

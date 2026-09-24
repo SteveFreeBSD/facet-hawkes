@@ -293,17 +293,17 @@ INJECTED_PATH = re.compile(r"""_SCRIPT = ["']([^"']+)["']""")
 # Hawkes drives its editor through page-owned JavaScript, so reading the rules
 # and building structure both require it.
 MAIN_WORLD_SCRIPT = Path("content/hawkes-describe.js")  # reads only
+MAIN_WORLD_DIAGNOSTIC = Path("development/probe-main.js")  # development reads only
 MAIN_WORLD_WRITER = Path("common/page-actions.js")  # builds structured answers
 MAIN_WORLD_TABLE = Path("common/table-actions.js")  # types page-owned answer boxes
 
 
 def _check_main_world(problems: list[str]) -> None:
     """The page-world probe must read and never write."""
-    path = EXTENSION_DIR / MAIN_WORLD_SCRIPT
-    if not path.is_file():
-        problems.append(f"{MAIN_WORLD_SCRIPT} is missing")
+    read_only_paths = (MAIN_WORLD_SCRIPT, MAIN_WORLD_DIAGNOSTIC)
+    if any(not (EXTENSION_DIR / candidate).is_file() for candidate in read_only_paths):
+        problems.append("the MAIN-world read-only probes are incomplete")
         return
-    text = path.read_text(encoding="utf-8")
     # It reads the editor model; it must not call into it or assign to it.
     # Assignment is matched rather than the bare name, so a comparison such as
     # `boxValue === undefined` is not mistaken for a write.
@@ -315,11 +315,13 @@ def _check_main_world(problems: list[str]) -> None:
         (r"\bdispatchEvent\s*\(", "dispatches an event"),
         (r"\.value\s*=(?!=)", "assigns an input value"),
     )
-    for pattern, what in writes:
-        if re.search(pattern, text):
-            problems.append(
-                f"{MAIN_WORLD_SCRIPT}: {what}; the page-world probe is read-only"
-            )
+    for candidate in read_only_paths:
+        text = (EXTENSION_DIR / candidate).read_text(encoding="utf-8")
+        for pattern, what in writes:
+            if re.search(pattern, text):
+                problems.append(
+                    f"{candidate}: {what}; the page-world probe is read-only"
+                )
     _check_main_world_writer(problems)
     _check_table_writer(problems)
 
@@ -342,6 +344,7 @@ def _check_main_world(problems: list[str]) -> None:
     # No other script may reach the page model.
     allowed = {
         MAIN_WORLD_SCRIPT,
+        MAIN_WORLD_DIAGNOSTIC,
         MAIN_WORLD_WRITER,
         MAIN_WORLD_TABLE,
         Path("common/graph-actions.js"),

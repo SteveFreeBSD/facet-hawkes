@@ -1352,7 +1352,11 @@ def test_an_operation_targets_the_window_that_asked_for_it():
 
     assert "async function activeHawkesTab(windowId)" in background
     assert "{ active: true, windowId }" in background
-    assert "async function prepare(windowId = state.windowId)" in background
+    assert (
+        "async function prepare(windowId = state.windowId, exactTabId = null)"
+        in background
+    )
+    assert "await browser.tabs.get(exactTabId)" in background
     # The panel is the only thing that knows which window it is in: a sidebar
     # port carries no sender tab.
     assert "browser.windows" in popup

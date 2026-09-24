@@ -184,6 +184,17 @@ export function planEntry(answer, editor) {
     return planAnswerParts(shelled, editor);
   }
 
+  // A solved relation may contain a fraction on either side. Treating the
+  // entire string as `A/B` puts the subject and comparison into the Fraction
+  // numerator, whose published slot correctly refuses `<`, `>` and `=`. Plan
+  // the relation at the outer base and only its rational side as a fraction.
+  // This is the same composition machinery used for fractions in coordinate
+  // pairs; the relation adds no new writer or Hawkes-specific architecture.
+  const relational = planFractionalRelation(answer, editor);
+  if (relational !== null) {
+    return relational;
+  }
+
   const fraction = splitFraction(answer);
   if (fraction !== null) {
     if (editor?.templates?.fraction === true) {
@@ -193,6 +204,32 @@ export function planEntry(answer, editor) {
   }
 
   return planRun(answer, editor);
+}
+
+/** Plan one top-level relation when either side is a fraction. */
+function planFractionalRelation(answer, editor) {
+  const relation = splitRelation(answer);
+  if (relation === null) {
+    return null;
+  }
+  const leftFraction = splitFraction(relation.left);
+  const rightFraction = splitFraction(relation.right);
+  if (leftFraction === null && rightFraction === null) {
+    return null;
+  }
+  const left = planSegment(relation.left, editor, "base");
+  const operator = planRun(relation.operator, editor, "base");
+  const right = planSegment(relation.right, editor, "base");
+  const failure = [left, operator, right].find((plan) => plan.ok === false);
+  if (failure) {
+    return failure;
+  }
+  const steps = [...left.steps];
+  if (left.steps.some((step) => step.op === "template")) {
+    steps.push({ op: "base" });
+  }
+  steps.push(...operator.steps, ...right.steps);
+  return { ok: true, steps: coalesced(steps) };
 }
 
 /**
@@ -490,6 +527,43 @@ function splitFraction(answer) {
   };
 }
 
+/** One comparison/equality at the outer base, with both sides non-empty. */
+function splitRelation(answer) {
+  let depth = 0;
+  let found = null;
+  for (let index = 0; index < answer.length; index += 1) {
+    const character = answer[index];
+    if (OPENERS.includes(character)) {
+      depth += 1;
+      continue;
+    }
+    if (CLOSERS.includes(character)) {
+      depth -= 1;
+      continue;
+    }
+    if (depth !== 0 || !"<>=".includes(character)) {
+      continue;
+    }
+    let operator = character;
+    if (["<", ">"].includes(character) && answer[index + 1] === "=") {
+      operator += "=";
+    }
+    if (found !== null) {
+      return null;
+    }
+    found = { index, operator };
+    if (operator.length === 2) {
+      index += 1;
+    }
+  }
+  if (found === null) {
+    return null;
+  }
+  const left = answer.slice(0, found.index);
+  const right = answer.slice(found.index + found.operator.length);
+  return left && right ? { left, operator: found.operator, right } : null;
+}
+
 /** Strip one fully-enclosing pair of parentheses. */
 function unwrap(value) {
   if (!value.startsWith("(") || !value.endsWith(")")) {
@@ -537,6 +611,16 @@ function planRun(answer, editor, slot = "base") {
     return { ok: false, code: "answer-empty" };
   }
   const allowed = slotCharacters(editor, slot);
+  // QDy distinguishes one non-strict comparison token from two adjacent
+  // strict/equality tokens. Both render as `>=`/`<=`, but Hawkes serializes
+  // the latter as `symGreaterThan` + `=` (or `symLessThan` + `=`) and rejects
+  // it as an improperly formatted relation. When the page publishes its
+  // native single-character operators, use those exact editor operations.
+  // Editors that publish only ASCII keep the existing two-character route.
+  if (slot === "base") {
+    if (allowed.includes("≥")) answer = answer.replace(/>=/g, "≥");
+    if (allowed.includes("≤")) answer = answer.replace(/<=/g, "≤");
+  }
   const exponentAllowed = editor?.templates?.exponent === true;
   const steps = [];
   let base = "";

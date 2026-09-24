@@ -56,7 +56,7 @@ def _run(args: list[str], *, check: bool = True) -> subprocess.CompletedProcess[
     return subprocess.run(args, check=check, text=True, capture_output=True)
 
 
-def _ensure_project_python() -> None:
+def _ensure_project_python(entrypoint: Path | None = None) -> None:
     """The marker comparison is mandatory, so QuickJS is mandatory too."""
     if importlib.util.find_spec("quickjs") is not None:
         return
@@ -70,10 +70,8 @@ def _ensure_project_python() -> None:
         raise ReloadRefused(
             "the project interpreter cannot import QuickJS; run `uv sync --extra dev`"
         )
-    os.execv(
-        str(project_python),
-        [str(project_python), str(Path(__file__).resolve()), *sys.argv[1:]],
-    )
+    script = (entrypoint or Path(__file__)).resolve()
+    os.execv(str(project_python), [str(project_python), str(script), *sys.argv[1:]])
 
 
 def _manifest_id() -> str:
@@ -235,8 +233,11 @@ def _pack_command_line(arguments: list[str], working_directory: Path) -> bytes:
     return struct.pack(f"<{argc + 1}I", argc, *offsets) + body
 
 
-def _open_reload_page(target: Target, nonce: str) -> None:
-    url = f"moz-extension://{target.extension_uuid}/{RELOAD_PAGE}?nonce={nonce}"
+def _open_extension_page(target: Target, page: str, query: str) -> None:
+    """Open one proved page in the already-running target extension."""
+    if not re.fullmatch(r"[A-Za-z0-9_./-]+\.html", page):
+        raise ReloadRefused("the extension development page is invalid")
+    url = f"moz-extension://{target.extension_uuid}/{page}?{query}"
     payload = _pack_command_line(["firefox", "--new-tab", url], PROJECT_ROOT)
     # busctl's `ay` syntax is a count followed by each byte.  Addressing the
     # already-owned profile service cannot launch a browser or reach another
@@ -255,6 +256,10 @@ def _open_reload_page(target: Target, nonce: str) -> None:
             *(str(byte) for byte in payload),
         ]
     )
+
+
+def _open_reload_page(target: Target, nonce: str) -> None:
+    _open_extension_page(target, RELOAD_PAGE, f"nonce={nonce}")
 
 
 def _wait_for_reload(

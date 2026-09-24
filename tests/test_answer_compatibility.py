@@ -383,11 +383,10 @@ def test_every_supported_composition_plans_against_its_own_editor(
     if entry.form == "axis-intercepts":
         editor = editor["coordinateEditor"]
     if entry.form == "inequality-pair":
+        values = re.split(r" (?:AND|OR) ", entry.example)
         results = [
             planner("planEntry", value, one)
-            for value, one in zip(
-                entry.example.split(" AND "), editor["editors"], strict=True
-            )
+            for value, one in zip(values, editor["editors"], strict=True)
         ]
         assert all(result.get("ok") is True for result in results), results
         return

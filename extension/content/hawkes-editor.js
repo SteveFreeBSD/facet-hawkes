@@ -414,8 +414,19 @@ var ethnosHawkes = (function () {
 
   /** Two expression boxes joined by the page's semantic AND/OR choice. */
   function inequalityPairSurface() {
-    const fields = solutionFieldCandidates();
+    let fields = solutionFieldCandidates();
     const radios = optionGroup();
+    // Once a Fraction template is populated, one logical QDy expression box
+    // draws several editable inputs (outer base, numerator, denominator and a
+    // trailing base). Hawkes keeps only the expression root in the ordinary
+    // tab order; the structural slots have tabindex -1. Count those roots for
+    // this composite surface, not every input the two editors currently draw.
+    // Empty/plain pairs already have exactly two fields and take the same path
+    // unchanged.
+    if (fields.length !== 2) {
+      const roots = fields.filter((field) => Number(field.tabIndex) >= 0);
+      if (roots.length === 2) fields = roots;
+    }
     if (
       fields.length !== 2
       || new Set(fields.map((field) => field.id)).size !== 2

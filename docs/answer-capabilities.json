@@ -318,7 +318,7 @@
       }
     },
     "inequality-pair": {
-      "note": "Two page-owned inequality editors plus one semantic AND/OR radio group. Hawkes publishes four model entries: the left editor, both connector options, and the right editor.",
+      "note": "Two page-owned inequality editors plus one semantic AND/OR radio group. Hawkes publishes four model entries: the left editor, both connector options, and the right editor. The live editors expose fraction templates, but rewrite-only answers preserve the displayed affine expression and need no solved rational bounds.",
       "description": {
         "kind": "inequality-pair",
         "enabled": true,
@@ -328,10 +328,15 @@
           {
             "kind": "dynamic",
             "enabled": true,
-            "allowedCharacters": "0123456789x-+<>=",
-            "maxLength": 32,
+            "allowedCharacters": "0123456789xy-+<>=",
+            "maxLength": 16,
+            "slots": {
+              "base": "0123456789xy-+<>=",
+              "numerator": "0123456789xy-+",
+              "denominator": "0123456789"
+            },
             "templates": {
-              "fraction": false,
+              "fraction": true,
               "radical": false,
               "exponent": false,
               "parentheses": false,
@@ -341,10 +346,15 @@
           {
             "kind": "dynamic",
             "enabled": true,
-            "allowedCharacters": "0123456789x-+<>=",
-            "maxLength": 32,
+            "allowedCharacters": "0123456789xy-+<>=",
+            "maxLength": 16,
+            "slots": {
+              "base": "0123456789xy-+<>=",
+              "numerator": "0123456789xy-+",
+              "denominator": "0123456789"
+            },
             "templates": {
-              "fraction": false,
+              "fraction": true,
               "radical": false,
               "exponent": false,
               "parentheses": false,
@@ -836,20 +846,21 @@
     },
     {
       "id": "absolute-value-inequality-rewrite",
-      "semantic": "two affine inequalities joined by their exact logical connector",
+      "semantic": "two structure-preserving affine inequalities joined by their exact logical connector",
       "form": "inequality-pair",
       "notation": [
         "plain"
       ],
-      "example": "2x+10>-6 AND 2x+10<6",
+      "example": "-9y+10<=-34 OR -9y+10>=34",
       "editor": "inequality-pair",
       "topology": "two owned expression editors plus one semantic AND/OR group",
       "mechanism": [
         "answer_payload",
+        "planEntry",
         "enterPlan"
       ],
       "status": "supported",
-      "note": "This is a representation-preserving rewrite: the affine expression inside the displayed absolute-value bars is carried into both inequalities without sign normalization or solving.",
+      "note": "The inner affine expression is preserved verbatim and the exact AND/OR connector is retained. Live post-submit read-back exposed the actual format defect: ASCII `>=` and `<=` were stored as a strict QDy relation token followed by a separate equals sign (`symGreaterThan` + `=` / `symLessThan` + `=`), even though they looked correct on screen. The planner now uses Hawkes' published single `≥` and `≤` operations. Accepted live on 2026-09-24 with the direct rewrite `9y+4≤-38 OR 9y+4≥38`.",
       "coverage": {
         "unit": "yes",
         "harness": "no",

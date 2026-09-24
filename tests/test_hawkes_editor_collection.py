@@ -101,16 +101,23 @@ def test_live_dynamic_box_reports_its_radical_object_limit() -> None:
     assert described["limits"] == {"radicals": 1, "radicandLength": 5}
 
 
-def test_live_four_model_two_field_shape_is_one_inequality_pair() -> None:
-    """Two dynamic owners surround the two models of one AND/OR group."""
+def test_live_four_model_populated_fraction_shape_is_one_inequality_pair() -> None:
+    """Eight drawn slots still belong to two dynamic expression owners."""
     quickjs = pytest.importorskip("quickjs")
     context = quickjs.Context()
     context.eval(
         r"""
         const visible = () => ({width: 80, height: 24});
+        const field = (id, tabIndex) => ({id, tabIndex, getBoundingClientRect: visible});
         const fields = [
-          {id: "QBase1_input", getBoundingClientRect: visible},
-          {id: "QBase2_input", getBoundingClientRect: visible},
+          field("QBase1_input", 0),
+          field("QBase3_input", -1),
+          field("QBase4_input", -1),
+          field("QBase5_input", -1),
+          field("QBase2_input", 0),
+          field("QBase6_input", -1),
+          field("QBase7_input", -1),
+          field("QBase8_input", -1),
         ];
         const radios = ["and", "or"].map((semantic, index) => ({
           id: `join-${semantic}`, name: "join", value: semantic, disabled: false,
@@ -123,12 +130,17 @@ def test_live_four_model_two_field_shape_is_one_inequality_pair() -> None:
           objMyDiv: {querySelector() { return field; }},
           arrChildObjects: [],
         });
-        const dynamic = (field) => ({
+        const dynamic = (owned) => ({
           Type: "QDyText", enabled: true, qdyBaseMaxChars: 32,
           qdyBase_AllowedChar: "0123456789x-+<>=",
-          arrChildObjects: [base(field)],
+          arrChildObjects: owned.map(base),
         });
-        const controls = [dynamic(fields[0]), {enabled: true}, {enabled: true}, dynamic(fields[1])];
+        const controls = [
+          dynamic(fields.slice(0, 4)),
+          {enabled: true},
+          {enabled: true},
+          dynamic(fields.slice(4)),
+        ];
         const data = [
           {Name: "txtAns", isQDy: true, boxValue: "", enableState: true},
           {Name: "join", isQDy: false, enableState: true},
@@ -162,10 +174,16 @@ def test_live_four_model_two_field_shape_is_one_inequality_pair() -> None:
         2,
         3,
     ]
-    assert described["ownership"]["fields"] == [
-        {"id": "QBase1_input", "owners": [0]},
-        {"id": "QBase2_input", "owners": [3]},
-    ]
+    assert len(described["ownership"]["fields"]) == 8
+    assert described["ownership"]["roots"] == ["QBase1_input", "QBase2_input"]
+    assert described["ownership"]["fields"][0] == {
+        "id": "QBase1_input",
+        "owners": [0],
+    }
+    assert described["ownership"]["fields"][4] == {
+        "id": "QBase2_input",
+        "owners": [3],
+    }
     assert [editor["kind"] for editor in described["editors"]] == ["dynamic", "dynamic"]
     assert described["connector"] == {
         "group": "join",

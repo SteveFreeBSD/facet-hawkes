@@ -83,6 +83,8 @@ def two_field_page():
           new HTMLInputElement({id: "QBase1_input", left: 100, top: 200, width: 80}),
           new HTMLInputElement({id: "QBase2_input", left: 220, top: 200, width: 80}),
         ];
+        fields[0].tabIndex = 0;
+        fields[1].tabIndex = 0;
         const separator = new Element({left: 190, top: 200, width: 20});
         separator.textContent = "or";
         const separators = [separator];
@@ -170,6 +172,43 @@ def test_two_fields_plus_semantic_and_or_are_one_composite_without_focus(
             {"id": "connector-or", "semantic": "or"},
         ],
     }
+
+
+def test_populated_fraction_slots_remain_two_logical_inequality_editors(
+    two_field_page,
+):
+    """Numerator/denominator inputs do not become additional answer fields."""
+    two_field_page.eval(
+        """
+        extras.push(
+          new HTMLInputElement({id: "QBase3_input", left: 150, top: 190, width: 25}),
+          new HTMLInputElement({id: "QBase4_input", left: 150, top: 220, width: 15}),
+          new HTMLInputElement({id: "QBase5_input", left: 178, top: 200, width: 9}),
+          new HTMLInputElement({id: "QBase6_input", left: 270, top: 190, width: 25}),
+          new HTMLInputElement({id: "QBase7_input", left: 270, top: 220, width: 15}),
+          new HTMLInputElement({id: "QBase8_input", left: 298, top: 200, width: 9})
+        );
+        for (const slot of extras) slot.tabIndex = -1;
+        for (const semantic of ["and", "or"]) {
+          const radio = new HTMLInputElement({
+            id: `connector-${semantic}`, left: 205, top: 235, width: 20,
+          });
+          radio.name = "connector";
+          radio.attributes["aria-label"] = semantic;
+          radios.push(radio);
+        }
+        document.activeElement = body;
+        """
+    )
+
+    found = result(two_field_page, "ethnosHawkes.inspectField()")
+
+    assert found["code"] == "inequality-pair-answer"
+    assert found["fieldIds"] == ["QBase1_input", "QBase2_input"]
+    assert found["connectorChoices"] == [
+        {"id": "connector-and", "semantic": "and"},
+        {"id": "connector-or", "semantic": "or"},
+    ]
 
 
 def add_four_field_shape(context):

@@ -293,6 +293,13 @@
           owners: models.filter((model) => model.fields.includes(field.id))
             .map((model) => model.index),
         })),
+        // A populated QDy fraction draws several visible inputs for one
+        // expression model. Hawkes leaves only that model's root in the normal
+        // tab order; its numerator, denominator and trailing-base inputs use
+        // tabindex -1. Preserve both views so composite ownership remains
+        // exact before and after a fraction is entered.
+        roots: fields.filter((field) => Number(field.tabIndex) >= 0)
+          .map((field) => field.id),
         radios,
         models,
       };
@@ -516,8 +523,11 @@
   // why the live surface has four entries for two visible answer fields.
   // Ownership, not the count or model order, decides which two are typeable.
   const pairOwnership = ownershipProbe();
-  if (pairOwnership && pairOwnership.fields.length === 2) {
-    const owners = pairOwnership.fields.map((field) => field.owners);
+  if (pairOwnership) {
+    const logicalFields = pairOwnership.roots.length === 2
+      ? pairOwnership.fields.filter((field) => pairOwnership.roots.includes(field.id))
+      : pairOwnership.fields.length === 2 ? pairOwnership.fields : [];
+    const owners = logicalFields.map((field) => field.owners);
     const ownerIndexes = owners.flat();
     const owned = ownerIndexes.map((index) =>
       pairOwnership.models.find((model) => model.index === index)
@@ -529,7 +539,8 @@
     }));
     const groups = new Set(radios.map((radio) => radio.group).filter(Boolean));
     if (
-      owners.every((indexes) => indexes.length === 1)
+      logicalFields.length === 2
+      && owners.every((indexes) => indexes.length === 1)
       && new Set(ownerIndexes).size === 2
       && owned.every((model) => ["dynamic", "textbox"].includes(model?.kind))
       && optionModels.length === 2

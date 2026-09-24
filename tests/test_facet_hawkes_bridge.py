@@ -140,7 +140,7 @@ def test_absolute_value_rewrite_crosses_as_two_comparisons_and_and(monkeypatch) 
     }
 
 
-def test_absolute_value_rewrite_keeps_the_page_written_affine_expression(monkeypatch):
+def test_hawkes_pair_preserves_the_page_written_affine_expression(monkeypatch):
     loopback = answering(monkeypatch)
 
     response = handle(

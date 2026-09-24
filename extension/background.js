@@ -73,6 +73,7 @@ import {
 } from "/common/cadence-session.js";
 
 const NATIVE_HOST = "ethnos_hawkes";
+const DEVELOPMENT_INSERT_STATE_KEY = "facetDevelopmentReviewedInsertion";
 
 /**
  * This load of this event page.
@@ -2011,7 +2012,7 @@ function permissionWithheld(error) {
 // --- operations the popup can ask for --------------------------------------
 
 /** Find the answer field and read the editor's rules. Cheap, and no model. */
-async function prepare(windowId = state.windowId) {
+async function prepare(windowId = state.windowId, exactTabId = null) {
   // A prepare re-reads the tab, the frame, the editor and the signature --
   // everything a solve in flight is working against -- and then blanks the
   // phase, which is the only thing stopping `autoSolve` starting another one.
@@ -2063,7 +2064,25 @@ async function prepare(windowId = state.windowId) {
   // never written, never failed with, never solved.
   const handedOn = () => Number.isInteger(state.windowId) && state.windowId !== windowId;
   try {
-    const tab = await activeHawkesTab(windowId);
+    const tab = Number.isInteger(exactTabId)
+      ? await browser.tabs.get(exactTabId)
+      : await activeHawkesTab(windowId);
+    if (Number.isInteger(exactTabId)) {
+      let exactUrl;
+      try {
+        exactUrl = new URL(String(tab?.url ?? ""));
+      } catch {
+        throw new Error("errorWrongSite");
+      }
+      if (
+        tab.windowId !== windowId
+        || exactUrl.protocol !== "https:"
+        || exactUrl.hostname !== "learn.hawkeslearning.com"
+        || !/\/Portal\/Lesson\//i.test(exactUrl.pathname)
+      ) {
+        throw new Error("errorWrongSite");
+      }
+    }
     const results = await runOperation({ tabId: tab.id, allFrames: true }, INSPECT_SCRIPT);
     if (handedOn()) {
       return;
@@ -4628,6 +4647,99 @@ browser.runtime.onConnect.addListener((port) => {
           try { await insert(); } finally { finishIdleCadence(); }
         });
         break;
+      case "ethnos:development-insert-pair": {
+        const nonce = String(incoming?.nonce ?? "");
+        const helperTabId = incoming?.tabId;
+        const targetTabId = incoming?.targetTabId;
+        const senderTabId = port.sender?.tab?.id;
+        const senderUrl = String(port.sender?.url ?? "");
+        const proved = port.sender?.id === browser.runtime.id
+          && /^moz-extension:\/\/[^/]+\/development\/insert-reviewed\.html\?/.test(senderUrl)
+          && /^[a-f0-9]{32}$/.test(nonce)
+          && Number.isInteger(helperTabId)
+          && helperTabId === senderTabId
+          && Number.isInteger(targetTabId)
+          && Number.isInteger(asking);
+        if (!proved) break;
+        begin(async () => {
+          const report = async (phase, fields = {}) => {
+            await browser.storage.local.set({
+              [DEVELOPMENT_INSERT_STATE_KEY]: {
+                addonId: browser.runtime.id,
+                nonce,
+                phase,
+                ...fields,
+              },
+            });
+          };
+          try {
+            const target = await browser.tabs.get(targetTabId);
+            const targetUrl = new URL(String(target?.url ?? ""));
+            if (
+              target.windowId !== asking
+              || targetUrl.protocol !== "https:"
+              || targetUrl.hostname !== "learn.hawkeslearning.com"
+              || !/\/Portal\/Lesson\//i.test(targetUrl.pathname)
+            ) {
+              await report("refused", { reason: "the exact lesson tab was not proved" });
+              return;
+            }
+            await browser.tabs.remove(helperTabId);
+            // A development page can wake a suspended event page with blank
+            // or stale operation state. Rebuild it through the same reader as
+            // the real panel, pinned to the proved normal-profile tab. The
+            // target need not be activated and is never navigated.
+            inFlight?.abort();
+            inFlight = null;
+            state = { ...blankState(), windowId: asking };
+            await prepare(asking, targetTabId);
+            await Promise.resolve();
+            if (state.phase === "ready") {
+              await solve(asking);
+            }
+            // Closing the helper reactivates the lesson and may let the
+            // sidebar's existing auto-solve win the same event-loop turn.
+            // `solve` deliberately returns when one is already running; wait
+            // for that one instead of mistaking its in-flight phase for a
+            // malformed answer.
+            const solveDeadline = Date.now() + 15000;
+            while (state.phase === "solving" && Date.now() < solveDeadline) {
+              await new Promise((resolve) => setTimeout(resolve, 100));
+            }
+            const reviewedPair = state.phase === "solved"
+              && !state.errorKey
+              && Array.isArray(state.answerParts)
+              && state.answerParts.length === 2
+              && ["and", "or"].includes(state.answerConnector);
+            if (!reviewedPair) {
+              await report("refused", {
+                reason: state.errorKey || "the exact solve did not produce an inequality pair",
+                observedPhase: state.phase,
+              });
+              return;
+            }
+            const connector = state.answerConnector;
+            try { await insert(); } finally { finishIdleCadence(); }
+            if (state.phase !== "inserted" || state.errorKey) {
+              await report("refused", {
+                reason: state.errorKey || "the existing Insert operation did not settle",
+                observedPhase: state.phase,
+              });
+              return;
+            }
+            await report("completed", {
+              windowId: asking,
+              connector,
+              placed: Boolean(state.placedText),
+            });
+          } catch (error) {
+            await report("refused", {
+              reason: String(error?.message ?? error).slice(0, 300),
+            });
+          }
+        });
+        break;
+      }
       case "ethnos:cancel":
         cancel();
         break;
