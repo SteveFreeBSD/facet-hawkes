@@ -841,7 +841,7 @@
       "notation": [
         "plain"
       ],
-      "example": "-6<2*x + 10 AND 2*x + 10<6",
+      "example": "2x+10>-6 AND 2x+10<6",
       "editor": "inequality-pair",
       "topology": "two owned expression editors plus one semantic AND/OR group",
       "mechanism": [
@@ -849,10 +849,11 @@
         "enterPlan"
       ],
       "status": "supported",
+      "note": "This is a representation-preserving rewrite: the affine expression inside the displayed absolute-value bars is carried into both inequalities without sign normalization or solving.",
       "coverage": {
         "unit": "yes",
         "harness": "no",
-        "live": "no"
+        "live": "yes"
       },
       "probe": {
         "instruction": "Rewrite the given inequality as two linear inequalities.",

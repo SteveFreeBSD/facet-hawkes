@@ -46,6 +46,10 @@ ABSOLUTE_INEQUALITY = (
     "<math><mrow><mo>|</mo><mn>9</mn><mi>x</mi><mo>+</mo><mn>1</mn>"
     "<mo>|</mo><mo>&lt;</mo><mn>8</mn></mrow></math>"
 )
+NEGATIVE_ABSOLUTE_INEQUALITY = (
+    "<math><mrow><mo>|</mo><mo>-</mo><mn>9</mn><mi>y</mi><mo>+</mo><mn>10</mn>"
+    "<mo>|</mo><mo>&#x2265;</mo><mn>34</mn></mrow></math>"
+)
 
 
 def request(
@@ -121,17 +125,47 @@ def test_absolute_value_rewrite_crosses_as_two_comparisons_and_and(monkeypatch) 
     assert response.certainty.answered_by == "exact"
     assert response.answer.inequality_pair.model_dump() == {
         "left": {
-            "left": "-8",
-            "relation": "<",
-            "right": "9*x + 1",
-            "keyboard_entry": "-8<9*x+1",
+            "left": "9x+1",
+            "relation": ">",
+            "right": "-8",
+            "keyboard_entry": "9*x+1>-8",
         },
         "connector": "and",
         "right": {
-            "left": "9*x + 1",
+            "left": "9x+1",
             "relation": "<",
             "right": "8",
             "keyboard_entry": "9*x+1<8",
+        },
+    }
+
+
+def test_absolute_value_rewrite_keeps_the_page_written_affine_expression(monkeypatch):
+    loopback = answering(monkeypatch)
+
+    response = handle(
+        request(
+            mathml=[NEGATIVE_ABSOLUTE_INEQUALITY],
+            instruction="Rewrite the given inequality as two linear inequalities.",
+            shape="inequality-pair",
+        )
+    )
+
+    assert loopback.prompts == []
+    assert response.certainty.answered_by == "exact"
+    assert response.answer.inequality_pair.model_dump() == {
+        "left": {
+            "left": "-9y+10",
+            "relation": "<=",
+            "right": "-34",
+            "keyboard_entry": "-9*y+10<=-34",
+        },
+        "connector": "or",
+        "right": {
+            "left": "-9y+10",
+            "relation": ">=",
+            "right": "34",
+            "keyboard_entry": "-9*y+10>=34",
         },
     }
 
