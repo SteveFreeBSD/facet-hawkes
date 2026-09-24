@@ -183,6 +183,17 @@ def test_a_question_answered_by_choosing_has_no_transport(policy):
     assert chosen(policy, group)["code"] == "editor-option-answer"
 
 
+def test_a_page_owned_graph_choice_has_its_own_exact_transport(policy):
+    graph_choice = {"ok": True, "kind": "option", "surface": "graph-choice"}
+
+    assert chosen(policy, graph_choice) == {
+        "ok": True,
+        "transport": "hawkes-graph-choice",
+        "world": "MAIN",
+        "writer": "graphOperation",
+    }
+
+
 def test_an_unreadable_editor_names_its_own_reason(policy):
     assert chosen(policy, None) == {"ok": False, "code": "editor-unknown"}
     assert chosen(policy, {"ok": False, "code": "editor-model-missing"}) == {

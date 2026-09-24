@@ -206,13 +206,17 @@
       }
     },
     "graph-choice": {
-      "note": "Several complete Cartesian graphs, each owned by one role=radio control and one page graph model. Facet describes and chooses by boundary and region semantics; the add-on never clicks the owner.",
+      "note": "Several complete Cartesian graphs, each owned by one role=radio control and one page graph model. Facet chooses by boundary and region semantics; an explicit Insert dispatches the template's native mousedown and requires selectedGraphIndex, ARIA, highlight class, getUserAnswer, and isEmpty read-back to agree.",
       "description": {
         "kind": "option",
         "surface": "graph-choice",
         "enabled": true,
         "allowedCharacters": "",
-        "templates": {}
+        "templates": {},
+        "choices": [
+          "Graph: x=-4 dashed; x=3 dashed; shade=between",
+          "Graph: x=-4 dashed; x=3 dashed; shade=outside"
+        ]
       }
     },
     "table-cells": {
@@ -1111,7 +1115,8 @@
       "editor": "graph-choice",
       "topology": "several complete Cartesian SVGs, each joined to one QADispatcher model and one role=radio owner",
       "mechanism": [
-        "answerFitsEditor"
+        "answerFitsEditor",
+        "graphOperation"
       ],
       "status": "supported",
       "coverage": {

@@ -102,6 +102,12 @@ export const TRANSPORTS = Object.freeze({
     keypad: false,
     what: "the page's own graph controls",
   }),
+  "hawkes-graph-choice": Object.freeze({
+    world: "MAIN",
+    writer: "graphOperation",
+    keypad: false,
+    what: "the page-owned selectable graph alternative",
+  }),
 });
 
 /**
@@ -133,6 +139,9 @@ export function chooseTransport(editor, page = {}) {
   }
   // Choosing an option is answering, not filling a field in. There is no
   // transport for it, and inventing one is how an add-on comes to answer.
+  if (editor.kind === "option" && editor.surface === "graph-choice") {
+    return settled("hawkes-graph-choice");
+  }
   if (editor.kind === "option") {
     return { ok: false, code: "editor-option-answer" };
   }

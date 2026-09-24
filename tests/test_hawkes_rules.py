@@ -137,6 +137,23 @@ def test_an_empty_answer_is_never_insertable(fits):
     assert fits("", DYNAMIC_Y)["code"] == "answer-empty"
 
 
+def test_only_a_published_graph_choice_is_insertable(fits):
+    answer = "Graph: x=-4 dashed; x=3 dashed; shade=between"
+    editor = {
+        "ok": True,
+        "kind": "option",
+        "surface": "graph-choice",
+        "enabled": True,
+        "choices": [answer, "Graph: x=-4 dashed; x=3 dashed; shade=outside"],
+    }
+
+    assert fits(answer, editor) == {"insertable": True}
+    assert fits("Graph: x=-3 dashed; x=4 dashed; shade=between", editor) == {
+        "insertable": False,
+        "code": "editor-option-answer",
+    }
+
+
 def test_structured_insertion_preserves_an_existing_error_key(insertion_error_key):
     """M1: an injection timeout must not be relabelled as a missing bridge."""
     assert insertion_error_key("errorOperationTimeout") == "errorOperationTimeout"

@@ -58,6 +58,10 @@ export function answerFitsEditor(answer, editor) {
   // Some questions are answered by choosing an option rather than typing.
   // Selecting one is answering, not filling in a field, so it stays the
   // user's action.
+  if (editor.kind === "option" && editor.surface === "graph-choice"
+    && Array.isArray(editor.choices) && editor.choices.includes(answer.trim())) {
+    return { insertable: true };
+  }
   if (editor.kind === "option") {
     return { insertable: false, code: "editor-option-answer" };
   }

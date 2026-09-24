@@ -201,42 +201,60 @@ def graph_choice_page():
     context = quickjs.Context()
     context.eval(
         r"""
+var now=0,timers=[];
+var setTimeout=(fn,ms)=>{timers.push({fn,at:now+ms});return timers.length;};
+var MouseEvent=class{constructor(type,init={}){this.type=type;Object.assign(this,init);}};
 var DOMParser=class{parseFromString(xml){return {querySelector(selector){
   const tag=selector.split('>').pop().trim();
   const match=xml.match(new RegExp('<'+tag+'>([^<]*)</'+tag+'>'));
   return match?{textContent:match[1]}:null;}};}};
-function line(id,x,stroke='dashed') { return {ID:id,Equation:[1,0,-x],group:null,
+function line(id,value,axis='x',stroke='dashed') { return {ID:id,
+  Equation:axis==='x'?[1,0,-value]:[0,1,-value],group:null,
   objectXML:()=>'<line><type>inequality</type><name>'+id+'</name><stroke>'+stroke+'</stroke>'+
-    '<definedby>xintercept</definedby><xcoordinate>'+x+'</xcoordinate></line>'}; }
-function region(shade,min='',max='') { return {group:null,objectXML:()=>'<region><shade>'+shade+
-  '</shade>'+(min?'<xminimum>'+min+'</xminimum>':'')+
-  (max?'<xmaximum>'+max+'</xmaximum>':'')+'</region>'}; }
-function option(left,right,shading,index) {
-  const owner={role:'radio',id:'owner-'+index,getBoundingClientRect:()=>({width:290,height:290}),
-    getAttribute:name=>name==='role'?'radio':'',contains:node=>node===root};
-  const root={getBoundingClientRect:()=>({width:290,height:290}),
+    '<definedby>'+axis+'intercept</definedby><'+axis+'coordinate>'+value+'</'+axis+'coordinate></line>'}; }
+function region(shade,min='',max='',axis='x') { return {group:null,objectXML:()=>'<region><shade>'+shade+
+  '</shade>'+(min?'<'+axis+'minimum>'+min+'</'+axis+'minimum>':'')+
+  (max?'<'+axis+'maximum>'+max+'</'+axis+'maximum>':'')+'</region>'}; }
+var allOwners=[];
+var answerProps={numberOfGraphs:4,selectedGraphIndex:-1};
+function option(left,right,shading,index,axis='x') {
+  const owner={role:'radio',id:'owner-'+index,checked:false,isConnected:true,
+    classes:new Set(),classList:{contains(name){return owner.classes.has(name);}},
+    getBoundingClientRect:()=>({width:290,height:290}),
+    getAttribute(name){return name==='role'?'radio':name==='aria-checked'?(this.checked?'true':'false'):'';},
+    contains:node=>node===root,dispatchEvent(event){if(event.type==='mousedown'){
+      allOwners.forEach(one=>{one.checked=false;one.classes.delete('highlightGraph');});
+      this.checked=true;this.classes.add('highlightGraph');
+      answerProps.selectedGraphIndex=allOwners.indexOf(this)+1;}return true;}};
+  const root={isConnected:true,getBoundingClientRect:()=>({width:290,height:290}),
     contains:node=>node===group,closest:selector=>selector==='[role="radio"]'?owner:null};
   const group={};
-  const one=line('BoundaryLine1',left),two=line('BoundaryLine2',right);
+  const one=line('BoundaryLine1',left,axis),two=line('BoundaryLine2',right,axis);
   const regions=shading==='between' ? [
-    region('true','BoundaryLine1','BoundaryLine2'),
-    region('false','BoundaryLine1,BoundaryLine2',''),
-    region('false','','BoundaryLine1,BoundaryLine2')
+    region('true','BoundaryLine1','BoundaryLine2',axis),
+    region('false','BoundaryLine1,BoundaryLine2','',axis),
+    region('false','','BoundaryLine1,BoundaryLine2',axis)
   ] : [
-    region('true','BoundaryLine2','BoundaryLine1'),
-    region('true','','BoundaryLine1,BoundaryLine2'),
-    region('true','BoundaryLine1,BoundaryLine2','')
+    region('true','BoundaryLine2','BoundaryLine1',axis),
+    region('true','','BoundaryLine1,BoundaryLine2',axis),
+    region('true','BoundaryLine1,BoundaryLine2','',axis)
   ];
   const system={type:'inequalities',group,children:[one,two],Regions:{children:regions}};
   const model={isGraph:true,getEnableState:()=>true,allGraphObjects:()=>({system})};
+  allOwners.push(owner);
   return {root,model};
 }
-var options=[option(-4,3,'between',1),option(-4,3,'outside',2),
-  option(-3,4,'between',3),option(-3,4,'outside',4)];
+var graphAxis='x';
+var options=[option(-4,3,'between',1,graphAxis),option(-4,3,'outside',2,graphAxis),
+  option(-3,4,'between',3,graphAxis),option(-3,4,'outside',4,graphAxis)];
 var document={querySelectorAll:selector=>selector==='svg[role="presentation"]'
   ?options.map(one=>one.root):[],getElementById:()=>null,querySelector:()=>null};
 var window={location:{origin:'https://learn.hawkeslearning.com'},quant_wp_UI:{controlsCollection:
   Object.fromEntries(options.map((one,index)=>['graph'+index,one.model]))}};
+var objActiveMode={controlsJSON:{objProps:answerProps},
+  getUserAnswer:()=>allOwners.map(one=>one.checked).join('@'),
+  isEmpty:()=>answerProps.selectedGraphIndex===-1};
+window.objActiveMode=objActiveMode;
 """
     )
     source = re.sub(r"^export ", "", GRAPH.read_text(encoding="utf-8"), flags=re.M)
@@ -272,6 +290,20 @@ def test_graph_choices_are_owned_and_described_by_model_semantics():
             "Graph: x=-3 dashed; x=4 dashed; shade=between",
             "Graph: x=-3 dashed; x=4 dashed; shade=outside",
         ],
+        "snapshot": {
+            "choices": [
+                "Graph: x=-4 dashed; x=3 dashed; shade=between",
+                "Graph: x=-4 dashed; x=3 dashed; shade=outside",
+                "Graph: x=-3 dashed; x=4 dashed; shade=between",
+                "Graph: x=-3 dashed; x=4 dashed; shade=outside",
+            ],
+            "selected": [False, False, False, False],
+            "model": {
+                "selectedIndex": -1,
+                "answer": "false@false@false@false",
+                "empty": True,
+            },
+        },
         "probe": {
             "engine": "cartesian-graph-choice",
             "choices": 4,
@@ -280,6 +312,52 @@ def test_graph_choices_are_owned_and_described_by_model_semantics():
             "ownership": "model-group-inside-selectable-svg",
         },
     }
+
+
+def test_graph_choice_insert_selects_and_settles_the_exact_owned_radio():
+    context = graph_choice_page()
+    described = run(context)
+
+    result = run(
+        context,
+        {
+            "choice": described["choices"][2],
+            "snapshot": described["snapshot"],
+        },
+    )
+
+    assert result == {
+        "ok": True,
+        "code": "graph-choice-verified",
+        "choice": "Graph: x=-3 dashed; x=4 dashed; shade=between",
+        "selected": 2,
+        "events": 1,
+    }
+    assert context.eval("JSON.stringify(allOwners.map(one=>one.checked))") == (
+        "[false,false,true,false]"
+    )
+
+
+def test_horizontal_graph_choices_use_y_geometry_and_y_region_bounds():
+    context = graph_choice_page()
+    context.eval(
+        "allOwners=[]; graphAxis='y'; options=["
+        "option(-8,-2,'between',1,graphAxis),option(-8,-2,'outside',2,graphAxis),"
+        "option(-7,-3,'between',3,graphAxis),option(-7,-3,'outside',4,graphAxis)];"
+        "window.quant_wp_UI.controlsCollection=Object.fromEntries("
+        "options.map((one,index)=>['graph'+index,one.model]));"
+        "answerProps.selectedGraphIndex=-1;"
+    )
+
+    described = run(context)
+
+    assert described["ok"] is True
+    assert described["choices"] == [
+        "Graph: y=-8 dashed; y=-2 dashed; shade=between",
+        "Graph: y=-8 dashed; y=-2 dashed; shade=outside",
+        "Graph: y=-7 dashed; y=-3 dashed; shade=between",
+        "Graph: y=-7 dashed; y=-3 dashed; shade=outside",
+    ]
 
 
 def test_region_is_chosen_by_its_page_owned_test_point_not_its_label():

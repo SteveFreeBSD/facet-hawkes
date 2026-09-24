@@ -375,7 +375,10 @@ def test_every_supported_composition_plans_against_its_own_editor(
 
     if entry.form == "choice":
         verdict = planner("answerFitsEditor", entry.example, editor)
-        assert verdict["code"] == "editor-option-answer"
+        if editor.get("surface") == "graph-choice":
+            assert verdict == {"insertable": True}
+        else:
+            assert verdict["code"] == "editor-option-answer"
         return
     if entry.form == "axis-intercepts":
         editor = editor["coordinateEditor"]

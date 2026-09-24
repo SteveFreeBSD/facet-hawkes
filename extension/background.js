@@ -1044,20 +1044,21 @@ function readableQuestion(question) {
  * simply a moment from existing.
  */
 async function describeEditor(tabId, frameId, attempts = 5, isGraph = false) {
-  if (isGraph) {
-    const graph = await runInjection({ target: { tabId, frameIds: [frameId] }, world: "MAIN", func: graphOperation });
-    return graph?.[0]?.result ?? { ok: false, code: "graph-missing" };
-  }
+  let lastGraph = null;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     if (attempt > 0) {
       await new Promise((resolve) => setTimeout(resolve, 250));
     }
     try {
-      const [entry] = await runOperation({ tabId, frameIds: [frameId] }, DESCRIBE_SCRIPT, {
-        world: "MAIN",
-        alone: true,
-      });
+      const [entry] = isGraph
+        ? await runInjection({ target: { tabId, frameIds: [frameId] },
+          world: "MAIN", func: graphOperation })
+        : await runOperation({ tabId, frameIds: [frameId] }, DESCRIBE_SCRIPT, {
+          world: "MAIN",
+          alone: true,
+        });
       const described = entry?.result;
+      if (isGraph) lastGraph = described ?? { ok: false, code: "graph-missing" };
       if (described?.ok) {
         return described;
       }
@@ -1070,7 +1071,8 @@ async function describeEditor(tabId, frameId, attempts = 5, isGraph = false) {
   // not be read left nothing in the log to confirm or refute it. Triaging that
   // meant asking the owner to change a setting and reproduce.
   log.warn("editor-unreadable", { attempts });
-  return { ok: false, code: "editor-model-missing" };
+  return isGraph && lastGraph
+    ? lastGraph : { ok: false, code: "editor-model-missing" };
 }
 
 /**
@@ -3312,6 +3314,7 @@ function pinInsertionTarget() {
     graphPlan: state.graphPlan,
     graphCoefficients: state.graphCoefficients,
     graphSnapshot: state.editor?.snapshot,
+    editorSurface: state.editor?.surface ?? "",
     solveRun: state.solveRun,
     reviewed: state.answer,
     machineEntry: state.entryText || state.answer,
@@ -3383,6 +3386,7 @@ const OWNERSHIP_COMPONENTS = Object.freeze({
     JSON.stringify(state.axisInterceptRows ?? []) === JSON.stringify(target.axisInterceptRows),
   signature: (target) => state.signature === target.signature,
   graphPlan: (target) => state.graphPlan === target.graphPlan,
+  editorSurface: (target) => (state.editor?.surface ?? "") === target.editorSurface,
   answer: (target) => state.answer === target.reviewed,
 });
 
@@ -3416,6 +3420,7 @@ function ownershipSnapshot(target) {
     signature: target.signature,
     graphPlan: target.graphPlan ?? "",
     graphSnapshot: target.graphSnapshot ? Object.keys(target.graphSnapshot).length : 0,
+    editorSurface: target.editorSurface,
     // The run that produced what is about to be written. An insertion is its
     // own gesture and its own run; this is the join back to the solve.
     solvedIn: target.solveRun ?? "",
@@ -3495,7 +3500,7 @@ async function insert() {
   // panel's copy was taken when the field was found -- which may have been a
   // different question. Checking an answer against a stale character set is
   // how a perfectly legal `y` came to be reported as rejected.
-  const editor = target.graphPlan
+  const editor = target.graphPlan || target.editorSurface === "graph-choice"
     ? await describeEditor(target.tabId, target.frameId, 5, true)
     : await describeEditor(target.tabId, target.frameId);
   if (!editor?.ok) {
@@ -3568,6 +3573,36 @@ async function insert() {
     blanks: target.tableTargets.length,
     parts: target.answerParts.length,
   });
+
+  if (target.editorSurface === "graph-choice") {
+    if (editor.kind !== "option" || editor.surface !== "graph-choice"
+      || JSON.stringify(editor.snapshot) !== JSON.stringify(target.graphSnapshot)
+      || !editor.choices?.includes(reviewed)
+      || !transportMatches(routed, "hawkes-graph-choice")) {
+      fail("errorQuestionChanged", { detail: "graph-choice-target-stale" });
+      return;
+    }
+    const [entry] = await runInjection({
+      target: { tabId: target.tabId, frameIds: [target.frameId] },
+      world: routed.world,
+      func: graphOperation,
+      args: [{ choice: reviewed, snapshot: target.graphSnapshot }],
+    });
+    if (!ownsTarget(target)) { abandonInsertion(target, "graph-choice-actuation"); return; }
+    if (!entry?.result?.ok || entry.result.code !== "graph-choice-verified"
+      || entry.result.choice !== reviewed) {
+      const code = entry?.result?.code ?? "graph-choice-not-settled";
+      log.warn("graph-choice-actuation-refused", { code, found: entry?.result?.found ?? null });
+      fail("errorSolveRefused", { detail: code });
+      return;
+    }
+    log.info("inserted", {
+      via: "graph-choice", transport: routed.transport,
+      code: entry.result.code, events: entry.result.events,
+    });
+    await finishInsertion("selected and verified the matching graph choice", target);
+    return;
+  }
 
   if (target.graphPlan) {
     if (editor.kind !== "graph" || JSON.stringify(editor.snapshot) !== JSON.stringify(target.graphSnapshot)) {

@@ -12,4 +12,4 @@
 # graph-choice matching, all with no model call.
 # The tip of that repository may be ahead of it, and that is fine -- the pin is
 # a floor, and the test checks the sibling is not below it.
-4a0dc1493d5d6b3d29d6c5ad98c3843101ef9d17
+4bd53d9b29a38a9efab9946624745b734328570f

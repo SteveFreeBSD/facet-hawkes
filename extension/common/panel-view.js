@@ -141,6 +141,11 @@ function refusal(verdict) {
  * keypad templates. Only when neither works is this the user's job.
  */
 function reviewOffer(state) {
+  if (state.editor?.kind === "option" && state.editor?.surface === "graph-choice"
+    && Array.isArray(state.editor.choices) && state.editor.choices.includes(state.answer)
+    && !state.errorKey) {
+    return { insertable: true, status: { key: "statusSolved", args: [], kind: "ready" } };
+  }
   if (state.graphPlan && state.editor?.kind === "graph" && !state.errorKey) {
     return { insertable: true, status: { key: "statusSolved", args: [], kind: "ready" } };
   }

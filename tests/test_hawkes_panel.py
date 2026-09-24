@@ -328,6 +328,28 @@ def test_an_option_question_reads_as_your_turn_rather_than_a_failure(view):
     assert described["copy"] == {"enabled": True, "text": "3y"}
 
 
+def test_an_exact_graph_choice_enables_explicit_insert(view):
+    answer = "Graph: x=-4 dashed; x=3 dashed; shade=between"
+    described = view(
+        state(
+            phase="solved",
+            answer=answer,
+            displayText=answer,
+            editor={
+                **OPTION,
+                "surface": "graph-choice",
+                "choices": [
+                    answer,
+                    "Graph: x=-4 dashed; x=3 dashed; shade=outside",
+                ],
+            },
+        )
+    )
+
+    assert described["insert"] == {"enabled": True, "primary": True}
+    assert described["status"]["key"] == "statusSolved"
+
+
 def test_linear_solution_classification_is_shown_without_selecting_the_option(view):
     described = view(
         state(

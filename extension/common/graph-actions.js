@@ -620,24 +620,48 @@ export function graphOperation(offered = null) {
           const name = String(line.ID
             || xml?.querySelector("line > name")?.textContent || "").trim();
           const stroke = String(xml?.querySelector("line > stroke")?.textContent || "").trim();
-          // QALine's mutable Equation coefficients are redrawn while the
-          // choice graph settles. Its serialized answer model states the
-          // invariant geometry directly: an inequality line defined by an
-          // x-intercept and its x-coordinate.
-          const x = Number(xml?.querySelector("xcoordinate")?.textContent);
-          const type = String(
-            xml?.querySelector("line > type")?.textContent || ""
-          ).trim();
-          return { name, x, stroke, vertical: Number.isFinite(x)
-            && type === "inequality" };
+          // Hawkes publishes these alternatives in both coordinate axes. A
+          // vertical boundary is `a*x+c=0`; a horizontal one is `b*y+c=0`.
+          // Some templates additionally serialize the coordinate explicitly,
+          // but others publish only Equation, so the two sources corroborate
+          // one another when both exist and Equation remains authoritative.
+          const coefficients = line.Equation.map(Number);
+          const equationAxis = Math.abs(coefficients[0]) > 1e-12
+              && Math.abs(coefficients[1]) < 1e-12 ? "x"
+            : Math.abs(coefficients[0]) < 1e-12
+              && Math.abs(coefficients[1]) > 1e-12 ? "y" : "";
+          const equationValue = equationAxis === "x" ? -coefficients[2] / coefficients[0]
+            : equationAxis === "y" ? -coefficients[2] / coefficients[1] : NaN;
+          const statedText = equationAxis
+            ? xml?.querySelector(`${equationAxis}coordinate`)?.textContent : undefined;
+          const stated = statedText === undefined ? NaN : Number(statedText);
+          const intercepts = (Array.isArray(line.children) ? line.children : [])
+            .map(xmlOf).filter(Boolean).map((point) => ({
+              type: String(point.querySelector("point > type")?.textContent || "").trim(),
+              x: Number(point.querySelector("point > x")?.textContent),
+              y: Number(point.querySelector("point > y")?.textContent),
+            })).filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y));
+          const matchingIntercepts = intercepts.filter((point) => equationAxis === "x"
+            ? point.type === "xintercept" && Math.abs(point.y) < 1e-12
+            : equationAxis === "y"
+              ? point.type === "yintercept" && Math.abs(point.x) < 1e-12 : false);
+          const interceptValue = matchingIntercepts.length === 1
+            ? matchingIntercepts[0][equationAxis] : NaN;
+          const corroborates = (!Number.isFinite(stated) || close(stated, equationValue))
+            && (!Number.isFinite(interceptValue) || close(interceptValue, equationValue));
+          return { name, axis: equationAxis, value: equationValue, stroke,
+            corroborates };
         });
-        if (boundaries.some((line) => !line.name || !line.vertical
+        if (boundaries.some((line) => !line.name || !line.axis
+          || !Number.isFinite(line.value) || !line.corroborates
           || !["solid", "dashed"].includes(line.stroke))
           || new Set(boundaries.map((line) => line.name)).size !== 2
-          || close(boundaries[0].x, boundaries[1].x)) {
+          || new Set(boundaries.map((line) => line.axis)).size !== 1
+          || close(boundaries[0].value, boundaries[1].value)) {
           return refuse("graph-choice-boundaries-unreadable");
         }
-        const byName = new Map(boundaries.map((line) => [line.name, line.x]));
+        const axis = boundaries[0].axis;
+        const byName = new Map(boundaries.map((line) => [line.name, line.value]));
         const intervals = [];
         for (const region of system.Regions.children) {
           const xml = xmlOf(region);
@@ -645,8 +669,8 @@ export function graphOperation(offered = null) {
           if (xml.querySelector("region > shade")?.textContent !== "true") continue;
           const references = (tag) => String(xml.querySelector(tag)?.textContent || "")
             .split(",").map((one) => one.trim()).filter(Boolean);
-          const minimum = references("xminimum");
-          const maximum = references("xmaximum");
+          const minimum = references(`${axis}minimum`);
+          const maximum = references(`${axis}maximum`);
           if ([...minimum, ...maximum].some((name) => !byName.has(name))) {
             return refuse("graph-choice-region-boundary-missing");
           }
@@ -658,25 +682,89 @@ export function graphOperation(offered = null) {
           if (left > right && !close(left, right)) continue;
           intervals.push({ left, right });
         }
-        const ordered = boundaries.slice().sort((a, b) => a.x - b.x);
+        const ordered = boundaries.slice().sort((a, b) => a.value - b.value);
         const between = intervals.length === 1
           && Number.isFinite(intervals[0].left) && Number.isFinite(intervals[0].right)
-          && close(intervals[0].left, ordered[0].x)
-          && close(intervals[0].right, ordered[1].x);
+          && close(intervals[0].left, ordered[0].value)
+          && close(intervals[0].right, ordered[1].value);
         const outside = intervals.length === 2
-          && intervals.some((part) => part.left === -Infinity && close(part.right, ordered[0].x))
-          && intervals.some((part) => close(part.left, ordered[1].x) && part.right === Infinity);
+          && intervals.some((part) => part.left === -Infinity && close(part.right, ordered[0].value))
+          && intervals.some((part) => close(part.left, ordered[1].value) && part.right === Infinity);
         if (between === outside) return refuse("graph-choice-shading-unreadable");
-        choices.push(`Graph: x=${writtenNumber(ordered[0].x)} ${ordered[0].stroke}; `
-          + `x=${writtenNumber(ordered[1].x)} ${ordered[1].stroke}; `
+        choices.push(`Graph: ${axis}=${writtenNumber(ordered[0].value)} ${ordered[0].stroke}; `
+          + `${axis}=${writtenNumber(ordered[1].value)} ${ordered[1].stroke}; `
           + `shade=${between ? "between" : "outside"}`);
       }
       if (usedModels.size !== roots.length || usedModels.size !== graphModels.length
         || new Set(owners).size !== roots.length || new Set(choices).size !== roots.length) {
         return refuse("graph-choice-contract-ambiguous");
       }
+      // Graphs_For_Multiple_Choice owns the alternatives as one active-mode
+      // radio answer. Its mousedown handler updates all three representations:
+      // objProps.selectedGraphIndex, each owner's ARIA/class state, and the
+      // mode's getUserAnswer()/isEmpty() result. Require that whole contract;
+      // a CSS highlight by itself is not proof that Hawkes accepted an answer.
+      const activeMode = () => window.objActiveMode
+        ?? (typeof objActiveMode !== "undefined" ? objActiveMode : undefined);
+      const mode = activeMode();
+      const props = mode?.controlsJSON?.objProps;
+      const templated = typeof mode?.getUserAnswer === "function"
+        && typeof mode?.isEmpty === "function"
+        && Number(props?.numberOfGraphs) === roots.length;
+      if (!templated) return refuse("graph-choice-answer-model-missing");
+      const selected = () => owners.map((owner) => owner.getAttribute?.("aria-checked") === "true");
+      const modelState = () => ({
+        selectedIndex: Number(props.selectedGraphIndex),
+        answer: String(mode.getUserAnswer()),
+        empty: mode.isEmpty() === true,
+      });
+      const snapshot = { choices: [...choices], selected: selected(), model: modelState() };
+      if (offered !== null) {
+        if (!offered || typeof offered !== "object"
+          || typeof offered.choice !== "string"
+          || JSON.stringify(offered.snapshot) !== JSON.stringify(snapshot)) {
+          return refuse("graph-choice-target-stale");
+        }
+        const matching = choices.map((choice, index) => ({ choice, index }))
+          .filter((entry) => entry.choice === offered.choice);
+        if (matching.length !== 1) return refuse("graph-choice-answer-unmatched");
+        const wanted = matching[0].index;
+        const pinned = () => roots.every((root, index) => root.isConnected !== false
+          && owners[index].isConnected !== false && owners[index].contains(root)
+          && visible(root) && visible(owners[index]));
+        if (!pinned()) return refuse("graph-choice-target-stale");
+        if (!selected()[wanted]) {
+          owners[wanted].dispatchEvent(new MouseEvent("mousedown", {
+            bubbles: true, cancelable: true, view: window, button: 0, buttons: 1,
+          }));
+        }
+        return new Promise((resolve) => {
+          let polls = 0;
+          const settle = () => {
+            polls += 1;
+            const readBack = selected();
+            const state = modelState();
+            if (pinned() && readBack[wanted]
+              && readBack.filter(Boolean).length === 1
+              && owners[wanted].classList?.contains("highlightGraph")
+              && owners.every((owner, index) => index === wanted
+                || !owner.classList?.contains("highlightGraph"))
+              && state.selectedIndex === wanted + 1
+              && state.empty === false) {
+              if (polls < 8) { setTimeout(settle, 100); return; }
+              resolve({ ok: true, code: "graph-choice-verified",
+                choice: offered.choice, selected: wanted, events: snapshot.selected[wanted] ? 0 : 1 });
+              return;
+            }
+            if (polls < 20) { setTimeout(settle, 100); return; }
+            resolve(refuse("graph-choice-not-settled"));
+          };
+          setTimeout(settle, 100);
+        });
+      }
       return { ok: true, kind: "option", surface: "graph-choice",
         code: "graph-choice-described", enabled: true, choices,
+        snapshot,
         probe: { engine: "cartesian-graph-choice", choices: choices.length,
           boundaries: 2, regions: 3, ownership: "model-group-inside-selectable-svg" } };
     }

@@ -960,6 +960,9 @@ def test_the_editor_description_retries_while_the_editor_is_rebuilt() -> None:
     assert "for (let attempt" in body, (
         "describeEditor retries rather than failing at once"
     )
+    assert body.index("for (let attempt") < body.index("runInjection"), (
+        "graph descriptions use the same retry budget instead of returning after one read"
+    )
     assert "setTimeout" in body, "describeEditor waits between attempts"
     assert "described?.ok" in body, "only a successful description ends the retry loop"
 
@@ -1952,7 +1955,7 @@ def test_a_completed_insertion_records_how_long_it_took():
     """
     background = (EXTENSION_DIR / "background.js").read_text()
 
-    assert background.count('log.info("inserted"') == 7
+    assert background.count('log.info("inserted"') == 8
     # `path:` is reserved -- a neighbouring test forbids it anywhere in this
     # file, so that a path can never be smuggled to the native host.
     assert 'via: "structured"' in background and 'via: "plain"' in background
