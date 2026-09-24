@@ -181,7 +181,8 @@ def test_equation_only_math_stays_only_in_expressions():
     assert result["expressions"] == ["<math><mi>x</mi><mo>=</mo><mn>4</mn></math>"]
 
 
-def test_parallel_line_keeps_inline_point_beside_separate_source_equation():
+@pytest.mark.parametrize("relationship", ["parallel", "perpendicular"])
+def test_related_line_keeps_inline_point_beside_separate_source_equation(relationship):
     """Live Lesson 2.5 shape: both canonical owners contribute question data."""
     result = read_question(
         r"""
@@ -203,10 +204,10 @@ def test_parallel_line_keeps_inline_point_beside_separate_source_equation():
         </p></div>
         <div id="partInformation">Step 1 of 2</div>
         <input class="qbaseCSS" id="txtAns1">
-        """
+        """.replace("<strong>parallel</strong>", f"<strong>{relationship}</strong>")
     )
 
-    assert "parallel to the given line" in result["promptText"]
+    assert f"{relationship} to the given line" in result["promptText"]
     assert len(result["expressions"]) == 2
     assert "<mn>4</mn><mi>x</mi>" in result["expressions"][0]
     assert "<mo>−</mo><mn>8</mn>" in result["expressions"][1]

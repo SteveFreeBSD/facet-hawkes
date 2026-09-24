@@ -6,6 +6,30 @@ name the add-on as it was called at the time.
 
 ## Unreleased
 
+- **Perpendicular-through-point construction is exact and precedes output-form
+  rewriting.** Parallel and perpendicular are sibling operations in Facet's
+  existing line-construction module. One shared affine parser simplifies the
+  source equation, then the constructor uses the original slope or its exact
+  negative reciprocal and computes the new intercept from the stated point.
+  Vertical sources produce horizontal perpendiculars; horizontal sources
+  produce vertical perpendiculars only when the requested form permits them.
+  Ambiguous points/equations, non-rational or nonlinear sources, and unsupported
+  output forms are terminal refusals with no model fallback. The new line is
+  a typed `relation` using the existing native equation/Fraction insertion path.
+
+  Verification: 1,029 runtime tests and 2,168 companion tests passed, including
+  varied signs, rational slopes and points, axis-aligned cases, integer and
+  fractional intercepts, routing precedence, and zero-model refusals. The
+  installed helper and normal-profile solves report `Facet Exact`, method
+  `Exact perpendicular line through a point`, and `model_calls=0`.
+  Live solve `rmug6ruvo318c` was followed by native-keypad insertion
+  `rmug6s4u9f998`, completing nine character writes with the existing writer's
+  per-character read-back. An earlier development attempt overlapped an
+  already-running insertion of the old saved answer and is not counted as
+  proof. The page changed before an additional final snapshot; Hawkes grading
+  acceptance remains unconfirmed. No grading or navigation action was performed
+  by the agent. This is not marked Fixed live.
+
 - **Linear-equation coordinate steps use exact substitution and bounded point
   choices.** The shared page-owned Cartesian reader identifies the requested
   axis, any given other coordinate, the original equation, visible graph

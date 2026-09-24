@@ -183,8 +183,10 @@ requires, and is the only place it is decided. CI reads it;
 `tests/test_runtime_pin.py` holds every document that quotes it to the same
 value and fails if the sibling checkout is behind.
 
-The pinned commit is **published** as of 2026-09-24. See *Where the code is
-published* below for which branch, and why the default one is not it.
+The perpendicular-construction runtime pin is committed and installed locally;
+its source publication is pending. The preceding bounded-coordinate runtime
+`fab053f` was published on 2026-09-24. See *Where the code is published* below
+for which branch, and why the default one is not it.
 
 → [Runtime, models and deployment](RUNTIME_AND_DEPLOYMENT.md#the-runtime-pin)
 

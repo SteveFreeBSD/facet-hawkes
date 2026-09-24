@@ -378,6 +378,16 @@ form" is answered with an equation, and it crosses as one:
 refuses either half without the other, or sides that do not write out as
 `entry`. Facet holds the same invariants on its own side.
 
+Parallel and perpendicular through-point constructions share Facet's affine
+equation reader and point parser. They are construction operations, so they
+outrank generic slope-intercept rewriting language. The source slope, new slope,
+point and computed intercept remain exact rationals in the computation evidence;
+a vertical source yields a horizontal perpendicular and a horizontal source
+yields a vertical perpendicular. A vertical result cannot satisfy a requested
+slope-intercept form, so that mismatch is a terminal exact refusal, as are
+ambiguous points or equations. No new browser route or answer form is needed:
+the complete new `relation` uses the existing native equation/Fraction writer.
+
 It exists because a Hawkes page takes an equation in one of two ways, and the
 difference is a page fact. Lesson 2.4 draws a **bare** box and expects the whole
 equation typed into it; lesson 3.2 prints `f(x) =` beside its box and expects

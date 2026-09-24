@@ -8,8 +8,8 @@
 #
 # Raise it in the same change that starts depending on something newer. This
 # commit also owns labeled Cartesian points and exact slope from a line's two
-# structurally identified points, and bounded affine-coordinate substitution
-# and free choices, all with no model call.
+# structurally identified points, bounded affine-coordinate steps, and shared
+# exact parallel/perpendicular through-point construction, with no model call.
 # The tip of that repository may be ahead of it, and that is fine -- the pin is
 # a floor, and the test checks the sibling is not below it.
-fab053febe6805a8898e1b2d7c1f27792bcb3433
+7343ad2c20979014059d89b1a03feb6ba5ee5781
