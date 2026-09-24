@@ -1,0 +1,43 @@
+<!doctype html>
+<meta charset="utf-8">
+<div id="partInformation">
+  <div id="partDescription">
+    Find the slope of the line in the following graph using the points on the graph.
+    Write the exact answer. Do not round. If the slope does not exist, write DNE
+    for your answer.
+  </div>
+</div>
+<div>Answer: <input class="qbaseCSS" id="AqbQdyTxt" maxlength="12"></div>
+<script>
+const closeScript = "</scr" + "ipt>";
+const observable = (value) => Object.assign(() => value, { observable: true });
+window.ko = { isObservable: (value) => value?.observable === true };
+window.questionPartViewModel = {
+  partDescription: observable(`<p>
+    Find the slope of the line in the following graph using the points on the graph.
+    Write the exact answer. Do not round. If the slope does not exist, write DNE
+    for your answer.
+    <graph><isqagraph>true</isqagraph>
+      <grid><type>cartesian</type><cartesian>
+        <xmin>-12</xmin><xmax>12</xmax><ymin>-8</ymin><ymax>8</ymax>
+        <xinterval>1</xinterval><yinterval>1</yinterval>
+      </cartesian></grid>
+      <graphobjects>
+        <line id="sample-line"><type>line</type><visible>true</visible>
+          <definedby>twopoint</definedby>
+          <point id="sample-line-point-1"><type>point</type>
+            <coordinatestype>cartesian</coordinatestype><x>-8</x><y>6</y>
+            <visible>true</visible><showlabel>true</showlabel>
+            <label><script type="text"><![CDATA[M]]>${closeScript}</label>
+          </point>
+          <point id="sample-line-point-2"><type>point</type>
+            <coordinatestype>cartesian</coordinatestype><x>4</x><y>-3</y>
+            <visible>true</visible><showlabel>true</showlabel>
+            <label><script type="text"><![CDATA[N]]>${closeScript}</label>
+          </point>
+        </line>
+      </graphobjects>
+    </graph>
+  </p>`),
+};
+</script>

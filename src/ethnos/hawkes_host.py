@@ -22,6 +22,7 @@ import struct
 import sys
 import tempfile
 import time
+from fractions import Fraction
 from pathlib import Path
 from typing import TYPE_CHECKING, BinaryIO
 
@@ -111,6 +112,7 @@ def solve(request: SolveRequest, report=None) -> SolveResponse:
         or problem.mathml
         or problem.graph_points
         or problem.labeled_point
+        or problem.line_points
     ):
         return error_response(
             request.request_id, "No question content was supplied.", "unsupported"
@@ -123,6 +125,9 @@ def solve(request: SolveRequest, report=None) -> SolveResponse:
     # may still be right, and the panel reviews every one before insertion.
     prompt_seen = bool(problem.prompt_text.strip())
     instruction = problem.prompt_text.strip() or "Solve the question in the image."
+
+    if problem.line_points:
+        return _solve_point_slope_with_facet(request, instruction, announce)
 
     if problem.labeled_point is not None:
         return _solve_labeled_point_with_facet(request, instruction, announce)
@@ -590,6 +595,119 @@ def _solve_labeled_point_with_facet(request, instruction, announce):
             router=solution.router,
             router_detail=solution.router_detail,
             reading=point.reading,
+            method=solution.method,
+            facet_invoked=True,
+            requested_backend=solution.requested_backend,
+            actual_backend=solution.actual_backend,
+            fallback=solution.fallback,
+            model=solution.model,
+            runtime=solution.runtime,
+            device=solution.device,
+            elapsed_ms=solution.elapsed_ms,
+        ),
+    )
+
+
+_DNE_SLOPE_CONVENTION = re.compile(
+    r"\b(?:if|when)\b[^.?!]{0,120}"
+    r"(?:slope[^.?!]{0,50}(?:does\s+not\s+exist|is\s+undefined)|vertical\s+line)"
+    r"[^.?!]{0,80}\bDNE\b",
+    re.IGNORECASE,
+)
+
+
+def _solve_point_slope_with_facet(request, instruction, announce):
+    """Compute and independently verify slope from one line's owned points."""
+    from .facet_client import FacetError, safe_request_id, solve_math
+
+    problem = request.problem
+    points = problem.line_points
+    try:
+        if len(points) != 2:
+            raise ValueError(
+                f"a graph slope requires exactly two labeled points; got {len(points)}"
+            )
+        if points[0].label == points[1].label:
+            raise ValueError("the line's two point labels are not unique")
+        if points[0].reading != points[1].reading:
+            raise ValueError("the line's points came from inconsistent graph readings")
+        parts_required = required_answer_parts(problem.answer_shape, instruction)
+        if parts_required != 1:
+            raise ValueError("a graph slope requires exactly one scalar answer field")
+
+        coordinates = [(Fraction(point.x), Fraction(point.y)) for point in points]
+        (x1, y1), (x2, y2) = coordinates
+        if x1 == x2 and y1 == y2:
+            raise ValueError(
+                "the line's two defining points have identical coordinates"
+            )
+        if x1 == x2:
+            if _DNE_SLOPE_CONVENTION.search(instruction) is None:
+                raise ValueError(
+                    "the line is vertical but the prompt does not specify DNE"
+                )
+            expected = "DNE"
+        else:
+            expected = str((y2 - y1) / (x2 - x1))
+
+        announce("reading", f"two page-owned Cartesian points from {points[0].reading}")
+        announce("solving", "Facet exact slope from two Cartesian points")
+        solution = solve_math(
+            instruction=instruction_with_answer_representation(
+                instruction, problem.answer_shape
+            ),
+            request_id=safe_request_id(request.request_id),
+            points=[{"x": point.x, "y": point.y} for point in points],
+            answer_parts=1,
+            answer_representation=answer_representation_payload(problem.answer_shape),
+            label=problem.question_label,
+            accelerator_required=False,
+            allow_fallback=False,
+        )
+        if solution.route != "exact":
+            raise ValueError("page-owned line geometry must be answered exactly")
+        if solution.answer.form != "scalar":
+            raise ValueError("Facet did not return a typed scalar slope")
+        if solution.answer.parts:
+            raise ValueError("Facet returned multipart values for a scalar slope")
+        if solution.answer.display != expected or solution.answer.entry != expected:
+            raise ValueError("Facet's slope disagrees with rise over run")
+        if _model_calls(solution) != 0:
+            raise ValueError(
+                "Facet did not prove that the exact route made zero model calls"
+            )
+        announce("checking", "slope agrees exactly with rise over run")
+    except (FacetError, ValueError, TypeError, ZeroDivisionError) as error:
+        return error_response(
+            request.request_id, f"Graph slope refused: {error}", "unsupported"
+        )
+
+    return SolveResponse(
+        request_id=request.request_id,
+        status="ready",
+        problem_text=instruction,
+        answer=answer_payload(
+            solution.answer.display,
+            solution.answer.entry,
+            solution.answer.parts,
+            solution.answer.entry_mode,
+            form=solution.answer.form,
+        ),
+        certainty=Certainty(
+            prompt_seen=True,
+            answer_parts=1,
+            model_calls=0,
+            source=solution.source,
+            transcription="exact",
+            insertable=True,
+            issues=[
+                "Both labeled points were read as children of one page-owned line",
+                "Facet's reduced slope independently matched exact rise over run",
+            ],
+            answered_by="exact",
+            router=solution.router,
+            router_detail=solution.router_detail,
+            reading=points[0].reading,
             method=solution.method,
             facet_invoked=True,
             requested_backend=solution.requested_backend,

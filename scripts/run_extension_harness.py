@@ -523,6 +523,10 @@ def run(selected: str | None, headless: bool = True) -> int:
         PROJECT_ROOT / "tests/fixtures/labeled-point-model.html",
         Path(web, "labeled-point-model.html"),
     )
+    shutil.copyfile(
+        PROJECT_ROOT / "tests/fixtures/line-slope-model.html",
+        Path(web, "line-slope-model.html"),
+    )
     for scatter in (
         "scatter.html",
         "scatter-unreadable.html",
@@ -601,6 +605,7 @@ def run(selected: str | None, headless: bool = True) -> int:
             failures += judge_on_axis_scatter(marionette, site)
             failures += judge_translated_scatter(marionette, site)
             failures += judge_labeled_point(marionette, site)
+            failures += judge_line_slope_model(marionette, site)
             failures += judge_table(marionette, site)
             failures += judge_table_completion(marionette, site)
     except ActionButtonMissing as error:
@@ -737,6 +742,94 @@ def judge_labeled_point(marionette, site):
         "ok   labeled-point: label, bounds, origin, grid spacing and point "
         "geometry read exactly from SVG or the page model; duplicate and off-grid "
         "evidence refused"
+    )
+    return 0
+
+
+def judge_line_slope_model(marionette, site):
+    """One model-owned line supplies exactly two exact labeled points."""
+    marionette.set_context("content")
+    marionette.navigate(f"{site}/line-slope-model.html")
+    question_source = (
+        PROJECT_ROOT / "extension/content/hawkes-question.js"
+    ).read_text()
+    question_probe = "return " + question_source[question_source.index("(() => {") :]
+    dom_only = marionette.execute(question_probe)["value"]
+    problems = []
+    evidence = dom_only.get("evidence") or {}
+    if evidence.get("graphQuestion") != "line-slope":
+        problems.append("the slope family was not recognized")
+    if evidence.get("graphDecision") != "unavailable":
+        problems.append("the ownership-losing DOM path was not declined")
+
+    model_source = (
+        PROJECT_ROOT / "extension/content/hawkes-graph-model.js"
+    ).read_text()
+    model_probe = "return " + model_source[model_source.index("(() => {") :]
+    modeled = marionette.execute(model_probe)["value"]
+    expected = [
+        {"label": "M", "x": "-8", "y": "6", "reading": "page-model"},
+        {"label": "N", "x": "4", "y": "-3", "reading": "page-model"},
+    ]
+    if modeled.get("linePoints") != expected:
+        problems.append(f"line points read as {modeled}")
+    if modeled.get("graphDecision") != "accepted":
+        problems.append("exact line geometry was not accepted")
+
+    def replace_model(old, new):
+        marionette.execute(
+            "const changed = questionPartViewModel.partDescription()"
+            f".replace({old!r}, {new!r});"
+            "const replacement = () => changed; replacement.observable = true;"
+            "questionPartViewModel.partDescription = replacement"
+        )
+
+    replace_model("<x>4</x>", "<x>4.5</x>")
+    off_grid = marionette.execute(model_probe)["value"]
+    if off_grid.get("graphDecision") != "ambiguous":
+        problems.append("an off-grid defining point was accepted")
+
+    marionette.navigate(f"{site}/line-slope-model.html")
+    replace_model("<![CDATA[N]]>", "<![CDATA[M]]>")
+    duplicate = marionette.execute(model_probe)["value"]
+    if duplicate.get("graphDecision") != "ambiguous":
+        problems.append("duplicate point labels were accepted")
+
+    marionette.navigate(f"{site}/line-slope-model.html")
+    marionette.execute(
+        "const changed = questionPartViewModel.partDescription().replace("
+        "/<point id=\"sample-line-point-2\">[\\s\\S]*?<\\/point>/, '');"
+        "const replacement = () => changed; replacement.observable = true;"
+        "questionPartViewModel.partDescription = replacement"
+    )
+    missing = marionette.execute(model_probe)["value"]
+    if missing.get("graphDecision") != "ambiguous":
+        problems.append("a line with fewer than two owned points was accepted")
+
+    marionette.navigate(f"{site}/line-slope-model.html")
+    replace_model(
+        "</line>",
+        "<point id='third'><type>point</type>"
+        "<coordinatestype>cartesian</coordinatestype><x>0</x><y>0</y>"
+        "<visible>true</visible><showlabel>true</showlabel><label>P</label>"
+        "</point></line>",
+    )
+    extra = marionette.execute(model_probe)["value"]
+    if extra.get("graphDecision") != "ambiguous":
+        problems.append("a line with more than two owned points was accepted")
+
+    marionette.navigate(f"{site}/line-slope-model.html")
+    replace_model("<graph>", "<notgraph>")
+    absent = marionette.execute(model_probe)["value"]
+    if absent.get("graphDecision") != "unavailable":
+        problems.append("missing graph authority was not refused as unavailable")
+
+    if problems:
+        say(f"FAIL line-slope-model: {'; '.join(problems)}")
+        return 1
+    say(
+        "ok   line-slope-model: two labeled child points read exactly; "
+        "off-grid, duplicate-label, wrong-count and missing-authority evidence refused"
     )
     return 0
 

@@ -376,6 +376,10 @@ class ProblemPayload(BaseModel):
     #: series for regression; conflating the two routes made one point look
     #: like an incomplete regression.
     labeled_point: LabeledPoint | None = None
+    #: The two labeled points structurally owned by one page-defined line.
+    #: Separate from regression data and from a single requested point so the
+    #: host never has to infer a graph question's meaning from point count.
+    line_points: list[LabeledPoint] = Field(default_factory=list, max_length=2)
     #: The question's own data table, when it stated its numbers in one. Like
     #: `mathml`, this is the page saying what the question is rather than the
     #: host reading it back off a picture.

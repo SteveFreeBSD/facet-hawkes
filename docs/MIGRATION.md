@@ -18,7 +18,7 @@ Requirements: Python 3.12 or newer (matching `requires-python` in
 `pyproject.toml`), `uv`, Git, SQLite with FTS5, and Ollama.
 
 Facet Hawkes Assistant 0.46.0 requires Facet runtime commit
-`9f56fd6283c2a42a1e8a6178ba784c66fa53a6f7`. Keep both repositories under one
+`00a762cadaa4d03756d7513557ad2ee57cf83591`. Keep both repositories under one
 parent directory because `pyproject.toml` deliberately resolves the runtime at
 `../facet-runtime`.
 
@@ -29,7 +29,7 @@ git clone https://github.com/SteveFreeBSD/facet-hawkes.git
 git clone https://github.com/SteveFreeBSD/facet-runtime.git
 # `main` is a frozen release baseline in both. The current system is here:
 git -C facet-hawkes checkout feature/live-hawkes-next-slice
-git -C facet-runtime checkout --detach 9f56fd6283c2a42a1e8a6178ba784c66fa53a6f7
+git -C facet-runtime checkout --detach 00a762cadaa4d03756d7513557ad2ee57cf83591
 cd facet-hawkes
 uv sync --frozen --extra dev
 uv run pytest -q

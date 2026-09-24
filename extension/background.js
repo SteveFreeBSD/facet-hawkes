@@ -878,7 +878,8 @@ async function readQuestion(tabId, frameId, attempts = 6) {
       if (question && Array.isArray(question.expressions)) {
         if (
           !question.labeledPoint
-          && question.evidence?.graphQuestion === "labeled-point"
+          && !question.linePoints
+          && ["labeled-point", "line-slope"].includes(question.evidence?.graphQuestion)
           && question.evidence?.graphDecision === "unavailable"
         ) {
           // Hawkes sometimes renders the graph outside #partInformation while
@@ -892,16 +893,23 @@ async function readQuestion(tabId, frameId, attempts = 6) {
             { alone: true, world: "MAIN" },
           );
           const graphModel = modeled?.result;
-          if (graphModel?.graphQuestion === "labeled-point") {
+          if (["labeled-point", "line-slope"].includes(graphModel?.graphQuestion)) {
             question = {
               ...question,
               ...(graphModel.labeledPoint
                 ? { labeledPoint: graphModel.labeledPoint }
                 : {}),
+              ...(graphModel.linePoints
+                ? { linePoints: graphModel.linePoints }
+                : {}),
               evidence: {
                 ...question.evidence,
                 graph: graphModel.graphReason
-                  || (graphModel.labeledPoint ? "labeled-point-model" : question.evidence.graph),
+                  || (graphModel.labeledPoint
+                    ? "labeled-point-model"
+                    : graphModel.linePoints
+                      ? "line-slope-model"
+                      : question.evidence.graph),
                 graphQuestion: graphModel.graphQuestion,
                 graphDecision: graphModel.graphDecision,
                 ...(graphModel.graphReading
@@ -974,6 +982,7 @@ function questionSignature(question) {
   const content = `${question.promptText}\u0000${question.expressions.map(render).join("\u0000")}`
     + (question.graphPoints ? JSON.stringify(question.graphPoints) : "")
     + (question.labeledPoint ? JSON.stringify(question.labeledPoint) : "")
+    + (question.linePoints ? JSON.stringify(question.linePoints) : "")
     + (question.systemConnector ?? "")
     // Two questions can share a prompt and differ only in their numbers, which
     // is exactly what a table of measurements is. Left out, the second would
@@ -1062,9 +1071,9 @@ function revalidatedTableTargets(retained, swept) {
  * Whether the page stated this question rather than merely drawing it.
  *
  * Four ways it can: MathJax's MathML, the exact coordinates of a plotted
- * scatter, one label-associated Cartesian point, or a data table with its own
- * column headings. Any one of them is an exact reading and skips the screenshot
- * entirely.
+ * scatter, one label-associated Cartesian point, the two labeled points owned
+ * by a line, or a data table with its own column headings. Any one of them is
+ * an exact reading and skips the screenshot entirely.
  */
 function readableQuestion(question) {
   return Boolean(
@@ -1072,6 +1081,7 @@ function readableQuestion(question) {
       && (question.expressions?.length > 0
         || question.graphPoints?.length >= 3
         || question.labeledPoint
+        || question.linePoints?.length === 2
         || question.dataTable)
   );
 }
@@ -2592,6 +2602,18 @@ async function solve(windowId = state.windowId) {
       });
       return;
     }
+    if (
+      question.evidence?.graphQuestion === "line-slope"
+      && question.evidence?.graphDecision !== "accepted"
+    ) {
+      // The line owns its two defining points in the page model. If that
+      // authority is missing or inconsistent, pixels and a model cannot safely
+      // reconstruct the lost identity relation.
+      fail("errorSolveRefused", {
+        detail: "The line's two labeled points could not be verified from the page's graph model.",
+      });
+      return;
+    }
     if (!readableQuestion(question)) {
       // The page stated nothing this add-on could read exactly, and the next
       // forty-five seconds are a model looking at a picture. Which reading was
@@ -2669,6 +2691,7 @@ async function solve(windowId = state.windowId) {
             mathml: question.expressions,
             ...(question.graphPoints ? { graph_points: question.graphPoints } : {}),
             ...(question.labeledPoint ? { labeled_point: question.labeledPoint } : {}),
+            ...(question.linePoints ? { line_points: question.linePoints } : {}),
             // The table's own reading of itself: headings and cells, exactly
             // as the page wrote them. No element, no selector, no geometry.
             ...(question.dataTable ? { data_table: question.dataTable } : {}),
@@ -2713,6 +2736,7 @@ async function solve(windowId = state.windowId) {
       && shape?.kind !== "graph"
       && state.editor?.surface !== "graph-choice"
       && !question.labeledPoint
+      && !question.linePoints
       && !controller.signal.aborted
     ) {
       // The host says which decline this was; without it a live fallback
@@ -2894,6 +2918,7 @@ const REFUSAL_REASONS = Object.freeze([
   ["no-final-answer", /^Ethnos produced no final answer/i],
   ["table-question-refused", /^Table question refused/i],
   ["labeled-point-refused", /^Labeled point refused/i],
+  ["graph-slope-refused", /^Graph slope refused/i],
   ["regression-refused", /^Regression refused/i],
   ["graph-plan-refused", /^Graph plan refused/i],
   ["point-plot-refused", /^Point plot refused/i],

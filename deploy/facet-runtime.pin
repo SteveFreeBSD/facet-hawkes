@@ -7,9 +7,9 @@
 # tests/test_runtime_pin.py fails if any document quotes a different commit.
 #
 # Raise it in the same change that starts depending on something newer. This
-# commit owns the Lesson 2.6 inequality families and Lesson 2.5
-# slope-intercept rewrites and parallel-line construction exactly, all with no
-# model call.
+# commit also owns labeled Cartesian points and exact slope from a line's two
+# structurally identified points, along with the earlier Lesson 2.5 and 2.6
+# exact families, all with no model call.
 # The tip of that repository may be ahead of it, and that is fine -- the pin is
 # a floor, and the test checks the sibling is not below it.
-9f56fd6283c2a42a1e8a6178ba784c66fa53a6f7
+00a762cadaa4d03756d7513557ad2ee57cf83591

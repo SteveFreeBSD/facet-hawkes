@@ -205,6 +205,19 @@ labels, tied associations, off-grid geometry, and accessibility descriptions
 that disagree with geometry are refusals, not screenshot prompts. A genuinely
 absent SVG or label may still take the ordinary screenshot capability path.
 
+A graph-defined slope reuses that same Cartesian model reader and tightens the
+ownership requirement: the model must contain exactly one visible line defined
+by exactly two direct point children, both visible, labeled, Cartesian,
+in-bounds, and on the graph's own interval grid. The browser carries those as
+`line_points`, distinct from both one `labeled_point` and an unlabeled
+regression series. Facet Exact reduces `(y2-y1)/(x2-x1)` to one `scalar`; for a
+vertical line it returns `DNE` only when the instruction states that convention.
+The host recomputes the same rational from its own normalized points and rejects
+any disagreement, non-scalar answer contract, or nonzero model-call count.
+Missing or ambiguous line authority is terminal: this family never falls back
+to pixels because a screenshot cannot restore which points the page model said
+belonged to the requested line.
+
 A quadratic regression *plan* still sends `"result_kind":
 "quadratic_regression"` with the same `points`. The two are different questions
 about the same page: one asks for the curve, and comes back as a plan Ethnos

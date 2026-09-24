@@ -6,6 +6,29 @@ name the add-on as it was called at the time.
 
 ## Unreleased
 
+- **A line's two page-owned labeled points now produce an exact typed slope.**
+  Chapter 2 Review asks for the slope of a displayed line and publishes both
+  defining points as labeled children of that line in Hawkes' Cartesian graph
+  model. The former path did not recognize the family, so a local screenshot
+  model found the value but the insertion guard correctly refused an answer it
+  could not verify structurally.
+
+  The existing labeled-point model reader now owns both families. For slope it
+  requires exactly one visible two-point line, exactly two visible Cartesian
+  point children with distinct labels, valid graph bounds and origin, positive
+  tick intervals, in-bounds coordinates, and geometry on the stated grid. It
+  reads either `questionGraphHTML` or the same `<graph>` authority embedded in
+  `partDescription`; missing, duplicate, off-grid, or inconsistent ownership is
+  terminal and cannot become a screenshot guess.
+
+  The browser carries the two normalized `line_points` to the host. Facet Exact
+  computes reduced rise over run as a typed scalar, returns `DNE` for a vertical
+  line only under the prompt's explicit convention, and reports
+  `model_calls=0`. The host independently repeats that rational calculation
+  before exposing the answer to the existing scalar/fraction editor path. The
+  development proof never invokes Submit, Check, Next, Try Similar, or another
+  navigation action. Live Hawkes acceptance remains pending Steve's submission.
+
 - **A labeled Cartesian point is read from Hawkes' own graph evidence and entered as a
   typed coordinate pair.** Chapter 2 Review asks for the coordinates of a
   labeled point, owns an exact Cartesian graph model and rendering, and exposes two

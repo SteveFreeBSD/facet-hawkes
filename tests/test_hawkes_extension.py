@@ -1254,6 +1254,7 @@ def test_the_question_read_waits_for_mathjax() -> None:
     assert "question.expressions?.length > 0" in readable
     assert "question.graphPoints?.length >= 3" in readable
     assert "question.labeledPoint" in readable
+    assert "question.linePoints?.length === 2" in readable
     assert "question.dataTable" in readable
 
 
@@ -1268,6 +1269,21 @@ def test_page_owned_labeled_point_geometry_never_falls_back_to_a_screenshot() ->
 
     assert "labeled_point: question.labeledPoint" in request
     assert "!question.labeledPoint" in fallback
+
+
+def test_page_owned_line_points_never_fall_back_to_a_screenshot() -> None:
+    source = (EXTENSION_DIR / "background.js").read_text(encoding="utf-8")
+    request = source.split("const askToSolve = (image, pipeline) => {", 1)[1].split(
+        "// Facet is asked", 1
+    )[0]
+    fallback = source.split('if (\n      reply?.status === "unsupported"', 1)[1].split(
+        ") {", 1
+    )[0]
+
+    assert "line_points: question.linePoints" in request
+    assert "!question.linePoints" in fallback
+    assert 'question.evidence?.graphQuestion === "line-slope"' in source
+    assert 'question.evidence?.graphDecision !== "accepted"' in source
 
 
 def test_every_injected_script_path_is_declared() -> None:

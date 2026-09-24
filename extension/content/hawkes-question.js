@@ -23,7 +23,7 @@
   // every decision, and the observatory applies the same normalization to the
   // tree. Unlike the event-page marker, this proves which Hawkes reader was
   // injected into the authoritative page DOM.
-  const HAWKES_READER_BUILD = "d4eaeada54d8";
+  const HAWKES_READER_BUILD = "78d687037202";
 
   const ANSWER_CONTROLS =
     'input.qbaseCSS, input[id^="txtAns"], input.boxStyle, input[id$="_optchk"], '
@@ -55,7 +55,8 @@
   // had not held.
   const graph = (() => {
     const refuse = (graphReason, graphQuestion = "", graphDecision = "unavailable") => ({
-      points: null, labeledPoint: null, graphReason, graphQuestion, graphDecision,
+      points: null, labeledPoint: null, linePoints: null,
+      graphReason, graphQuestion, graphDecision,
     });
     const parts = [...document.querySelectorAll("#partInformation")];
     if (parts.length !== 1) return refuse(`part-count-${parts.length}`);
@@ -64,11 +65,16 @@
       /\b(?:identify|find|determine|give|state|read|what\s+are)\b[^.?!]{0,200}\bcoordinates?\s+of\s+(?:the\s+)?(?:labeled\s+)?point\s+([^\s.,;:!?()[\]{}]{1,16})(?=\s|[.,;:!?]|$)/i.exec(words)
       || /\b(?:identify|find|determine|give|state|read|what\s+are)\b[^.?!]{0,200}\bpoint\s+([^\s.,;:!?()[\]{}'’]{1,16})(?:['’]s)?\s+coordinates?\b/i.exec(words)
     );
-    const graphQuestion = coordinateRequest ? "labeled-point" : "";
+    const slopeRequest = /\b(?:find|determine|calculate|compute)\b[^.?!]{0,160}\bslope\b(?![-\s]?intercept)/i.test(words);
+    const graphQuestion = coordinateRequest ? "labeled-point" : slopeRequest ? "line-slope" : "";
     const regression = /quadratic regression/i.test(words);
-    if (!regression && !coordinateRequest) {
+    if (!regression && !coordinateRequest && !slopeRequest) {
       return refuse("no-regression-instruction");
     }
+    // A line's ownership of its defining points is stated by Hawkes' graph
+    // model. The flattened SVG has dots and labels but loses that parent-child
+    // relation, so it is not enough to decide which two points define the line.
+    if (slopeRequest) return refuse("line-slope-model-required", graphQuestion);
     const svgs = [...parts[0].querySelectorAll("svg")];
     if (svgs.length !== 1) {
       return refuse(
@@ -282,6 +288,7 @@
   })();
   const graphPoints = graph.points;
   const labeledPoint = graph.labeledPoint;
+  const linePoints = graph.linePoints;
 
   const limit = answerTop();
 
@@ -1193,7 +1200,8 @@
     // diagnostic log can say which condition did not hold, instead of leaving
     // "no readable markup" to stand for nine different faults.
     evidence: {
-      graph: graph.graphReason || (labeledPoint ? "labeled-point-exact" : ""),
+      graph: graph.graphReason
+        || (labeledPoint ? "labeled-point-exact" : linePoints ? "line-slope-exact" : ""),
       graphQuestion: graph.graphQuestion,
       graphDecision: graph.graphDecision,
       table: dataTable === null ? "no-data-table" : "",
@@ -1212,6 +1220,7 @@
     },
     ...(graphPoints ? { graphPoints } : {}),
     ...(labeledPoint ? { labeledPoint } : {}),
+    ...(linePoints ? { linePoints } : {}),
     ...(systemConnector ? { systemConnector } : {}),
     // The node stays here. What crosses is the reading of the table.
     ...(dataTable
