@@ -29,6 +29,14 @@ which of these it is holding. Plans are not values and keep their own `kind`
 `ANSWER_FORMS` in `facet_runtime.exact.router` is the closed set, and growing it
 is a protocol change.
 
+For multiple labeled graph points, the companion batches the existing exact
+`ordered-pair` operation and preserves each label in a typed
+`labeled-coordinates` companion payload. This is an ownership collection, not a
+new runtime math form. Instruction, authoritative graph geometry and explicit
+answer-row labels suffice even with no equation or `questionString`. Each
+coordinate is routed by the page's label and first/second-coordinate names.
+The collection never becomes an unlabeled positional list.
+
 ## An equation has two entry paths, and the page picks
 
 `relation` is the one family whose answer is not a value. "Find the equation of
@@ -108,6 +116,7 @@ function that does the typing.
 | radical with an exponent | `scalar` | radical+exponent | `2*i*x^4*sqrt(2*x)` | one box, Radical inside a run of templates | `planRun` | yes | no | yes | `scalar-radical-exponent` |
 | named phrase, typed | `scalar` | phrase | `trinomial` | one box accepting letters | `planEntry` → `enterPlan` | yes | no | no | `scalar-phrase` |
 | ordered pair split across x and y fields | `ordered-pair` | plain | `4` | two page-owned signed-integer coordinate fields, one component per field | `multiEntryPlans` → `enterOwnedFields` | yes | yes | yes | `ordered-pair-split-plain` |
+| label-keyed collection of exact ordered pairs | `ordered-pair` | plain | `-4` | two to twelve explicitly labeled rows, with page-owned first/second-coordinate field names | `_solve_labeled_coordinates_with_facet` → `labeledCoordinateSurface` → `enterOwnedFields` | yes | yes | yes | `labeled-coordinate-collection` |
 | ordered pair, integer components | `ordered-pair` | group+comma | `(3,-1)` | page draws ( [box] ), no parentheses template | `pageBracketedPair` → `planAnswerParts` | yes | no | yes | `ordered-pair-group-comma` |
 | ordered pair, rational components | `ordered-pair` | fraction+group+comma | `(17/2,-1/2)` | one box, PBrace and Fraction | `planCommaList` → `planFractionTemplate` | yes | no | yes | `ordered-pair-fraction-group-comma` |
 | two structure-preserving affine inequalities joined by their exact logical connector | `inequality-pair` | plain | `-9y+10<=-34 OR -9y+10>=34` | two owned expression editors plus one semantic AND/OR group | `answer_payload` → `planEntry` → `enterPlan` | yes | no | yes | `absolute-value-inequality-rewrite` |

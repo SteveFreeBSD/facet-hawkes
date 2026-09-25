@@ -112,6 +112,7 @@ def solve(request: SolveRequest, report=None) -> SolveResponse:
         or problem.mathml
         or problem.graph_points
         or problem.labeled_point
+        or problem.labeled_points
         or problem.line_points
     ):
         return error_response(
@@ -125,6 +126,9 @@ def solve(request: SolveRequest, report=None) -> SolveResponse:
     # may still be right, and the panel reviews every one before insertion.
     prompt_seen = bool(problem.prompt_text.strip())
     instruction = problem.prompt_text.strip() or "Solve the question in the image."
+
+    if problem.labeled_points:
+        return _solve_labeled_coordinates_with_facet(request, instruction, announce)
 
     if problem.line_points:
         return _solve_point_slope_with_facet(request, instruction, announce)
@@ -519,6 +523,69 @@ def _model_calls(solution) -> int | None:
     """The count Facet measured, when its evidence names one."""
     value = solution.evidence.get("model_calls")
     return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def _solve_labeled_coordinates_with_facet(request, instruction, announce):
+    """Compose existing exact typed pairs without dropping their page labels."""
+    from .hawkes_protocol import AnswerPayload, AnswerShape
+
+    points = request.problem.labeled_points
+    if (
+        len(points) < 2
+        or len({point.label for point in points}) != len(points)
+        or request.problem.answer_shape is None
+        or request.problem.answer_shape.kind != "labeled-coordinates"
+        or not re.search(
+            r"\bcoordinates?\s+of\s+(?:the\s+)?(?:labeled\s+)?points\b",
+            instruction,
+            re.I,
+        )
+        or request.problem.labeled_point is not None
+        or request.problem.line_points
+        or request.problem.graph_points
+    ):
+        return error_response(
+            request.request_id,
+            "Labeled point refused: coordinate ownership is incomplete.",
+            "unsupported",
+        )
+    responses = []
+    for point in points:
+        problem = request.problem.model_copy(
+            update={
+                "labeled_points": [],
+                "labeled_point": point,
+                "answer_shape": AnswerShape(kind="multi", count=2),
+            }
+        )
+        response = _solve_labeled_point_with_facet(
+            request.model_copy(update={"problem": problem}),
+            f"Identify the coordinates of the point {point.label} on the graph.",
+            announce,
+        )
+        if response.status != "ready":
+            return response
+        responses.append(response)
+    response = responses[0]
+    return response.model_copy(
+        update={
+            "problem_text": instruction,
+            "answer": AnswerPayload(
+                form="labeled-coordinates",
+                labeled_coordinates=points,
+                display_text="; ".join(
+                    f"{point.label}: ({point.x},{point.y})" for point in points
+                ),
+            ),
+            "certainty": response.certainty.model_copy(
+                update={
+                    "answer_parts": None,
+                    "method": "Exact labeled Cartesian coordinates",
+                    "model_calls": 0,
+                }
+            ),
+        }
+    )
 
 
 def _solve_labeled_point_with_facet(request, instruction, announce):

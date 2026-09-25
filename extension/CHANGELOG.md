@@ -6,6 +6,27 @@ name the add-on as it was called at the time.
 
 ## Unreleased
 
+- **Multiple labeled graph coordinates use the existing exact point reader.**
+  An instruction plus page-owned Cartesian graph and labeled answer fields is
+  now complete question content even when `questionString` is empty. Each
+  requested label must have one validated on-grid point and one x/y field pair.
+  The host composes the existing Facet Exact ordered-pair operation into a typed
+  labeled collection, with zero model calls and no screenshot fallback for
+  missing or ambiguous authority. Labels survive through review, session
+  retention, insertion ownership and model read-back; DOM order is irrelevant.
+  The existing owned-field writer commits Hawkes' afterkeydown-bound plain
+  boxes with native change events and checks the page-owned data buffers,
+  preventing the cross-field refusal/rollback seen in the first live attempt.
+
+  Live run `rmug8cba8d5c2`: three structurally read labels, Facet Exact,
+  `model_calls=0`, six correctly owned fields settled and six model values
+  matched. A later independent read confirmed all values remained in place;
+  Hawkes' answer status remained ungraded. No Submit, Check, Next, Try Similar
+  or navigation was performed. Not Fixed live: acceptance awaits Steve.
+  Verification: 2,225 companion tests, 1,029 runtime tests, the full isolated
+  browser suite, exact coverage sweep, native helper/transport checks and
+  reproducible package build pass. Runtime code and pin are unchanged.
+
 - **Labeled plots retain point ownership instead of sorting labels away.**
   The existing point actuator previously sorted the coordinate targets and
   current graph positions, then checked only their final set. That is valid

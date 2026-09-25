@@ -79,7 +79,8 @@
   const slopeRequest = /\b(?:find|determine|calculate|compute)\b[^.?!]{0,160}\bslope\b(?![-\s]?intercept)/i.test(instruction);
   const linearCoordinate = /\b(?:value|coordinate)\s+(?:for|of)\s+[xy]\b|\b[xy][- ]coordinate\b/i.test(instruction)
     && /\b(?:given|when|if|choose|select)\b/i.test(instruction);
-  const graphQuestion = coordinateRequest ? "labeled-point" : slopeRequest ? "line-slope" : linearCoordinate ? "linear-coordinate" : "";
+  const pluralRequest = /\bcoordinates?\s+of\s+(?:the\s+)?(?:labeled\s+)?points\b([^.!?]*)/i.exec(instruction);
+  const graphQuestion = pluralRequest ? "labeled-coordinates" : coordinateRequest ? "labeled-point" : slopeRequest ? "line-slope" : linearCoordinate ? "linear-coordinate" : "";
   if (!graphQuestion) return unavailable("", "question-model-not-supported");
 
   const controls = readOwned(window.quant_wp_UI?.controlsCollectionData);
@@ -208,6 +209,48 @@
     };
   };
 
+  if (graphQuestion === "labeled-coordinates") {
+    if (directText(grid, "type").toLowerCase() !== "cartesian") return ambiguous(graphQuestion, "coordinate-grid-kind-invalid");
+    const fields = [...document.querySelectorAll('input[id^="txtAns"][id$="_num"]')].filter((field) => {
+      const rect = field.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0 && !field.disabled;
+    });
+    const requested = new Map();
+    for (const field of fields) {
+      const names = (field.getAttribute("aria-labelledby") ?? "").split(/\s+/)
+        .filter((id) => id && id !== field.id).map((id) => document.getElementById(id)?.textContent ?? "");
+      const matches = names.map((name) => /^point\s+(\S{1,16})\s+(first|second|x|y)\s+coordinate$/i.exec(name.trim())).filter(Boolean);
+      if (matches.length !== 1) return ambiguous(graphQuestion, "coordinate-row-label-missing");
+      const [, label, axis] = matches[0];
+      if (names.some((name) => { const prefix = /^(\S{1,16})\s*:/.exec(name.trim()); return prefix && prefix[1] !== label; })) {
+        return ambiguous(graphQuestion, "coordinate-row-label-conflict");
+      }
+      const axes = requested.get(label) ?? new Set();
+      const key = /^(first|x)$/i.test(axis) ? "x" : "y";
+      if (axes.has(key)) return ambiguous(graphQuestion, "coordinate-row-label-duplicate");
+      axes.add(key);
+      requested.set(label, axes);
+    }
+    if (requested.size < 2 || requested.size > 12 || [...requested.values()].some((axes) => axes.size !== 2)) {
+      return ambiguous(graphQuestion, "coordinate-rows-incomplete");
+    }
+    const listed = pluralRequest[1].replace(/\s+(?:on|in|shown)\b.*$/i, "").trim();
+    if (listed) {
+      const labels = listed.split(/\s*,\s*|\s+and\s+/i).map((label) => label.replace(/^and\s+/i, "").trim()).filter(Boolean);
+      if (labels.length !== requested.size || new Set(labels).size !== labels.length || labels.some((label) => !requested.has(label))) {
+        return ambiguous(graphQuestion, "coordinate-request-label-conflict");
+      }
+    }
+    const points = [];
+    for (const label of [...requested.keys()].sort()) {
+      const candidates = [...objects.children].filter((point) => point.tagName.toLowerCase() === "point" && labelOf(point) === label);
+      if (candidates.length !== 1) return ambiguous(graphQuestion, "question-model-label-not-unique");
+      const read = readPoint(candidates[0]);
+      if (!read.point) return ambiguous(graphQuestion, read.reason);
+      points.push(read.point);
+    }
+    return result(graphQuestion, "accepted", "", { labeledPoints: points, coordinateInstruction: instruction, graphReading: "page-model" });
+  }
   if (graphQuestion === "labeled-point") {
     const target = coordinateRequest[1];
     const candidates = [...objects.children].filter((point) =>

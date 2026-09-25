@@ -23,7 +23,7 @@
   // every decision, and the observatory applies the same normalization to the
   // tree. Unlike the event-page marker, this proves which Hawkes reader was
   // injected into the authoritative page DOM.
-  const HAWKES_READER_BUILD = "1e67fe4a34cb";
+  const HAWKES_READER_BUILD = "69f631b08010";
 
   const ANSWER_CONTROLS =
     'input.qbaseCSS, input[id^="txtAns"], input.boxStyle, input[id$="_optchk"], '
@@ -66,6 +66,9 @@
       || /\b(?:identify|find|determine|give|state|read|what\s+are)\b[^.?!]{0,200}\bpoint\s+([^\s.,;:!?()[\]{}'’]{1,16})(?:['’]s)?\s+coordinates?\b/i.exec(words)
     );
     const slopeRequest = /\b(?:find|determine|calculate|compute)\b[^.?!]{0,160}\bslope\b(?![-\s]?intercept)/i.test(words);
+    if (/\bcoordinates?\s+of\s+(?:the\s+)?(?:labeled\s+)?points\b/i.test(words)) {
+      return refuse("labeled-coordinates-model-required", "labeled-coordinates");
+    }
     const linearCoordinate = /\b(?:value|coordinate)\s+(?:for|of)\s+[xy]\b|\b[xy][- ]coordinate\b/i.test(words)
       && /\b(?:given|when|if|choose|select)\b/i.test(words);
     const graphQuestion = coordinateRequest ? "labeled-point" : slopeRequest ? "line-slope" : linearCoordinate ? "linear-coordinate" : "";

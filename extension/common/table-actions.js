@@ -110,7 +110,7 @@
  *   completion table's cells, or a multipart question's own answer boxes
  * @returns {Promise<{ok: boolean, code: string}>}
  */
-export async function enterOwnedFields(parts, targets, cadence = {}, surface = "table") {
+export async function enterOwnedFields(parts, targets, cadence = {}, surface = "table", coordinateRows = []) {
   // Kept in step with `common/config.js` by the build's shared-constant
   // check; this function is serialized into the page's own world by
   // `scripting.executeScript`, so no import survives here.
@@ -128,7 +128,8 @@ export async function enterOwnedFields(parts, targets, cadence = {}, surface = "
 
   const TABLE = "table";
   const FIELDS = "fields";
-  if (surface !== TABLE && surface !== FIELDS) {
+  const coordinates = surface === "coordinates";
+  if (surface !== TABLE && surface !== FIELDS && !coordinates) {
     return { ok: false, code: "answer-invalid" };
   }
 
@@ -221,7 +222,7 @@ export async function enterOwnedFields(parts, targets, cadence = {}, surface = "
   if (
     !Array.isArray(parts)
     || parts.length < 2
-    || parts.length > MAX_ANSWER_PARTS
+    || parts.length > (coordinates ? 24 : MAX_ANSWER_PARTS)
     || !parts.every(supported)
     || !Array.isArray(targets)
     || targets.length !== parts.length
@@ -351,6 +352,32 @@ export async function enterOwnedFields(parts, targets, cadence = {}, surface = "
    * bound can hold the part, and that no two blanks resolved to one box.
    */
   const resolveFields = (requireEmpty = false) => {
+    if (coordinates) {
+      const visibleNumerators = [...document.querySelectorAll(HAWKES_FIELD_SELECTOR)].filter((field) => {
+        const rect = field.getBoundingClientRect();
+        return field.id.endsWith("_num") && rect.width > 0 && rect.height > 0;
+      });
+      if (!Array.isArray(coordinateRows) || coordinateRows.length < 2
+        || visibleNumerators.length !== targets.length
+        || visibleNumerators.some((field) => !targets.includes(field.id))
+        || coordinateRows.length * 2 !== targets.length
+        || new Set(coordinateRows.map((row) => row.label)).size !== coordinateRows.length
+        || JSON.stringify(coordinateRows.flatMap((row) => [row.x, row.y])) !== JSON.stringify(targets)) {
+        return { ok: false, code: "labeled-coordinate-mapping-invalid" };
+      }
+      for (const row of coordinateRows) for (const axis of ["x", "y"]) {
+        const field = document.getElementById(row[axis]);
+        const names = (field?.getAttribute("aria-labelledby") ?? "").split(/\s+/)
+          .filter((id) => id && id !== field.id)
+          .map((id) => String(document.getElementById(id)?.textContent ?? "").trim());
+        const matches = names.map((name) => /^point\s+(\S{1,16})\s+(first|second|x|y)\s+coordinate$/i.exec(name)).filter(Boolean);
+        if (matches.length !== 1 || matches[0][1] !== row.label
+          || names.some((name) => { const prefix = /^(\S{1,16})\s*:/.exec(name); return prefix && prefix[1] !== row.label; })
+          || (/^(first|x)$/i.test(matches[0][2]) ? "x" : "y") !== axis) {
+          return { ok: false, code: "labeled-coordinate-identity-changed" };
+        }
+      }
+    }
     const found = [];
     for (const [index, id] of targets.entries()) {
       const field = document.getElementById(id);
@@ -372,7 +399,7 @@ export async function enterOwnedFields(parts, targets, cadence = {}, surface = "
       // and the isolated writer this replaced refused rather than overwrite
       // one. Asked once, before anything is written -- between parts the
       // earlier boxes are holding their own parts on purpose.
-      if (requireEmpty && surface === FIELDS && field.value !== "") {
+      if (requireEmpty && (surface === FIELDS || coordinates) && field.value !== "") {
         return { ok: false, code: "answer-fields-not-empty", [AT]: index + 1 };
       }
       const bound = field.maxLength;
@@ -804,8 +831,9 @@ export async function enterOwnedFields(parts, targets, cadence = {}, surface = "
     let text;
     try {
       const dynamic = data?.isQDy === true || control.Type !== undefined;
-      const states = dynamic ? control.CurrentTextboxText : control.boxValue;
-      text = typeof states === "function" ? states.call(control) : states;
+      const owner = !dynamic && control.boxValue === undefined && coordinates ? data : control;
+      const states = dynamic ? control.CurrentTextboxText : owner?.boxValue;
+      text = typeof states === "function" ? states.call(owner) : states;
     } catch {
       return null;
     }
@@ -834,6 +862,14 @@ export async function enterOwnedFields(parts, targets, cadence = {}, surface = "
         inputType: text === "" ? "deleteContentBackward" : "insertText",
       })
     );
+    // Hawkes' plain Knockout boxes publish afterkeydown, not input, as their
+    // value-update event. The native change event commits the same binding;
+    // without it a later focus-out can restore an older model value.
+    const binding = field.getAttribute?.("data-bind") ?? "";
+    if (coordinates && /\bvalue\s*:\s*boxValue\b/.test(binding)
+      && /\bvalueUpdate\s*:\s*['"]afterkeydown['"]/.test(binding)) {
+      field.dispatchEvent(new Event("change", { bubbles: true }));
+    }
   };
 
   /**
@@ -1133,6 +1169,9 @@ export async function enterOwnedFields(parts, targets, cadence = {}, surface = "
     // other half belongs to the cell's second control, which has no mapping
     // entry of its own; the logical value checked above is what covers it.
     const text = modelText(candidates[owners[at]]);
+    if (coordinates && text === null) {
+      return await refuse({ ok: false, code: REASONS.modelMissing, written: at });
+    }
     if (text !== null) {
       modelsRead += 1;
       if (text !== halves[at].numerator) {
@@ -1150,6 +1189,9 @@ export async function enterOwnedFields(parts, targets, cadence = {}, surface = "
   }
   if (snapshot().some((value, at) => value !== parts[at])) {
     return await refuse({ ok: false, code: REASONS.notSettled, where: "cell", written });
+  }
+  if (coordinates && fields.some((field, at) => modelText(candidates[owners[at]]) !== halves[at].numerator)) {
+    return await refuse({ ok: false, code: REASONS.notSettled, where: "model", written });
   }
 
   return {

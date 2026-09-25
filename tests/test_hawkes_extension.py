@@ -1283,7 +1283,7 @@ def test_page_owned_line_points_never_fall_back_to_a_screenshot() -> None:
     assert "line_points: question.linePoints" in request
     assert "!question.linePoints" in fallback
     assert (
-        '["line-slope", "linear-coordinate"].includes(question.evidence?.graphQuestion)'
+        '["labeled-coordinates", "line-slope", "linear-coordinate"].includes(question.evidence?.graphQuestion)'
         in source
     )
     assert 'question.evidence?.graphDecision !== "accepted"' in source
@@ -2012,7 +2012,7 @@ def test_a_completed_insertion_records_how_long_it_took():
     """
     background = (EXTENSION_DIR / "background.js").read_text()
 
-    assert background.count('log.info("inserted"') == 8
+    assert background.count('log.info("inserted"') == 9
     # `path:` is reserved -- a neighbouring test forbids it anywhere in this
     # file, so that a path can never be smuggled to the native host.
     assert 'via: "structured"' in background and 'via: "plain"' in background

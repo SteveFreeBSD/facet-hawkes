@@ -120,6 +120,8 @@
         inputType: element.getAttribute("type") || "",
         ariaLabel: element.getAttribute("aria-label") || "",
         ariaDescribedBy: element.getAttribute("aria-describedby") || "",
+        value: String(element.value ?? "").slice(0, 80),
+        ownerNames: (element.getAttribute("aria-labelledby") ?? "").split(/\s+/).filter((id) => id && id !== element.id).map((id) => document.getElementById(id)?.textContent ?? ""),
         attributes: Object.fromEntries(
           [...element.attributes].slice(0, 50)
             .map((attribute) => [attribute.name, attribute.value.slice(0, 500)])

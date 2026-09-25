@@ -1,0 +1,27 @@
+<!doctype html><meta charset="utf-8">
+<div id="partInformation"><div id="partDescription">Identify the coordinates of the points R, U, and T on the graph.</div></div>
+<div id="answers"></div>
+<script>
+const observable = (initial) => {
+  let value = initial;
+  return Object.assign(function(next) { if (arguments.length) value = next; return value; }, {observable:true});
+};
+window.ko = {isObservable: value => value?.observable === true};
+const points = [{label:"T",x:0,y:-6}, {label:"R",x:-4,y:2}, {label:"U",x:8,y:0}];
+window.questionPartViewModel = {
+  questionString: observable(""),
+  partDescription: observable(document.getElementById("partDescription").textContent),
+  questionGraphHTML: observable(`<graph><isqagraph>true</isqagraph>
+    <grid><type>cartesian</type><cartesian><xmin>-14</xmin><xmax>18</xmax><ymin>-8</ymin><ymax>12</ymax><xinterval>2</xinterval><yinterval>2</yinterval></cartesian></grid>
+    <graphobjects>${points.map(point => `<point><type>point</type><coordinatestype>cartesian</coordinatestype><x>${point.x}</x><y>${point.y}</y><label>${point.label}</label><visible>true</visible><showlabel>true</showlabel></point>`).join("")}</graphobjects></graph>`)
+};
+// DOM and field identifiers deliberately have no positional relationship to labels.
+for (const [id, label, axis] of [["k","U","second"],["b","T","first"],["z","R","second"],["a","U","first"],["p","R","first"],["d","T","second"]]) {
+  const name = document.createElement("label");
+  name.id = `name-${id}`; name.textContent = `point ${label} ${axis} coordinate`;
+  const field = document.createElement("input");
+  field.id = `txtAns-${id}_num`; field.className = "boxStyle";
+  field.setAttribute("aria-labelledby", name.id); field.maxLength = 4;
+  document.getElementById("answers").append(name, field);
+}
+</script>

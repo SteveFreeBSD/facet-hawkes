@@ -38,6 +38,7 @@ const STATE_FIELDS = [
   "answerParts",
   "answerConnector",
   "answerIntercepts",
+  "answerCoordinates",
   "editor",
   "graphPlan",
   "graphCoefficients",

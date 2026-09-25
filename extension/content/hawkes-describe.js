@@ -331,6 +331,24 @@
     drawn,
   };
 
+  const coordinateFields = typeof document === "undefined" ? [] : [...document.querySelectorAll(HAWKES_FIELD_SELECTOR)].filter((field) => {
+    const rect = field.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  });
+  const coordinateNumerators = coordinateFields.filter((field) => field.id?.endsWith("_num"));
+  if (coordinateNumerators.length >= 4 && coordinateNumerators.length <= 24
+    && coordinateNumerators.every((field) => (field.getAttribute?.("aria-labelledby") ?? "").split(/\s+/)
+      .some((id) => /^point\s+\S{1,16}\s+(first|second|x|y)\s+coordinate$/i.test(
+        String(document.getElementById?.(id)?.textContent ?? "").trim())))) {
+    const coordinates = usable.filter((editor) => editor.kind !== "option");
+    const signature = (editor) => JSON.stringify([editor.kind, editor.allowedCharacters,
+      editor.maxLength, editor.templates, editor.limits, editor.slots]);
+    if (coordinates.length >= coordinateFields.length && new Set(coordinates.map(signature)).size === 1) {
+      return { ok: true, code: "described-labeled-coordinates", kind: "labeled-coordinates",
+        coordinateEditor: { ...coordinates[0], pairedControl: coordinates.length > coordinateNumerators.length }, collection };
+    }
+    return { ok: false, code: "labeled-coordinate-editors-inconsistent" };
+  }
   /** The DOM states two axis rows, each with a coordinate and absent option. */
   const axisInterceptSurface = (() => {
     try {

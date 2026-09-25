@@ -889,6 +889,17 @@ var ethnosHawkes = (function () {
         ...(conditionalChoice ? { conditionalChoice } : {}),
       };
     }
+    const coordinateFields = [...document.querySelectorAll(HAWKES_FIELD_SELECTOR)].filter((field) => {
+      const rect = field.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0;
+    });
+    const coordinateNumerators = coordinateFields.filter((field) => field.id?.endsWith("_num"));
+    if (coordinateNumerators.length >= 4 && coordinateNumerators.length <= 24
+      && coordinateNumerators.every((field) => (field.getAttribute?.("aria-labelledby") ?? "").split(/\s+/)
+        .some((id) => /^point\s+\S{1,16}\s+(first|second|x|y)\s+coordinate$/i.test(
+          String(document.getElementById?.(id)?.textContent ?? "").trim())))) {
+      return { ready: true, code: "labeled-coordinate-answer", fieldId: "labeled-coordinates" };
+    }
     const interceptRows = axisInterceptSurface();
     if (interceptRows) {
       const fieldIds = interceptRows.flatMap((row) => row.fieldIds);

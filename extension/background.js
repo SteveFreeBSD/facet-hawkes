@@ -1,5 +1,7 @@
 "use strict";
 
+import { labeledCoordinateSurface, labeledCoordinateAnswer } from "/common/labeled-coordinates.js";
+
 /**
  * The solve outlives the popup.
  *
@@ -339,6 +341,7 @@ function blankState() {
     answerParts: [],
     answerConnector: "",
     answerIntercepts: null,
+    answerCoordinates: [],
     graphPlan: null,
     graphCoefficients: [],
     // What insertion put in the field, kept for the panel to show and for
@@ -531,6 +534,7 @@ function withheldAnswer(next) {
     answerConnector: "",
     answerIntercepts: null,
     graphPlan: null,
+    answerCoordinates: [],
     graphCoefficients: [],
     errorKey: "errorAnswerInvalid",
     errorArgs: [],
@@ -879,7 +883,7 @@ async function readQuestion(tabId, frameId, attempts = 6) {
         if (
           !question.labeledPoint
           && !question.linePoints
-          && ["labeled-point", "line-slope", "linear-coordinate"].includes(question.evidence?.graphQuestion)
+          && ["labeled-point", "labeled-coordinates", "line-slope", "linear-coordinate"].includes(question.evidence?.graphQuestion)
           && question.evidence?.graphDecision === "unavailable"
         ) {
           // Hawkes sometimes renders the graph outside #partInformation while
@@ -893,9 +897,11 @@ async function readQuestion(tabId, frameId, attempts = 6) {
             { alone: true, world: "MAIN" },
           );
           const graphModel = modeled?.result;
-          if (["labeled-point", "line-slope", "linear-coordinate"].includes(graphModel?.graphQuestion)) {
+          if (["labeled-point", "labeled-coordinates", "line-slope", "linear-coordinate"].includes(graphModel?.graphQuestion)) {
             question = {
               ...question,
+              ...(graphModel.labeledPoints ? { labeledPoints: graphModel.labeledPoints,
+                promptText: graphModel.coordinateInstruction } : {}),
               ...(graphModel.coordinateTask ? {
                 coordinateTask: graphModel.coordinateTask,
                 expressions: graphModel.coordinateExpressions,
@@ -910,7 +916,7 @@ async function readQuestion(tabId, frameId, attempts = 6) {
               evidence: {
                 ...question.evidence,
                 graph: graphModel.graphReason
-                  || (graphModel.labeledPoint
+                  || (graphModel.labeledPoints ? "labeled-coordinates-model" : graphModel.labeledPoint
                     ? "labeled-point-model"
                     : graphModel.linePoints
                       ? "line-slope-model"
@@ -987,6 +993,7 @@ function questionSignature(question) {
   const content = `${question.promptText}\u0000${question.expressions.map(render).join("\u0000")}`
     + (question.graphPoints ? JSON.stringify(question.graphPoints) : "")
     + (question.labeledPoint ? JSON.stringify(question.labeledPoint) : "")
+    + (question.labeledPoints ? JSON.stringify(question.labeledPoints) : "")
     + (question.linePoints ? JSON.stringify(question.linePoints) : "")
     + (question.coordinateTask ? JSON.stringify(question.coordinateTask) : "")
     + (question.systemConnector ?? "")
@@ -1087,6 +1094,7 @@ function readableQuestion(question) {
       && (question.expressions?.length > 0
         || question.graphPoints?.length >= 3
         || question.labeledPoint
+        || question.labeledPoints
         || question.linePoints?.length === 2
         || question.dataTable)
   );
@@ -1114,7 +1122,14 @@ async function describeEditor(tabId, frameId, attempts = 5, isGraph = false) {
           world: "MAIN",
           alone: true,
         });
-      const described = entry?.result;
+      let described = entry?.result;
+      if (described?.kind === "labeled-coordinates") {
+        const [surface] = await runInjection({ target: { tabId, frameIds: [frameId] },
+          world: "MAIN", func: labeledCoordinateSurface });
+        described = surface?.result?.ok
+          ? { ...described, rows: surface.result.rows }
+          : { ok: false, code: surface?.result?.code ?? "labeled-coordinate-rows-missing" };
+      }
       if (isGraph) lastGraph = described ?? { ok: false, code: "graph-missing" };
       if (described?.ok) {
         return described;
@@ -1453,6 +1468,7 @@ function answerShapeOf(
   if (editor?.kind === "axis-intercepts") {
     return { kind: "axis-intercepts", count: 2 };
   }
+  if (editor?.kind === "labeled-coordinates") return { kind: "labeled-coordinates", count: 1 };
   if (editor?.kind === "inequality-pair") {
     return { kind: "inequality-pair", count: 1 };
   }
@@ -2094,6 +2110,7 @@ async function prepare(windowId = state.windowId, exactTabId = null) {
     answerParts: Array.isArray(state.answerParts) ? state.answerParts : [],
     answerConnector: state.answerConnector ?? "",
     answerIntercepts: state.answerIntercepts ?? null,
+    answerCoordinates: state.answerCoordinates ?? [],
     // Carried so it can be *revalidated*, never so it can be adopted: the
     // reader refuses a table for reasons about the controls rather than about
     // the question, and re-reading is not the only honest way to keep a
@@ -2216,7 +2233,7 @@ async function prepare(windowId = state.windowId, exactTabId = null) {
           option: row.option,
         }))
       : [];
-    const swept = axisInterceptRows.length === 2
+    const swept = editor?.kind === "labeled-coordinates" || axisInterceptRows.length === 2
       ? []
       : answerFieldIds(choice, evidenceReport?.multiFieldEvidence, editor);
     if (swept.length >= 2 && ["multi", "inequality-pair"].includes(editor?.kind)) {
@@ -2404,6 +2421,7 @@ async function prepare(windowId = state.windowId, exactTabId = null) {
       answerParts: hasAnswer ? previous.answerParts : [],
       answerConnector: hasAnswer ? previous.answerConnector : "",
       answerIntercepts: hasAnswer ? previous.answerIntercepts : null,
+      answerCoordinates: hasAnswer ? previous.answerCoordinates : [],
       graphPlan: hasAnswer ? previous.graphPlan : null,
       graphCoefficients: hasAnswer ? previous.graphCoefficients : [],
       promptSeen: hasAnswer ? previous.promptSeen : true,
@@ -2505,6 +2523,7 @@ async function solve(windowId = state.windowId) {
     answerParts: [],
     answerIntercepts: null,
     graphPlan: null,
+    answerCoordinates: [],
     graphCoefficients: [],
     placedText: "",
     promptSeen: true,
@@ -2609,7 +2628,7 @@ async function solve(windowId = state.windowId) {
       return;
     }
     if (
-      ["line-slope", "linear-coordinate"].includes(question.evidence?.graphQuestion)
+      ["labeled-coordinates", "line-slope", "linear-coordinate"].includes(question.evidence?.graphQuestion)
       && question.evidence?.graphDecision !== "accepted"
     ) {
       // The line owns its two defining points in the page model. If that
@@ -2697,6 +2716,7 @@ async function solve(windowId = state.windowId) {
             mathml: question.expressions,
             ...(question.graphPoints ? { graph_points: question.graphPoints } : {}),
             ...(question.labeledPoint ? { labeled_point: question.labeledPoint } : {}),
+            ...(question.labeledPoints ? { labeled_points: question.labeledPoints } : {}),
             ...(question.linePoints ? { line_points: question.linePoints } : {}),
             ...(question.coordinateTask ? { coordinate_task: question.coordinateTask } : {}),
             // The table's own reading of itself: headings and cells, exactly
@@ -2743,6 +2763,7 @@ async function solve(windowId = state.windowId) {
       && shape?.kind !== "graph"
       && state.editor?.surface !== "graph-choice"
       && !question.labeledPoint
+      && !question.labeledPoints
       && !question.linePoints
       && !question.coordinateTask
       && !controller.signal.aborted
@@ -3122,6 +3143,16 @@ async function acceptReply(reply) {
     return;
   }
   const answerIntercepts = axisInterceptsOf(shaped);
+  const answerCoordinates = shaped.labeled_coordinates ?? [];
+  const hasCoordinates = answerCoordinates.length > 0;
+  const coordinateDisplay = hasCoordinates
+    ? labeledCoordinateAnswer(answerCoordinates, state.editor?.rows) : null;
+  if (hasCoordinates && (!coordinateDisplay || shaped.form !== "labeled-coordinates"
+    || state.editor?.kind !== "labeled-coordinates" || certainty.model_calls !== 0
+    || certainty.answered_by !== "exact" || !certainty.facet_invoked)) {
+    fail("errorAnswerInvalid", { detail: "labeled-coordinate-answer-invalid" });
+    return;
+  }
   const carriesIntercepts = shaped.axis_intercepts !== null
     && shaped.axis_intercepts !== undefined;
   if (carriesIntercepts && answerIntercepts === null) {
@@ -3189,7 +3220,7 @@ async function acceptReply(reply) {
       && (validateAnswer(value).ok || answersByChoosing(value))
   );
   const interceptDisplay = hasIntercepts ? axisInterceptDisplay(answerIntercepts) : "";
-  const answer = hasIntercepts
+  const answer = hasCoordinates ? coordinateDisplay : hasIntercepts
     ? interceptDisplay
     : hasParts
     ? displayText
@@ -3207,7 +3238,7 @@ async function acceptReply(reply) {
     fail("errorAnswerInvalid", { detail: displayText.slice(0, 300) });
     return;
   }
-  const entryText = hasParts || hasIntercepts
+  const entryText = hasParts || hasIntercepts || hasCoordinates
     ? ""
     :
     typeof shaped.keyboard_entry === "string"
@@ -3224,6 +3255,7 @@ async function acceptReply(reply) {
     answerParts: answerParts.length,
     answerForm: shaped.form ?? "",
     axisIntercepts: hasIntercepts,
+    labeledCoordinates: answerCoordinates.length,
     hostAnswerParts: Number.isInteger(certainty.answer_parts) ? certainty.answer_parts : 0,
     elapsedMs: state.startedAt ? Date.now() - state.startedAt : 0,
     // Which machinery answered. The panel has shown this in its provenance
@@ -3278,12 +3310,12 @@ async function acceptReply(reply) {
       ),
     });
   }
-  const fits = hasIntercepts
+  const fits = hasCoordinates ? { insertable: true, code: "labeled-coordinates" } : hasIntercepts
     ? { insertable: true, code: "axis-intercepts" }
     : hasParts
     ? { insertable: partsFit, code: "answer-parts" }
     : answerFitsEditor(answer, state.editor);
-  const plan = hasIntercepts
+  const plan = hasCoordinates ? { ok: true, code: "labeled-coordinates" } : hasIntercepts
     ? { ok: true, code: "axis-intercepts" }
     : hasParts
     ? { ok: false, code: "answer-parts" }
@@ -3314,7 +3346,7 @@ async function acceptReply(reply) {
     // The machine form is validated; the readable one is only preferred when
     // it is itself an answer. Falling back keeps the card honest without
     // failing a solve whose entry value was perfectly good all along.
-    displayText: hasIntercepts
+    displayText: hasCoordinates ? coordinateDisplay : hasIntercepts
       ? interceptDisplay
       : carriesConditional && state.editor?.kind === "option"
         ? displayText
@@ -3325,6 +3357,7 @@ async function acceptReply(reply) {
     answerParts: hasParts ? answerParts : [],
     answerConnector: hasCarriedPair ? pairConnector : "",
     answerIntercepts: hasIntercepts ? answerIntercepts : null,
+    answerCoordinates: hasCoordinates ? answerCoordinates : [],
     problemText: reply.problem_text ?? "",
     source: answeredByBadge(certainty),
     // Absent means an older host that cannot report it; only an explicit false
@@ -3454,6 +3487,8 @@ function pinInsertionTarget() {
     reviewed: state.answer,
     machineEntry: state.entryText || state.answer,
     answerParts: Object.freeze([...(state.answerParts ?? [])]),
+    answerCoordinates: Object.freeze((state.answerCoordinates ?? []).map((point) => Object.freeze({ ...point }))),
+    coordinateRows: Object.freeze((state.editor?.rows ?? []).map((row) => Object.freeze({ ...row }))),
     answerConnector: state.answerConnector ?? "",
     connectorSurface: state.editor?.kind === "inequality-pair"
       ? Object.freeze({
@@ -3514,6 +3549,8 @@ const OWNERSHIP_COMPONENTS = Object.freeze({
   fieldIdentity: (target) => (state.fieldIdentity ?? "") === target.fieldIdentity,
   tableTargets: (target) => sameTableMapping(state.tableTargets ?? [], target.tableTargets),
   answerParts: (target) => sameStringArray(state.answerParts ?? [], target.answerParts),
+  answerCoordinates: (target) => JSON.stringify(state.answerCoordinates ?? []) === JSON.stringify(target.answerCoordinates),
+  coordinateRows: (target) => JSON.stringify(state.editor?.rows ?? []) === JSON.stringify(target.coordinateRows),
   answerConnector: (target) => (state.answerConnector ?? "") === target.answerConnector,
   answerIntercepts: (target) =>
     JSON.stringify(state.answerIntercepts) === JSON.stringify(target.answerIntercepts),
@@ -3816,6 +3853,42 @@ async function insert() {
   // A performance now runs for seconds, so how long it actually took is the
   // one thing worth recording. The answer itself never enters the log.
   const entryStartedAt = Date.now();
+  if (target.answerCoordinates.length) {
+    if (!transportMatches(routed, "hawkes-plain-fields") || editor.kind !== "labeled-coordinates"
+      || !labeledCoordinateAnswer(target.answerCoordinates, editor.rows)
+      || JSON.stringify(editor.rows) !== JSON.stringify(target.coordinateRows)) {
+      fail("errorEditorUnknown", { detail: "labeled-coordinate-ownership-changed" });
+      return;
+    }
+    const values = [], fields = [];
+    for (const row of target.coordinateRows) {
+      const point = target.answerCoordinates.find((point) => point.label === row.label);
+      values.push(point.x, point.y);
+      fields.push(row.x, row.y);
+    }
+    if (!values.every((value) => answerFitsEditor(value, editor.coordinateEditor).insertable
+      || planEntry(value, editor.coordinateEditor).ok)) {
+      fail("errorEditorUnknown", { detail: "labeled-coordinate-editor-refused" });
+      return;
+    }
+    const [entry] = await runScoredEntry(target, values.map((text) => ({ op: "type", text })), cadence,
+      () => runInjection({ target: { tabId: target.tabId, frameIds: [target.frameId] }, world: "MAIN",
+        func: enterOwnedFields, args: [values, fields, cadence, "coordinates", target.coordinateRows] }));
+    if (!entry?.result?.ok || entry.result.settled !== fields.length
+      || !sameStringArray(entry.result.fields, fields) || !ownsTarget(target)) {
+      log.warn("labeled-coordinate-entry-refused", { code: entry?.result?.code ?? "missing",
+        where: entry?.result?.where ?? "", part: entry?.result?.part ?? null,
+        written: entry?.result?.written ?? 0, moved: entry?.result?.moved ?? null,
+        leftBehind: entry?.result?.leftBehind === true });
+      fail(insertErrorKey(entry?.result?.code ?? "labeled-coordinate-readback-failed"));
+      return;
+    }
+    log.info("inserted", { via: "labeled-coordinates", transport: routed.transport,
+      rows: target.coordinateRows.length, fields: fields.length, settled: entry.result.settled,
+      labeled: true, modelsRead: entry.result.models, elapsedMs: Date.now() - entryStartedAt });
+    await finishInsertion("Each labeled coordinate pair entered and verified against its page-owned fields", target);
+    return;
+  }
   if (target.answerIntercepts !== null) {
     if (!transportMatches(routed, "hawkes-axis-intercepts")
         || editor.kind !== "axis-intercepts"
@@ -4471,6 +4544,7 @@ async function finishInsertion(detail, target) {
     answerParts: [],
     answerIntercepts: null,
     graphPlan: null,
+    answerCoordinates: [],
     graphCoefficients: [],
     // `problemText` and `source` are left as they are: both describe the
     // question still on screen, which the insertion did not change.
@@ -4969,6 +5043,8 @@ function markedCode() {
     "common/editor-rules.js#insertErrorKey": insertErrorKey,
     "common/editor-rules.js#isTableMapping": isTableMapping,
     "common/editor-rules.js#publishableAnswer": publishableAnswer,
+    "common/labeled-coordinates.js#labeledCoordinateAnswer": labeledCoordinateAnswer,
+    "common/labeled-coordinates.js#labeledCoordinateSurface": labeledCoordinateSurface,
     "common/editor-rules.js#sameTableMapping": sameTableMapping,
     "common/editor-rules.js#surfaceStatesSubject": surfaceStatesSubject,
     "common/editor-rules.js#tableAnswerFits": tableAnswerFits,

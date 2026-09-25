@@ -134,6 +134,7 @@ export function chooseTransport(editor, page = {}) {
   if (editor.kind === "graph") {
     return settled("hawkes-graph");
   }
+  if (editor.kind === "labeled-coordinates") return settled("hawkes-plain-fields");
   if (editor.kind === "axis-intercepts") {
     return settled("hawkes-axis-intercepts");
   }

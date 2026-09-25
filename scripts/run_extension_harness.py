@@ -489,6 +489,22 @@ setTimeout(async () => {{
 
 
 def run(selected: str | None, headless: bool = True) -> int:
+    browser_checks = (
+        judge_graph,
+        judge_plot_points,
+        judge_labeled_plot_points,
+        judge_linear_graph,
+        judge_scatter,
+        judge_unreadable_scatter,
+        judge_on_axis_scatter,
+        judge_translated_scatter,
+        judge_labeled_point,
+        judge_labeled_coordinates,
+        judge_line_slope_model,
+        judge_linear_coordinate_model,
+        judge_table,
+        judge_table_completion,
+    )
     site_port, report_port, foreign_port = free_port(), free_port(), free_port()
     site = f"http://127.0.0.1:{site_port}"
     report_origin = f"http://localhost:{report_port}"
@@ -526,6 +542,10 @@ def run(selected: str | None, headless: bool = True) -> int:
     shutil.copyfile(
         PROJECT_ROOT / "tests/fixtures/labeled-point-model.html",
         Path(web, "labeled-point-model.html"),
+    )
+    shutil.copyfile(
+        PROJECT_ROOT / "tests/fixtures/labeled-coordinates.html",
+        Path(web, "labeled-coordinates.html"),
     )
     shutil.copyfile(
         PROJECT_ROOT / "tests/fixtures/line-slope-model.html",
@@ -605,19 +625,8 @@ def run(selected: str | None, headless: bool = True) -> int:
 
         failures += judge_distinct(scenarios, signatures)
         if not selected:
-            failures += judge_graph(marionette, site)
-            failures += judge_plot_points(marionette, site)
-            failures += judge_labeled_plot_points(marionette, site)
-            failures += judge_linear_graph(marionette, site)
-            failures += judge_scatter(marionette, site)
-            failures += judge_unreadable_scatter(marionette, site)
-            failures += judge_on_axis_scatter(marionette, site)
-            failures += judge_translated_scatter(marionette, site)
-            failures += judge_labeled_point(marionette, site)
-            failures += judge_line_slope_model(marionette, site)
-            failures += judge_linear_coordinate_model(marionette, site)
-            failures += judge_table(marionette, site)
-            failures += judge_table_completion(marionette, site)
+            for check in browser_checks:
+                failures += check(marionette, site)
     except ActionButtonMissing as error:
         # A harness fault, not a verdict on the add-on. Reported as such and
         # scored as nothing, because nothing was measured.
@@ -645,7 +654,7 @@ def run(selected: str | None, headless: bool = True) -> int:
     checks = (
         len(scenarios)
         + len({s.distinct for s in scenarios if s.distinct})
-        + (0 if selected else 11)
+        + (0 if selected else len(browser_checks))
     )
     print(f"\n{checks - failures}/{checks} checks passed")
     return 1 if failures else 0
@@ -752,6 +761,60 @@ def judge_labeled_point(marionette, site):
         "ok   labeled-point: label, bounds, origin, grid spacing and point "
         "geometry read exactly from SVG or the page model; duplicate and off-grid "
         "evidence refused"
+    )
+    return 0
+
+
+def judge_labeled_coordinates(marionette, site):
+    """Existing graph authority joined to explicit, independently shuffled rows."""
+    source = (PROJECT_ROOT / "extension/content/hawkes-graph-model.js").read_text()
+    probe = "return " + source[source.index("(() => {") :]
+    surface = (
+        (PROJECT_ROOT / "extension/common/labeled-coordinates.js")
+        .read_text()
+        .replace("export function", "function")
+    )
+    faults = {
+        "": "",
+        "duplicate": "document.getElementById('name-z').textContent='point U second coordinate'",
+        "missing": "document.getElementById('name-z').textContent='unknown'",
+        "conflict": "questionPartViewModel.partDescription('Identify the coordinates of the points R, U, and V on the graph.')",
+        "duplicate-request": "questionPartViewModel.partDescription('Identify the coordinates of the points R, U, R, and T on the graph.')",
+        "off-grid": "questionPartViewModel.questionGraphHTML(questionPartViewModel.questionGraphHTML().replace('<x>-4</x>','<x>-3</x>'))",
+        "model-duplicate": "questionPartViewModel.questionGraphHTML(questionPartViewModel.questionGraphHTML().replace('<label>T</label>','<label>R</label>'))",
+        "authority": "questionPartViewModel.questionGraphHTML('')",
+    }
+    for fault, mutate in faults.items():
+        marionette.set_context("content")
+        marionette.navigate(f"{site}/labeled-coordinates.html")
+        if mutate:
+            marionette.execute(mutate)
+        result = marionette.execute(probe)["value"]
+        if fault:
+            assert result.get("graphDecision") != "accepted", (fault, result)
+            assert not result.get("labeledPoints"), (fault, result)
+        else:
+            expected = {"R": ("-4", "2"), "T": ("0", "-6"), "U": ("8", "0")}
+            assert {
+                p["label"]: (p["x"], p["y"]) for p in result["labeledPoints"]
+            } == expected
+            rows = marionette.execute(surface + "return labeledCoordinateSurface();")[
+                "value"
+            ]
+            assert rows["rows"] == [
+                {"label": "R", "x": "txtAns-p_num", "y": "txtAns-z_num"},
+                {"label": "T", "x": "txtAns-b_num", "y": "txtAns-d_num"},
+                {"label": "U", "x": "txtAns-a_num", "y": "txtAns-k_num"},
+            ]
+            marionette.execute(
+                "questionPartViewModel.partDescription('Identify the coordinates of the labeled points on the graph.')"
+            )
+            assert (
+                marionette.execute(probe)["value"]["labeledPoints"]
+                == result["labeledPoints"]
+            )
+    say(
+        "ok   labeled-coordinates: full exact set, explicit shuffled label/axis owners; missing, duplicate, conflicting and off-grid evidence refused"
     )
     return 0
 

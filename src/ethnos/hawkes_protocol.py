@@ -198,6 +198,7 @@ class AnswerShape(BaseModel):
         "multi",
         "graph",
         "axis-intercepts",
+        "labeled-coordinates",
         "inequality-pair",
     ] = "field"
     count: int = Field(default=1, ge=1, le=MAX_ANSWER_PARTS)
@@ -400,6 +401,7 @@ class ProblemPayload(BaseModel):
     #: series for regression; conflating the two routes made one point look
     #: like an incomplete regression.
     labeled_point: LabeledPoint | None = None
+    labeled_points: list[LabeledPoint] = Field(default_factory=list, max_length=12)
     #: The two labeled points structurally owned by one page-defined line.
     #: Separate from regression data and from a single requested point so the
     #: host never has to infer a graph question's meaning from point count.
@@ -527,6 +529,7 @@ class AnswerPayload(BaseModel):
             "conditional-choice",
             "relation",
             "axis-intercepts",
+            "labeled-coordinates",
             "inequality-pair",
         ]
         | None
@@ -540,10 +543,28 @@ class AnswerPayload(BaseModel):
     relation: AnswerRelation | None = None
     conditional_choice: AnswerConditionalChoice | None = None
     axis_intercepts: AnswerAxisIntercepts | None = None
+    labeled_coordinates: list[LabeledPoint] = Field(default_factory=list, max_length=12)
     inequality_pair: AnswerInequalityPair | None = None
 
     @model_validator(mode="after")
     def conditional_answer_is_one_composite(self) -> AnswerPayload:
+        if self.form == "labeled-coordinates" or self.labeled_coordinates:
+            if (
+                self.form != "labeled-coordinates"
+                or len(self.labeled_coordinates) < 2
+                or len({point.label for point in self.labeled_coordinates})
+                != len(self.labeled_coordinates)
+                or self.parts
+                or self.keyboard_entry
+                or self.graph_plan is not None
+                or self.relation is not None
+                or self.axis_intercepts is not None
+                or self.inequality_pair is not None
+                or self.conditional_choice is not None
+            ):
+                raise ValueError(
+                    "labeled coordinates are one uniquely labeled composite"
+                )
         if self.inequality_pair is not None:
             if (
                 self.relation is not None

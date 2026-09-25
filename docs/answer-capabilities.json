@@ -819,6 +819,19 @@
       }
     },
     {
+      "id": "labeled-coordinate-collection",
+      "semantic": "label-keyed collection of exact ordered pairs",
+      "form": "ordered-pair",
+      "notation": ["plain"],
+      "example": "-4",
+      "editor": "plain-box",
+      "topology": "two to twelve explicitly labeled rows, with page-owned first/second-coordinate field names",
+      "mechanism": ["_solve_labeled_coordinates_with_facet", "labeledCoordinateSurface", "enterOwnedFields"],
+      "status": "supported",
+      "coverage": {"unit": "yes", "harness": "yes", "live": "yes"},
+      "note": "The companion composes existing Facet Exact ordered-pair results into a typed labeled-coordinates payload without changing the runtime form set. Instruction plus graph model plus answer-row labels is complete content; questionString and equation markup may be empty. Existing point validation checks bounds, origin, grid alignment and unique identity. Labels and x/y roles, never DOM/model order, select fields. The existing owned-field writer revalidates identities during entry, commits afterkeydown-bound plain boxes with native change events, and settles every field against its Hawkes model. Ambiguous or conflicting owners refuse without screenshots or model calls. Live run rmug8cba8d5c2: Facet Exact, model_calls=0, three labels, six fields settled and six model read-backs, independently confirmed afterward; answerStatus remained 0. No grading/navigation was performed. Acceptance awaits Steve's submission; not Fixed live."
+    },
+    {
       "id": "ordered-pair-group-comma",
       "semantic": "ordered pair, integer components",
       "form": "ordered-pair",

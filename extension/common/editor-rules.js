@@ -1,6 +1,7 @@
 "use strict";
 
 import { MAX_ANSWER_PARTS, displayableAnswer, validateAnswer } from "./config.js";
+import { labeledCoordinateAnswer } from "./labeled-coordinates.js";
 
 /**
  * Deciding whether an answer can be typed, from the editor's own rules.
@@ -537,6 +538,12 @@ export function publishableAnswer(published, shape) {
     return { ok: true };
   }
 
+  if (kind === "labeled-coordinates") {
+    const display = labeledCoordinateAnswer(published?.answerCoordinates, published?.editor?.rows);
+    return display && answer === display && displayText === display && !entryText
+      && parts.length === 0 && !plan && !intercepts
+      ? { ok: true } : { ok: false, code: "answer-shape-labeled-coordinates" };
+  }
   if (kind === "axis-intercepts") {
     const coordinate = (value, axis) => value === null || (
       Array.isArray(value)

@@ -1,4 +1,5 @@
 "use strict";
+import { labeledCoordinateAnswer } from "./labeled-coordinates.js";
 
 /**
  * What the panel should show, worked out from the state the event page reports.
@@ -148,6 +149,13 @@ function reviewOffer(state) {
   }
   if (state.graphPlan && state.editor?.kind === "graph" && !state.errorKey) {
     return { insertable: true, status: { key: "statusSolved", args: [], kind: "ready" } };
+  }
+  if (state.editor?.kind === "labeled-coordinates" && !state.errorKey) {
+    const insertable = Boolean(labeledCoordinateAnswer(state.answerCoordinates, state.editor.rows))
+      && state.answerCoordinates.every((point) => [point.x, point.y].every(
+        (value) => answerFitsEditor(value, state.editor.coordinateEditor).insertable
+          || planEntry(value, state.editor.coordinateEditor).ok));
+    return { insertable, status: { key: insertable ? "statusSolved" : "errorEditorUnknown", args: [], kind: insertable ? "ready" : "error" } };
   }
   if (state.answerIntercepts && state.editor?.kind === "axis-intercepts" && !state.errorKey) {
     const editor = state.editor.coordinateEditor;

@@ -35,6 +35,7 @@ IMPORT_LINE = re.compile(r"^import\s[\s\S]*?;\s*$", re.MULTILINE)
 # Dependency order. `background.js` last; it declares the functions under test.
 MODULES = (
     "common/config.js",
+    "common/labeled-coordinates.js",
     "common/log.js",
     "common/build-marker.js",
     "common/answer-session.js",
