@@ -1014,17 +1014,17 @@ export function graphOperation(offered = null) {
       // One anchor per point, matched by what the page itself says they are --
       // never by position. A control whose anchor cannot be named, or that
       // could be either of two, is refused rather than guessed at.
-      const labelOf = (anchor) =>
-        String(document.getElementById(anchor.getAttribute("aria-labelledby"))
-          ?.textContent ?? "").trim();
+      const labelsOf = (anchor) => String(anchor.getAttribute("aria-labelledby") ?? "")
+        .split(/\s+/).map((id) => String(document.getElementById(id)?.textContent ?? "").trim());
       const anchorFor = (spot) => {
         const byId = plotAnchors.filter((a) =>
-          spot.ID !== undefined && String(a.id).includes(String(spot.ID)));
-        if (byId.length === 1) return byId[0];
+          spot.ID !== undefined && String(a.id).split(/[_-]/).includes(String(spot.ID)));
         const title = String(spot.title ?? "").trim();
         const byName = title.length > 0
-          ? plotAnchors.filter((a) => labelOf(a) === title) : [];
-        return byName.length === 1 ? byName[0] : null;
+          ? plotAnchors.filter((a) => labelsOf(a).includes(title)) : [];
+        if (byId.length > 1 || byId.length === 0 && byName.length > 1
+          || byId.length === 1 && byName.length === 1 && byId[0] !== byName[0]) return null;
+        return byId[0] ?? byName[0] ?? null;
       };
       const paired = spots.map(anchorFor);
       if (paired.some((a) => a === null)
@@ -1032,6 +1032,80 @@ export function graphOperation(offered = null) {
       const circleOf = paired.map((a) => a.querySelector("circle"));
       if (circleOf.some((c) => !c)) return refuse("graph-controls-unsupported");
       const xml = new DOMParser().parseFromString(model.graphXML(), "application/xml");
+      // Labels belong to graph objects by their explicit XML ID, never their
+      // array position or current screen coordinate. An unlabeled line keeps
+      // its existing set-of-points contract; a literal labeled plot cannot.
+      const pointSpecs = [...xml.querySelectorAll("graphobjects point")];
+      const directText = (node, name) => {
+        const matches = [...node.children].filter((child) => child.tagName.toLowerCase() === name);
+        return matches.length === 1 ? String(matches[0].textContent).trim() : "";
+      };
+      const labelFor = (spot) => {
+        const current = new DOMParser().parseFromString(model.graphXML(), "application/xml");
+        const matches = [...current.querySelectorAll("graphobjects point")]
+          .filter((node) => node.getAttribute("id") === String(spot.ID));
+        const label = matches.length === 1 ? directText(matches[0], "label") : "";
+        return spot.label !== undefined && String(spot.label).trim() !== label ? "" : label;
+      };
+      const labels = spots.map(labelFor);
+      const literalPlot = /\b(?:plot|place|graph|draw)\b[^.?!]*\bpoints?\b/i.test(
+        ["questionDescription", "partInformation"].map((id) =>
+          document.getElementById(id)?.textContent ?? "").join(" ")
+      );
+      const hasLabels = literalPlot && (pointSpecs.some((node) => directText(node, "label"))
+        || spots.some((spot) => String(spot.label ?? "").trim()));
+      if (hasLabels && (pointSpecs.length !== spots.length
+        || labels.some((label) => !/^[^\s(),;:]{1,16}$/.test(label))
+        || new Set(labels).size !== spots.length
+        || new Set(spots.map((spot) => String(spot.ID))).size !== spots.length)) {
+        return refuse("graph-point-labels-ambiguous");
+      }
+      // Read each label with its own literal MathML pair from the page's
+      // question HTML. Row boundaries preserve adjacency (A (x,y)), not order.
+      // This is bounded transcription; Facet still reads and verifies the math.
+      const readLabeledPoints = () => {
+        if (!literalPlot) return null;
+        const owned = window.questionPartViewModel?.questionString;
+        const source = typeof owned === "string" ? owned
+          : window.ko?.isObservable?.(owned) ? owned()
+            : new XMLSerializer().serializeToString(document.getElementById("questionString"));
+        if (typeof source !== "string" || source.length > 40000) {
+          throw Error("graph-point-labels-ambiguous");
+        }
+        const parsed = new DOMParser().parseFromString(source, "text/html");
+        for (const fraction of [...parsed.querySelectorAll("mfrac")].reverse()) {
+          if (fraction.children.length !== 2) throw Error("graph-point-labels-ambiguous");
+          fraction.replaceWith(`${fraction.children[0].textContent}/${fraction.children[1].textContent}`);
+        }
+        for (const node of parsed.querySelectorAll("br")) node.replaceWith("\n");
+        for (const node of parsed.querySelectorAll("p,li,tr,div")) node.append("\n");
+        const rows = String(parsed.body.textContent).replace(/\u2212/g, "-")
+          .split(/\n/).map((row) => row.trim()).filter(Boolean);
+        const pair = /^([^\s(),;:]{1,16})\s*:?[\s]*\(\s*([+-]?\s*\d+(?:\s*\/\s*[1-9]\d*)?)\s*,\s*([+-]?\s*\d+(?:\s*\/\s*[1-9]\d*)?)\s*\)$/;
+        const matches = rows.map((row) => pair.exec(row));
+        if (!hasLabels && !matches.some(Boolean)) return null;
+        if (!hasLabels || rows.length !== spots.length || matches.some((match) => !match)) {
+          throw Error("graph-point-labels-ambiguous");
+        }
+        const exact = (raw) => {
+          const compact = raw.replace(/\s/g, "");
+          if (compact.length > 30) throw Error("graph-plan-invalid");
+          const [a, b = "1"] = compact.split("/");
+          let n = BigInt(a), d = BigInt(b), x = n < 0n ? -n : n, y = d;
+          while (y) [x, y] = [y, x % y];
+          n /= x; d /= x;
+          const text = d === 1n ? String(n) : `${n}/${d}`;
+          if (text.length > 30) throw Error("graph-plan-invalid");
+          return text;
+        };
+        const points = matches.map((match) => ({label: match[1], x: exact(match[2]), y: exact(match[3])}));
+        if (new Set(points.map((point) => point.label)).size !== spots.length
+          || !points.every((point) => labels.includes(point.label))) {
+          throw Error("graph-point-labels-ambiguous");
+        }
+        return points;
+      };
+      const labeledPoints = readLabeledPoints();
       const readAxis = (sel) => Number(xml.querySelector(sel)?.textContent);
       if (xml.querySelector("grid > type")?.textContent !== "cartesian") {
         return refuse("graph-orientation-unsupported");
@@ -1047,11 +1121,14 @@ export function graphOperation(offered = null) {
       if (nodes.some((n) => !n)) return refuse("graph-question-missing");
       const asked = () => nodes.map((n) => new XMLSerializer().serializeToString(n)).join("\u001f");
       const state = () => spots.map((q, i) => ({ id: q.ID, anchor: paired[i].id,
+        ...(labeledPoints ? { label: labelFor(q) } : {}),
         x: q.x, y: q.y, cx: circleOf[i].getAttribute("cx"), cy: circleOf[i].getAttribute("cy") }));
       const shot = () => ({ question: asked(), xml: model.graphXML(), points: state(),
+        ...(labeledPoints ? { labeledPoints: readLabeledPoints() } : {}),
         answer: model.userAnswer() });
       const first = shot();
       const context = { family: "points", count: spots.length, bounds, snap,
+        ...(labeledPoints ? { labeled_points: labeledPoints } : {}),
         controls: "draggable-points" };
       if (!offered) {
         // What Hawkes needs beyond coordinates, as counts.
@@ -1094,7 +1171,7 @@ export function graphOperation(offered = null) {
         return refuse("graph-plan-invalid");
       }
       const wanted = plan.points.map((q) => {
-        if (pointPlan && !has(q, "x y")) throw Error("graph-plan-invalid");
+        if (pointPlan && !has(q, labeledPoints ? "label x y" : "x y")) throw Error("graph-plan-invalid");
         if (linePlan && (!has(q, "role x y")
           || !["x-intercept", "y-intercept", "substitute"].includes(q.role))) {
           throw Error("graph-plan-invalid");
@@ -1119,14 +1196,27 @@ export function graphOperation(offered = null) {
       }
       if (!wanted.every(([x, y]) => x >= bounds[0] && x <= bounds[1]
         && y >= bounds[2] && y <= bounds[3])) return refuse("graph-plan-off-grid");
-      // The answer is the set of places the controls end up, so which control
-      // goes to which stated point is this writer's to choose. Chosen the one
-      // way that is not a guess: both lists in the same total order.
       const order = (a, b) => (a[0] - b[0]) || (a[1] - b[1]);
       const targets = [...wanted].sort(order);
-      const seats = spots.map((q, i) => [q.x, q.y, i]).sort(order).map((t) => t[2]);
-      const goal = [];
-      seats.forEach((at, k) => { goal[at] = targets[k]; });
+      let goal;
+      if (labeledPoints) {
+        if (!pointPlan || new Set(plan.points.map((point) => point.label)).size !== spots.length
+          || !plan.points.every((point) => labeledPoints.some((owned) =>
+            owned.label === point.label && owned.x === point.x && owned.y === point.y))) {
+          return refuse("graph-point-labels-ambiguous");
+        }
+        goal = labels.map((label) => {
+          const point = plan.points.find((point) => point.label === label);
+          if (!point) throw Error("graph-point-labels-ambiguous");
+          return [num(point.x), num(point.y)];
+        });
+      } else {
+        // Only genuinely unlabeled points are interchangeable. Preserve the
+        // existing positional optimization for that route and derived lines.
+        const seats = spots.map((q, i) => [q.x, q.y, i]).sort(order).map((t) => t[2]);
+        goal = [];
+        seats.forEach((at, k) => { goal[at] = targets[k]; });
+      }
       if (!goal.every(([x, y], i) =>
         near((x - spots[i].x) / snap[0], Math.round((x - spots[i].x) / snap[0]))
         && near((y - spots[i].y) / snap[1], Math.round((y - spots[i].y) / snap[1])))) {
@@ -1137,6 +1227,9 @@ export function graphOperation(offered = null) {
       if (total > 400) return refuse("graph-plan-too-long");
       let expect = first;
       const pinned = () => {
+        const currentObjects = Object.values(model.allGraphObjects());
+        const currentSpots = currentObjects.every(movable) ? currentObjects
+          : currentObjects.length === 1 ? currentObjects[0]?.children : null;
         if (root.querySelector("svg defs clipPath rect") !== plotRect
           || Number(plotRect.getAttribute("width")) !== plotWidth
           || Number(plotRect.getAttribute("height")) !== plotHeight
@@ -1144,8 +1237,11 @@ export function graphOperation(offered = null) {
           || document.querySelectorAll('#QGraph[role="application"]').length !== 1
           || document.getElementById("QGraph") !== root || !model.getEnableState()
           || Object.values(window.quant_wp_UI.controlsCollection)[0] !== model
+          || !Array.isArray(currentSpots) || currentSpots.length !== spots.length
+          || !spots.every((point) => currentSpots.includes(point))
           || nodes.some((n) => !n.isConnected || document.getElementById(n.id) !== n)
           || spots.some((q, i) => !paired[i].isConnected
+            || anchorFor(q) !== paired[i]
             || document.getElementById(paired[i].id) !== paired[i]
             || paired[i].querySelector("circle") !== circleOf[i]
             || paired[i].getAttribute("draggable") !== "true"
@@ -1175,7 +1271,8 @@ export function graphOperation(offered = null) {
             const next = shot();
             if (next.question !== first.question
               || next.points.some((q, j) => q.id !== first.points[j].id
-                || q.anchor !== first.points[j].anchor)) throw Error("graph-target-stale");
+                || q.anchor !== first.points[j].anchor
+                || q.label !== first.points[j].label)) throw Error("graph-target-stale");
             expect = next;
           }
         }
@@ -1219,6 +1316,35 @@ export function graphOperation(offered = null) {
         ? model.isAllGraphObjectsPlotted() === true
         : spots.every((q) => q.plotted === true);
       if (!complete) return refuse("graph-points-not-plotted");
+      if (labeledPoints) {
+        const verified = () => {
+          pinned();
+          if (!spots.every((point, i) => labelFor(point) === labels[i]
+            && near(point.x, goal[i][0]) && near(point.y, goal[i][1])
+            && point.plotted === true)) return false;
+          const readback = new DOMParser().parseFromString(model.userAnswer(), "application/xml");
+          const owned = [...readback.querySelectorAll("point")];
+          return owned.length === spots.length && spots.every((point, i) => {
+            const matches = owned.filter((node) => node.getAttribute("id") === String(point.ID));
+            if (matches.length !== 1) return false;
+            // Hawkes' answer XML names owners by ID, without repeating their
+            // labels. Join that ID to the freshly verified graph model; if an
+            // answer does repeat a label, it must agree too.
+            const label = directText(matches[0], "label");
+            const x = directText(matches[0], "x"), y = directText(matches[0], "y");
+            return (!label || label === labels[i]) && x !== "" && y !== ""
+              && near(Number(x), goal[i][0]) && near(Number(y), goal[i][1]);
+          });
+        };
+        if (!verified()) return refuse("graph-point-label-readback-failed");
+        return new Promise((resolve) => setTimeout(() => {
+          try {
+            resolve(verified() ? {ok: true, code: "graph-labeled-points-verified",
+              points: spots.length, events: struck, plotKeys, labeled: true, settled: true}
+              : refuse("graph-point-label-readback-failed"));
+          } catch { resolve(refuse("graph-target-stale")); }
+        }, 250));
+      }
       if (linePlan) {
         const readback = new DOMParser().parseFromString(
           model.userAnswer(), "application/xml"

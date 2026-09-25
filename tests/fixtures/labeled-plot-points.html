@@ -1,0 +1,55 @@
+<!doctype html><meta charset="utf-8"><title>labeled plot ownership fixture</title>
+<div id="questionDescription">Plot the given labeled points on the graph.</div>
+<div id="questionString"></div><div id="partInformation">Plot the given points.</div>
+<div id="QGraph" role="application"><svg width="420" height="420">
+<defs><clipPath id="cp"><rect width="400" height="400"/></clipPath></defs>
+<g id="controls"></g></svg></div>
+<script>
+const fault = new URLSearchParams(location.search).get("fault");
+// The semantic, XML, object, creation and DOM orders intentionally disagree.
+const targets = [
+  {ID:"point1", label:"R", x:4, y:-3},
+  {ID:"point10", label:"T", x:-5, y:2},
+  {ID:"point7", label:"K", x:0, y:6},
+  {ID:"point4", label:"M", x:2, y:0},
+];
+const points = [targets[2], targets[0], targets[3], targets[1]].map((p, i) => ({
+  ...p, title:"Point " + p.label, x:i-2, y:1-i, snapX:1, snapY:1, plotted:false,
+}));
+const source = targets.map((p, i) => `${fault === "question-duplicate" && i === 1 ? "R" : fault === "question-missing" && i === 1 ? "" : p.label} <math><mo>(</mo><mn>${p.x}</mn><mo>,</mo><mn>${p.y}</mn><mo>)</mo></math>`).join("<br>");
+document.getElementById("questionString").innerHTML = source;
+window.questionPartViewModel = {questionString:source};
+window.graphEvents = []; window.forbiddenEvents = [];
+const ns = "http://www.w3.org/2000/svg";
+const g = document.getElementById("controls");
+function paint(p) {
+  const c = document.getElementById("anchor-" + p.ID).querySelector("circle");
+  c.setAttribute("cx", String(200 + p.x*20)); c.setAttribute("cy", String(200-p.y*20));
+}
+for (const p of [...points].reverse()) {
+  const a = document.createElementNS(ns,"a"); a.id="anchor-"+p.ID;
+  a.setAttribute("draggable","true"); a.setAttribute("role","button");
+  a.setAttribute("tabindex","0"); a.setAttribute("aria-labelledby","label-"+p.ID);
+  a.appendChild(document.createElementNS(ns,"circle")); g.appendChild(a);
+  const label=document.createElement("span"); label.id="label-"+p.ID;
+  label.textContent=fault === "anchor-duplicate" ? points[0].title : p.title; document.body.appendChild(label);
+  a.addEventListener("keydown", e => {
+    if (["Enter","Tab"].includes(e.key)) window.forbiddenEvents.push(e.key);
+    window.graphEvents.push({id:p.ID,label:p.label,key:e.code});
+    const step={ArrowRight:[1,0],ArrowLeft:[-1,0],ArrowUp:[0,1],ArrowDown:[0,-1]}[e.code];
+    if(step){p.x+=step[0];p.y+=step[1];paint(p);}
+    if(e.code==="Space") p.plotted=true;
+    if(fault === "changed-label") p.label="changed";
+  }); paint(p);
+}
+const spec = p => `<point id="${p.ID}"><label>${fault === "model-duplicate" ? "R" : fault === "model-missing" && p.ID === "point10" ? "" : p.label}</label></point>`;
+const model = {
+  isGraph:true,getEnableState:()=>true,allGraphObjects:()=>points,
+  isAllGraphObjectsPlotted:()=>points.every(p=>p.plotted),
+  graphXML:()=>'<graph><grid><type>cartesian</type><cartesian><xmin>-8</xmin><xmax>8</xmax><ymin>-8</ymin><ymax>8</ymax></cartesian></grid><graphobjects>' + (fault === "missing-authority" ? '' : [...points].reverse().map(spec).join("")) + (fault === "duplicate-id" ? spec(points[0]) : '')+'</graphobjects></graph>',
+  userAnswer:()=>'<graph>' + points.filter(p=>p.plotted).map(p=>`<point id="${fault === "answer-owner-swapped" ? points[(points.indexOf(p)+1)%points.length].ID : p.ID}">${fault === "answer-swapped" ? '<label>'+points[(points.indexOf(p)+1)%points.length].label+'</label>' : ''}<x>${p.x}</x><y>${p.y}</y></point>`).join("")+'</graph>',
+};
+window.quant_wp_UI={controlsCollection:[model]};
+window.plotState=()=>points.map(p=>({label:p.label,x:p.x,y:p.y}));
+if(fault === "anchor-duplicate") [...g.children].forEach((anchor,i)=>{anchor.id="opaque"+i;});
+</script>

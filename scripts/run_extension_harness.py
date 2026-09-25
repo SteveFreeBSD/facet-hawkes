@@ -516,6 +516,10 @@ def run(selected: str | None, headless: bool = True) -> int:
         PROJECT_ROOT / "tests/fixtures/plot-points.html", Path(web, "plot-points.html")
     )
     shutil.copyfile(
+        PROJECT_ROOT / "tests/fixtures/labeled-plot-points.html",
+        Path(web, "labeled-plot-points.html"),
+    )
+    shutil.copyfile(
         PROJECT_ROOT / "tests/fixtures/labeled-point.html",
         Path(web, "labeled-point.html"),
     )
@@ -603,6 +607,7 @@ def run(selected: str | None, headless: bool = True) -> int:
         if not selected:
             failures += judge_graph(marionette, site)
             failures += judge_plot_points(marionette, site)
+            failures += judge_labeled_plot_points(marionette, site)
             failures += judge_linear_graph(marionette, site)
             failures += judge_scatter(marionette, site)
             failures += judge_unreadable_scatter(marionette, site)
@@ -640,7 +645,7 @@ def run(selected: str | None, headless: bool = True) -> int:
     checks = (
         len(scenarios)
         + len({s.distinct for s in scenarios if s.distinct})
-        + (0 if selected else 10)
+        + (0 if selected else 11)
     )
     print(f"\n{checks - failures}/{checks} checks passed")
     return 1 if failures else 0
@@ -1221,6 +1226,63 @@ def judge_plot_points(marionette, site):
     say(
         "ok   plot-points: four stated points stepped onto the grid, plotted "
         "with the key the page sets its own flag from, and accepted as complete"
+    )
+    return 0
+
+
+def judge_labeled_plot_points(marionette, site):
+    """Label ownership survives independently shuffled lists and fails closed."""
+    source = (
+        (PROJECT_ROOT / "extension/common/graph-actions.js")
+        .read_text()
+        .replace("export function", "function")
+        .replace("https://learn.hawkeslearning.com", site)
+    )
+    cases = [
+        "",
+        "model-duplicate",
+        "model-missing",
+        "question-duplicate",
+        "question-missing",
+        "answer-swapped",
+        "changed-label",
+        "anchor-duplicate",
+        "missing-authority",
+        "duplicate-id",
+        "answer-owner-swapped",
+    ]
+    for fault in cases:
+        marionette.set_context("content")
+        marionette.navigate(f"{site}/labeled-plot-points.html?fault={fault}")
+        result = marionette.execute(
+            source
+            + """
+          const probe = graphOperation();
+          if (!probe.ok) return {probe, events:window.graphEvents};
+          const plan = {kind:"points", points:[...probe.context.labeled_points].reverse()};
+          return Promise.resolve(graphOperation({snapshot:probe.snapshot,plan})).then(outcome =>
+            ({probe, outcome, state:window.plotState(), events:window.graphEvents,
+              forbidden:window.forbiddenEvents}));
+        """
+        )["value"]
+        if not fault:
+            actual = {p["label"]: [p["x"], p["y"]] for p in result.get("state", [])}
+            if (
+                actual != {"R": [4, -3], "T": [-5, 2], "K": [0, 6], "M": [2, 0]}
+                or result.get("outcome", {}).get("code")
+                != "graph-labeled-points-verified"
+                or result.get("forbidden")
+            ):
+                say(f"FAIL labeled-plot-points: {result}")
+                return 1
+        elif result.get("outcome", result.get("probe", {})).get("ok") is not False or (
+            fault not in {"answer-swapped", "changed-label", "answer-owner-swapped"}
+            and result.get("events")
+        ):
+            say(f"FAIL labeled-plot-points {fault}: {result}")
+            return 1
+    say(
+        "ok   labeled-plot-points: shuffled label owners and exact pair read-back; ten ambiguity/tamper refusals"
     )
     return 0
 

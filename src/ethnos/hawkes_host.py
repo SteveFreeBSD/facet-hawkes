@@ -972,6 +972,9 @@ def _solve_point_plot_with_facet(request, instruction, announce):
     that each lands on the grid, that none moved anywhere else -- is the
     browser's, against the live graph, and is made before a key is pressed.
     """
+    from collections import Counter
+    from fractions import Fraction
+
     from .facet_client import safe_request_id, solve_math
     from .hawkes_graph import PointPlotPlan
     from .hawkes_mathml import mathml_to_latex
@@ -996,6 +999,19 @@ def _solve_point_plot_with_facet(request, instruction, announce):
                 f"the graph offers {offered} controls and the question states "
                 f"{len(plan.points)} points"
             )
+        labeled = problem.answer_shape.graph.labeled_points
+        if labeled is not None:
+            # Identity is browser-owned. Prove the exact solver's coordinate
+            # multiset agrees, then retain the page's label/pair associations.
+            # Neither Facet's result order nor graph control order is identity.
+            def pairs(points):
+                return Counter(
+                    (Fraction(point.x), Fraction(point.y)) for point in points
+                )
+
+            if pairs(plan.points) != pairs(labeled):
+                raise ValueError("labeled page points disagree with the exact plan")
+            plan = PointPlotPlan(kind="points", points=labeled)
     except Exception as error:  # noqa: BLE001 - a refusal, never a host fault
         return error_response(
             request.request_id, f"Point plot refused: {error}", "unsupported"
@@ -1004,7 +1020,9 @@ def _solve_point_plot_with_facet(request, instruction, announce):
     # carries no writable value, and the card reads `display_text`. The places
     # the controls are about to go are exactly what a reader is being asked to
     # review before pressing Insert, so they are what the card now says.
-    placed = ", ".join(f"({point.x},{point.y})" for point in plan.points)
+    placed = ", ".join(
+        f"{getattr(point, 'label', '')}({point.x},{point.y})" for point in plan.points
+    )
     return SolveResponse(
         request_id=request.request_id,
         status="ready",
@@ -1028,6 +1046,7 @@ def _solve_point_plot_with_facet(request, instruction, announce):
             method=solution.method,
             runtime=solution.runtime,
             elapsed_ms=solution.elapsed_ms,
+            model_calls=0,
         ),
     )
 

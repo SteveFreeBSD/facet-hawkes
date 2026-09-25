@@ -3068,6 +3068,7 @@ async function acceptReply(reply) {
       router: certainty.router,
       method: certainty.method,
       facetInvoked: true,
+      modelCalls: certainty.model_calls,
       facetModel: certainty.model,
       backend: certainty.actual_backend,
       device: certainty.device,
@@ -3786,6 +3787,8 @@ async function insert() {
       operation: entry.result.operation ?? "",
       boundaries: entry.result.boundaries ?? null,
       selectedRegions: entry.result.selectedRegions ?? null,
+      labeled: entry.result.labeled === true,
+      settled: entry.result.settled === true,
     });
     log.info("inserted", {
       via: target.graphPlan.kind,
@@ -3800,6 +3803,8 @@ async function insert() {
           ? "\nUnion/intersection and mounted boundaries verified in Hawkes' graph model"
         : entry.result.code === "graph-line-verified"
           ? "\nExact line verified from both page-owned defining points"
+        : entry.result.code === "graph-labeled-points-verified"
+          ? "\nEach labeled point verified against Hawkes' own graph answer"
         : "\nGraph controls and coefficients verified"),
       target
     );

@@ -6,6 +6,33 @@ name the add-on as it was called at the time.
 
 ## Unreleased
 
+- **Labeled plots retain point ownership instead of sorting labels away.**
+  The existing point actuator previously sorted the coordinate targets and
+  current graph positions, then checked only their final set. That is valid
+  for interchangeable unlabeled points but can swap labeled owners.
+
+  The same graph reader now preserves each explicit question label with its
+  exact literal pair and binds it to the unique graph XML/model point ID and
+  named SVG anchor. The host checks the coordinate multiset against Facet's
+  unchanged exact point-plot plan, then carries the label/pair records into
+  insertion and review. No runtime solver or model route changed. Missing,
+  duplicate, conflicting or stale identities refuse; positional assignment
+  remains only for existing unlabeled points and derived-line controls.
+  Final verification joins Hawkes' ID-keyed answer coordinates to the graph's
+  labels, checks each individual owner, and repeats after a settle interval.
+
+  Evidence: 2,209 companion tests, 1,029 runtime tests and 28 isolated-browser
+  checks pass. The browser suite independently shuffles semantic, XML, model,
+  creation and DOM orders, and exercises ten ambiguity/tamper refusals plus
+  the unchanged unlabeled and line routes. Live inspection confirmed the
+  original positional-assignment defect and the exact ID/label/anchor mapping.
+  An initial labeled movement left every requested label at its correct
+  coordinate but refused read-back because Hawkes omits labels from answer XML.
+  Verification was corrected to join answer IDs to the graph model. The owner
+  advanced before the final corrected live insertion proof; it remains pending.
+  No grading or navigation action was performed by the agent. This is not
+  marked Fixed live; Hawkes acceptance awaits Steve's submission.
+
 - **Presentation-only rational coefficient parentheses no longer demand a
   Hawkes parentheses template.** The existing additive Fraction planner now
   recognizes signed numeric rational atoms such as `(-a/b)*x` and `-(a/b)x`,

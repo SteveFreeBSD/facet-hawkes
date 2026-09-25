@@ -1,8 +1,8 @@
 "use strict";
 
 // Development-only MAIN-world diagnostic.  Every operation below is a
-// property read.  Functions are named but never invoked except for Knockout
-// observables, whose zero-argument form is Hawkes' own read contract.
+// property read or a bounded graph read accessor. Other functions are named
+// but never invoked except for Knockout observables' zero-argument read form.
 (() => {
   const ui = window.quant_wp_UI;
   if (!ui || typeof ui !== "object") {
@@ -87,10 +87,24 @@
     }
   }
 
+  const graphModels = values(ui.controlsCollection).filter((item) => item?.isGraph === true);
+  const graph = graphModels.length === 1 ? graphModels[0] : null;
+  const graphEvidence = graph ? {
+    xml: String(graph.graphXML?.() ?? "").slice(0, 20000),
+    answer: String(graph.userAnswer?.() ?? "").slice(0, 20000),
+    points: values(graph.allGraphObjects?.()).map((item) => metadata(item)),
+    anchors: [...document.querySelectorAll('#QGraph a[draggable="true"][role="button"]')]
+      .slice(0, 12).map((anchor) => ({id: anchor.id,
+        labelledBy: anchor.getAttribute("aria-labelledby"),
+        label: (anchor.getAttribute("aria-labelledby") ?? "").split(/\s+/)
+          .map((id) => document.getElementById(id)?.textContent ?? "").join(" ").trim()})),
+  } : null;
+
   return {
     ok: true,
     code: "development-contract-probed",
     ui: metadata(ui),
+    graph: graphEvidence,
     controls: values(ui.controlsCollection).map((item) => metadata(item)),
     controlData: values(ui.controlsCollectionData).map((item) => metadata(item)),
     qdy: values(ui.QDyTextBoxObjects).map((item) => metadata(item)),

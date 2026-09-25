@@ -7,7 +7,7 @@ import re
 from fractions import Fraction
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .hawkes_mathml import mathml_to_latex
 
@@ -32,6 +32,10 @@ class GraphPlan(BaseModel):
     points: list[GraphPoint] = Field(min_length=2, max_length=2)
 
 
+class LabeledPlotPoint(GraphPoint):
+    label: str = Field(min_length=1, max_length=16, pattern=r"^[^\s(),;:]+$")
+
+
 class PointPlotPlan(BaseModel):
     """Where each stated point goes. No curve, and no coefficients to prove.
 
@@ -42,7 +46,18 @@ class PointPlotPlan(BaseModel):
 
     model_config = ConfigDict(extra="forbid", strict=True)
     kind: Literal["points"]
-    points: list[GraphPoint] = Field(min_length=1, max_length=12)
+    points: list[GraphPoint | LabeledPlotPoint] = Field(min_length=1, max_length=12)
+
+    @model_validator(mode="after")
+    def unique_labels(self):
+        labels = [
+            point.label for point in self.points if isinstance(point, LabeledPlotPoint)
+        ]
+        if labels and (
+            len(labels) != len(self.points) or len(set(labels)) != len(labels)
+        ):
+            raise ValueError("plot labels must be complete and unique")
+        return self
 
 
 class LineCoefficients(BaseModel):

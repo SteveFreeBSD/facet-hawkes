@@ -1299,16 +1299,17 @@
       "notation": [],
       "example": "plan, no value",
       "editor": "graph-surface",
-      "topology": "one draggable control per point",
+      "topology": "one draggable control per point; labeled requests bind each label/pair to a unique XML/model point ID and its named anchor",
       "mechanism": [
         "graphOperation"
       ],
       "status": "supported",
       "coverage": {
         "unit": "yes",
-        "harness": "no",
+        "harness": "yes",
         "live": "yes"
-      }
+      },
+      "note": "Unlabeled plotting retains its existing set-of-points route. Labeled plotting carries exact label/pair records, cross-checks their rational coordinate multiset against Facet's unchanged exact plan, and never assigns targets by position or order. Missing, duplicate, ambiguous or inconsistent owners refuse before movement. Read-back joins userAnswer point IDs and coordinates to the graph XML/model labels and repeats after settling. Isolated-browser shuffled-order and tamper regressions pass. Live movement produced the correctly labeled coordinates, but the first verification expected labels inside answer XML; Hawkes returns IDs there instead. The corrected ID-join read-back is offline-proven; the owner advanced before its final live proof. Labeled live acceptance is pending Steve's submission, not Fixed live."
     },
     {
       "id": "plan-linear-graph",

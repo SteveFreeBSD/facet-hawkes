@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from .hawkes_graph import (
     GraphPlan,
     GraphPoint,
+    LabeledPlotPoint,
     LineGraphPlan,
     LinearInequalityGraphPlan,
     LinearInequalitySystemGraphPlan,
@@ -56,6 +57,10 @@ class GraphContext(BaseModel):
     #: How many draggable controls a plotting graph offers, one per point; on a
     #: number line, how many intervals it will plot.
     count: int | None = None
+    #: Page-owned label/pair associations, not a positional list of owners.
+    labeled_points: list[LabeledPlotPoint] | None = Field(
+        default=None, min_length=1, max_length=12
+    )
     #: The interval shapes a number line publishes a button for.
     intervals: list[Literal["open", "closed", "open-closed", "closed-open"]] | None = (
         None
@@ -63,6 +68,14 @@ class GraphContext(BaseModel):
 
     @model_validator(mode="after")
     def valid_grid(self) -> GraphContext:
+        if self.labeled_points is not None:
+            labels = [point.label for point in self.labeled_points]
+            if (
+                self.family != "points"
+                or len(labels) != self.count
+                or len(set(labels)) != len(labels)
+            ):
+                raise ValueError("a labeled plot needs one unique label per point")
         if self.family == "linear-inequality-system":
             if (
                 self.bounds
