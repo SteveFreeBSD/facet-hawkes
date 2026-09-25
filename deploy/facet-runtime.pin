@@ -12,4 +12,4 @@
 # exact parallel/perpendicular through-point construction, with no model call.
 # The tip of that repository may be ahead of it, and that is fine -- the pin is
 # a floor, and the test checks the sibling is not below it.
-7343ad2c20979014059d89b1a03feb6ba5ee5781
+75700485981fc580e151175df2025aec0fba11ae

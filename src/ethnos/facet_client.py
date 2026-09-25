@@ -1144,6 +1144,10 @@ def solve_math(
         if not isinstance(graph, dict) or not graph:
             raise FacetProtocolError("a function plan needs normalised geometry")
         problem["graph"] = graph
+    if result_kind == POINT_PLOT_PLAN and graph is not None:
+        if not isinstance(graph, dict) or not graph:
+            raise FacetProtocolError("derived plotting points need normalised geometry")
+        problem["graph"] = graph
     if (
         result_kind
         in {

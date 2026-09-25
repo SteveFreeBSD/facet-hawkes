@@ -1048,10 +1048,11 @@ export function graphOperation(offered = null) {
         return spot.label !== undefined && String(spot.label).trim() !== label ? "" : label;
       };
       const labels = spots.map(labelFor);
-      const literalPlot = /\b(?:plot|place|graph|draw)\b[^.?!]*\bpoints?\b/i.test(
-        ["questionDescription", "partInformation"].map((id) =>
-          document.getElementById(id)?.textContent ?? "").join(" ")
-      );
+      const instruction = ["questionDescription", "partInformation"].map((id) =>
+        document.getElementById(id)?.textContent ?? "").join(" ");
+      const integerLine = /\b(?:graph|plot)\b[^.?!]*\b(?:any\s+)?(?:two|2)\s+(?:ordered\s+pairs|points)\b[^.?!]*\binteger(?:[-\s]+valued?)?\s+coordinates\b[^.?!]*\b(?:satisfy|satisfying)\b[^.?!]*\bequation\b/i.test(instruction);
+      const literalPlot = !integerLine
+        && /\b(?:plot|place|graph|draw)\b[^.?!]*\bpoints?\b/i.test(instruction);
       const hasLabels = literalPlot && (pointSpecs.some((node) => directText(node, "label"))
         || spots.some((spot) => String(spot.label ?? "").trim()));
       if (hasLabels && (pointSpecs.length !== spots.length
@@ -1106,13 +1107,18 @@ export function graphOperation(offered = null) {
         return points;
       };
       const labeledPoints = readLabeledPoints();
-      const readAxis = (sel) => Number(xml.querySelector(sel)?.textContent);
+      const readAxis = (sel) => {
+        const matches = [...xml.querySelectorAll(sel)];
+        const raw = matches.length === 1 ? String(matches[0].textContent).trim() : "";
+        return raw ? Number(raw) : NaN;
+      };
       if (xml.querySelector("grid > type")?.textContent !== "cartesian") {
         return refuse("graph-orientation-unsupported");
       }
       const bounds = ["xmin", "xmax", "ymin", "ymax"].map((n) => readAxis(`cartesian > ${n}`));
       const snap = [spots[0].snapX, spots[0].snapY];
       if (![...bounds, ...snap].every(Number.isFinite) || !snap.every((n) => n > 0)
+        || bounds[0] >= bounds[1] || bounds[2] >= bounds[3]
         || !spots.every((q) => q.snapX === snap[0] && q.snapY === snap[1])) {
         return refuse("graph-grid-unsupported");
       }
@@ -1179,6 +1185,17 @@ export function graphOperation(offered = null) {
         return [num(q.x), num(q.y)];
       });
       const near = (a, b) => Math.abs(a - b) < 1e-9;
+      if (integerLine) {
+        if (!pointPlan || wanted.length !== 2 || labeledPoints
+          || !Array.isArray(offered.coefficients) || offered.coefficients.length !== 3
+          || !offered.coefficients.every((v) => typeof v === "string"
+            && /^-?(?:0|[1-9][0-9]*)$/.test(v) && v.length <= 100)
+          || !wanted.every((point) => point.every(Number.isSafeInteger))
+          || wanted[0].every((v, i) => v === wanted[1][i])) return refuse("graph-plan-invalid");
+        const [a, b, c] = offered.coefficients.map((v) => BigInt(v));
+        if ((!a && !b) || !wanted.every(([x, y]) =>
+          a * BigInt(x) + b * BigInt(y) + c === 0n)) return refuse("graph-plan-invalid");
+      } else if (pointPlan && offered.coefficients?.length) return refuse("graph-plan-invalid");
       if (linePlan) {
         if (!has(plan.coefficients, "constant x y")
           || !Array.isArray(offered.coefficients)
@@ -1342,6 +1359,29 @@ export function graphOperation(offered = null) {
             resolve(verified() ? {ok: true, code: "graph-labeled-points-verified",
               points: spots.length, events: struck, plotKeys, labeled: true, settled: true}
               : refuse("graph-point-label-readback-failed"));
+          } catch { resolve(refuse("graph-target-stale")); }
+        }, 250));
+      }
+      if (integerLine) {
+        const verified = () => {
+          pinned();
+          const readback = new DOMParser().parseFromString(model.userAnswer(), "application/xml");
+          const owned = [...readback.querySelectorAll("point")];
+          return owned.length === spots.length && spots.every((point, i) => {
+            const matches = owned.filter((node) => node.getAttribute("id") === String(point.ID));
+            if (matches.length !== 1 || point.plotted !== true
+              || point.x !== goal[i][0] || point.y !== goal[i][1]) return false;
+            const x = directText(matches[0], "x"), y = directText(matches[0], "y");
+            return x !== "" && y !== ""
+              && Number(x) === goal[i][0] && Number(y) === goal[i][1];
+          });
+        };
+        if (!verified()) return refuse("graph-line-readback-failed");
+        return new Promise((resolve) => setTimeout(() => {
+          try {
+            resolve(verified() ? {ok: true, code: "graph-integer-line-points-verified",
+              points: spots.length, events: struck, plotKeys, settled: true}
+              : refuse("graph-line-readback-failed"));
           } catch { resolve(refuse("graph-target-stale")); }
         }, 250));
       }

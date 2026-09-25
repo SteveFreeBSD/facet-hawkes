@@ -37,12 +37,7 @@ class LabeledPlotPoint(GraphPoint):
 
 
 class PointPlotPlan(BaseModel):
-    """Where each stated point goes. No curve, and no coefficients to prove.
-
-    The question writes its own answer down, so this carries the points it
-    named and nothing derived: what proves it is the browser, against the live
-    graph's own bounds and snap, before a key is pressed.
-    """
+    """Exact point targets, either stated or separately verified from a line."""
 
     model_config = ConfigDict(extra="forbid", strict=True)
     kind: Literal["points"]
@@ -295,6 +290,31 @@ def validate_graph_plan(plan: GraphPlan, mathml: list[str]) -> list[str]:
         if py != expression.subs(x, px) or (py - k) / (px - h) ** 2 != a:
             raise ValueError("Facet defining point does not match the exact function")
     return [str(value) for value in (a, b, c)]
+
+
+def validate_integer_line_points(
+    plan: PointPlotPlan, mathml: list[str], context
+) -> list[str]:
+    """Independently prove derived integer targets against equation and bounds."""
+    from facet_runtime.exact.intercepts import affine_coefficients
+
+    coefficients = list(affine_coefficients([mathml_to_latex(item) for item in mathml]))
+    a, b, c = map(Fraction, coefficients)
+    points = [(Fraction(point.x), Fraction(point.y)) for point in plan.points]
+    if len(points) != 2 or len(set(points)) != 2 or context.count != 2:
+        raise ValueError("integer line plotting requires two distinct points")
+    xmin, xmax, ymin, ymax = map(lambda value: Fraction(str(value)), context.bounds)
+    sx, sy = map(lambda value: Fraction(str(value)), context.snap)
+    for x, y in points:
+        if x.denominator != 1 or y.denominator != 1:
+            raise ValueError("line plotting coordinates must be integers")
+        if not (xmin <= x <= xmax and ymin <= y <= ymax):
+            raise ValueError("integer point exceeds the page-owned graph bounds")
+        if (x / sx).denominator != 1 or (y / sy).denominator != 1:
+            raise ValueError("integer point misses the page-owned graph snap")
+        if a * x + b * y + c != 0:
+            raise ValueError("integer point does not satisfy the exact equation")
+    return coefficients
 
 
 def validate_line_graph_plan(plan: LineGraphPlan, mathml: list[str]) -> list[str]:

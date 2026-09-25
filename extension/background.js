@@ -3838,7 +3838,7 @@ async function insert() {
         ? "\nNumber line interval verified against the page's own answer"
         : entry.result.code === "graph-linear-inequality-system-verified"
           ? "\nUnion/intersection and mounted boundaries verified in Hawkes' graph model"
-        : entry.result.code === "graph-line-verified"
+        : ["graph-line-verified", "graph-integer-line-points-verified"].includes(entry.result.code)
           ? "\nExact line verified from both page-owned defining points"
         : entry.result.code === "graph-labeled-points-verified"
           ? "\nEach labeled point verified against Hawkes' own graph answer"

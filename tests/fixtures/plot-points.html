@@ -70,7 +70,7 @@ window.quant_wp_UI = {controlsCollection: [{
   graphXML: () => '<graph><grid><type>cartesian</type><cartesian><xmin>-10</xmin>'
     + '<xmax>10</xmax><ymin>-10</ymin><ymax>10</ymax></cartesian></grid></graph>',
   userAnswer: () => '<graph>' + points.filter(p => p.plotted)
-    .map(p => `<point><x>${p.x}</x><y>${p.y}</y></point>`).join("") + '</graph>',
+    .map(p => `<point id="${p.ID}"><x>${p.x}</x><y>${p.y}</y></point>`).join("") + '</graph>',
 }]};
 paint();
 </script>

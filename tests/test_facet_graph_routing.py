@@ -333,6 +333,28 @@ def test_explicit_stated_points_keep_their_original_contract(monkeypatch) -> Non
     assert response.answer.graph_plan.kind == "points"
 
 
+def test_integer_line_points_use_existing_exact_point_plan(monkeypatch) -> None:
+    loopback = facet(monkeypatch)
+    request = line_request(
+        "Graph the line by plotting any two ordered pairs with integer value coordinates "
+        "that satisfy the equation."
+    )
+    response = handle(request)
+    assert response.status == "ready"
+    assert loopback.problems[0]["result_kind"] == "point_plot_plan"
+    assert loopback.problems[0]["graph"]["bounds"] == POINT_CONTEXT["bounds"]
+    assert response.answer.graph_plan.model_dump() == {
+        "kind": "points",
+        "points": [
+            {"x": "0", "y": "2"},
+            {"x": "1", "y": "2"},
+        ],
+    }
+    assert response.answer.graph_coefficients == ["0", "1", "-2"]
+    assert response.certainty.source == "Facet Exact"
+    assert response.certainty.model_calls == 0
+
+
 def test_no_hawkes_path_writes_a_model_prompt_any_more() -> None:
     """The last two prompts written here are gone, and nothing replaced them.
 

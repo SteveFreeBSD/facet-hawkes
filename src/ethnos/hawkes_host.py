@@ -1033,22 +1033,30 @@ def _solve_regression_with_facet(request, instruction, announce):
 def _solve_point_plot_with_facet(request, instruction, announce):
     """Plot the points the question states, without asking anything.
 
-    "Plot the following points in the Cartesian plane" writes its own answer
-    down. Facet reads the pairs exactly and returns where each control must end
-    up; every check that matters -- that the graph offers one control per point,
-    that each lands on the grid, that none moved anywhere else -- is the
-    browser's, against the live graph, and is made before a key is pressed.
+    Facet either reads stated pairs or derives integer solutions of one line
+    within page-owned bounds. The latter gets an independent exact equation,
+    integer and bounds check here. Both share the existing browser graph writer.
     """
     from collections import Counter
     from fractions import Fraction
 
+    from facet_runtime.graph import INTEGER_LINE_POINTS_REQUEST
+
     from .facet_client import safe_request_id, solve_math
-    from .hawkes_graph import PointPlotPlan
+    from .hawkes_graph import PointPlotPlan, validate_integer_line_points
     from .hawkes_mathml import mathml_to_latex
 
     problem = request.problem
+    graph = problem.answer_shape.graph
+    derived = INTEGER_LINE_POINTS_REQUEST.search(instruction) is not None
+    coefficients = []
     try:
-        announce("solving", "Facet stated points")
+        if derived and (graph.count != 2 or graph.labeled_points is not None):
+            raise ValueError("derived line plotting needs two unlabeled point controls")
+        announce(
+            "solving",
+            "Facet exact integer line points" if derived else "Facet stated points",
+        )
         solution = solve_math(
             instruction=instruction,
             request_id=safe_request_id(request.request_id),
@@ -1056,10 +1064,25 @@ def _solve_point_plot_with_facet(request, instruction, announce):
             # the prompt text around them can be a dozen characters.
             expressions=[mathml_to_latex(item) for item in (problem.mathml or [])],
             result_kind="point_plot_plan",
+            graph={
+                "family": "line",
+                "orientation": "cartesian",
+                "bounds": graph.bounds,
+                "snap": graph.snap,
+                "controls": "two-points",
+            }
+            if derived
+            else None,
             accelerator_required=False,
             allow_fallback=False,
         )
         plan = PointPlotPlan.model_validate(solution.answer.plan)
+        if derived:
+            if solution.route != "exact" or _model_calls(solution) != 0:
+                raise ValueError(
+                    "derived plotting points require exact zero-model provenance"
+                )
+            coefficients = validate_integer_line_points(plan, problem.mathml, graph)
         offered = problem.answer_shape.graph.count
         if offered != len(plan.points):
             raise ValueError(
@@ -1094,7 +1117,9 @@ def _solve_point_plot_with_facet(request, instruction, announce):
         request_id=request.request_id,
         status="ready",
         problem_text=instruction,
-        answer=AnswerPayload(graph_plan=plan, display_text=placed),
+        answer=AnswerPayload(
+            graph_plan=plan, graph_coefficients=coefficients, display_text=placed
+        ),
         # Facet's own account of the run, read off the solution it returned.
         # Stated here rather than through `_plan_certainty` because this route
         # engaged no model and no processor: `answered_by` says "exact", and a

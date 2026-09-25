@@ -1395,10 +1395,64 @@ def judge_linear_graph(marionette, site):
         problems.append("the page does not consider the line complete")
     if result.get("forbidden"):
         problems.append(f"forbidden keys: {result['forbidden']}")
+    for fault in (
+        "none",
+        "coefficients",
+        "noninteger",
+        "duplicate",
+        "offgrid",
+        "readback",
+    ):
+        marionette.navigate(f"{site}/plot-points.html?count=2")
+        check = marionette.execute(
+            source
+            + "const fault = "
+            + json.dumps(fault)
+            + ";"
+            + """
+          document.getElementById("questionDescription").textContent =
+            "Graph the line by plotting any two points with integer value coordinates that satisfy the equation.";
+          const model = Object.values(window.quant_wp_UI.controlsCollection)[0];
+          const spots = Object.values(model.allGraphObjects());
+          // Control labels are not a request to plot stated labeled pairs.
+          spots.forEach((point, i) => { point.label = `handle${i}`; });
+          const xml = model.graphXML();
+          model.graphXML = () => xml.replace("</graph>", "<graphobjects>" +
+            spots.map(p => `<point id="${p.ID}"><label>${p.label}</label></point>`).join("") +
+            "</graphobjects></graph>");
+          const probe = graphOperation();
+          const plan = {kind: "points", points: [{x: "0", y: "2"}, {x: "1", y: "2"}]};
+          const coefficients = fault === "coefficients" ? [] : ["0", "1", "-2"];
+          if (fault === "noninteger") plan.points[1].x = "1/2";
+          if (fault === "duplicate") plan.points[1].x = "0";
+          if (fault === "offgrid") plan.points[1].x = "11";
+          const pending = graphOperation({snapshot: probe.snapshot, plan, coefficients});
+          if (fault === "readback") setTimeout(() => { model.userAnswer = () => "<graph/>"; }, 50);
+          return Promise.resolve(pending).then(outcome => ({outcome,
+            plotted: window.plottedPoints(), events: window.graphEvents.length,
+            forbidden: window.forbiddenEvents}));
+        """
+        )["value"]
+        if fault == "none":
+            if (
+                check.get("outcome", {}).get("code")
+                != "graph-integer-line-points-verified"
+                or not check["outcome"].get("settled")
+                or sorted(check.get("plotted", [])) != [[0, 2], [1, 2]]
+            ):
+                problems.append(f"integer line did not settle: {check}")
+        elif check.get("outcome", {}).get("ok") or (
+            fault != "readback" and check.get("events")
+        ):
+            problems.append(f"unsafe integer line accepted or moved ({fault}): {check}")
+        if check.get("forbidden"):
+            problems.append(f"integer line used forbidden keys: {check}")
     if problems:
         say(f"FAIL linear-graph: {'; '.join(problems)}")
         return 1
-    say("ok   linear-graph: exact defining points plotted and read back as y=2")
+    say(
+        "ok   linear-graph: intercept and integer-point plans verified; unsafe plans refused"
+    )
     return 0
 
 
