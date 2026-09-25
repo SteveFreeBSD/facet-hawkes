@@ -335,6 +335,74 @@ def test_page_owned_fraction_object_limit_is_enforced(plan):
     }
 
 
+@pytest.mark.parametrize(
+    ("answer", "canonical"),
+    [
+        ("y=(-5/8)*x+7/8", "y=-5/8*x+7/8"),
+        ("y=-(5/8)x+7/8", "y=-5/8*x+7/8"),
+        ("y=(3/7)*x-11/7", "y=3/7*x-11/7"),
+        ("y=(3/7)x+2", "y=3/7*x+2"),
+        ("y=3*x-11/7", "y=3*x-11/7"),
+        ("y=(-5/8)*x+(-7/8)", "y=-5/8*x-7/8"),
+        ("y=2*x-(-7/8)", "y=2*x+7/8"),
+        ("y=2*x+(-7/8)*x", "y=2*x-7/8*x"),
+        ("(-5/8)*x+7/8", "-5/8*x+7/8"),
+        ("(3/7)*x-11/7", "3/7*x-11/7"),
+    ],
+)
+@pytest.mark.parametrize("parentheses", [False, True])
+def test_rational_atom_grouping_uses_native_signed_fraction(
+    plan, answer, canonical, parentheses
+):
+    editor = {
+        **SLOPE_INTERCEPT_EDITOR,
+        "templates": {
+            **SLOPE_INTERCEPT_EDITOR["templates"],
+            "parentheses": parentheses,
+        },
+    }
+    actual = plan(answer, editor)
+    assert actual == plan(canonical, editor)
+    assert actual["ok"] is True
+    assert {s["name"] for s in actual["steps"] if s["op"] == "template"} == {"Fraction"}
+    assert all(not set("()/*") & set(s.get("text", "")) for s in actual["steps"])
+
+
+@pytest.mark.parametrize("answer", ["y=-3*x+4", "y=2*x-1"])
+def test_integer_slope_keeps_plain_native_plan(plan, answer):
+    assert plan(answer, SLOPE_INTERCEPT_EDITOR) == {
+        "ok": True,
+        "steps": [{"op": "type", "text": answer.replace("*", "")}],
+    }
+
+
+@pytest.mark.parametrize(
+    "answer",
+    ["y=(x+2)*x", "y=(1/2+3)*x", "y=(-2/3)^2", "y=(x-2)*(x+3)+1/5"],
+)
+def test_real_grouping_still_requires_parentheses_template(plan, answer):
+    assert plan(answer, SLOPE_INTERCEPT_EDITOR) == {
+        "ok": False,
+        "code": "template-refused-by-question",
+        "detail": "parentheses",
+    }
+
+
+@pytest.mark.parametrize("answer", ["y=(x+2)*x", "y=(x-2)*(x+3)+1/5"])
+def test_real_grouping_still_builds_parentheses_when_offered(plan, answer):
+    editor = {
+        **SLOPE_INTERCEPT_EDITOR,
+        "templates": {
+            **SLOPE_INTERCEPT_EDITOR["templates"],
+            "parentheses": True,
+            "exponent": True,
+        },
+    }
+    native = plan(answer, editor)
+    assert native["ok"] is True
+    assert {"op": "template", "name": "PBrace"} in native["steps"]
+
+
 def test_plain_inequality_plan_is_unchanged(plan):
     assert plan("x>-8", INEQUALITY_PAIR_EDITOR) == {
         "ok": True,

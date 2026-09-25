@@ -311,13 +311,13 @@ function splitAdditive(value) {
   const terms = [];
   let depth = 0;
   let start = 0;
-  for (let index = 1; index < value.length; index += 1) {
+  for (let index = 0; index < value.length; index += 1) {
     const character = value[index];
     if (OPENERS.includes(character)) {
       depth += 1;
     } else if (CLOSERS.includes(character)) {
       depth -= 1;
-    } else if (depth === 0 && "+-".includes(character)) {
+    } else if (index > 0 && depth === 0 && "+-".includes(character)) {
       terms.push(value.slice(start, index));
       start = index;
     }
@@ -328,6 +328,19 @@ function splitAdditive(value) {
 
 /** One exact rational, optionally multiplied by a one-letter monomial. */
 function rationalTerm(value) {
+  // A numeric rational atom needs no PBrace when multiplied by a monomial.
+  // Older exact renderers emit `(-3/4)*x` (or `-(3/4)x`); the Fraction
+  // object itself preserves that coefficient's boundary. Consume only the
+  // complete numeric atom, never a grouped sum, product or exponent base.
+  const grouped = /^([+-]?)\(([+-]?)([0-9]+)\/([1-9][0-9]*)\)(?:\*?([A-Za-z](?:\^[0-9]+)?))?$/.exec(value);
+  if (grouped !== null) {
+    return {
+      sign: (grouped[1] === "-") !== (grouped[2] === "-") ? "-" : grouped[1] ? "+" : "",
+      numerator: grouped[3],
+      denominator: grouped[4],
+      factor: grouped[5] ?? "",
+    };
+  }
   const match = /^([+-]?)([0-9]+)\/([1-9][0-9]*)(?:\*?([A-Za-z](?:\^[0-9]+)?))?$/.exec(value);
   if (match === null) return null;
   return {

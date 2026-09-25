@@ -103,7 +103,7 @@ function that does the typing.
 | symbolic with an exponent | `scalar` | exponent | `-x^13+2*x^12-3*x^11+5` | one box, Exponent template | `planRun` | yes | no | yes | `scalar-exponent` |
 | factored product | `scalar` | group | `(x+3)*(x+4)` | one box, parentheses template | `planRun` | yes | no | yes | `scalar-group` |
 | rational exponent | `scalar` | fraction+exponent+group | `y^(23/20)` | one box, Exponent over a bracketed rational | `planRun` | yes | no | yes | `scalar-fraction-exponent-group` |
-| line's right side, rational coefficient | `scalar` | fraction+group | `(1/2)*x+8` | one full-keypad box the page prints `f(x) =` in front of, Fraction inside parentheses | `planEntry` → `planRun` → `planCommaList` → `planFractionTemplate` | yes | no | no | `scalar-fraction-group` |
+| line's right side, rational coefficient | `scalar` | fraction+group | `(1/2)*x+8` | one box the page prints `f(x) =` in front of; the numeric rational coefficient uses a native Fraction without presentation-only parentheses | `planEntry` → `planFractionalSum` → `rationalTerm` → `planFractionTemplate` | yes | no | no | `scalar-fraction-group` |
 | rationalized radical | `scalar` | fraction+radical | `sqrt(5)/5` | one box, Fraction over a Radical | `planEntry` → `planFractionTemplate` → `planRun` | yes | no | yes | `scalar-fraction-radical` |
 | radical with an exponent | `scalar` | radical+exponent | `2*i*x^4*sqrt(2*x)` | one box, Radical inside a run of templates | `planRun` | yes | no | yes | `scalar-radical-exponent` |
 | named phrase, typed | `scalar` | phrase | `trinomial` | one box accepting letters | `planEntry` → `enterPlan` | yes | no | no | `scalar-phrase` |
@@ -143,6 +143,7 @@ function that does the typing.
 | interval open at two finite ends | `scalar` | group+comma | `(1,4)` | the same box, `PBrace` around both ends; with no `∞` and no square bracket the value reads as a pair does | `planEntry` → `planRun` → `planCommaList` → `enterPlan` | yes | no | no | `scalar-interval-open` |
 | interval open at two decimal ends | `scalar` | group+comma+decimal | `(-0.5,1.5)` | the same box; the decimal point is a character it publishes | `planEntry` → `planRun` → `planCommaList` → `enterPlan` | yes | no | no | `scalar-interval-open-decimal` |
 | slope-intercept equation with rational coefficients, whole | `relation` | fraction | `y=-4/7*x+13/7` | one bare QDy equation box offering native Fraction objects but no slash character | `surfaceStatesSubject` → `planEntry` → `planFractionalRelation` → `planFractionalSum` → `enterPlan` | yes | no | yes | `relation-fraction` |
+| parenthesized rational coefficient in a whole equation | `relation` | fraction+group | `y=(1/2)*x+8` | one QDy equation box offering native Fraction objects but no parentheses template | `surfaceStatesSubject` → `planEntry` → `planFractionalRelation` → `planFractionalSum` → `rationalTerm` → `enterPlan` | yes | no | yes | `relation-fraction-group` |
 <!-- /generated:supported -->
 
 **Unit** means a QuickJS or Python test drives the real module. **Harness**
@@ -166,7 +167,6 @@ names; none is silently mis-entered.
 | interval with a rational end, typed | `(-∞,-7/2)` | Facet writes a rational end as a fraction unless the question asks for decimals, and this box offers no Fraction template and publishes no slash, so the planner refuses the `/` before a key is pressed. It is not rewritten as `-3.5` to fit: which spelling this box takes for a rational end has not been observed, and rewriting a value to fit a box is how a wrong answer gets typed in confidently. | Refused as `answer-has-rejected-characters` | `scalar-interval-fraction` |
 | interval open at two rational ends, typed | `(1/2,7/2)` | `scalar-interval-fraction`'s refusal, for its reason: this box takes neither a `/` nor a Fraction template, and a rational end is not rewritten as a decimal to fit. Declared on its own because, with no infinite end, it reads as a pair of rationals rather than as interval notation. | Refused as `answer-has-rejected-characters` | `scalar-interval-open-fraction` |
 | named function's whole equation | `f(x)=-5*x-3` | Every observed page that names a function prints `f(x) =` beside its box, so the right side alone is what it takes and this is never asked for. The one box that does take an equation publishes `xy=+-` and digits: a name and its brackets are both outside it. | Refused as `answer-has-rejected-characters` | `relation-group` |
-| parenthesized rational coefficient in a whole equation | `y=(1/2)*x+8` | The older line-from-properties renderer parenthesizes a rational coefficient so `1/2x` cannot be misread as `1/(2x)`. Parentheses require a template, and this equation box offers none. The equation-rewrite route uses an explicit multiplication machine form and is declared separately as `relation-fraction`. | Refused as `template-refused-by-question` | `relation-fraction-group` |
 <!-- /generated:unsupported -->
 
 ## Adding a family

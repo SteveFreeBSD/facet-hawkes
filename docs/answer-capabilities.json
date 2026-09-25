@@ -682,11 +682,11 @@
       ],
       "example": "(1/2)*x+8",
       "editor": "maths-box",
-      "topology": "one full-keypad box the page prints `f(x) =` in front of, Fraction inside parentheses",
+      "topology": "one box the page prints `f(x) =` in front of; the numeric rational coefficient uses a native Fraction without presentation-only parentheses",
       "mechanism": [
         "planEntry",
-        "planRun",
-        "planCommaList",
+        "planFractionalSum",
+        "rationalTerm",
         "planFractionTemplate"
       ],
       "status": "supported",
@@ -1953,20 +1953,29 @@
       ],
       "example": "y=(1/2)*x+8",
       "editor": "equation-box",
-      "topology": "the observed equation box offers no parentheses template",
+      "topology": "one QDy equation box offering native Fraction objects but no parentheses template",
       "mechanism": [
         "surfaceStatesSubject",
         "planEntry",
-        "planRun"
+        "planFractionalRelation",
+        "planFractionalSum",
+        "rationalTerm",
+        "enterPlan"
       ],
-      "status": "unsupported",
+      "status": "supported",
       "coverage": {
         "unit": "yes",
         "harness": "no",
-        "live": "n/a"
+        "live": "yes"
       },
-      "refusal": "template-refused-by-question",
-      "why": "The older line-from-properties renderer parenthesizes a rational coefficient so `1/2x` cannot be misread as `1/(2x)`. Parentheses require a template, and this equation box offers none. The equation-rewrite route uses an explicit multiplication machine form and is declared separately as `relation-fraction`."
+      "probe": {
+        "instruction": "Find the equation of the line in slope-intercept form that passes through the following point with the given slope.",
+        "expressions": [
+          "(-2,3)",
+          "slope=-5/8"
+        ]
+      },
+      "note": "The exact line-from-properties answer is unchanged. The existing rational-term planner recognizes a parenthesized signed numeric rational atom, with an optional monomial factor, and uses the native Fraction structure without PBrace. Joining signs remain at the outer base and a leading negative stays in the fraction numerator. Grouped sums, products and exponent bases still require real grouping; no general parentheses stripping occurs. Normal-profile solve rmug71tw06e3e reported model_calls=0; insertion rmug720nx10fc completed ten native-keypad writes with the existing per-character page-owned read-back. A separate final whole-expression snapshot was not captured before the question changed. Hawkes grading acceptance remains unconfirmed; this is not marked Fixed live."
     }
   ]
 }

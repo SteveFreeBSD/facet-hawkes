@@ -6,6 +6,30 @@ name the add-on as it was called at the time.
 
 ## Unreleased
 
+- **Presentation-only rational coefficient parentheses no longer demand a
+  Hawkes parentheses template.** The existing additive Fraction planner now
+  recognizes signed numeric rational atoms such as `(-a/b)*x` and `-(a/b)x`,
+  where `a` and `b` are integers. It builds the same native QDy Fraction plan
+  as the ungrouped coefficient, preserving exact digits, numerator sign, base
+  continuation and intercept sign. The additive scanner now counts an opening
+  parenthesis at the first character. No exact answer, solver, model route or
+  native writer changed. Real grouping in sums, products and exponent bases
+  continues to require a parentheses template.
+
+  Verification: 2,200 companion tests and 1,029 runtime tests passed, including
+  negative/positive rational slopes, integer slopes, fractional negative
+  intercepts, both signs around rational atoms, required grouping and unchanged
+  exact host answers. The package is reproducible; the offline sweep remains
+  37/37 exact plus one correct decline; the installed helper reports zero model
+  calls. The normal-profile original question's solve `rmug71tw06e3e` retained
+  the exact answer and `model_calls=0`. Insertion `rmug720nx10fc` completed ten
+  native-keypad character writes with the writer's per-character page-owned
+  read-back. A later development proof attempt was refused with
+  `errorEditorUnknown` after that successful insertion; it is not counted as
+  success. The question changed before a separate final whole-expression
+  snapshot. No grading or navigation action was performed by the agent.
+  Hawkes acceptance remains unconfirmed; this is not marked Fixed live.
+
 - **Perpendicular-through-point construction is exact and precedes output-form
   rewriting.** Parallel and perpendicular are sibling operations in Facet's
   existing line-construction module. One shared affine parser simplifies the

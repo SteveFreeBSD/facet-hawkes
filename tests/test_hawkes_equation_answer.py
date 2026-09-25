@@ -149,6 +149,39 @@ def reviewed(reply, editor, supplied_subject):
 # --- the live question -----------------------------------------------------
 
 
+@pytest.mark.parametrize(
+    ("point", "slope", "entry"),
+    [
+        ((-2, 3), "-5/8", "y=(-5/8)*x+7/4"),
+        ((2, -1), "3/7", "y=(3/7)*x-13/7"),
+        ((-2, -4), "-3", "y=-3*x-10"),
+        ((1, -2), "2/3", "y=(2/3)*x-8/3"),
+    ],
+)
+def test_point_and_slope_exact_answer_is_unchanged_but_native_plan_needs_no_group(
+    monkeypatch, point, slope, entry
+):
+    reply = solved(
+        monkeypatch,
+        LESSON_2_4_INSTRUCTION,
+        [
+            f"<math><mtext>({point[0]},{point[1]})</mtext></math>",
+            f"<math><mtext>Slope={slope}</mtext></math>",
+        ],
+    )
+    assert reply["answer"]["keyboard_entry"] == entry
+    assert reply["answer"]["form"] == "relation"
+    assert reply["certainty"]["source"] == "Facet Exact"
+    assert reply["certainty"]["model_calls"] == 0
+    page = reviewed(reply, EQUATION_BOX, "")
+    assert page.json("state.entryText") == entry
+    native = page.json("planEntry(state.entryText, state.editor)")
+    assert native["ok"] is True
+    assert all(s.get("name") != "PBrace" for s in native["steps"])
+    assert all("/" not in s.get("text", "") for s in native["steps"])
+    assert any(s.get("name") == "Fraction" for s in native["steps"]) == ("/" in entry)
+
+
 def test_the_bare_box_receives_the_whole_equation(monkeypatch):
     """The live failure, end to end: `y=-2x+5` reaches the box, not `-2x+5`.
 
