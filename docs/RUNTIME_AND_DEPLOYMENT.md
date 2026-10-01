@@ -213,10 +213,10 @@ literal commit is repeated in the README, the migration checklist and the
 release runbook, because a first clone needs a command it can paste; every one
 of those is held to this file by the test.
 
-**Publication note.** The pinned commit **is** published, as of 2026-09-08. It
-is reachable from `SteveFreeBSD/facet-runtime`'s
-`feature/live-hawkes-next-slice` branch, so the clone-and-detach above works
-from public URLs and CI's checkout by object name resolves.
+**Publication note.** The ordinal-equation rewrite pin is committed, installed
+locally and published as of 2026-10-01. It is reachable from
+`SteveFreeBSD/facet-runtime`'s `feature/live-hawkes-next-slice` branch, so a
+public clone or CI checkout can resolve the pin.
 
 That branch is also what publishes it. `main` there is a frozen release
 baseline still at `f2e0907`, which predates `ANSWER_FORMS`, so a clone that

@@ -25,6 +25,11 @@ checks, advances, or silently selects anything.**
 > [the documentation index](docs/README.md) names the one authority for each
 > question. You should not have to read history to work here.
 
+> **Thin app development has moved** to the separate project at
+> `/home/steve/apps/facet-slim`, on `feature/slim-llm-addon`. Its README and
+> `docs/PLAN.md` own the current work. The earlier audit moved with that project.
+> This checkout keeps the existing product.
+
 ## The Firefox add-on
 
 The add-on is **Facet Hawkes Assistant**, currently **0.46.0**. It combines a
@@ -150,7 +155,7 @@ See [Retained failure ledger](docs/FAILURE_LEDGER.md).
 Firefox 142 or newer, Python 3.12+, `uv`, and a local Ollama installation are
 required. The 0.46.0 source layout uses two sibling repositories, with
 `facet-runtime` fixed at the commit in `deploy/facet-runtime.pin`, currently
-`75700485981fc580e151175df2025aec0fba11ae`.
+`358dad7bed0ec3f825d4d0b08dcdcd6de36b8038`.
 
 In both repositories `main` is a frozen release baseline and the current
 system lives on `feature/live-hawkes-next-slice`, so **neither default branch
@@ -161,7 +166,7 @@ is what you want**: `facet-hawkes`'s is 50 commits behind this page, and
 git clone https://github.com/SteveFreeBSD/facet-hawkes.git
 git clone https://github.com/SteveFreeBSD/facet-runtime.git
 git -C facet-hawkes checkout feature/live-hawkes-next-slice
-git -C facet-runtime checkout --detach 75700485981fc580e151175df2025aec0fba11ae
+git -C facet-runtime checkout --detach 358dad7bed0ec3f825d4d0b08dcdcd6de36b8038
 cd facet-hawkes
 ```
 

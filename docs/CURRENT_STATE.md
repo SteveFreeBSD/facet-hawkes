@@ -7,6 +7,12 @@ below is true of the system as it stands; anything that is not is in
 **Last consolidated:** 2026-09-08, at facet-hawkes `b8d9591` / facet-runtime
 `6a337c4`.
 
+**Thin app moved, 2026-09-28:** its independent project is
+`/home/steve/apps/facet-slim`, on `feature/slim-llm-addon`. The new project
+owns its source, dependencies, and plan. The earlier audit moved with it;
+the experimental modules and entry point have been removed
+from this checkout. The installed browser path below keeps its existing host.
+
 ## What this is
 
 **Facet Hawkes Assistant** is a local-first Firefox add-on for Hawkes
@@ -183,8 +189,8 @@ requires, and is the only place it is decided. CI reads it;
 `tests/test_runtime_pin.py` holds every document that quotes it to the same
 value and fails if the sibling checkout is behind.
 
-The perpendicular-construction runtime pin is committed and installed locally;
-its source publication is pending. The preceding bounded-coordinate runtime
+The ordinal-equation rewrite runtime pin is committed, installed locally and
+published on `feature/live-hawkes-next-slice` as of 2026-10-01. The preceding bounded-coordinate runtime
 `fab053f` was published on 2026-09-24. See *Where the code is published* below
 for which branch, and why the default one is not it.
 

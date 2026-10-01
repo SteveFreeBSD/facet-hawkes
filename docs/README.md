@@ -6,6 +6,11 @@ it. If two documents disagree, the authority wins and the other is a defect.
 **New here? Read [Current state](CURRENT_STATE.md) first** — the whole system
 in one page, with the names, the topology and the limits.
 
+**Thin app:** current work lives in the independent project
+`/home/steve/apps/facet-slim`; read its README and `docs/PLAN.md`. Its earlier
+product contract, audit and research moved out of this checkout with the project.
+The six authorities below describe this repository’s supported system.
+
 ## The six authorities
 
 | # | Question | Authority |

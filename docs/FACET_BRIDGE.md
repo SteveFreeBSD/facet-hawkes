@@ -362,6 +362,16 @@ the mathematics.
 
 ### An equation carries both its sides
 
+For an equation rewrite, the consumer preserves the page-owned equations in
+display order through MathML conversion and the subprocess request. Facet
+interprets the requested equation identity (“first equation”, “second equation”,
+“equation 1”, “equation 2”) within the rewrite operation, selects only that
+source, and isolates `y` over exact rationals. The explicit operation and source
+identity take precedence over surrounding relationship or output-form wording.
+The result includes the selected source, its ordinal, the equation count and a
+substitution proof. Missing or ambiguous selection among multiple equations,
+absent references and unsupported selected sources refuse without a model call.
+
 One family is not a value. "Find the equation of the line in slope-intercept
 form" is answered with an equation, and it crosses as one:
 

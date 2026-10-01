@@ -18,6 +18,7 @@ out what a number here was measured on, and why it is not restated.
 | [Hawkes end-to-end proof](HAWKES_E2E_PROOF.md) | The first complete safe path, 2026-09-02, in a throwaway Marionette profile on lesson 1.3 | [Answer capabilities](../ANSWER_CAPABILITIES.md) for what is proven now |
 | [Hawkes live findings](HAWKES_LIVE_FINDINGS.md) | The 2026-09-03 live session on add-on `0.39.0-unsigned`. Every defect it names was fixed across 0.39.0–0.41.3 and the fixes are in the changelog | [Retained failure ledger](../FAILURE_LEDGER.md) for failures now |
 | [Live Hawkes coverage sweep](LIVE_HAWKES_COVERAGE_2026-09-05.md) | An observation-only sweep of lesson 3.3 on add-on 0.45.0, before the table, pair, fraction and graph routes landed | [Answer capabilities](../ANSWER_CAPABILITIES.md) |
+| [Ordinal equation rewrite proof](2026-10-01-ordinal-equation-rewrite.md) | Lesson 2.5 first-equation exact solve/insertion and subsequent second-equation Hawkes acceptance on 2026-10-01 | [Answer capabilities](../ANSWER_CAPABILITIES.md) |
 
 ## The two names
 

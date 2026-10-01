@@ -1307,12 +1307,12 @@
     },
     {
       "id": "plan-point-plot",
-      "semantic": "literal points graph plan",
+      "semantic": "points graph plan",
       "form": "point_plot_plan",
       "notation": [],
       "example": "plan, no value",
       "editor": "graph-surface",
-      "topology": "one draggable control per point; labeled requests bind each label/pair to a unique XML/model point ID and its named anchor",
+      "topology": "one draggable control per point; stated points read literally, labeled requests bind label/pair to a unique XML/model point ID; derived integer-line-points find two distinct in-bounds integer solutions of the equation exactly, with independent equation/integer/bounds/snap proof on both sides",
       "mechanism": [
         "graphOperation"
       ],
@@ -1955,7 +1955,7 @@
           "4x+7y=13"
         ]
       },
-      "note": "Accepted live on a parallel-line-through-point construction. The explicit multiplication in Facet's machine form fixes the rational coefficient boundary. The planner builds each rational as the page's Fraction object, returns to the outer base, and then types the variable or joining sign; `/` is never typed into the base slot."
+      "note": "Accepted live on a parallel-line-through-point construction. The explicit multiplication in Facet's machine form fixes the rational coefficient boundary. The planner builds each rational as the page's Fraction object, returns to the outer base, and then types the variable or joining sign; `/` is never typed into the base slot. Ordinal equation rewrites preserve the ordered page-owned source list and select first/second or equation 1/2 in Facet Exact before rational rearrangement. On 2026-10-01 the Lesson 2.5 first-equation step was solved with model_calls=0 and native Fraction insertion/read-back settled (run rmuphk0f9f86d). After Steve-controlled submissions, a second-equation rewrite was observed accepted with Hawkes Good job, correct count 8/13, and Facet Exact model_calls=0 (solve rmuphlsp2c148, insertion rmuphlulq7276). Ambiguous or missing identity among multiple equations refuses without reasoning."
     },
     {
       "id": "relation-fraction-group",

@@ -15,6 +15,27 @@ from hawkes_dom import read_fixture
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
+@pytest.mark.parametrize(
+    "reference", ["first equation", "second equation", "equation 1", "equation 2"]
+)
+def test_equation_rewrite_keeps_ordered_page_owned_sources(reference):
+    first = "<math><mn>3</mn><mi>x</mi><mo>+</mo><mi>y</mi><mo>=</mo><mn>7</mn></math>"
+    second = "<math><mn>5</mn><mi>x</mi><mo>−</mo><mn>2</mn><mi>y</mi><mo>=</mo><mn>8</mn></math>"
+    result = read_question(f"""
+        <div id="questionString">Consider the following equations.
+          <mjx-container><mjx-assistive-mml>{first}</mjx-assistive-mml></mjx-container>
+          and <mjx-container><mjx-assistive-mml>{second}</mjx-assistive-mml></mjx-container>
+        </div>
+        <div id="questionDescription">Express the <strong>{reference}</strong>
+          in slope-intercept form. Simplify your answer.</div>
+        <div id="partInformation">Step 1 of 3</div>
+        <input class="qbaseCSS" id="txtAns1">
+        <div class="answerFeedback"><math><mi>y</mi><mo>=</mo><mn>99</mn></math></div>
+    """)
+    assert result["expressions"] == [first, second]
+    assert reference in result["promptText"]
+
+
 def test_a_labeled_cartesian_point_is_read_from_page_owned_svg_geometry():
     result = read_fixture("labeled-point.html")
 
