@@ -76,10 +76,14 @@ export function answerFitsEditor(answer, editor) {
     return { insertable: false, code: "answer-too-long" };
   }
 
-  // Structure is built with keypad templates, so its notation can never be
-  // typed even when the question permits the template.
+  // A dynamic editor builds structure with keypad templates, so its notation
+  // can never be typed even when the question permits the template. A plain
+  // box has no template API: Hawkes publishes literal structure in that
+  // box's own allowed-character pattern and its native input handling owns it.
+  const allowed = editor.allowedCharacters ?? "";
   const structural = [...answer].filter((character) => character in STRUCTURAL);
-  if (structural.length > 0) {
+  if (structural.length > 0 && (editor.kind === "dynamic"
+    || structural.some((character) => !accepts(allowed, character, editor.kind)))) {
     return {
       insertable: false,
       code: "answer-needs-template",
@@ -87,7 +91,6 @@ export function answerFitsEditor(answer, editor) {
     };
   }
 
-  const allowed = editor.allowedCharacters ?? "";
   if (allowed.length === 0) {
     return { insertable: false, code: "editor-rules-unknown" };
   }
@@ -538,6 +541,49 @@ export function publishableAnswer(published, shape) {
     return { ok: true };
   }
 
+  if (published?.answerGraphDomainRange) {
+    const result = graphDomainRangeAnswer(published.answerGraphDomainRange, published.editor?.graphDomainRangeRows ?? published.editor?.domainRangeRows);
+    return result && kind === "multi" && answer === result.display && displayText === result.display
+      && !entryText && !parts.length && !plan && !intercepts
+      ? {ok:true} : {ok:false,code:"graph-domain-range-published-invalid"};
+  }
+  if (published?.answerXIntercepts) {
+    const result=countedInterceptAnswer(published.answerXIntercepts,published.editor,published.fieldIds,shape.choices);
+    const expected=result?.ready ? (result.parts.length ? result.display : result.entry) : result?.choice;
+    return result && answer===expected && displayText===result.display
+      && entryText===(result.ready ? result.entry : result.choice)
+      && JSON.stringify(parts)===JSON.stringify(result.parts) && !plan && !intercepts
+      ? {ok:true} : {ok:false,code:"counted-intercept-published-invalid"};
+  }
+  if (published?.answerProofPairs?.length) {
+    const pairs = published.answerProofPairs;
+    const choice = published.conditionalChoice;
+    const valid = pairs.length === 2 && typeof choice === "string" && choice.trim().toLowerCase() === "no"
+      && shape.choices?.includes(choice) && pairs.every((p) => [p?.x,p?.y].every((v) =>
+        typeof v === "string" && v.length <= 40 && /^-?\d+(?:\/[1-9]\d*)?$/.test(v)))
+      && pairs[0].x === pairs[1].x && pairs[0].y !== pairs[1].y;
+    const expected = valid ? `${choice}: ${pairs.map((p) => `(${p.x},${p.y})`).join(" and ")}` : "";
+    const rows = published.editor?.conditionalProof?.rows;
+    const full = Array.isArray(rows) && rows.length === pairs.length && parts.length === pairs.length
+      && rows.every((row,i) => row.fieldId === published.fieldIds?.[i]
+        && parts[i] === (row.bracketed ? `${pairs[i].x},${pairs[i].y}` : `(${pairs[i].x},${pairs[i].y})`));
+    const awaiting = published.editor?.kind === "option" && parts.length === 0;
+    return valid && displayText === expected && ((full && answer === expected && !entryText)
+      || (awaiting && answer === choice && entryText === choice)) && !plan && !intercepts
+      ? { ok: true } : { ok: false, code: "conditional-proof-published-invalid" };
+  }
+  if (published?.editor?.domainRangeRows) {
+    const rows = published.editor.domainRangeRows;
+    const valid = kind === "multi" && rows.length === 2 && parts.length === 2
+      && new Set(rows.map((row) => row.role)).size === 2
+      && rows.every((row, index) => ["domain", "range"].includes(row.role)
+        && typeof row.braces === "boolean" && row.fieldId === published.fieldIds?.[index]
+        && (row.braces ? /^-?\d+(?:\/[1-9]\d*)?(?:,-?\d+(?:\/[1-9]\d*)?)*$/
+          : /^\{-?\d+(?:\/[1-9]\d*)?(?:,-?\d+(?:\/[1-9]\d*)?)*\}$/).test(parts[index]));
+    const expected = valid ? rows.map((row, i) => `${row.role === "domain" ? "Domain" : "Range"}: ${row.braces ? `{${parts[i]}}` : parts[i]}`).join("; ") : "";
+    return valid && answer === expected && displayText === expected && !entryText && !plan && !intercepts
+      ? { ok: true } : { ok: false, code: "domain-range-published-invalid" };
+  }
   if (kind === "labeled-coordinates") {
     const display = labeledCoordinateAnswer(published?.answerCoordinates, published?.editor?.rows);
     return display && answer === display && displayText === display && !entryText
@@ -694,4 +740,57 @@ export function publishableAnswer(published, shape) {
     return { ok: false, code: "answer-invalid" };
   }
   return { ok: true };
+}
+
+/** Named mathematical projections; text is rendered only after type validation. */
+export function graphDomainRangeAnswer(parts, rows) {
+  if (!parts || Object.keys(parts).sort().join() !== "domain,range" || !Array.isArray(rows) || rows.length !== 2
+    || new Set(rows.map(r=>r.role)).size !== 2 || new Set(rows.map(r=>r.fieldId)).size !== 2
+    || rows.some(r=>!["domain","range"].includes(r.role) || !r.fieldId)) return null;
+  const options=rows.every(r=>r.optionId && r.ownerId && r.group);
+  const intervals=rows.every(r=>r.braces === false && !r.optionId && !r.ownerId && !r.group);
+  if ((!options && !intervals) || (options && (new Set(rows.map(r=>r.optionId)).size !== 2
+    || new Set(rows.map(r=>r.ownerId)).size !== 2 || new Set(rows.map(r=>r.group)).size !== 2))) return null;
+  const exact = (v) => typeof v === "string" && v.length <= 40 && /^-?\d+(?:\/[1-9]\d*)?$/.test(v);
+  const less = (a,b) => {const [an,ad="1"]=a.split("/"),[bn,bd="1"]=b.split("/");return BigInt(an)*BigInt(bd)<BigInt(bn)*BigInt(ad);};
+  const render = (p) => {
+    if (!p || typeof p !== "object") return null;
+    const keys=Object.keys(p).sort().join();
+    if (p.kind === "all-real-numbers" && keys === "kind") return intervals ? "(-∞,∞)" : "All real numbers";
+    if (p.kind === "singleton" && keys === "kind,value" && exact(p.value)) return intervals ? `[${p.value},${p.value}]` : `{${p.value}}`;
+    if (p.kind !== "interval" || keys !== "kind,lower,lower_closed,upper,upper_closed"
+      || typeof p.lower_closed !== "boolean" || typeof p.upper_closed !== "boolean"
+      || (p.lower !== null && !exact(p.lower)) || (p.upper !== null && !exact(p.upper))
+      || (p.lower === null && (p.lower_closed || p.upper === null)) || (p.upper === null && p.upper_closed)
+      || (p.lower !== null && p.upper !== null && !less(p.lower,p.upper))) return null;
+    return `${p.lower_closed ? "[" : "("}${p.lower ?? "-∞"},${p.upper ?? "∞"}${p.upper_closed ? "]" : ")"}`;
+  };
+  const items=rows.map(row=>({role:row.role,label:row.role === "domain" ? "Domain" : "Range",
+    text:render(parts[row.role]),choice:options && parts[row.role]?.kind === "all-real-numbers"}));
+  return items.some(i=>i.text === null) ? null : {items,display:items.map(i=>`${i.label}: ${i.text}`).join("; ")};
+}
+
+/** Adapt a typed intercept count using the existing conditional whole-pair surface. */
+export function countedInterceptAnswer(value, editor, fieldIds = [], choices = []) {
+  if (!value || Object.keys(value).sort().join() !== "choice,count,points"
+    || !Number.isInteger(value.count) || value.count<0 || value.count>2
+    || !Array.isArray(value.points) || value.points.length!==value.count
+    || choices.length!==3 || new Set(choices.map(c=>c.trim().toLowerCase())).size!==3
+    || choices.some(c=>!["none","one","two"].includes(c.trim().toLowerCase()))
+    || !choices.includes(value.choice) || value.choice.trim().toLowerCase()!==["none","one","two"][value.count]
+    || value.points.some(p=>!p || Object.keys(p).sort().join()!=="x,y" || p.y!=="0"
+      || typeof p.x!=="string" || !p.x || p.x.length>120 || !validateAnswer(p.x).ok)
+    || new Set(value.points.map(p=>p.x)).size!==value.count) return null;
+  const surface=editor?.countedCoordinates, rows=editor?.conditionalProof?.rows;
+  if (!surface || !Array.isArray(surface.branches) || surface.branches.length!==3
+    || surface.branches.some(b=>!choices.includes(b.label) || b.count!==["none","one","two"].indexOf(b.label.trim().toLowerCase()))) return null;
+  const selected = value.count>0 && surface.selected===value.count;
+  if (selected && (!Array.isArray(rows) || rows.length!==value.count
+    || fieldIds.length!==value.count || new Set(fieldIds).size!==value.count
+    || editor.conditionalProof.choice!==value.choice
+    || rows.some((r,i)=>r.fieldId!==fieldIds[i] || typeof r.bracketed!=="boolean")
+    || (value.count===2 ? editor.kind!=="multi" : !["dynamic","textbox"].includes(editor.kind)))) return null;
+  const entries=selected ? value.points.map((p,i)=>rows[i].bracketed ? `${p.x},${p.y}` : `(${p.x},${p.y})`) : [];
+  return {choice:value.choice,display:value.choice+(value.count ? `: ${value.points.map(p=>`(${p.x},${p.y})`).join(", ")}` : ""),
+    ready:selected,entry:entries.length===1 ? entries[0] : "",parts:entries.length===2 ? entries : []};
 }

@@ -36,7 +36,7 @@ export const MAX_ANSWER_PARTS = 5;
 
 /**
  * Characters an answer may contain. Plain mathematical notation only: no
- * angle brackets, quotes, backslashes, braces, or semicolons, so a stored
+ * angle brackets, quotes, backslashes, arbitrary braces, or semicolons, so a stored
  * value cannot be mistaken for markup or code anywhere downstream.
  *
  * The equals sign is here because some answers are equations. "Find the
@@ -209,6 +209,10 @@ export function validateAnswer(value) {
   const trimmed = value.trim();
   if (trimmed.length === 0 || trimmed.length > MAX_ANSWER_LENGTH) {
     return { ok: false, code: "answer-invalid" };
+  }
+  // Braces are admitted only around a complete finite rational set.
+  if (/^\{-?\d+(?:\/[1-9]\d*)?(?:,-?\d+(?:\/[1-9]\d*)?)*\}$/.test(trimmed)) {
+    return { ok: true, value: trimmed };
   }
   if (ANSWER_PATTERN.test(trimmed)) {
     return { ok: true, value: trimmed };

@@ -84,6 +84,9 @@ FACET_ANSWER_FORMS: frozenset[str] = frozenset(
         "relation",
         "axis-intercepts",
         "inequality-pair",
+        "domain-range",
+        "graph-domain-range",
+        "linear-properties",
     }
 )
 
@@ -605,6 +608,11 @@ class FacetAnswer:
     #: Named x/y intercepts; a missing coordinate means that intercept is
     #: mathematically absent, not an omitted string.
     intercepts: FacetAxisIntercepts | None = None
+    proof_pairs: tuple[FacetCoordinate, ...] = ()
+    x_intercepts: dict | None = None
+    graph_domain_range: dict | None = None
+    domain_range: dict[str, tuple[str, ...]] | None = None
+    linear_properties: dict | None = None
     inequality_pair: FacetInequalityPair | None = None
     plan: dict[str, Any] | None = None
 
@@ -747,6 +755,102 @@ def _answer(payload: Any, expected_kind: str) -> FacetAnswer:
     # older Facet names no form at all, and that is the behaviour this replaced.
     if form != "" and form not in FACET_ANSWER_FORMS:
         raise FacetProtocolError(f"Facet answer named an unknown form {form!r}")
+    proof_pairs = ()
+    if "proof_pairs" in payload:
+        raw = payload["proof_pairs"]
+        if (
+            form != FACET_CONDITIONAL_CHOICE_FORM
+            or not isinstance(raw, list)
+            or len(raw) != 2
+            or any(
+                not isinstance(p, dict)
+                or set(p) != {"x", "y"}
+                or any(
+                    not isinstance(v, str)
+                    or len(v) > 40
+                    or re.fullmatch(r"-?\d+(?:/[1-9]\d*)?", v) is None
+                    for v in p.values()
+                )
+                for p in raw
+            )
+        ):
+            raise FacetProtocolError("invalid ordered-pair proof")
+        from fractions import Fraction
+
+        if (
+            Fraction(raw[0]["x"]) != Fraction(raw[1]["x"])
+            or Fraction(raw[0]["y"]) == Fraction(raw[1]["y"])
+            or str(payload.get("choice", "")).strip().lower() != "no"
+            or payload.get("relation") is not None
+        ):
+            raise FacetProtocolError("pairs do not prove non-function")
+        proof_pairs = tuple(FacetCoordinate(**pair) for pair in raw)
+    x_intercepts = payload.get("x_intercepts")
+    if x_intercepts is not None:
+        from facet_runtime.exact.x_intercepts import validate
+
+        try:
+            validate(x_intercepts)
+            if (
+                form != FACET_CONDITIONAL_CHOICE_FORM
+                or payload.get("relation") is not None
+                or str(payload.get("choice", "")).strip().casefold()
+                != ("none", "one", "two")[x_intercepts["count"]]
+            ):
+                raise ValueError("x-intercepts disagree with their semantic choice")
+        except (ValueError, TypeError, SyntaxError, ZeroDivisionError) as error:
+            raise FacetProtocolError(str(error)) from error
+    graph_domain_range = payload.get("graph_domain_range")
+    if form == "graph-domain-range" or graph_domain_range is not None:
+        from facet_runtime.exact.graph_domain_range import validate_parts
+
+        try:
+            if form != "graph-domain-range":
+                raise ValueError("projection form mismatch")
+            validate_parts(graph_domain_range)
+        except (ValueError, TypeError, ZeroDivisionError) as error:
+            raise FacetProtocolError(str(error)) from error
+    domain_range = payload.get("domain_range")
+    if form == "domain-range" or domain_range is not None:
+        if (
+            form != "domain-range"
+            or not isinstance(domain_range, dict)
+            or set(domain_range) != {"domain", "range"}
+            or any(
+                not isinstance(values, list)
+                or not 1 <= len(values) <= 64
+                or any(
+                    not isinstance(v, str)
+                    or len(v) > 120
+                    or re.fullmatch(r"-?\d+(?:/[1-9]\d*)?", v) is None
+                    for v in values
+                )
+                or len(set(values)) != len(values)
+                for values in domain_range.values()
+            )
+        ):
+            raise FacetProtocolError("invalid named domain/range sets")
+        domain_range = {key: tuple(values) for key, values in domain_range.items()}
+    linear_properties = payload.get("linear_properties")
+    if form == "linear-properties" or linear_properties is not None:
+        point = (
+            linear_properties.get("y_intercept")
+            if isinstance(linear_properties, dict)
+            else None
+        )
+        if (
+            form != "linear-properties"
+            or not isinstance(linear_properties, dict)
+            or set(linear_properties) != {"slope", "y_intercept"}
+            or not isinstance(linear_properties.get("slope"), str)
+            or re.fullmatch(r"-?\d+(?:/[1-9]\d*)?", linear_properties["slope"]) is None
+            or not isinstance(point, dict)
+            or set(point) != {"x", "y"}
+            or point.get("x") != "0"
+            or not isinstance(point.get("y"), str)
+            or re.fullmatch(r"-?\d+(?:/[1-9]\d*)?", point["y"]) is None
+        ):
+            raise FacetProtocolError("invalid named slope/y-intercept answer")
     intercepts = _intercepts(payload, form)
     inequality_pair = _inequality_pair(payload, form)
     choice = payload.get("choice", "")
@@ -764,6 +868,11 @@ def _answer(payload: Any, expected_kind: str) -> FacetAnswer:
         + int(bool(parts))
         + int(intercepts is not None)
         + int(inequality_pair is not None)
+        + int(graph_domain_range is not None)
+        + int(domain_range is not None)
+        + int(linear_properties is not None)
+        + int(bool(proof_pairs))
+        + int(x_intercepts is not None)
     )
     if carriers != 1:
         # More than one or none: competing answers, or no answer at all.
@@ -781,6 +890,11 @@ def _answer(payload: Any, expected_kind: str) -> FacetAnswer:
         choice=choice,
         intercepts=intercepts,
         inequality_pair=inequality_pair,
+        domain_range=domain_range,
+        linear_properties=linear_properties,
+        graph_domain_range=graph_domain_range,
+        proof_pairs=proof_pairs,
+        x_intercepts=x_intercepts,
     )
 
 
@@ -869,7 +983,15 @@ def _relation(payload: dict[str, Any], form: str, entry: str) -> FacetRelation |
     """
     stated = payload.get("relation")
     if stated is None:
-        if form in {FACET_RELATION_FORM, FACET_CONDITIONAL_CHOICE_FORM}:
+        if (
+            form
+            in {
+                FACET_RELATION_FORM,
+                FACET_CONDITIONAL_CHOICE_FORM,
+            }
+            and not payload.get("proof_pairs")
+            and payload.get("x_intercepts") is None
+        ):
             raise FacetProtocolError(
                 "Facet answered with an equation and named neither of its sides"
             )
@@ -1006,6 +1128,7 @@ def solve_math(
     answer_representation: dict[str, Any] | None = None,
     answer_choices: list[str] | None = None,
     coordinate_task: dict[str, Any] | None = None,
+    graph_relation: dict | None = None,
     accelerator_required: bool = True,
     allow_fallback: bool = False,
     timeout: float = DEFAULT_TIMEOUT_SECONDS,
@@ -1058,7 +1181,10 @@ def solve_math(
     # measurements nobody wrote a function for. Both at once is two questions,
     # and neither is none. Facet enforces this too; it is checked here so a
     # caller's mistake fails locally rather than over a transport.
-    if result_kind == VALUE and bool(expressions) == bool(points):
+    if (
+        result_kind == VALUE
+        and sum((bool(expressions), bool(points), graph_relation is not None)) != 1
+    ):
         raise FacetProtocolError(
             "a value question is about expressions or about points, not both "
             "and not neither"
@@ -1070,7 +1196,7 @@ def solve_math(
         LINEAR_GRAPH_PLAN,
         LINEAR_INEQUALITY_GRAPH_PLAN,
         LINEAR_INEQUALITY_SYSTEM_GRAPH_PLAN,
-    } or (result_kind == VALUE and not points):
+    } or (result_kind == VALUE and not points and graph_relation is None):
         if not expressions or any(not item.strip() for item in expressions):
             raise FacetProtocolError("every expression must be non-empty")
         problem["expressions"] = expressions
@@ -1102,6 +1228,8 @@ def solve_math(
                 "match answer_parts"
             )
         problem["answer_table"] = answer_table
+    if graph_relation is not None:
+        problem["graph_relation"] = graph_relation
     if coordinate_task is not None:
         if result_kind != VALUE:
             raise FacetProtocolError("a coordinate task requires a scalar value")

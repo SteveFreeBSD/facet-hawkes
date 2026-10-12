@@ -76,8 +76,20 @@ export async function enterPlan(
   // check; this function is serialized into the page's own world by
   // `scripting.executeScript`, so no import survives here.
   const MAX_ANSWER_PARTS = 5;
-  const multi = Array.isArray(targetFieldIds) && targetFieldIds.length >= 2
-    && targetFieldIds.length <= MAX_ANSWER_PARTS;
+  const targeted = Array.isArray(targetFieldIds) && targetFieldIds.length >= 1;
+  const nestedPlans = Array.isArray(steps?.[0]);
+  // A targeted plan is an explicit mode, including the one-target conditional
+  // case. Its two pieces must agree before the page is inspected: accepting a
+  // target with an ordinary plan would silently ignore that target and use the
+  // first visible box, while accepting nested plans with no targets would let
+  // a conditional route masquerade as ordinary single-field entry.
+  if (targeted !== nestedPlans
+      || (targeted && (targetFieldIds.length > MAX_ANSWER_PARTS
+        || targetFieldIds.some((id) => typeof id !== "string" || !id)
+        || new Set(targetFieldIds).size !== targetFieldIds.length))) {
+    return { ok: false, code: "answer-invalid" };
+  }
+  const multi = targeted;
   // Several plain answer boxes are not this writer's. They are the
   // `hawkes-plain-fields` transport, written by `enterOwnedFields` through the
   // control Hawkes has selected for each -- which is what keeps one box's part
@@ -229,6 +241,16 @@ export async function enterPlan(
     return String(
       (explicit ?? radio?.closest?.("label"))?.textContent ?? radio?.value ?? ""
     ).replace(/\s+/g, " ").trim();
+  };
+
+  /** The page's accessible name for one structure-owned answer box. */
+  const fieldName = (field) => {
+    const direct = String(field?.getAttribute?.("aria-label") ?? "").trim();
+    if (direct) return direct;
+    return String(field?.getAttribute?.("aria-labelledby") ?? "")
+      .split(/\s+/).filter(Boolean)
+      .map((id) => document.getElementById(id)?.textContent ?? "")
+      .join(" ").replace(/\s+/g, " ").trim();
   };
 
   /** Re-resolve the exact semantic connector group without using option order. */
@@ -563,6 +585,7 @@ export async function enterPlan(
     transport,
     keypadWrites: written.keypad,
     nativeWrites: written.native,
+    targetedFields: multi ? targetFieldIds.length : 0,
     notes: lateness.length,
     heldMs: Math.round(heldMs),
     elapsedMs: Math.round(performance.now() - performanceStartedAt),
@@ -635,6 +658,58 @@ export async function enterPlan(
     return found;
   };
 
+  /** The visible input currently rendered by one page-owned Base. */
+  const inputIdForBase = (base) => {
+    try {
+      const div = base?.objMyDiv;
+      const element = div && (div.jquery ? div[0] : div);
+      const input = element?.querySelector?.("input.qbaseCSS");
+      return input?.id && document.getElementById(input.id) === input
+        ? input.id : null;
+    } catch {
+      return null;
+    }
+  };
+
+  /**
+   * Ask Hawkes which Base follows this one.
+   *
+   * A square radical can retain or remount its following baseline without
+   * publishing a new input id. Hawkes already owns that relationship through
+   * `setFocusNext`; following it is exact where comparing DOM snapshots is
+   * only a timing heuristic. Reject an index/radicand result because neither
+   * is the outside baseline requested by a planner `base` step.
+   */
+  const pageSuccessor = (inputId) => {
+    const control = currentControl();
+    const base = findBase(inputId, control);
+    if (!control || !base || typeof base.setFocusNext !== "function") {
+      return null;
+    }
+    let returned = null;
+    try {
+      returned = base.setFocusNext();
+    } catch {
+      return null;
+    }
+    const ids = [];
+    for (const successor of [returned, control.CurrentBase]) {
+      const successorId = inputIdForBase(successor);
+      if (successorId && findBase(successorId, control) === successor) {
+        ids.push(successorId);
+      }
+    }
+    const focusedId = document.activeElement?.id;
+    if (focusedId && findBase(focusedId, control)) {
+      ids.push(focusedId);
+    }
+    const candidates = [...new Set(ids)].filter((successorId) => {
+      const name = fieldName(document.getElementById(successorId));
+      return successorId !== inputId && !/\b(?:index|radicand)\b/i.test(name);
+    });
+    return candidates.length === 1 ? candidates[0] : null;
+  };
+
   // A structured multi-part answer must name distinct page-owned editors.
   // Resolve all of them before the first write; DOM order alone is not enough because
   // loading a fraction replaces the first editor's base input.
@@ -699,6 +774,7 @@ export async function enterPlan(
       Radical: [base.qualifyLoadRadical, []],
       IndexedRadical: [base.qualifyLoadRadical, []],
       PBrace: [base.qualifyLoadParenthesis, ["PBrace"]],
+      CBrace: [base.qualifyLoadParenthesis, ["CBrace"]],
       SBrace: [base.qualifyLoadParenthesis, ["SBrace"]],
       PSBrace: [base.qualifyLoadParenthesis, ["PSBrace"]],
       SPBrace: [base.qualifyLoadParenthesis, ["SPBrace"]],
@@ -753,6 +829,7 @@ export async function enterPlan(
         // index box asked for by a second argument.
         IndexedRadical: [base.loadRadical, [true, true]],
         PBrace: [base.loadParenthesis, ["PBrace", true]],
+        CBrace: [base.loadParenthesis, ["CBrace", true]],
         SBrace: [base.loadParenthesis, ["SBrace", true]],
         PSBrace: [base.loadParenthesis, ["PSBrace", true]],
         SPBrace: [base.loadParenthesis, ["SPBrace", true]],
@@ -932,9 +1009,38 @@ export async function enterPlan(
         if (cursor === undefined) {
           return await abandon("template-refused-by-question", step.name);
         }
+        // Hawkes draws a square radical with an empty index input even though
+        // this is not an indexed radical. The radicand receives focus, but the
+        // index appears before the continuation in DOM order. Treating every
+        // other fresh input as the next slot therefore sent a following comma
+        // to the index, whose own restriction correctly rejected it. Use the
+        // page's accessible name to omit exactly that square-root-only box.
+        // IndexedRadical keeps its index: the plan deliberately enters it
+        // before moving through the radicand to the continuation.
+        const squareRootIndexes = step.name === "Radical"
+          ? fresh.filter((id) => /\bindex\b/i.test(fieldName(document.getElementById(id))))
+          : [];
+        if (squareRootIndexes.length > 1 || squareRootIndexes.includes(cursor)) {
+          return await abandon("template-slots-ambiguous", step.name);
+        }
+        const availableSlots = fresh.filter(
+          (id) => id !== cursor && !squareRootIndexes.includes(id)
+        );
         frames.push({
           template: step.name,
-          slots: fresh.filter((id) => id !== cursor),
+          slots: availableSlots,
+          before,
+          // The original baseline is not a newly mounted continuation. Keep
+          // it in the exclusion set while waiting for a late slot; otherwise
+          // the wait immediately "discovers" the box the radical replaced
+          // and appends the comma in front of the radical.
+          seen: new Set([...before, ...fresh]),
+          // A live square radical publishes its index and radicand first and
+          // may mount the following baseline after the ordinary settle window.
+          // Wait for that page-owned continuation only when it was absent;
+          // once resolved, a later `base` must fall through to an outer frame.
+          lateSquareRootContinuation:
+            step.name === "Radical" && availableSlots.length === 0,
         });
         holdForStructure(step.name);
         continue;
@@ -1007,6 +1113,49 @@ export async function enterPlan(
         if (step.op === "slot" && step.name === "denominator") {
           while (index >= 0 && frames[index].template !== "Fraction") {
             index -= 1;
+          }
+        }
+        if (
+          step.op === "base"
+          && index >= 0
+          && frames[index].lateSquareRootContinuation
+        ) {
+          const frame = frames[index];
+          const deadline = Date.now() + SETTLE_MS;
+          let candidates = [];
+          while (Date.now() < deadline) {
+            const successor = pageSuccessor(cursor);
+            if (successor) {
+              candidates = [successor];
+              break;
+            }
+            // Some Hawkes builds leave `CurrentBase` in the radicand even
+            // after `setFocusNext`, but publish the outside base by its exact
+            // accessible role. Resolve that unique baseline inside this
+            // answer's pinned control. Reconsider every field created by the
+            // radical, including one seen during the initial settle; its id is
+            // allowed to exist before the planner is ready to leave the root.
+            const namedContinuations = ids().filter((id) =>
+              !frame.before.includes(id)
+              && id !== cursor
+              && findBase(id, currentControl())
+              && /\bbaseline\b/i.test(fieldName(document.getElementById(id)))
+            );
+            if (namedContinuations.length !== 0) {
+              candidates = namedContinuations;
+              break;
+            }
+            candidates = ids().filter((id) => !frame.seen.has(id));
+            if (candidates.length !== 0) break;
+            await new Promise((resolve) => setTimeout(resolve, 60));
+          }
+          frame.lateSquareRootContinuation = false;
+          if (candidates.length > 1) {
+            return await abandon("template-slots-ambiguous", frame.template);
+          }
+          if (candidates.length === 1) {
+            frame.seen.add(candidates[0]);
+            frame.slots.push(candidates[0]);
           }
         }
         while (index >= 0 && frames[index].slots.length === 0) {

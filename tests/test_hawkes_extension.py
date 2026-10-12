@@ -1282,11 +1282,14 @@ def test_page_owned_line_points_never_fall_back_to_a_screenshot() -> None:
 
     assert "line_points: question.linePoints" in request
     assert "!question.linePoints" in fallback
+    graph_guard = source.split("function graphEvidenceProblem(", 1)[1].split("\n}", 1)[
+        0
+    ]
     assert (
-        '["labeled-coordinates", "line-slope", "linear-coordinate"].includes(question.evidence?.graphQuestion)'
-        in source
+        '["labeled-coordinates", "line-slope", "linear-coordinate", '
+        '"domain-range", "function-test"].includes(graphQuestion)' in graph_guard
     )
-    assert 'question.evidence?.graphDecision !== "accepted"' in source
+    assert 'question?.evidence?.graphDecision !== "accepted"' in graph_guard
 
 
 def test_every_injected_script_path_is_declared() -> None:
@@ -2012,7 +2015,7 @@ def test_a_completed_insertion_records_how_long_it_took():
     """
     background = (EXTENSION_DIR / "background.js").read_text()
 
-    assert background.count('log.info("inserted"') == 9
+    assert background.count('log.info("inserted"') == 10
     # `path:` is reserved -- a neighbouring test forbids it anywhere in this
     # file, so that a path can never be smuggled to the native host.
     assert 'via: "structured"' in background and 'via: "plain"' in background

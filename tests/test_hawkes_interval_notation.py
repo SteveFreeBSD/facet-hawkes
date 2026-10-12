@@ -275,7 +275,7 @@ def test_interval_notation_is_a_valid_answer(js, answer):
         "(1,2]]",
         "<b>[1,2]</b>",
         "[1,2];",
-        "{1,2}",
+        "{1,x}",
         "'[1,2]'",
         "\\[1,2]",
     ],
@@ -595,5 +595,7 @@ def test_every_interval_row_plans_the_template_its_ends_call_for(js):
             continue
         assert result["ok"] is True, (entry.id, result)
         groups = re.findall(r"([(\[])[^()\[\]]*([)\]])", entry.example)
-        assert templates(result) == [marks[a + b] for a, b in groups], entry.id
+        assert [name for name in templates(result) if name in marks.values()] == [
+            marks[a + b] for a, b in groups
+        ], entry.id
         assert "enterPlan" in entry.mechanism, entry.id

@@ -866,6 +866,22 @@ var ethnosHawkes = (function () {
     // A selected option may reveal the only text field that completes it.
     // Hawkes links that field from the radio with aria-controls, so following
     // that relation is exact and does not weaken the one-target rule.
+    const conditionalOptions = optionGroup();
+    const selectedConditional = conditionalOptions.filter((radio) => radio.checked
+      && optionControlledFields(radio).length >= 2);
+    if (selectedConditional.length === 1) {
+      const controlled = optionControlledFields(selectedConditional[0]).filter((field) =>
+        field.getBoundingClientRect().width > 0 && field.getBoundingClientRect().height > 0
+        && !field.disabled && !field.readOnly && Number(field.tabIndex) >= 0);
+      if (controlled.length >= 2 && controlled.length <= MAX_ANSWER_PARTS
+        && new Set(controlled.map((field) => field.id)).size === controlled.length) {
+        return { ready: true, code: "conditional-answer-fields",
+          fieldId: controlled.map((field) => field.id).join("\u001f"),
+          fieldIds: controlled.map((field) => field.id), choices: optionChoices(),
+          conditionalChoice: optionName(selectedConditional[0]) };
+      }
+      return { ready: false, code: "conditional-fields-ambiguous" };
+    }
     const revealed = revealedOptionField();
     if (revealed) {
       const selected = optionGroup().filter((radio) => radio.checked);

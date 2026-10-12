@@ -233,6 +233,7 @@ def test_absence_selection_and_coordinate_readback_are_both_semantic():
         "ok": True,
         "code": "axis-options-settled",
         "selected": 1,
+        "events": 1,
     }
     assert ctx.eval('document.getElementById("PracticeAbsent1").checked') is True
     assert ctx.eval('document.getElementById("PracticeAbsent2").checked') is False
@@ -293,6 +294,7 @@ def test_duplicated_intercepts_fill_both_rows_and_neither_is_absent():
         "ok": True,
         "code": "axis-options-settled",
         "selected": 0,
+        "events": 0,
     }
     assert ctx.eval('document.getElementById("PracticeAbsent1").checked') is False
     assert ctx.eval('document.getElementById("PracticeAbsent2").checked') is False

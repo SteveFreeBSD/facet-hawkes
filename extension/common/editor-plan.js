@@ -159,6 +159,30 @@ export function planEntry(answer, editor) {
     return { ok: false, code: "editor-rules-unknown" };
   }
 
+  // Exact sets and whole-pair coordinates have top-level comma boundaries.
+  // Plan each member before division, including a radical coordinate over
+  // a rational denominator; the comma never belongs in that denominator.
+  const finiteSet = /^\{(-?\d+(?:\/[1-9]\d*)?(?:,-?\d+(?:\/[1-9]\d*)?)*)\}$/.exec(answer);
+  const commaList = answer !== "," && splitTopLevel(answer, ",").length > 1;
+  if (finiteSet || commaList) {
+    const body = finiteSet ? finiteSet[1] : answer;
+    const count = (body.match(/\//g) ?? []).length;
+    if (Number.isInteger(editor?.limits?.fractions) && count > editor.limits.fractions) {
+      return { ok: false, code: "editor-fraction-limit" };
+    }
+    const content = planCommaList(body, editor, "base");
+    if (!content.ok || !finiteSet) return content;
+    if (editor.templates?.CBrace === true) {
+      return {ok:true,steps:[{op:"template",name:"CBrace"}, ...content.steps, {op:"base"}]};
+    }
+    const open = planRun("{", editor);
+    const close = planRun("}", editor);
+    if (!open.ok) return open;
+    if (!close.ok) return close;
+    return { ok: true, steps: coalesced([...open.steps, ...content.steps,
+      ...(content.steps.some((step) => step.op === "template") ? [{ op: "base" }] : []), ...close.steps]) };
+  }
+
   // A pair the page has already bracketed.
   //
   // Lesson 3.3 step 1 asks for a vertex and draws `( [box] )` around a single

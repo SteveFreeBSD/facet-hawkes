@@ -248,20 +248,40 @@ class FocusEvent { constructor(type, options) { this.type = type; Object.assign(
 class CustomEvent { constructor(type, options) { this.type = type; Object.assign(this, options); } }
 
 class HTMLInputElement {
-  constructor(id) { this.id = id; this.held = ''; this.className = 'qbaseCSS'; }
+  constructor(id) { this.id = id; this.held = ''; this.className = 'qbaseCSS'; this.label = ''; }
   get value() { return this.held; }
   set value(v) { assigned.push([this.id, v]); this.held = v; }
   focus() { document.activeElement = this; }
+  getAttribute(name) { return name === 'aria-label' ? this.label : ''; }
   getBoundingClientRect() { return {width: 100, height: 20}; }
   dispatchEvent(event) { dispatched.push([this.id, event.type]); return true; }
 }
 
-var boxes = {}, bases = {}, order = [];
+var boxes = {}, bases = {}, order = [], aimed = [], advanced = [];
+var radicalContinuations = {};
 var control = {
   enabled: true,
   arrChildObjects: [],
+  objMyDiv: {querySelectorAll: () => order.map(id => boxes[id])},
   keyPadButtonClick(name) {
     pressed.push(name);
+    if (name === 'Radical') {
+      const index = addBox('slot' + (++serial)); index.label = 'radical 1 index';
+      const radicand = addBox('slot' + (++serial)); radicand.label = 'radical 1 radicand';
+      setTimeout(() => {
+        document.activeElement = radicand;
+        if (globalThis.__aims !== false) { control.CurrentBase = bases[radicand.id]; }
+      }, 60);
+      // Later than the executor's ordinary three stable polls. This is the
+      // live Hawkes order that briefly showed a completed radical, then made
+      // the writer think there was nowhere to put its coordinate comma.
+      setTimeout(() => {
+        const continuation = addBox('slot' + (++serial));
+        continuation.label = 'baseline 2';
+        radicalContinuations[radicand.id] = continuation.id;
+      }, 600);
+      return;
+    }
     if (name === 'Exponent' || name === 'Fraction') {
       const slot = addBox('slot' + (++serial));
       addBox('slot' + (++serial));
@@ -284,13 +304,22 @@ function addBox(id) {
   order.push(id);
   bases[id] = {
     Type: 'Base',
-    loadExponent() {}, loadFraction() {},
+    loadExponent() {}, loadFraction() {}, loadRadical() {},
     qualifyLoadExponent: () => boxes[id].held.length > 0,
     qualifyLoadFraction: () => true,
+    qualifyLoadRadical: () => true,
     objMyDiv: {querySelector: () => boxes[id]},
     // A page that does not move its own editor is the fixture's `aims` flag:
     // the characters then land wherever the editor still was.
-    setFocus() { if (globalThis.__aims !== false) { control.CurrentBase = bases[id]; } },
+    setFocus() {
+      aimed.push(id);
+      if (globalThis.__aims !== false) { control.CurrentBase = bases[id]; }
+    },
+    setFocusNext() {
+      advanced.push(id);
+      const next = radicalContinuations[id];
+      if (next && globalThis.__advances !== false) { control.CurrentBase = bases[next]; }
+    },
     arrChildObjects: [],
   };
   control.arrChildObjects.push(bases[id]);
@@ -319,12 +348,13 @@ def editor_page(**flags):
     return ctx
 
 
-def perform(ctx, steps, transport):
+def perform(ctx, steps, transport, target_ids=None):
+    target_ids = [] if target_ids is None else target_ids
     ctx.eval(
         f"var steps = {json.dumps(steps)};"
-        " var phrase = ethnosCadence.planSemanticPhrase(steps,"
+        " var phrase = ethnosCadence.planSemanticPhrase(steps.flat(),"
         " {durationMinMs: 200, durationMaxMs: 200});"
-        f" enterPlan(steps, {{score: phrase}}, [], {json.dumps(transport)})"
+        f" enterPlan(steps, {{score: phrase}}, {json.dumps(target_ids)}, {json.dumps(transport)})"
         " .then(r => completed = r,"
         " e => completed = {ok: false, code: 'threw', detail: String(e)});"
     )
@@ -340,6 +370,48 @@ def perform(ctx, steps, transport):
     else:
         pytest.fail("the writer did not terminate")
     return value(ctx, "completed")
+
+
+def test_square_root_skips_its_unused_index_before_a_coordinate_comma():
+    ctx = editor_page()
+    result = perform(
+        ctx,
+        [
+            {"op": "type", "text": "1-"},
+            {"op": "template", "name": "Radical"},
+            {"op": "type", "text": "3"},
+            {"op": "base"},
+            {"op": "type", "text": ",0"},
+        ],
+        "hawkes-dynamic-keypad",
+    )
+
+    assert result["ok"], result
+    assert result["code"] == "entered"
+    assert value(ctx, "boxes.slot1.value") == ""
+    assert value(ctx, "boxes.slot2.value") == "3"
+    assert value(ctx, "boxes.slot3.value") == ",0"
+    assert "slot2" in value(ctx, "advanced")
+
+
+def test_square_root_uses_its_named_baseline_when_hawkes_does_not_advance():
+    ctx = editor_page(advances=False)
+    result = perform(
+        ctx,
+        [
+            {"op": "type", "text": "1+"},
+            {"op": "template", "name": "Radical"},
+            {"op": "type", "text": "2"},
+            {"op": "base"},
+            {"op": "type", "text": ",0"},
+        ],
+        "hawkes-dynamic-keypad",
+    )
+
+    assert result["ok"], result
+    assert value(ctx, "boxes.slot1.value") == ""
+    assert value(ctx, "boxes.slot2.value") == "2"
+    assert value(ctx, "boxes.slot3.value") == ",0"
 
 
 def test_a_writer_told_no_transport_refuses_before_touching_the_page():
@@ -366,6 +438,53 @@ def test_every_dynamic_character_is_an_editor_operation():
     assert value(live, "boxes.QBase1_input.held") == "12xy"
     assert outcome["timing"]["keypadWrites"] == 4
     assert outcome["timing"]["nativeWrites"] == 0
+
+
+def test_one_target_structured_mode_is_explicit_keypad_entry():
+    """A conditional surface may expose one of its several owned editors.
+
+    The nested plan and its one exact target are both required. This is still
+    the dynamic editor's keypad route and one shared Cadence score, not a
+    special writer inferred from there happening to be one value.
+    """
+    live = editor_page()
+    outcome = perform(
+        live,
+        [[{"op": "type", "text": "12"}]],
+        "hawkes-dynamic-keypad",
+        ["QBase1_input"],
+    )
+
+    assert outcome["ok"] is True
+    assert outcome["code"] == "entered-fields"
+    assert outcome["transport"] == "hawkes-dynamic-keypad"
+    assert outcome["enteredFields"] == ["QBase1_input"]
+    assert outcome["timing"]["targetedFields"] == 1
+    assert outcome["timing"]["keypadWrites"] == 2
+    assert outcome["timing"]["nativeWrites"] == 0
+    assert outcome["timing"]["notes"] == 2
+    assert value(live, "pressed") == ["1", "2"]
+    assert value(live, "assigned") == []
+
+
+@pytest.mark.parametrize(
+    ("steps", "target_ids", "transport"),
+    [
+        ([{"op": "type", "text": "12"}], ["QBase1_input"], "hawkes-dynamic-keypad"),
+        ([[{"op": "type", "text": "12"}]], [], "hawkes-dynamic-keypad"),
+        ([[{"op": "type", "text": "12"}]], ["QBase1_input"], "hawkes-plain-box"),
+    ],
+)
+def test_one_target_mode_cannot_steal_ordinary_or_plain_entry(
+    steps, target_ids, transport
+):
+    live = editor_page()
+    outcome = perform(live, steps, transport, target_ids)
+
+    assert outcome["ok"] is False
+    assert outcome["code"] in {"answer-invalid", "transport-unavailable"}
+    assert value(live, "pressed") == []
+    assert value(live, "assigned") == []
 
 
 def test_a_plain_box_is_written_by_its_own_input_handling():
@@ -563,6 +682,8 @@ def test_an_insertion_records_the_route_its_characters_actually_took(page):  # n
     assert inserted["transport"] == "hawkes-dynamic-keypad"
     assert inserted["routedTo"] == "hawkes-dynamic-keypad"
     assert inserted["timing"]["keypadWrites"] == 2
+    assert inserted["characterWrites"] == 2
+    assert inserted["structuralActions"] == 0
     assert page.json("state.phase") == "inserted"
 
 

@@ -1,10 +1,45 @@
 "use strict";
 
 /** Select the per-axis ``absent`` controls through the page's own inputs. */
-export async function selectAxisAbsences(rows, intercepts) {
+export async function selectAxisAbsences(rows, intercepts, family = "axis", verifyOnly = false) {
   const ALLOWED_ORIGIN = "https://learn.hawkeslearning.com";
   if (window.location.origin !== ALLOWED_ORIGIN) {
     return { ok: false, code: "wrong-site" };
+  }
+  if (family === "graph-domain-range") {
+    if (!Array.isArray(rows) || rows.length !== 2 || new Set(rows.map(r=>r.role)).size !== 2
+      || !intercepts || Object.keys(intercepts).sort().join() !== "domain,range") return {ok:false,code:"answer-invalid"};
+    const targets=[];
+    for (const row of rows) {
+      const radio=document.getElementById(row.optionId), field=document.getElementById(row.fieldId);
+      const owner=document.getElementById(row.ownerId), fieldset=radio?.closest?.("fieldset");
+      const legends=fieldset ? [...fieldset.children].filter(n=>n.tagName.toLowerCase() === "legend") : [];
+      const label=String(radio?.getAttribute("aria-labelledby") ?? "").trim().split(/\s+/)
+        .map(id=>document.getElementById(id)?.textContent ?? "").join(" ").trim().toLowerCase();
+      if (!(radio instanceof HTMLInputElement) || radio.type !== "radio" || !radio.classList.contains("opt")
+        || radio.disabled || !radio.getClientRects().length || label !== "all real numbers"
+        || radio.name !== row.group || String(radio.getAttribute("aria-controls") ?? "").trim() !== row.ownerId
+        || !(field instanceof HTMLInputElement) || !owner?.contains(field) || !fieldset?.contains(field)
+        || legends.length !== 1 || String(legends[0].textContent ?? "").trim().replace(/:$/, "").toLowerCase() !== row.role
+        || fieldset.querySelectorAll('input[type="radio"].opt').length !== 1
+        || !["domain","range"].includes(row.role)
+        || !["all-real-numbers","singleton","interval"].includes(intercepts[row.role]?.kind)) return {ok:false,code:"axis-surface-changed"};
+      const wanted=intercepts[row.role].kind === "all-real-numbers";
+      if (!wanted && (radio.checked || field.disabled)) return {ok:false,code:"axis-option-not-settled"};
+      targets.push({radio,field,wanted});
+    }
+    if (new Set(targets.map(t=>t.radio)).size !== 2 || new Set(targets.map(t=>t.field)).size !== 2) return {ok:false,code:"axis-surface-changed"};
+    let events=0;
+    for (const {radio,wanted} of targets) {
+      if (!verifyOnly && wanted && !radio.checked) {
+        radio.dispatchEvent(new MouseEvent("click",{bubbles:true,cancelable:true,view:window}));
+        events += 1;
+        await new Promise(resolve=>setTimeout(resolve,120));
+      }
+      if (radio.checked !== wanted) return {ok:false,code:"axis-option-not-settled"};
+    }
+    if (targets.some(({radio,wanted})=>radio.checked !== wanted)) return {ok:false,code:"axis-option-not-settled"};
+    return {ok:true,code:"axis-options-settled",selected:targets.filter(t=>t.wanted).length,events};
   }
   const axes = ["x", "y"];
   if (!Array.isArray(rows) || rows.length !== 2 || !intercepts) {
@@ -29,6 +64,7 @@ export async function selectAxisAbsences(rows, intercepts) {
     return String(label?.textContent ?? radio.value ?? "").replace(/\s+/g, " ").trim();
   };
   let selected = 0;
+  let events = 0;
   for (const axis of axes) {
     const row = rows.find((item) => item?.axis === axis);
     if (
@@ -58,6 +94,7 @@ export async function selectAxisAbsences(rows, intercepts) {
         cancelable: true,
         view: window,
       }));
+      events += 1;
       await new Promise((resolve) => setTimeout(resolve, 120));
     }
     if (radio.checked !== absent) {
@@ -65,7 +102,7 @@ export async function selectAxisAbsences(rows, intercepts) {
     }
     selected += absent ? 1 : 0;
   }
-  return { ok: true, code: "axis-options-settled", selected };
+  return { ok: true, code: "axis-options-settled", selected, events };
 }
 
 /** Read back both radio state and coordinate fields after the page settles. */

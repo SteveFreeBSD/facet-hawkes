@@ -9,7 +9,10 @@
     "conditional-choice",
     "relation",
     "axis-intercepts",
-    "inequality-pair"
+    "inequality-pair",
+    "linear-properties",
+    "domain-range",
+    "graph-domain-range"
   ],
   "plan_kinds": [
     "linear_graph_plan",
@@ -219,6 +222,21 @@
         ]
       }
     },
+    "linear-graph-choice": {
+      "note": "Ordinary Hawkes options whose exact caption XML owns one two-point infinite line. The reader joins option model identity to its radio and ARIA-owned rendered graph, while the existing graph-choice writer verifies radio, model, getUserAnswer, and isEmpty read-back.",
+      "description": {
+        "kind": "option",
+        "surface": "graph-choice",
+        "enabled": true,
+        "allowedCharacters": "",
+        "templates": {},
+        "choices": [
+          "Graph: line; slope=1; y-intercept=-9",
+          "Graph: line; slope=-1; y-intercept=9",
+          "Graph: line; slope=2/3; y-intercept=-5/4"
+        ]
+      }
+    },
     "table-cells": {
       "note": "One control per blank cell of a grid. Each cell is planned on its own, against its own published rules.",
       "description": {
@@ -365,8 +383,14 @@
         "connector": {
           "group": "page-owned",
           "choices": [
-            {"id": "page-and", "semantic": "and"},
-            {"id": "page-or", "semantic": "or"}
+            {
+              "id": "page-and",
+              "semantic": "and"
+            },
+            {
+              "id": "page-or",
+              "semantic": "or"
+            }
           ]
         }
       }
@@ -482,6 +506,61 @@
           "index": "0123456789"
         }
       }
+    },
+    "graph-projection-box": {
+      "note": "Conditional graph projection value editor. CBrace supports singleton sets; rational values require the page to publish Fraction. The live integer surface does not publish Fraction, so fractional entry on it refuses.",
+      "description": {
+        "kind": "dynamic",
+        "enabled": true,
+        "allowedCharacters": "0123456789-.,∞∅",
+        "maxLength": 16,
+        "templates": {
+          "fraction": true,
+          "radical": false,
+          "exponent": false,
+          "parentheses": true,
+          "absoluteValue": false,
+          "PBrace": true,
+          "SBrace": true,
+          "PSBrace": true,
+          "SPBrace": true,
+          "CBrace": true
+        },
+        "slots": {
+          "base": "0123456789-.,∞∅",
+          "numerator": "0123456789xy+-",
+          "denominator": "0123456789xy+-",
+          "exponent": "0123456789xy",
+          "exponentBase": "xy",
+          "radicand": "0123456789xy+-",
+          "index": "0123456789"
+        }
+      }
+    },
+    "intercept-coordinate": {
+      "note": "Whole-pair coordinate editor with explicit Fraction and Radical templates; page-owned parentheses or native brackets.",
+      "description": {
+        "kind": "dynamic",
+        "enabled": true,
+        "allowedCharacters": "0123456789-,+",
+        "maxLength": 80,
+        "templates": {
+          "fraction": true,
+          "radical": true,
+          "exponent": false,
+          "parentheses": true,
+          "absoluteValue": false
+        },
+        "slots": {
+          "base": "0123456789-,+",
+          "numerator": "0123456789-+",
+          "denominator": "0123456789",
+          "exponent": "0123456789",
+          "exponentBase": "0123456789xy",
+          "radicand": "0123456789",
+          "index": "23456789"
+        }
+      }
     }
   },
   "entries": [
@@ -497,6 +576,7 @@
       "topology": "one dynamic or plain box",
       "mechanism": [
         "planEntry",
+        "runScoredEntry",
         "enterPlan"
       ],
       "status": "supported",
@@ -771,6 +851,7 @@
       "topology": "one box accepting letters",
       "mechanism": [
         "planEntry",
+        "runScoredEntry",
         "enterPlan"
       ],
       "status": "supported",
@@ -798,6 +879,7 @@
       "topology": "two page-owned signed-integer coordinate fields, one component per field",
       "mechanism": [
         "multiEntryPlans",
+        "runScoredEntry",
         "enterOwnedFields"
       ],
       "status": "supported",
@@ -822,13 +904,24 @@
       "id": "labeled-coordinate-collection",
       "semantic": "label-keyed collection of exact ordered pairs",
       "form": "ordered-pair",
-      "notation": ["plain"],
+      "notation": [
+        "plain"
+      ],
       "example": "-4",
       "editor": "plain-box",
       "topology": "two to twelve explicitly labeled rows, with page-owned first/second-coordinate field names",
-      "mechanism": ["_solve_labeled_coordinates_with_facet", "labeledCoordinateSurface", "enterOwnedFields"],
+      "mechanism": [
+        "_solve_labeled_coordinates_with_facet",
+        "labeledCoordinateSurface",
+        "runScoredEntry",
+        "enterOwnedFields"
+      ],
       "status": "supported",
-      "coverage": {"unit": "yes", "harness": "yes", "live": "yes"},
+      "coverage": {
+        "unit": "yes",
+        "harness": "yes",
+        "live": "yes"
+      },
       "note": "The companion composes existing Facet Exact ordered-pair results into a typed labeled-coordinates payload without changing the runtime form set. Instruction plus graph model plus answer-row labels is complete content; questionString and equation markup may be empty. Existing point validation checks bounds, origin, grid alignment and unique identity. Labels and x/y roles, never DOM/model order, select fields. The existing owned-field writer revalidates identities during entry, commits afterkeydown-bound plain boxes with native change events, and settles every field against its Hawkes model. Ambiguous or conflicting owners refuse without screenshots or model calls. Live run rmug8cba8d5c2: Facet Exact, model_calls=0, three labels, six fields settled and six model read-backs, independently confirmed afterward; answerStatus remained 0. No grading/navigation was performed. Acceptance awaits Steve's submission; not Fixed live."
     },
     {
@@ -902,6 +995,7 @@
       "mechanism": [
         "answer_payload",
         "planEntry",
+        "runScoredEntry",
         "enterPlan"
       ],
       "status": "supported",
@@ -931,6 +1025,7 @@
       "mechanism": [
         "axisInterceptsOf",
         "selectAxisAbsences",
+        "runScoredEntry",
         "enterOwnedFields",
         "verifyAxisInterceptInsertion"
       ],
@@ -961,6 +1056,7 @@
       "mechanism": [
         "axisInterceptsOf",
         "selectAxisAbsences",
+        "runScoredEntry",
         "enterOwnedFields",
         "verifyAxisInterceptInsertion"
       ],
@@ -990,6 +1086,7 @@
       "topology": "several drawn boxes, one per value",
       "mechanism": [
         "planAnswerParts",
+        "runScoredEntry",
         "enterOwnedFields"
       ],
       "status": "supported",
@@ -1131,6 +1228,7 @@
     },
     {
       "id": "choice-phrase",
+      "note": "Two-line relationship classification preserves two independent page-owned equations, normalizes each over exact rationals and semantically matches Parallel, Perpendicular or Neither to the published choice label, without depending on option order. Yes/No surfaces reuse the same classifier and evaluate a unique parallel, perpendicular or neither proposition from the prompt before matching the published Boolean label. Missing, compound or unsupported propositions and coincident lines refuse explicitly. Boolean normal-profile solve rmupk1emrcb84 used Facet Exact with model_calls=0; Steve reported it worked and subsequent observation showed Hawkes had advanced beyond the question with the correct count increased. Facet publishes the matching choice; ordinary radio-group selection remains the owner’s action. Fixed live on 2026-10-01: normal-profile solve rmupjfqcv4c9c used Facet Exact with model_calls=0, and Steve confirmed submission and Hawkes acceptance.",
       "semantic": "named alternative",
       "form": "choice",
       "notation": [
@@ -1191,6 +1289,71 @@
           "Graph: x=-3 dashed; x=4 dashed; shade=between",
           "Graph: x=-4 dashed; x=3 dashed; shade=between",
           "Graph: x=-3 dashed; x=4 dashed; shade=outside"
+        ]
+      }
+    },
+    {
+      "id": "linear-function-graph-choice",
+      "semantic": "one rendered line graph chosen by exact slope and y-intercept semantics",
+      "form": "choice",
+      "notation": [
+        "plain"
+      ],
+      "example": "Graph: line; slope=1; y-intercept=-9",
+      "editor": "linear-graph-choice",
+      "topology": "ordinary option radios whose page-owned caption models each contain one exact two-point infinite line graph",
+      "mechanism": [
+        "answerFitsEditor",
+        "graphOperation"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "no"
+      },
+      "probe": {
+        "instruction": "Choose the correct graph for the linear function.",
+        "expressions": [
+          "f(x)=-(9-x)"
+        ],
+        "choices": [
+          "Graph: line; slope=-1; y-intercept=9",
+          "Graph: line; slope=1; y-intercept=9",
+          "Graph: line; slope=-1; y-intercept=-9",
+          "Graph: line; slope=1; y-intercept=-9"
+        ]
+      }
+    },
+    {
+      "id": "linear-function-graph-choice-fraction",
+      "semantic": "one rendered line graph chosen by exact rational slope and y-intercept semantics",
+      "form": "choice",
+      "notation": [
+        "fraction"
+      ],
+      "example": "Graph: line; slope=2/3; y-intercept=-5/4",
+      "editor": "linear-graph-choice",
+      "topology": "ordinary option radios whose page-owned caption models each contain one exact two-point infinite line graph",
+      "mechanism": [
+        "answerFitsEditor",
+        "graphOperation"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "no"
+      },
+      "probe": {
+        "instruction": "Identify the graph of the equation.",
+        "expressions": [
+          "8*x-12*y=15"
+        ],
+        "choices": [
+          "Graph: line; slope=2/3; y-intercept=-5/4",
+          "Graph: line; slope=-2/3; y-intercept=-5/4",
+          "Graph: line; slope=2/3; y-intercept=5/4"
         ]
       }
     },
@@ -1268,6 +1431,7 @@
       "mechanism": [
         "answerForSurface",
         "planEntry",
+        "runScoredEntry",
         "enterPlan"
       ],
       "status": "supported",
@@ -1465,6 +1629,7 @@
       "topology": "one plain box whose character rule admits the decimal point",
       "mechanism": [
         "planEntry",
+        "runScoredEntry",
         "enterPlan"
       ],
       "status": "supported",
@@ -1580,10 +1745,11 @@
       ],
       "example": "y=-2*x+5",
       "editor": "equation-box",
-      "topology": "one box publishing `=`, with no subject printed in front",
+      "topology": "one box publishing `=`, with no subject printed in front; stated slope/function-value construction reuses this relation contract, with exact rational arithmetic and terminal ambiguity refusal; prose-label recovery Fixed live on the tested integer slope/value surface on 2026-10-12 after Steve confirmed Hawkes acceptance; rational and nonzero-input variants have offline coverage",
       "mechanism": [
         "surfaceStatesSubject",
         "planEntry",
+        "runScoredEntry",
         "enterPlan"
       ],
       "status": "supported",
@@ -1616,6 +1782,7 @@
         "planEntry",
         "planRun",
         "planCommaList",
+        "runScoredEntry",
         "enterPlan"
       ],
       "status": "supported",
@@ -1642,6 +1809,7 @@
         "planEntry",
         "planRun",
         "planCommaList",
+        "runScoredEntry",
         "enterPlan"
       ],
       "status": "supported",
@@ -1664,6 +1832,7 @@
       "mechanism": [
         "planEntry",
         "planRun",
+        "runScoredEntry",
         "enterPlan"
       ],
       "status": "supported",
@@ -1713,6 +1882,7 @@
         "planEntry",
         "planRun",
         "planCommaList",
+        "runScoredEntry",
         "enterPlan"
       ],
       "status": "supported",
@@ -1825,6 +1995,7 @@
         "planEntry",
         "planRun",
         "planCommaList",
+        "runScoredEntry",
         "enterPlan"
       ],
       "status": "supported",
@@ -1856,6 +2027,7 @@
         "planEntry",
         "planRun",
         "planCommaList",
+        "runScoredEntry",
         "enterPlan"
       ],
       "status": "supported",
@@ -1941,6 +2113,7 @@
         "planEntry",
         "planFractionalRelation",
         "planFractionalSum",
+        "runScoredEntry",
         "enterPlan"
       ],
       "status": "supported",
@@ -1974,6 +2147,7 @@
         "planFractionalRelation",
         "planFractionalSum",
         "rationalTerm",
+        "runScoredEntry",
         "enterPlan"
       ],
       "status": "supported",
@@ -1990,6 +2164,609 @@
         ]
       },
       "note": "The exact line-from-properties answer is unchanged. The existing rational-term planner recognizes a parenthesized signed numeric rational atom, with an optional monomial factor, and uses the native Fraction structure without PBrace. Joining signs remain at the outer base and a leading negative stays in the fraction numerator. Grouped sums, products and exponent bases still require real grouping; no general parentheses stripping occurs. Normal-profile solve rmug71tw06e3e reported model_calls=0; insertion rmug720nx10fc completed ten native-keypad writes with the existing per-character page-owned read-back. A separate final whole-expression snapshot was not captured before the question changed. Hawkes grading acceptance remains unconfirmed; this is not marked Fixed live."
+    },
+    {
+      "id": "domain-range-plain",
+      "semantic": "unique exact x-values and y-values of a finite relation",
+      "form": "domain-range",
+      "notation": [
+        "plain"
+      ],
+      "example": "7",
+      "editor": "fraction-box",
+      "topology": "two uniquely labeled Domain/Range editors; each explicitly owns both braces or neither",
+      "mechanism": [
+        "domainRangeParts",
+        "planEntry",
+        "runScoredEntry",
+        "enterPlan"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "no"
+      },
+      "note": "Named sets, exact rational deduplication, zero model calls. Labels and model ownership determine targets, never DOM or model order. Unsupported or ambiguous relations and surfaces refuse. Integer comma-set surface Fixed live on 2026-10-12: solve rmv598i39bc8a, insertion rmv598k8y6b07; Steve explicitly confirmed Hawkes accepted both entries. Fractions, singleton sets and fields requiring typed braces have offline coverage only."
+    },
+    {
+      "id": "domain-range-comma",
+      "semantic": "unique exact x-values and y-values of a finite relation",
+      "form": "domain-range",
+      "notation": [
+        "comma"
+      ],
+      "example": "-3,4",
+      "editor": "fraction-box",
+      "topology": "two uniquely labeled Domain/Range editors; each explicitly owns both braces or neither",
+      "mechanism": [
+        "domainRangeParts",
+        "planEntry",
+        "runScoredEntry",
+        "enterPlan"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "yes"
+      },
+      "note": "Named sets, exact rational deduplication, zero model calls. Labels and model ownership determine targets, never DOM or model order. Unsupported or ambiguous relations and surfaces refuse. Integer comma-set surface Fixed live on 2026-10-12: solve rmv598i39bc8a, insertion rmv598k8y6b07; Steve explicitly confirmed Hawkes accepted both entries. Fractions, singleton sets and fields requiring typed braces have offline coverage only."
+    },
+    {
+      "id": "domain-range-fraction",
+      "semantic": "unique exact x-values and y-values of a finite relation",
+      "form": "domain-range",
+      "notation": [
+        "fraction"
+      ],
+      "example": "1/3",
+      "editor": "fraction-box",
+      "topology": "two uniquely labeled Domain/Range editors; each explicitly owns both braces or neither",
+      "mechanism": [
+        "domainRangeParts",
+        "planEntry",
+        "runScoredEntry",
+        "enterPlan"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "no"
+      },
+      "note": "Named sets, exact rational deduplication, zero model calls. Labels and model ownership determine targets, never DOM or model order. Unsupported or ambiguous relations and surfaces refuse. Integer comma-set surface Fixed live on 2026-10-12: solve rmv598i39bc8a, insertion rmv598k8y6b07; Steve explicitly confirmed Hawkes accepted both entries. Fractions, singleton sets and fields requiring typed braces have offline coverage only."
+    },
+    {
+      "id": "domain-range-fraction-comma",
+      "semantic": "unique exact x-values and y-values of a finite relation",
+      "form": "domain-range",
+      "notation": [
+        "fraction",
+        "comma"
+      ],
+      "example": "-2/5,0",
+      "editor": "fraction-box",
+      "topology": "two uniquely labeled Domain/Range editors; each explicitly owns both braces or neither",
+      "mechanism": [
+        "domainRangeParts",
+        "planEntry",
+        "runScoredEntry",
+        "enterPlan"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "no"
+      },
+      "note": "Named sets, exact rational deduplication, zero model calls. Labels and model ownership determine targets, never DOM or model order. Unsupported or ambiguous relations and surfaces refuse. Integer comma-set surface Fixed live on 2026-10-12: solve rmv598i39bc8a, insertion rmv598k8y6b07; Steve explicitly confirmed Hawkes accepted both entries. Fractions, singleton sets and fields requiring typed braces have offline coverage only."
+    },
+    {
+      "id": "finite-function-proof-group-comma",
+      "semantic": "No with two original ordered pairs sharing x and differing in y",
+      "form": "conditional-choice",
+      "notation": [
+        "group",
+        "comma"
+      ],
+      "example": "(8,-7)",
+      "editor": "fraction-box",
+      "topology": "semantic Yes/No option; selecting No reveals its explicitly owned whole-pair editors",
+      "mechanism": [
+        "conditionalPairProof",
+        "planEntry",
+        "runScoredEntry",
+        "enterPlan"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "yes"
+      },
+      "note": "Exact finite relation function test reuses the shared rational relation parser. Repeated identical pairs do not invalidate a function. No carries typed pair objects, never independently sorted coordinates; Yes carries no proof. Existing conditional choice handoff and multipart writer are reused. Unknown or ambiguous relation notation or field ownership refuses; model_calls=0. Integer whole-pair surface Fixed live on 2026-10-12: Steve explicitly confirmed Hawkes accepted No and both proof pairs. Fraction proofs, alternate parentheses ownership and Yes remain offline coverage. Continuous linear function tests also reuse this carrier: vertical relations provide two exact points within page-owned viewport bounds and actual endpoint semantics; nonvertical relations return Yes without proof. Continuous nonvertical Yes is Fixed live on 2026-10-12: Steve confirmed Hawkes accepted Yes. Continuous vertical No proofs remain offline coverage. Ambiguous geometry or unavailable bounded proof refuses with zero model calls."
+    },
+    {
+      "id": "finite-function-proof-fraction-group-comma",
+      "semantic": "No with two original ordered pairs sharing x and differing in y",
+      "form": "conditional-choice",
+      "notation": [
+        "fraction",
+        "group",
+        "comma"
+      ],
+      "example": "(1/2,-1/4)",
+      "editor": "fraction-box",
+      "topology": "semantic Yes/No option; selecting No reveals its explicitly owned whole-pair editors",
+      "mechanism": [
+        "conditionalPairProof",
+        "planEntry",
+        "runScoredEntry",
+        "enterPlan"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "no"
+      },
+      "note": "Exact finite relation function test reuses the shared rational relation parser. Repeated identical pairs do not invalidate a function. No carries typed pair objects, never independently sorted coordinates; Yes carries no proof. Existing conditional choice handoff and multipart writer are reused. Unknown or ambiguous relation notation or field ownership refuses; model_calls=0. Integer whole-pair surface Fixed live on 2026-10-12: Steve explicitly confirmed Hawkes accepted No and both proof pairs. Fraction proofs, alternate parentheses ownership and Yes remain offline coverage. Continuous linear function tests also reuse this carrier: vertical relations provide two exact points within page-owned viewport bounds and actual endpoint semantics; nonvertical relations return Yes without proof. Continuous nonvertical Yes is Fixed live on 2026-10-12: Steve confirmed Hawkes accepted Yes. Continuous vertical No proofs remain offline coverage. Ambiguous geometry or unavailable bounded proof refuses with zero model calls."
+    },
+    {
+      "id": "graph-domain-range-phrase",
+      "semantic": "exact domain/range projection, each a value or semantic all-real-numbers choice",
+      "form": "graph-domain-range",
+      "notation": [
+        "phrase"
+      ],
+      "example": "All real numbers",
+      "editor": "graph-projection-box",
+      "topology": "two explicitly labeled Domain/Range fieldsets, each owning one value editor and its All real numbers alternative; the value editor chooses its page-owned transport",
+      "mechanism": [
+        "graphDomainRangeAnswer",
+        "selectAxisAbsences",
+        "planEntry",
+        "runScoredEntry",
+        "enterPlan"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "yes"
+      },
+      "note": "One page-owned linear relation: equation or two exact points, explicit arrows and endpoint types. Interval or singleton projections retain exact rational values. Fieldset legends and aria-controls own each row, independently of order. Reviewed Insert reuses conditional option selection and targeted multipart plans. Unrecognized geometry, restrictions or ambiguous ownership refuses with zero model calls. The two all-real-numbers choices on an unbounded oblique line are Fixed live on 2026-10-12: solve rmv5ajnrod101, insertion rmv5ajpaz8378; Steve explicitly confirmed Hawkes accepted both choices. Rays, segments, singleton and rational value surfaces remain offline coverage. Dynamic value editors use the Hawkes keypad; plain owned value fields use `enterOwnedFields`; both receive one shared `runScoredEntry` score, while semantic choices remain structural actions outside Cadence."
+    },
+    {
+      "id": "graph-domain-range-plain",
+      "semantic": "exact domain/range projection, each a value or semantic all-real-numbers choice",
+      "form": "graph-domain-range",
+      "notation": [
+        "plain"
+      ],
+      "example": "{3}",
+      "editor": "graph-projection-box",
+      "topology": "two explicitly labeled Domain/Range fieldsets, each owning one value editor and its All real numbers alternative; the value editor chooses its page-owned transport",
+      "mechanism": [
+        "graphDomainRangeAnswer",
+        "selectAxisAbsences",
+        "planEntry",
+        "runScoredEntry",
+        "enterPlan"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "no"
+      },
+      "note": "One page-owned linear relation: equation or two exact points, explicit arrows and endpoint types. Interval or singleton projections retain exact rational values. Fieldset legends and aria-controls own each row, independently of order. Reviewed Insert reuses conditional option selection and targeted multipart plans. Unrecognized geometry, restrictions or ambiguous ownership refuses with zero model calls. The two all-real-numbers choices on an unbounded oblique line are Fixed live on 2026-10-12: solve rmv5ajnrod101, insertion rmv5ajpaz8378; Steve explicitly confirmed Hawkes accepted both choices. Rays, segments, singleton and rational value surfaces remain offline coverage. Dynamic value editors use the Hawkes keypad; plain owned value fields use `enterOwnedFields`; both receive one shared `runScoredEntry` score, while semantic choices remain structural actions outside Cadence."
+    },
+    {
+      "id": "graph-domain-range-fraction",
+      "semantic": "exact domain/range projection, each a value or semantic all-real-numbers choice",
+      "form": "graph-domain-range",
+      "notation": [
+        "fraction"
+      ],
+      "example": "{2/3}",
+      "editor": "graph-projection-box",
+      "topology": "two explicitly labeled Domain/Range fieldsets, each owning one value editor and its All real numbers alternative; the value editor chooses its page-owned transport",
+      "mechanism": [
+        "graphDomainRangeAnswer",
+        "selectAxisAbsences",
+        "planEntry",
+        "runScoredEntry",
+        "enterPlan"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "no"
+      },
+      "note": "One page-owned linear relation: equation or two exact points, explicit arrows and endpoint types. Interval or singleton projections retain exact rational values. Fieldset legends and aria-controls own each row, independently of order. Reviewed Insert reuses conditional option selection and targeted multipart plans. Unrecognized geometry, restrictions or ambiguous ownership refuses with zero model calls. The two all-real-numbers choices on an unbounded oblique line are Fixed live on 2026-10-12: solve rmv5ajnrod101, insertion rmv5ajpaz8378; Steve explicitly confirmed Hawkes accepted both choices. Rays, segments, singleton and rational value surfaces remain offline coverage. Dynamic value editors use the Hawkes keypad; plain owned value fields use `enterOwnedFields`; both receive one shared `runScoredEntry` score, while semantic choices remain structural actions outside Cadence."
+    },
+    {
+      "id": "graph-domain-range-group-comma-interval",
+      "semantic": "exact domain/range projection, each a value or semantic all-real-numbers choice",
+      "form": "graph-domain-range",
+      "notation": [
+        "group",
+        "comma",
+        "interval"
+      ],
+      "example": "[-3,2)",
+      "editor": "graph-projection-box",
+      "topology": "two explicitly labeled Domain/Range fieldsets, each owning one value editor and its All real numbers alternative; the value editor chooses its page-owned transport",
+      "mechanism": [
+        "graphDomainRangeAnswer",
+        "selectAxisAbsences",
+        "planEntry",
+        "runScoredEntry",
+        "enterPlan"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "yes"
+      },
+      "note": "One page-owned linear relation: equation or two exact points, explicit arrows and endpoint types. Interval or singleton projections retain exact rational values. Fieldset legends and aria-controls own each row, independently of order. Reviewed Insert reuses conditional option selection and targeted multipart plans. Unrecognized geometry, restrictions or ambiguous ownership refuses with zero model calls. The two all-real-numbers choices on an unbounded oblique line are Fixed live on 2026-10-12: solve rmv5ajnrod101, insertion rmv5ajpaz8378; Steve explicitly confirmed Hawkes accepted both choices. Rays, segments, singleton and rational value surfaces remain offline coverage. Continuous equations and graphs now reuse this projection carrier and multipart writer. Interval-only rows render all real numbers as (-∞,∞) and singleton a as [a,a]; equation/graph disagreement refuses. The interval-only surface is Fixed live for an unbounded oblique line on 2026-10-12: solve/insertion rmv5bhar5ac35, two fields and zero choices, model_calls=0. Steve confirmed Hawkes accepted both intervals. Other continuous projection variants remain offline coverage. Dynamic value editors use the Hawkes keypad; plain owned value fields use `enterOwnedFields`; both receive one shared `runScoredEntry` score, while semantic choices remain structural actions outside Cadence."
+    },
+    {
+      "id": "graph-domain-range-group-comma",
+      "semantic": "exact domain/range projection, each a value or semantic all-real-numbers choice",
+      "form": "graph-domain-range",
+      "notation": [
+        "group",
+        "comma"
+      ],
+      "example": "(-2,7)",
+      "editor": "graph-projection-box",
+      "topology": "two explicitly labeled Domain/Range fieldsets, each owning one value editor and its All real numbers alternative; the value editor chooses its page-owned transport",
+      "mechanism": [
+        "graphDomainRangeAnswer",
+        "selectAxisAbsences",
+        "planEntry",
+        "runScoredEntry",
+        "enterPlan"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "no"
+      },
+      "note": "One page-owned linear relation: equation or two exact points, explicit arrows and endpoint types. Interval or singleton projections retain exact rational values. Fieldset legends and aria-controls own each row, independently of order. Reviewed Insert reuses conditional option selection and targeted multipart plans. Unrecognized geometry, restrictions or ambiguous ownership refuses with zero model calls. The two all-real-numbers choices on an unbounded oblique line are Fixed live on 2026-10-12: solve rmv5ajnrod101, insertion rmv5ajpaz8378; Steve explicitly confirmed Hawkes accepted both choices. Rays, segments, singleton and rational value surfaces remain offline coverage. Dynamic value editors use the Hawkes keypad; plain owned value fields use `enterOwnedFields`; both receive one shared `runScoredEntry` score, while semantic choices remain structural actions outside Cadence."
+    },
+    {
+      "id": "graph-domain-range-fraction-group-comma-interval",
+      "semantic": "exact domain/range projection, each a value or semantic all-real-numbers choice",
+      "form": "graph-domain-range",
+      "notation": [
+        "fraction",
+        "group",
+        "comma",
+        "interval"
+      ],
+      "example": "[1/3,∞)",
+      "editor": "graph-projection-box",
+      "topology": "two explicitly labeled Domain/Range fieldsets, each owning one value editor and its All real numbers alternative; the value editor chooses its page-owned transport",
+      "mechanism": [
+        "graphDomainRangeAnswer",
+        "selectAxisAbsences",
+        "planEntry",
+        "runScoredEntry",
+        "enterPlan"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "no"
+      },
+      "note": "One page-owned linear relation: equation or two exact points, explicit arrows and endpoint types. Interval or singleton projections retain exact rational values. Fieldset legends and aria-controls own each row, independently of order. Reviewed Insert reuses conditional option selection and targeted multipart plans. Unrecognized geometry, restrictions or ambiguous ownership refuses with zero model calls. The two all-real-numbers choices on an unbounded oblique line are Fixed live on 2026-10-12: solve rmv5ajnrod101, insertion rmv5ajpaz8378; Steve explicitly confirmed Hawkes accepted both choices. Rays, segments, singleton and rational value surfaces remain offline coverage. Dynamic value editors use the Hawkes keypad; plain owned value fields use `enterOwnedFields`; both receive one shared `runScoredEntry` score, while semantic choices remain structural actions outside Cadence."
+    },
+    {
+      "id": "linear-properties-plain",
+      "semantic": "exact slope and y-intercept, each bound to its labeled field",
+      "form": "linear-properties",
+      "notation": [
+        "plain"
+      ],
+      "example": "-7",
+      "editor": "maths-box",
+      "topology": "two uniquely owned editors labeled Slope and y-intercept; this row covers an integral scalar component",
+      "mechanism": [
+        "linearPropertyParts",
+        "planEntry",
+        "runScoredEntry",
+        "enterPlan"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "no"
+      },
+      "note": "One affine function or equation is normalized over exact rationals. The typed composite carries a scalar slope and the ordered pair (0,b); semantic labels and model ownership choose targets independently of field order. Page-owned pair parentheses are respected. Vertical relations, duplicate or unknown labels, multiple equations and unsupported notation refuse with zero model calls. Normal-profile Hawkes acceptance is not yet confirmed."
+    },
+    {
+      "id": "linear-properties-fraction",
+      "semantic": "exact slope and y-intercept, each bound to its labeled field",
+      "form": "linear-properties",
+      "notation": [
+        "fraction"
+      ],
+      "example": "-3/2",
+      "editor": "maths-box",
+      "topology": "two uniquely owned editors labeled Slope and y-intercept; this row covers a rational scalar component",
+      "mechanism": [
+        "linearPropertyParts",
+        "planEntry",
+        "runScoredEntry",
+        "enterPlan"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "no"
+      },
+      "note": "One affine function or equation is normalized over exact rationals. The typed composite carries a scalar slope and the ordered pair (0,b); semantic labels and model ownership choose targets independently of field order. Page-owned pair parentheses are respected. Vertical relations, duplicate or unknown labels, multiple equations and unsupported notation refuse with zero model calls. Normal-profile Hawkes acceptance is not yet confirmed."
+    },
+    {
+      "id": "linear-properties-group-comma",
+      "semantic": "exact slope and y-intercept, each bound to its labeled field",
+      "form": "linear-properties",
+      "notation": [
+        "group",
+        "comma"
+      ],
+      "example": "(0,4)",
+      "editor": "maths-box",
+      "topology": "two uniquely owned editors labeled Slope and y-intercept; this row covers an integral ordered-pair component",
+      "mechanism": [
+        "linearPropertyParts",
+        "planEntry",
+        "runScoredEntry",
+        "enterPlan"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "no"
+      },
+      "note": "One affine function or equation is normalized over exact rationals. The typed composite carries a scalar slope and the ordered pair (0,b); semantic labels and model ownership choose targets independently of field order. Page-owned pair parentheses are respected. Vertical relations, duplicate or unknown labels, multiple equations and unsupported notation refuse with zero model calls. Normal-profile Hawkes acceptance is not yet confirmed."
+    },
+    {
+      "id": "linear-properties-fraction-group-comma",
+      "semantic": "exact slope and y-intercept, each bound to its labeled field",
+      "form": "linear-properties",
+      "notation": [
+        "fraction",
+        "group",
+        "comma"
+      ],
+      "example": "(0,-5/4)",
+      "editor": "maths-box",
+      "topology": "two uniquely owned editors labeled Slope and y-intercept; this row covers a rational ordered-pair component",
+      "mechanism": [
+        "linearPropertyParts",
+        "planEntry",
+        "runScoredEntry",
+        "enterPlan"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "no"
+      },
+      "note": "One affine function or equation is normalized over exact rationals. The typed composite carries a scalar slope and the ordered pair (0,b); semantic labels and model ownership choose targets independently of field order. Page-owned pair parentheses are respected. Vertical relations, duplicate or unknown labels, multiple equations and unsupported notation refuse with zero model calls. Normal-profile Hawkes acceptance is not yet confirmed."
+    },
+    {
+      "semantic": "exact x-intercept count and whole ordered pairs",
+      "form": "conditional-choice",
+      "editor": "intercept-coordinate",
+      "topology": "semantic None/One/Two choices with explicitly owned coordinate models; optional page-owned parentheses",
+      "mechanism": [
+        "countedInterceptAnswer",
+        "planEntry",
+        "runScoredEntry",
+        "enterPlan"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "yes"
+      },
+      "note": "Exact real roots of one stated rational polynomial of degree at most four. Repeated roots count once; each pair is (x,0). Unsupported functions, more than two real roots, ambiguous owners or unavailable notation refuse with zero model calls. Existing conditional choice handoff and scalar/multipart writer are reused. No editor focus required. The Two-intercept integer surface with page-owned parentheses is Fixed live on 2026-10-12: Steve explicitly confirmed Hawkes accepted Two and both pairs. None, One, rational/radical pairs and agent-entered parentheses remain offline coverage.",
+      "id": "counted-x-intercepts-integer",
+      "notation": [
+        "comma"
+      ],
+      "example": "-3,0"
+    },
+    {
+      "semantic": "exact x-intercept count and whole ordered pairs",
+      "form": "conditional-choice",
+      "editor": "intercept-coordinate",
+      "topology": "semantic None/One/Two choices with explicitly owned coordinate models; optional page-owned parentheses",
+      "mechanism": [
+        "countedInterceptAnswer",
+        "planEntry",
+        "runScoredEntry",
+        "enterPlan"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "no"
+      },
+      "note": "Exact real roots of one stated rational polynomial of degree at most four. Repeated roots count once; each pair is (x,0). Unsupported functions, more than two real roots, ambiguous owners or unavailable notation refuse with zero model calls. Existing conditional choice handoff and scalar/multipart writer are reused. No editor focus required. The Two-intercept integer surface with page-owned parentheses is Fixed live on 2026-10-12: Steve explicitly confirmed Hawkes accepted Two and both pairs. None, One, rational/radical pairs and agent-entered parentheses remain offline coverage.",
+      "id": "counted-x-intercepts-integer-group",
+      "notation": [
+        "group",
+        "comma"
+      ],
+      "example": "(-3,0)"
+    },
+    {
+      "semantic": "exact x-intercept count and whole ordered pairs",
+      "form": "conditional-choice",
+      "editor": "intercept-coordinate",
+      "topology": "semantic None/One/Two choices with explicitly owned coordinate models; optional page-owned parentheses",
+      "mechanism": [
+        "countedInterceptAnswer",
+        "planEntry",
+        "runScoredEntry",
+        "enterPlan"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "no"
+      },
+      "note": "Exact real roots of one stated rational polynomial of degree at most four. Repeated roots count once; each pair is (x,0). Unsupported functions, more than two real roots, ambiguous owners or unavailable notation refuse with zero model calls. Existing conditional choice handoff and scalar/multipart writer are reused. No editor focus required. The Two-intercept integer surface with page-owned parentheses is Fixed live on 2026-10-12: Steve explicitly confirmed Hawkes accepted Two and both pairs. None, One, rational/radical pairs and agent-entered parentheses remain offline coverage.",
+      "id": "counted-x-intercepts-rational",
+      "notation": [
+        "fraction",
+        "comma"
+      ],
+      "example": "2/3,0"
+    },
+    {
+      "semantic": "exact x-intercept count and whole ordered pairs",
+      "form": "conditional-choice",
+      "editor": "intercept-coordinate",
+      "topology": "semantic None/One/Two choices with explicitly owned coordinate models; optional page-owned parentheses",
+      "mechanism": [
+        "countedInterceptAnswer",
+        "planEntry",
+        "runScoredEntry",
+        "enterPlan"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "no"
+      },
+      "note": "Exact real roots of one stated rational polynomial of degree at most four. Repeated roots count once; each pair is (x,0). Unsupported functions, more than two real roots, ambiguous owners or unavailable notation refuse with zero model calls. Existing conditional choice handoff and scalar/multipart writer are reused. No editor focus required. The Two-intercept integer surface with page-owned parentheses is Fixed live on 2026-10-12: Steve explicitly confirmed Hawkes accepted Two and both pairs. None, One, rational/radical pairs and agent-entered parentheses remain offline coverage.",
+      "id": "counted-x-intercepts-rational-group",
+      "notation": [
+        "fraction",
+        "group",
+        "comma"
+      ],
+      "example": "(2/3,0)"
+    },
+    {
+      "semantic": "exact x-intercept count and whole ordered pairs",
+      "form": "conditional-choice",
+      "editor": "intercept-coordinate",
+      "topology": "semantic None/One/Two choices with explicitly owned coordinate models; optional page-owned parentheses",
+      "mechanism": [
+        "countedInterceptAnswer",
+        "planEntry",
+        "runScoredEntry",
+        "enterPlan"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "no"
+      },
+      "note": "Exact real roots of one stated rational polynomial of degree at most four. Repeated roots count once; each pair is (x,0). Unsupported functions, more than two real roots, ambiguous owners or unavailable notation refuse with zero model calls. Existing conditional choice handoff and scalar/multipart writer are reused. No editor focus required. The Two-intercept integer surface with page-owned parentheses is Fixed live on 2026-10-12: Steve explicitly confirmed Hawkes accepted Two and both pairs. None, One, rational/radical pairs and agent-entered parentheses remain offline coverage.",
+      "id": "counted-x-intercepts-radical",
+      "notation": [
+        "radical",
+        "comma"
+      ],
+      "example": "sqrt(7),0"
+    },
+    {
+      "semantic": "exact x-intercept count and whole ordered pairs",
+      "form": "conditional-choice",
+      "editor": "intercept-coordinate",
+      "topology": "semantic None/One/Two choices with explicitly owned coordinate models; optional page-owned parentheses",
+      "mechanism": [
+        "countedInterceptAnswer",
+        "planEntry",
+        "runScoredEntry",
+        "enterPlan"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "no"
+      },
+      "note": "Exact real roots of one stated rational polynomial of degree at most four. Repeated roots count once; each pair is (x,0). Unsupported functions, more than two real roots, ambiguous owners or unavailable notation refuse with zero model calls. Existing conditional choice handoff and scalar/multipart writer are reused. No editor focus required. The Two-intercept integer surface with page-owned parentheses is Fixed live on 2026-10-12: Steve explicitly confirmed Hawkes accepted Two and both pairs. None, One, rational/radical pairs and agent-entered parentheses remain offline coverage.",
+      "id": "counted-x-intercepts-radical-group",
+      "notation": [
+        "radical",
+        "group",
+        "comma"
+      ],
+      "example": "(sqrt(7),0)"
+    },
+    {
+      "semantic": "exact x-intercept count and whole ordered pairs",
+      "form": "conditional-choice",
+      "editor": "intercept-coordinate",
+      "topology": "semantic None/One/Two choices with explicitly owned coordinate models; optional page-owned parentheses",
+      "mechanism": [
+        "countedInterceptAnswer",
+        "planEntry",
+        "runScoredEntry",
+        "enterPlan"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "no"
+      },
+      "note": "Exact real roots of one stated rational polynomial of degree at most four. Repeated roots count once; each pair is (x,0). Unsupported functions, more than two real roots, ambiguous owners or unavailable notation refuse with zero model calls. Existing conditional choice handoff and scalar/multipart writer are reused. No editor focus required. The Two-intercept integer surface with page-owned parentheses is Fixed live on 2026-10-12: Steve explicitly confirmed Hawkes accepted Two and both pairs. None, One, rational/radical pairs and agent-entered parentheses remain offline coverage.",
+      "id": "counted-x-intercepts-radical-rational",
+      "notation": [
+        "fraction",
+        "radical",
+        "group",
+        "comma"
+      ],
+      "example": "((-1+sqrt(5))/2,0)"
+    },
+    {
+      "semantic": "exact x-intercept count and whole ordered pairs",
+      "form": "conditional-choice",
+      "editor": "radio-group",
+      "topology": "semantic None/One/Two choices with explicitly owned coordinate models; optional page-owned parentheses",
+      "mechanism": [
+        "countedInterceptAnswer",
+        "optionShape"
+      ],
+      "status": "supported",
+      "coverage": {
+        "unit": "yes",
+        "harness": "no",
+        "live": "no"
+      },
+      "note": "Exact real roots of one stated rational polynomial of degree at most four. Repeated roots count once; each pair is (x,0). Unsupported functions, more than two real roots, ambiguous owners or unavailable notation refuse with zero model calls. Existing conditional choice handoff and scalar/multipart writer are reused. No editor focus required. The Two-intercept integer surface with page-owned parentheses is Fixed live on 2026-10-12: Steve explicitly confirmed Hawkes accepted Two and both pairs. None, One, rational/radical pairs and agent-entered parentheses remain offline coverage.",
+      "id": "counted-x-intercepts-none",
+      "notation": [
+        "phrase"
+      ],
+      "example": "None"
     }
   ]
 }

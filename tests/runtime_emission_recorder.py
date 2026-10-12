@@ -73,6 +73,12 @@ def pytest_configure() -> None:
                         },
                     }
                 ),
+                "graph_domain_range": self.graph_domain_range,
+                "domain_range": self.domain_range,
+                "linear_properties": self.linear_properties,
+                "proof_pairs": self.proof_pairs,
+                "x_intercepts": self.x_intercepts,
+                "choice": self.choice,
                 "method": self.method,
             }
         )

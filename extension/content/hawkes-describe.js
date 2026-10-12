@@ -79,9 +79,27 @@
       String(control.qdyBase_AllowedTemplates ?? "").split(/[^A-Za-z]+/).filter(Boolean)
     );
 
+    // Prefix/suffix are page-owned labels, not the collection position.
+    const strip = (value) => String(read(value) ?? "").replace(/<[^>]*>/g, "").trim();
+    const prefix = strip(data.prefix);
+    const suffix = strip(data.suffix);
+    const setLabel = /^(domain|range)\s*:\s*(\{)?$/i.exec(prefix);
+    const setSurface = setLabel && ((setLabel[2] && suffix === "}") || (!setLabel[2] && !suffix))
+      ? { role: setLabel[1].toLowerCase(), braces: Boolean(setLabel[2]) } : null;
+    const linearLabel = /^(slope|y[-\s]intercept)\s*:\s*(\()?$/i.exec(prefix);
+    const linearPropertySurface = (() => {
+      if (!linearLabel) return null;
+      const role = /^slope$/i.test(linearLabel[1]) ? "slope" : "y-intercept";
+      const ownsPair = role === "y-intercept" && linearLabel[2] === "(" && suffix === ")";
+      if ((linearLabel[2] || suffix) && !ownsPair) return null;
+      return { role, ownsPair };
+    })();
     return {
       ok: true,
       code: "described",
+      modelIndex: index,
+      setSurface,
+      linearPropertySurface,
       kind: dynamic ? "dynamic" : "textbox",
       name: String(read(data.Name) ?? ""),
       enabled: control.enabled !== false && read(data.enableState) !== false,
@@ -136,6 +154,7 @@
         SBrace: baseTemplates.has("SBrace"),
         PSBrace: baseTemplates.has("PSBrace"),
         SPBrace: baseTemplates.has("SPBrace"),
+        CBrace: baseTemplates.has("CBrace"),
         absoluteValue: [
           control.qdyBase_AllowedTemplates,
           control.qdyFrac_AllowedNumeTemplates,
@@ -331,6 +350,44 @@
     drawn,
   };
 
+  // A fieldset legend names the mathematical role. The option's aria-controls
+  // names its alternative editor; neither DOM order nor control names assign it.
+  const projectionSets = typeof document === "undefined" ? [] : [...document.querySelectorAll("fieldset")].filter((node) =>
+    [...(node.children ?? [])].some((child) => child.tagName.toLowerCase() === "legend"
+      && /^(domain|range)\s*:?$/i.test(String(child.textContent ?? "").trim())));
+  if (projectionSets.length) {
+    const ownership = ownershipProbe();
+    const reject = () => ({ok:false,code:"graph-domain-range-surface-ambiguous"});
+    if (projectionSets.length !== 2 || !ownership || ownership.models.length !== 4) return reject();
+    const rows = [], editors = [];
+    for (const fieldset of projectionSets) {
+      const legends = [...fieldset.children].filter((child) => child.tagName.toLowerCase() === "legend");
+      if (legends.length !== 1) return reject();
+      const role = String(legends[0].textContent ?? "").trim().replace(/:$/, "").toLowerCase();
+      const radios = [...fieldset.querySelectorAll('input[type="radio"].opt')];
+      const roots = [...fieldset.querySelectorAll(HAWKES_FIELD_SELECTOR)].filter((f) => f.tabIndex >= 0);
+      if (radios.length !== 1 || roots.length !== 1 || !radios[0].id || !roots[0].id) return reject();
+      const radio = radios[0], field = roots[0];
+      const option = ownership.radios.find((r) => r.id === radio.id);
+      const ownerIds = String(radio.getAttribute("aria-controls") ?? "").trim().split(/\s+/);
+      if (!option || option.label.trim().toLowerCase() !== "all real numbers" || radio.disabled
+        || ownerIds.length !== 1 || !ownerIds[0] || !document.getElementById(ownerIds[0])?.contains(field)) return reject();
+      const owners = ownership.models.filter((m) => m.fields.includes(field.id));
+      if (owners.length !== 1) return reject();
+      const one = described.find((e) => e?.modelIndex === owners[0].index);
+      const data = ui.controlsCollectionData[owners[0].index];
+      if (!one || !["dynamic","textbox"].includes(one.kind)
+        || String(read(data.prefix) ?? "").trim() || String(read(data.suffix) ?? "").trim()) return reject();
+      rows.push({role, fieldId:field.id, ownerId:ownerIds[0], optionId:radio.id, group:option.group});
+      editors.push(one);
+    }
+    if (new Set(rows.map(r=>r.role)).size !== 2 || new Set(rows.map(r=>r.fieldId)).size !== 2
+      || new Set(rows.map(r=>r.optionId)).size !== 2 || new Set(rows.map(r=>r.group)).size !== 2
+      || rows.some(r=>!["domain","range"].includes(r.role))) return reject();
+    return {ok:true,code:"described-graph-domain-range",kind:"multi",editors,
+      graphDomainRangeRows:rows,ownership,collection:{...collection,branch:"graph-domain-range"}};
+  }
+
   const coordinateFields = typeof document === "undefined" ? [] : [...document.querySelectorAll(HAWKES_FIELD_SELECTOR)].filter((field) => {
     const rect = field.getBoundingClientRect();
     return rect.width > 0 && rect.height > 0;
@@ -426,6 +483,67 @@
         collection: { ...collection, branch: "axis-intercepts" },
       };
     }
+  }
+  // A selected option can own several complete expression fields. Preserve
+  // that ownership as a conditional multipart surface, excluding the radios.
+  const conditionalOwnership = ownershipProbe();
+  const conditionalRadios = conditionalOwnership?.radios ?? [];
+  // Cardinality labels name alternatives; aria-controls names each branch's
+  // whole-pair owners. Focus and model/DOM collection order play no role.
+  const countOf = (label) => ({none:0,one:1,two:2})[String(label).trim().toLowerCase()];
+  const counted = conditionalRadios.length === 3 && conditionalRadios.every(r=>countOf(r.label)!==undefined)
+    && new Set(conditionalRadios.map(r=>countOf(r.label))).size === 3;
+  if (conditionalRadios.length===3 && conditionalRadios.every(r=>countOf(r.label)!==undefined) && !counted)
+    return {ok:false,code:"conditional-coordinate-ownership-ambiguous"};
+  let countedCoordinates = null;
+  if (counted) {
+    const branches = conditionalRadios.map(r=>{
+      const radio=document.getElementById(r.id);
+      const ownerIds=String(radio?.getAttribute("aria-controls")??"").trim().split(/\s+/).filter(Boolean);
+      return {...r,count:countOf(r.label),ownerIds,selected:radio?.checked===true};
+    });
+    if (new Set(branches.map(r=>r.group)).size!==1 || branches.some(r=>!r.group
+      || r.ownerIds.length!==r.count || new Set(r.ownerIds).size!==r.count
+      || r.ownerIds.some(id=>!document.getElementById(id)))
+      || branches.filter(r=>r.selected).length>1) return {ok:false,code:"conditional-coordinate-ownership-ambiguous"};
+    countedCoordinates={branches,selected:branches.find(r=>r.selected)?.count??null};
+    if (countedCoordinates.selected===null || countedCoordinates.selected===0) {
+      if (conditionalOwnership.roots.length) return {ok:false,code:"conditional-coordinate-ownership-ambiguous"};
+      return {ok:true,code:"described-counted-coordinates",kind:"option",enabled:true,
+        countedCoordinates,collection:{...collection,branch:"counted-coordinates"}};
+    }
+  }
+  const selectedOwners = conditionalRadios.map((radio) => document.getElementById?.(radio.id))
+    .filter((radio) => radio?.checked && String(radio.getAttribute?.("aria-controls") ?? "").trim().split(/\s+/).length >= (counted ? 1 : 2));
+  if (selectedOwners.length === 1) {
+    const radio = selectedOwners[0];
+    const ownerIds = String(radio.getAttribute("aria-controls")).trim().split(/\s+/);
+    const rows = ownerIds.map((ownerId) => {
+      const owner = document.getElementById(ownerId);
+      const fields = (conditionalOwnership.roots ?? []).filter((id) => owner?.contains?.(document.getElementById(id)));
+      const models = conditionalOwnership.models.filter((model) => fields.length === 1 && model.fields.includes(fields[0]));
+      const one = models.length === 1 ? described.find((one) => one?.modelIndex === models[0].index) : null;
+      const data = models.length === 1 ? ui.controlsCollectionData[models[0].index] : null;
+      const strip = (text) => String(read(text) ?? "").replace(/<\/?(?:math|mo|mrow)\b[^>]*>/gi, "").trim();
+      const prefix = strip(data?.prefix), suffix = strip(data?.suffix);
+      return one?.enabled && ["dynamic", "textbox"].includes(one.kind)
+        && ((!prefix && !suffix) || (/^(?:,\s*)?\($/.test(prefix) && suffix === ")"))
+        ? { ownerId, fieldId: fields[0], modelIndex: one.modelIndex, bracketed: /\($/.test(prefix) } : null;
+    });
+    const valid = rows.length >= (counted ? 1 : 2) && rows.length <= MAX_ANSWER_PARTS && rows.every(Boolean)
+      && new Set(ownerIds).size === rows.length && new Set(rows.map((row) => row.fieldId)).size === rows.length
+      && conditionalOwnership.roots.length === rows.length;
+    if (!valid) return { ok: false, code: "conditional-proof-ownership-ambiguous" };
+    const ordered = conditionalOwnership.roots.map((id) => rows.find((row) => row.fieldId === id));
+    const selected = conditionalRadios.find((one) => one.id === radio.id);
+    return { ...(counted && rows.length === 1 ? described.find(one=>one?.modelIndex===ordered[0].modelIndex) : {}),
+      ok: true, code: "described-conditional-parts", kind: counted && rows.length === 1 ? described.find(one=>one?.modelIndex===ordered[0].modelIndex).kind : "multi",
+      ...(countedCoordinates ? {countedCoordinates} : {}),
+      editors: ordered.map((row) => described.find((one) => one?.modelIndex === row.modelIndex)),
+      conditionalProof: { choice: selected.label, group: selected.group, optionId: selected.id,
+        rows: ordered.map(({ownerId, fieldId, bracketed}) => ({ownerId, fieldId, bracketed})) },
+      choices: conditionalRadios.map((one) => one.label), ownership: conditionalOwnership,
+      collection: { ...collection, branch: "conditional-parts" } };
   }
   // Five enabled controls is what lesson 2.1's table-completion question
   // publishes, one per blank cell. Bounded at four, this fell straight past
@@ -584,6 +702,48 @@
         ownership: pairOwnership,
       };
     }
+  }
+  if (usable.some((one) => one.setSurface)) {
+    const ownership = ownershipProbe();
+    if (!ownership) return { ok: false, code: "domain-range-ownership-missing" };
+    const fields = ownership.fields ?? [];
+    const ids = fields.map((one) => one.id);
+    const rows = ids.map((fieldId) => {
+      const owners = ownership.models.filter((model) => model.fields.includes(fieldId));
+      const one = owners.length === 1 ? usable.find((one) => one.modelIndex === owners[0].index) : null;
+      return one?.setSurface ? { fieldId, ...one.setSurface } : null;
+    });
+    if (usable.length !== 2 || ids.length !== 2 || new Set(ids).size !== 2
+      || rows.some((row) => !row) || new Set(rows.map((row) => row.role)).size !== 2) {
+      return { ok: false, code: "domain-range-surface-ambiguous" };
+    }
+    const editors = ids.map((id) => usable.find((one) => ownership.models.some(
+      (model) => model.index === one.modelIndex && model.fields.includes(id))));
+    return { ok: true, code: "described-domain-range", kind: "multi", editors,
+      domainRangeRows: rows, ownership, collection: { ...collection, branch: "domain-range" } };
+  }
+  if (usable.some((one) => one.linearPropertySurface)) {
+    const ownership = ownershipProbe();
+    if (!ownership) return { ok: false, code: "linear-properties-ownership-missing" };
+    const ids = (ownership.fields ?? []).map((one) => one.id);
+    const rows = ids.map((fieldId) => {
+      const owners = ownership.models.filter((model) => model.fields.includes(fieldId));
+      const one = owners.length === 1
+        ? usable.find((candidate) => candidate.modelIndex === owners[0].index) : null;
+      return one?.linearPropertySurface
+        ? { fieldId, ...one.linearPropertySurface } : null;
+    });
+    if (usable.length !== 2 || ids.length !== 2 || new Set(ids).size !== 2
+      || rows.some((row) => !row)
+      || new Set(rows.map((row) => row.role)).size !== 2
+      || rows.some((row) => !["slope", "y-intercept"].includes(row.role))) {
+      return { ok: false, code: "linear-properties-surface-ambiguous" };
+    }
+    const editors = ids.map((id) => usable.find((one) => ownership.models.some(
+      (model) => model.index === one.modelIndex && model.fields.includes(id))));
+    return { ok: true, code: "described-linear-properties", kind: "multi", editors,
+      linearPropertyRows: rows, ownership,
+      collection: { ...collection, branch: "linear-properties" } };
   }
   if (usable.length >= 2 && usable.length <= MAX_ANSWER_PARTS) {
     return described.every(Boolean)

@@ -114,6 +114,7 @@ def solve(request: SolveRequest, report=None) -> SolveResponse:
         or problem.labeled_point
         or problem.labeled_points
         or problem.line_points
+        or problem.graph_relation
     ):
         return error_response(
             request.request_id, "No question content was supplied.", "unsupported"
@@ -126,6 +127,9 @@ def solve(request: SolveRequest, report=None) -> SolveResponse:
     # may still be right, and the panel reviews every one before insertion.
     prompt_seen = bool(problem.prompt_text.strip())
     instruction = problem.prompt_text.strip() or "Solve the question in the image."
+
+    if problem.graph_relation is not None:
+        return _solve_graph_relation_with_facet(request, instruction, announce)
 
     if problem.labeled_points:
         return _solve_labeled_coordinates_with_facet(request, instruction, announce)
@@ -523,6 +527,117 @@ def _model_calls(solution) -> int | None:
     """The count Facet measured, when its evidence names one."""
     value = solution.evidence.get("model_calls")
     return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def _solve_graph_relation_with_facet(request, instruction, announce):
+    from .facet_client import FacetError, safe_request_id, solve_math
+    from facet_runtime.exact.graph_domain_range import REQUEST, parse_geometry
+    from facet_runtime.exact.finite_function import REQUEST as FUNCTION_REQUEST
+
+    problem = request.problem
+    function_test = bool(FUNCTION_REQUEST.search(instruction))
+    shape = problem.answer_shape
+    try:
+        if (
+            (not REQUEST.search(instruction) and not function_test)
+            or shape is None
+            or (not function_test and (shape.kind != "multi" or shape.count != 2))
+            or (
+                function_test
+                and (
+                    shape.kind not in {"option", "conditional"}
+                    or (
+                        shape.kind == "conditional"
+                        and shape.conditional_choice.strip().lower() != "no"
+                    )
+                )
+            )
+            or problem.labeled_point
+            or problem.labeled_points
+            or problem.line_points
+            or problem.graph_points
+            or problem.coordinate_task
+            or problem.answer_table
+        ):
+            raise ValueError("graph relation ownership is ambiguous")
+        from .hawkes_mathml import mathml_to_latex
+
+        if len(problem.mathml or []) > 1:
+            raise ValueError("graph has multiple source equations")
+        geometry = dict(problem.graph_relation)
+        if problem.mathml:
+            geometry["equation"] = mathml_to_latex(problem.mathml[0])
+        geometry = parse_geometry(geometry)
+        announce("solving", "Facet exact facts from page-owned graph geometry")
+        solution = solve_math(
+            instruction=instruction,
+            graph_relation=geometry,
+            answer_parts=1 if function_test else 2,
+            answer_choices=answer_choices_payload(shape) if function_test else None,
+            request_id=safe_request_id(request.request_id),
+            accelerator_required=False,
+            allow_fallback=False,
+        )
+        if (
+            solution.route != "exact"
+            or _model_calls(solution) != 0
+            or solution.answer.form
+            not in (
+                {"choice", "conditional-choice"}
+                if function_test
+                else {"graph-domain-range"}
+            )
+        ):
+            raise ValueError("graph result must be exact with zero model calls")
+        if (
+            function_test
+            and shape.kind == "conditional"
+            and solution.answer.entry.strip().lower() == "no"
+        ):
+            raise ValueError("No requires two exact proof pairs on this surface")
+    except (FacetError, ValueError, TypeError, ZeroDivisionError) as error:
+        if function_test:
+            return error_response(
+                request.request_id,
+                f"Graph function test refused: {error}",
+                "unsupported",
+            )
+        return error_response(
+            request.request_id,
+            f"Graph domain/range refused: {error}",
+            "unsupported",
+        )
+    return SolveResponse(
+        request_id=request.request_id,
+        status="ready",
+        problem_text=instruction,
+        answer=answer_payload(
+            solution.answer.display,
+            solution.answer.entry,
+            solution.answer.parts,
+            solution.answer.entry_mode,
+            form=solution.answer.form,
+            choice=solution.answer.choice,
+            proof_pairs=solution.answer.proof_pairs,
+            graph_domain_range=solution.answer.graph_domain_range,
+        ),
+        certainty=Certainty(
+            prompt_seen=True,
+            answer_parts=1 if function_test else 2,
+            model_calls=0,
+            source=solution.source,
+            transcription="exact",
+            insertable=True,
+            answered_by="exact",
+            router=solution.router,
+            router_detail=solution.router_detail,
+            reading="page-model",
+            method=solution.method,
+            facet_invoked=True,
+            runtime=solution.runtime,
+            elapsed_ms=solution.elapsed_ms,
+        ),
+    )
 
 
 def _solve_labeled_coordinates_with_facet(request, instruction, announce):
@@ -1530,6 +1645,11 @@ def answer_payload(
     choice: str = "",
     inequality_pair=None,
     form: str | None = None,
+    domain_range=None,
+    proof_pairs=(),
+    graph_domain_range=None,
+    x_intercepts=None,
+    linear_properties=None,
 ) -> AnswerPayload:
     """Turn one exactly-shaped answer into the page's answer model.
 
@@ -1566,11 +1686,25 @@ def answer_payload(
         AnswerConditionalChoice,
         AnswerCoordinate,
         AnswerInequalityPair,
+        AnswerLinearProperties,
     )
 
     conditional = (
-        AnswerConditionalChoice(choice=choice, relation=written)
-        if choice and written is not None
+        AnswerConditionalChoice(
+            choice=choice,
+            relation=written,
+            proof_pairs=[AnswerCoordinate(x=p.x, y=p.y) for p in proof_pairs],
+            x_intercepts=None
+            if x_intercepts is None
+            else {
+                "count": x_intercepts["count"],
+                "points": [
+                    {"x": render(p["x"]), "y": render(p["y"])}
+                    for p in x_intercepts["points"]
+                ],
+            },
+        )
+        if choice and (written is not None or proof_pairs or x_intercepts is not None)
         else None
     )
 
@@ -1612,6 +1746,7 @@ def answer_payload(
         else None
     )
     return AnswerPayload(
+        graph_domain_range=graph_domain_range,
         display_text=display,
         form=form,
         # A multi-part answer is carried in `parts`; there is no one string
@@ -1628,6 +1763,16 @@ def answer_payload(
         conditional_choice=conditional,
         axis_intercepts=written_intercepts,
         inequality_pair=written_pair,
+        domain_range=domain_range,
+        linear_properties=None
+        if linear_properties is None
+        else AnswerLinearProperties(
+            slope=render(linear_properties["slope"]),
+            y_intercept=AnswerCoordinate(
+                x=render(linear_properties["y_intercept"]["x"]),
+                y=render(linear_properties["y_intercept"]["y"]),
+            ),
+        ),
     )
 
 
@@ -1779,6 +1924,11 @@ def _solve_with_facet(
             solution.answer.choice,
             solution.answer.inequality_pair,
             solution.answer.form,
+            solution.answer.domain_range,
+            solution.answer.proof_pairs,
+            solution.answer.graph_domain_range,
+            solution.answer.x_intercepts,
+            solution.answer.linear_properties,
         ),
         certainty=Certainty(
             prompt_seen=prompt_seen,

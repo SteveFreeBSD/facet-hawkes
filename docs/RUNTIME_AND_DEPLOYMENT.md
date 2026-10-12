@@ -213,10 +213,11 @@ literal commit is repeated in the README, the migration checklist and the
 release runbook, because a first clone needs a command it can paste; every one
 of those is held to this file by the test.
 
-**Publication note.** The ordinal-equation rewrite pin is committed, installed
-locally and published as of 2026-10-01. It is reachable from
-`SteveFreeBSD/facet-runtime`'s `feature/live-hawkes-next-slice` branch, so a
-public clone or CI checkout can resolve the pin.
+**Publication note.** The two-line relationship classifier and Boolean adapter pin is committed
+and installed locally; publication is pending. A public clone or CI checkout
+of this pin requires publishing that runtime commit first. The preceding
+ordinal-equation rewrite runtime is published on
+`SteveFreeBSD/facet-runtime`'s `feature/live-hawkes-next-slice` branch.
 
 That branch is also what publishes it. `main` there is a frozen release
 baseline still at `f2e0907`, which predates `ANSWER_FORMS`, so a clone that
@@ -249,3 +250,57 @@ If a model is missing, CPU-only, empty, truncated or unstable, stop and use
 - [Answer capabilities](ANSWER_CAPABILITIES.md) — what can be answered and entered
 - [Migration checklist](MIGRATION.md) — reproducing the study engine elsewhere
 - [Historical record](history/README.md) — measurements that belong to `caspian`
+
+## Finite relation deployment
+
+The current runtime pin includes exact finite-relation domain and range as
+named sets. The helper must be reinstalled after this change. The browser
+maps each set through explicit Domain/Range labels and page-owned braces;
+unsupported or ambiguous inputs refuse without a model call. This is local
+source and temporary-add-on verification. Steve confirmed Hawkes accepted both
+integer-set entries on 2026-10-12; other notation variants remain offline coverage.
+
+## Finite function proof deployment
+
+The current development runtime adds an exact finite-relation function test
+and conditional ordered-pair proofs. Reinstall the helper and reload the
+coherent extension build together. This family reuses the conditional-choice
+wire form with a pair-proof variant. The helper is reinstalled and the temporary
+add-on build is verified. Steve confirmed Hawkes accepted No and both integer
+proof pairs on 2026-10-12. Yes and fraction proofs remain offline coverage;
+the runtime source is published on `origin/feature/live-hawkes-next-slice`.
+
+## Graph projection deployment
+
+The graph domain/range change requires the helper with `graph_relation` input
+and `graph-domain-range` output, plus the extension's graph reader and named
+conditional-row adapter. Reinstall the helper and reload the coherent add-on
+build together. The exact route makes zero model calls and never substitutes
+a screenshot for unverified geometry. The helper is reinstalled and temporary
+add-on marker `f20f6036c8d0` is verified. Steve confirmed Hawkes accepted both
+All real numbers choices for an unbounded oblique line on 2026-10-12; other
+projection surfaces remain offline coverage. The runtime source is published on `origin/feature/live-hawkes-next-slice`.
+
+The stated-linear-function route also terminates ambiguous property requests
+without invoking a model. A slope label and function value retain their roles;
+all arithmetic remains rational. The relation protocol and entry machinery are
+unchanged. The updated helper must be installed from the pinned runtime.
+
+Continuous domain/range uses the same typed graph projection contract for exact
+affine equations and explicit graph geometry. A geometry payload can carry a
+corroborating equation; disagreement is terminal. The local installed helper
+must match the pin before a live solve can use this routing boundary.
+
+Continuous function classification also uses `graph_relation`, with optional
+exact viewport bounds for No's proof points. It reuses the existing choice and
+conditional proof wire forms. The updated helper and coherent extension reader
+must be installed together. Steve confirmed Hawkes accepted Yes on the nonvertical line on 2026-10-12.
+Vertical proofs retain offline coverage; the runtime source is published on `origin/feature/live-hawkes-next-slice`.
+
+Counted x-intercepts extend the existing conditional-choice carrier with typed
+`x_intercepts`. Reinstall the helper and reload the coherent reader/adapter
+build together. The route computes exactly and never falls back to a model;
+Steve confirmed Hawkes accepted Two and both integer pairs on 2026-10-12.
+The installed helper matches the pin and temporary add-on marker
+`55e8f2aa9ede` is verified. None, One and rational/radical variants remain
+offline coverage; the runtime source is published on `origin/feature/live-hawkes-next-slice`.

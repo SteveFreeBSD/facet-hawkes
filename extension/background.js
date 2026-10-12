@@ -31,6 +31,8 @@ import {
 } from "/common/answer-session.js";
 import {
   answerFitsEditor,
+  countedInterceptAnswer,
+  graphDomainRangeAnswer,
   insertErrorKey,
   isTableMapping,
   publishableAnswer,
@@ -342,6 +344,9 @@ function blankState() {
     answerConnector: "",
     answerIntercepts: null,
     answerCoordinates: [],
+    answerProofPairs: [],
+    answerXIntercepts: null,
+    answerGraphDomainRange: null,
     graphPlan: null,
     graphCoefficients: [],
     // What insertion put in the field, kept for the panel to show and for
@@ -535,6 +540,9 @@ function withheldAnswer(next) {
     answerIntercepts: null,
     graphPlan: null,
     answerCoordinates: [],
+    answerProofPairs: [],
+    answerXIntercepts: null,
+    answerGraphDomainRange: null,
     graphCoefficients: [],
     errorKey: "errorAnswerInvalid",
     errorArgs: [],
@@ -883,7 +891,7 @@ async function readQuestion(tabId, frameId, attempts = 6) {
         if (
           !question.labeledPoint
           && !question.linePoints
-          && ["labeled-point", "labeled-coordinates", "line-slope", "linear-coordinate"].includes(question.evidence?.graphQuestion)
+          && ["labeled-point", "labeled-coordinates", "line-slope", "linear-coordinate", "domain-range", "function-test"].includes(question.evidence?.graphQuestion)
           && question.evidence?.graphDecision === "unavailable"
         ) {
           // Hawkes sometimes renders the graph outside #partInformation while
@@ -897,9 +905,15 @@ async function readQuestion(tabId, frameId, attempts = 6) {
             { alone: true, world: "MAIN" },
           );
           const graphModel = modeled?.result;
-          if (["labeled-point", "labeled-coordinates", "line-slope", "linear-coordinate"].includes(graphModel?.graphQuestion)) {
+          if (["domain-range","function-test","line-slope"].includes(question.evidence?.graphQuestion)
+              && ["domain-range-no-graph","function-test-no-graph","line-slope-no-graph"].includes(graphModel?.graphReason) && !graphModel.graphQuestion) {
+            question = {...question,evidence:{...question.evidence,graphQuestion:"",graph:graphModel.graphReason}};
+          }
+          if (["labeled-point", "labeled-coordinates", "line-slope", "linear-coordinate", "domain-range", "function-test"].includes(graphModel?.graphQuestion)) {
             question = {
               ...question,
+              ...(graphModel.graphRelation ? { graphRelation: graphModel.graphRelation, expressions: question.expressions,
+                promptText: graphModel.coordinateInstruction } : {}),
               ...(graphModel.labeledPoints ? { labeledPoints: graphModel.labeledPoints,
                 promptText: graphModel.coordinateInstruction } : {}),
               ...(graphModel.coordinateTask ? {
@@ -916,7 +930,7 @@ async function readQuestion(tabId, frameId, attempts = 6) {
               evidence: {
                 ...question.evidence,
                 graph: graphModel.graphReason
-                  || (graphModel.labeledPoints ? "labeled-coordinates-model" : graphModel.labeledPoint
+                  || (graphModel.graphRelation ? `${graphModel.graphQuestion}-model` : graphModel.labeledPoints ? "labeled-coordinates-model" : graphModel.labeledPoint
                     ? "labeled-point-model"
                     : graphModel.linePoints
                       ? "line-slope-model"
@@ -994,6 +1008,7 @@ function questionSignature(question) {
     + (question.graphPoints ? JSON.stringify(question.graphPoints) : "")
     + (question.labeledPoint ? JSON.stringify(question.labeledPoint) : "")
     + (question.labeledPoints ? JSON.stringify(question.labeledPoints) : "")
+    + (question.graphRelation ? JSON.stringify(question.graphRelation) : "")
     + (question.linePoints ? JSON.stringify(question.linePoints) : "")
     + (question.coordinateTask ? JSON.stringify(question.coordinateTask) : "")
     + (question.systemConnector ?? "")
@@ -1095,9 +1110,35 @@ function readableQuestion(question) {
         || question.graphPoints?.length >= 3
         || question.labeledPoint
         || question.labeledPoints
+        || question.graphRelation
         || question.linePoints?.length === 2
         || question.dataTable)
   );
+}
+
+/**
+ * Name a graph-evidence condition that makes an exact solve unsafe.
+ *
+ * A complete finite set of ordered pairs is its own authority. Hawkes often
+ * also draws the points, but its graph model does not expose them through the
+ * continuous-line reader. An unavailable or ambiguous drawing therefore
+ * cannot veto the written set. If the page instead supplies an accepted
+ * continuous graph relation beside that set, the two sources describe
+ * different topologies and the operation fails closed.
+ */
+function graphEvidenceProblem(question) {
+  const graphQuestion = question?.evidence?.graphQuestion;
+  const listedFiniteRelation = ["domain-range", "function-test"].includes(graphQuestion)
+    && question?.evidence?.listedFiniteRelation === true;
+  if (listedFiniteRelation) {
+    return question?.evidence?.graphDecision === "accepted" && question?.graphRelation
+      ? "finite-relation-graph-conflict"
+      : "";
+  }
+  return ["labeled-coordinates", "line-slope", "linear-coordinate", "domain-range", "function-test"].includes(graphQuestion)
+      && question?.evidence?.graphDecision !== "accepted"
+    ? "graph-facts-unverified"
+    : "";
 }
 
 /**
@@ -1420,6 +1461,9 @@ function answerShapeOf(
   editor, answerTable = null, tableTargets = [], choices = [], conditionalChoice = "",
   systemConnector = ""
 ) {
+  if (editor?.graphDomainRangeRows) return {kind:"multi",count:2};
+  if (editor?.countedCoordinates) return optionShape(choices);
+  if (editor?.conditionalProof) return optionShape(choices, conditionalChoice);
   // A validated completion table numbers its blanks in the order the
   // mathematics is read. Hawkes' live row-headed table publishes ten control
   // models (one for every value cell) even though the DOM has five answer
@@ -1698,6 +1742,13 @@ function sameStringArray(left, right) {
  * does have one answer beside some other visible field keeps working.
  */
 function answerFieldIds(choice, evidence, editor) {
+  if (editor?.graphDomainRangeRows) return editor.graphDomainRangeRows.map(row=>row.fieldId);
+  if (editor?.conditionalProof) {
+    const ids = editor.conditionalProof.rows.map((row) => row.fieldId);
+    const seen = choice?.fieldIds ?? evidence?.fieldIds ?? (ids.length===1 && choice?.fieldId ? [choice.fieldId] : []);
+    return ids.length === seen.length && new Set(seen).size === ids.length
+      && ids.every((id) => seen.includes(id)) ? ids : [];
+  }
   if (Array.isArray(choice?.fieldIds) && choice.fieldIds.length > 0) {
     return [...choice.fieldIds];
   }
@@ -2111,6 +2162,9 @@ async function prepare(windowId = state.windowId, exactTabId = null) {
     answerConnector: state.answerConnector ?? "",
     answerIntercepts: state.answerIntercepts ?? null,
     answerCoordinates: state.answerCoordinates ?? [],
+    answerProofPairs: state.answerProofPairs ?? [],
+    answerXIntercepts: state.answerXIntercepts ?? null,
+    answerGraphDomainRange: state.answerGraphDomainRange ?? null,
     // Carried so it can be *revalidated*, never so it can be adopted: the
     // reader refuses a table for reasons about the controls rather than about
     // the question, and re-reading is not the only honest way to keep a
@@ -2242,8 +2296,23 @@ async function prepare(windowId = state.windowId, exactTabId = null) {
         ownership: editor.ownership ?? null,
       });
     }
+    const countedCoordinateFields = (
+      Number.isInteger(editor?.countedCoordinates?.selected)
+      && editor.countedCoordinates.selected > 0
+      && editor.countedCoordinates.selected === swept.length
+      && Array.isArray(editor?.conditionalProof?.rows)
+      && editor.conditionalProof.rows.length === swept.length
+      && Array.isArray(editor?.editors)
+      && editor.editors.length === swept.length
+      && (
+        swept.length === 1
+          ? ["dynamic", "textbox"].includes(editor.kind)
+          : editor.kind === "multi"
+      )
+    );
     if (
       swept.length > 0
+      && !countedCoordinateFields
       && (swept.length < 2
         || swept.length > MAX_ANSWER_PARTS
         || !["multi", "inequality-pair"].includes(editor?.kind)
@@ -2376,7 +2445,12 @@ async function prepare(windowId = state.windowId, exactTabId = null) {
     // what the answer said. Where the surface is unchanged the answer is kept
     // exactly as before, which is what stops a re-prepare from discarding a
     // good answer and solving the question again.
-    const sameSurface = previous.editor?.kind === editor?.kind;
+    const sameSurface = previous.editor?.kind === editor?.kind
+      && JSON.stringify(previous.editor?.countedCoordinates ?? null) === JSON.stringify(editor?.countedCoordinates ?? null)
+      && JSON.stringify(previous.editor?.conditionalProof ?? null) === JSON.stringify(editor?.conditionalProof ?? null)
+      && JSON.stringify(previous.editor?.graphDomainRangeRows ?? null) === JSON.stringify(editor?.graphDomainRangeRows ?? null)
+      && JSON.stringify(previous.editor?.domainRangeRows ?? null) === JSON.stringify(editor?.domainRangeRows ?? null)
+      && JSON.stringify(previous.editor?.linearPropertyRows ?? null) === JSON.stringify(editor?.linearPropertyRows ?? null);
     const hasAnswer = sameQuestion
       && sameSurface
       && (previous.answer !== "" || previous.answerParts?.length >= 2
@@ -2422,6 +2496,9 @@ async function prepare(windowId = state.windowId, exactTabId = null) {
       answerConnector: hasAnswer ? previous.answerConnector : "",
       answerIntercepts: hasAnswer ? previous.answerIntercepts : null,
       answerCoordinates: hasAnswer ? previous.answerCoordinates : [],
+      answerProofPairs: hasAnswer ? previous.answerProofPairs : [],
+      answerXIntercepts: hasAnswer ? previous.answerXIntercepts : null,
+      answerGraphDomainRange: hasAnswer ? previous.answerGraphDomainRange : null,
       graphPlan: hasAnswer ? previous.graphPlan : null,
       graphCoefficients: hasAnswer ? previous.graphCoefficients : [],
       promptSeen: hasAnswer ? previous.promptSeen : true,
@@ -2524,6 +2601,9 @@ async function solve(windowId = state.windowId) {
     answerIntercepts: null,
     graphPlan: null,
     answerCoordinates: [],
+    answerProofPairs: [],
+    answerXIntercepts: null,
+    answerGraphDomainRange: null,
     graphCoefficients: [],
     placedText: "",
     promptSeen: true,
@@ -2582,6 +2662,7 @@ async function solve(windowId = state.windowId) {
       promptChars: question.evidence?.promptChars ?? 0,
       instructionalMath: question.evidence?.instructionalMath ?? 0,
       mathRelations: question.evidence?.mathRelations ?? [],
+      listedFiniteRelation: question.evidence?.listedFiniteRelation === true,
       stepMathScope: question.evidence?.stepMathScope ?? "",
       systemConnector: question.evidence?.systemConnector ?? "",
     };
@@ -2597,6 +2678,7 @@ async function solve(windowId = state.windowId) {
       promptChars: runFacts.evidence.promptChars,
       instructionalMath: runFacts.evidence.instructionalMath,
       mathRelations: runFacts.evidence.mathRelations,
+      listedFiniteRelation: runFacts.evidence.listedFiniteRelation,
       stepMathScope: runFacts.evidence.stepMathScope,
       systemConnector: runFacts.evidence.systemConnector,
     });
@@ -2627,15 +2709,17 @@ async function solve(windowId = state.windowId) {
       });
       return;
     }
-    if (
-      ["labeled-coordinates", "line-slope", "linear-coordinate"].includes(question.evidence?.graphQuestion)
-      && question.evidence?.graphDecision !== "accepted"
-    ) {
+    const graphProblem = graphEvidenceProblem(question);
+    if (graphProblem) {
       // The line owns its two defining points in the page model. If that
       // authority is missing or inconsistent, pixels and a model cannot safely
-      // reconstruct the lost identity relation.
+      // reconstruct the lost identity relation. A listed finite relation is
+      // independent of that line model, unless an accepted model contradicts
+      // the finite topology.
       fail("errorSolveRefused", {
-        detail: "The requested graph facts could not be verified from the page's graph model.",
+        detail: graphProblem === "finite-relation-graph-conflict"
+          ? "The listed finite relation conflicts with the page's graph model."
+          : "The requested graph facts could not be verified from the page's graph model.",
       });
       return;
     }
@@ -2717,6 +2801,7 @@ async function solve(windowId = state.windowId) {
             ...(question.graphPoints ? { graph_points: question.graphPoints } : {}),
             ...(question.labeledPoint ? { labeled_point: question.labeledPoint } : {}),
             ...(question.labeledPoints ? { labeled_points: question.labeledPoints } : {}),
+            ...(question.graphRelation ? { graph_relation: question.graphRelation } : {}),
             ...(question.linePoints ? { line_points: question.linePoints } : {}),
             ...(question.coordinateTask ? { coordinate_task: question.coordinateTask } : {}),
             // The table's own reading of itself: headings and cells, exactly
@@ -2766,6 +2851,8 @@ async function solve(windowId = state.windowId) {
       && !question.labeledPoints
       && !question.linePoints
       && !question.coordinateTask
+      && !question.graphRelation
+      && !["domain-range","function-test"].includes(question.evidence?.graphQuestion)
       && !controller.signal.aborted
     ) {
       // The host says which decline this was; without it a live fallback
@@ -2821,6 +2908,77 @@ async function solve(windowId = state.windowId) {
  * @param {object} editor as the page's own model published it
  * @param {string} suppliedSubject what the page prints in front of the box
  */
+/** Adapt named exact sets only through two explicit, uniquely owned labels. */
+function conditionalPairProof(answer, editor, fieldIds, choices, enablingChoice) {
+  const conditional = answer?.conditional_choice;
+  const pairs = conditional?.proof_pairs;
+  const sameRational = (a, b) => {
+    const [an, ad = "1"] = a.split("/"), [bn, bd = "1"] = b.split("/");
+    return BigInt(an) * BigInt(bd) === BigInt(bn) * BigInt(ad);
+  };
+  if (answer?.form !== "conditional-choice" || !Array.isArray(pairs) || pairs.length !== 2
+    || conditional.relation || answer.keyboard_entry || answer.parts?.length || answer.relation
+    || answer.axis_intercepts || answer.inequality_pair || answer.domain_range || answer.labeled_coordinates?.length
+    || conditional.choice !== enablingChoice || conditional.choice.trim().toLowerCase() !== "no"
+    || choices.length !== 2 || new Set(choices.map((v) => v.trim().toLowerCase())).size !== 2
+    || choices.some((v) => !["yes", "no"].includes(v.trim().toLowerCase())) || !choices.includes(conditional.choice)
+    || pairs.some((p) => !p || Object.keys(p).sort().join() !== "x,y" || [p.x,p.y].some((v) =>
+      typeof v !== "string" || v.length > 40 || !/^-?\d+(?:\/[1-9]\d*)?$/.test(v)))
+    || !sameRational(pairs[0].x, pairs[1].x) || sameRational(pairs[0].y, pairs[1].y)) return null;
+  if (editor?.kind === "option") return { choice: conditional.choice, pairs, parts: [] };
+  const surface = editor?.conditionalProof;
+  if (editor?.kind !== "multi" || surface?.choice !== conditional.choice
+    || !Array.isArray(surface.rows) || surface.rows.length !== pairs.length || fieldIds.length !== pairs.length
+    || new Set(fieldIds).size !== pairs.length
+    || surface.rows.some((row,i) => row.fieldId !== fieldIds[i] || typeof row.bracketed !== "boolean")) return null;
+  return { choice: conditional.choice, pairs, parts: pairs.map((p,i) =>
+    surface.rows[i].bracketed ? `${p.x},${p.y}` : `(${p.x},${p.y})`) };
+}
+
+function domainRangeParts(answer, editor, fieldIds) {
+  const sets = answer?.domain_range;
+  const rows = editor?.domainRangeRows;
+  if (answer?.form !== "domain-range" || !sets || Object.keys(sets).sort().join() !== "domain,range"
+    || answer.keyboard_entry || answer.parts?.length || answer.relation || answer.axis_intercepts
+    || answer.inequality_pair || answer.conditional_choice || answer.labeled_coordinates?.length
+    || !Array.isArray(rows) || rows.length !== 2 || editor.kind !== "multi"
+    || !Array.isArray(fieldIds) || fieldIds.length !== 2
+    || new Set(rows.map((row) => row.role)).size !== 2
+    || rows.some((row, index) => !["domain", "range"].includes(row.role)
+      || typeof row.braces !== "boolean" || row.fieldId !== fieldIds[index])
+    || Object.values(sets).some((values) => !Array.isArray(values) || !values.length || values.length > 64
+      || new Set(values).size !== values.length || values.some((value) => typeof value !== "string"
+        || value.length > 120 || !/^-?\d+(?:\/[1-9]\d*)?$/.test(value)))) return null;
+  return rows.map((row) => {
+    const text = sets[row.role].join(",");
+    return row.braces ? text : `{${text}}`;
+  });
+}
+
+/** Adapt one typed line-property composite through the page's semantic labels. */
+function linearPropertyParts(answer, editor, fieldIds) {
+  const properties = answer?.linear_properties;
+  const rows = editor?.linearPropertyRows;
+  const number = (value) => typeof value === "string"
+    && value.length <= 40 && /^-?\d+(?:\/[1-9]\d*)?$/.test(value);
+  const intercept = properties?.y_intercept;
+  if (answer?.form !== "linear-properties" || !properties
+    || Object.keys(properties).sort().join() !== "slope,y_intercept"
+    || !number(properties.slope) || !intercept
+    || Object.keys(intercept).sort().join() !== "x,y"
+    || intercept.x !== "0" || !number(intercept.y)
+    || answer.keyboard_entry || answer.parts?.length || answer.relation
+    || answer.axis_intercepts || answer.inequality_pair || answer.conditional_choice
+    || answer.domain_range || answer.graph_domain_range || answer.labeled_coordinates?.length
+    || !Array.isArray(rows) || rows.length !== 2 || editor?.kind !== "multi"
+    || !Array.isArray(fieldIds) || fieldIds.length !== 2 || new Set(fieldIds).size !== 2
+    || new Set(rows.map((row) => row.role)).size !== 2
+    || rows.some((row, index) => !["slope", "y-intercept"].includes(row.role)
+      || typeof row.ownsPair !== "boolean" || row.fieldId !== fieldIds[index])) return null;
+  return rows.map((row) => row.role === "slope" ? properties.slope
+    : row.ownsPair ? `${intercept.x},${intercept.y}` : `(${intercept.x},${intercept.y})`);
+}
+
 function answerForSurface(answer, editor, suppliedSubject) {
   const conditional = answer?.conditional_choice;
   const conditionalRelation = conditional?.relation;
@@ -2936,6 +3094,8 @@ function axisInterceptDisplay(intercepts) {
  * fails the suite here rather than arriving in the log as "unclassified".
  */
 const REFUSAL_REASONS = Object.freeze([
+  ["graph-domain-range-refused", /^Graph domain\/range refused/i],
+  ["graph-function-refused", /^Graph function test refused/i],
   ["no-question-content", /^No question content was supplied/i],
   ["origin-not-allowed", /^The requesting origin is not allowed/i],
   ["markup-not-solved-exactly", /^The question's markup was not solved exactly/i],
@@ -3125,10 +3285,56 @@ async function acceptReply(reply) {
     fail("errorAnswerInvalid", { detail: "inequality-pair-malformed" });
     return;
   }
-  const shaped = hasCarriedPair
+  const graphParts = reply.answer.graph_domain_range;
+  const hasGraphParts = graphParts != null || reply.answer.form === "graph-domain-range";
+  const graphAnswer = hasGraphParts ? graphDomainRangeAnswer(graphParts, state.editor?.graphDomainRangeRows ?? state.editor?.domainRangeRows) : null;
+  if (hasGraphParts && (!graphAnswer || reply.answer.form !== "graph-domain-range"
+    || reply.answer.parts?.length || reply.answer.keyboard_entry || reply.answer.relation || reply.answer.conditional_choice
+    || reply.answer.domain_range || reply.answer.axis_intercepts || reply.answer.labeled_coordinates?.length || reply.answer.inequality_pair
+    || certainty.model_calls !== 0 || certainty.answered_by !== "exact" || !certainty.facet_invoked)) {
+    fail("errorAnswerInvalid", {detail:"graph-domain-range-answer-invalid"}); return;
+  }
+  const rawCounted=reply.answer.conditional_choice?.x_intercepts;
+  const countedValue=rawCounted==null ? null : {choice:reply.answer.conditional_choice.choice,...rawCounted};
+  const counted=countedValue ? countedInterceptAnswer(countedValue,state.editor,state.fieldIds,state.answerChoices) : null;
+  if (countedValue && (!counted || reply.answer.form!=="conditional-choice"
+    || reply.answer.keyboard_entry || reply.answer.parts?.length || reply.answer.relation
+    || reply.answer.conditional_choice.relation || reply.answer.conditional_choice.proof_pairs?.length
+    || reply.answer.axis_intercepts || reply.answer.graph_domain_range || reply.answer.domain_range
+    || reply.answer.inequality_pair || reply.answer.labeled_coordinates?.length
+    || certainty.model_calls!==0 || certainty.answered_by!=="exact" || !certainty.facet_invoked)) {
+    fail("errorAnswerInvalid",{detail:"counted-intercepts-invalid"}); return;
+  }
+  const carriesProof = (reply.answer.conditional_choice?.proof_pairs?.length ?? 0) > 0;
+  const proof = carriesProof ? conditionalPairProof(reply.answer, state.editor, state.fieldIds ?? [],
+    state.answerChoices ?? [], state.conditionalChoice ?? "") : null;
+  if (carriesProof && (!proof || certainty.model_calls !== 0 || certainty.answered_by !== "exact" || !certainty.facet_invoked)) {
+    fail("errorAnswerInvalid", { detail: "conditional-proof-invalid" });
+    return;
+  }
+  const hasDomainRange = reply.answer.form === "domain-range" || reply.answer.domain_range != null;
+  const domainParts = hasDomainRange ? domainRangeParts(reply.answer, state.editor, state.fieldIds) : null;
+  if (hasDomainRange && (!domainParts || certainty.model_calls !== 0
+    || certainty.answered_by !== "exact" || !certainty.facet_invoked)) {
+    fail("errorAnswerInvalid", { detail: "domain-range-answer-invalid" });
+    return;
+  }
+  const hasLinearProperties = reply.answer.form === "linear-properties"
+    || reply.answer.linear_properties != null;
+  const linearParts = hasLinearProperties
+    ? linearPropertyParts(reply.answer, state.editor, state.fieldIds) : null;
+  if (hasLinearProperties && (!linearParts || certainty.model_calls !== 0
+    || certainty.answered_by !== "exact" || !certainty.facet_invoked)) {
+    fail("errorAnswerInvalid", { detail: "linear-properties-answer-invalid" });
+    return;
+  }
+  const shaped = counted ? {...reply.answer,parts:counted.parts,keyboard_entry:counted.ready ? counted.entry : counted.choice,choice_text:counted.choice} : proof ? { ...reply.answer, parts: proof.parts, choice_text: proof.choice } : hasDomainRange ? { ...reply.answer, parts: domainParts } : hasLinearProperties ? { ...reply.answer, parts: linearParts } : hasCarriedPair
     ? { ...reply.answer, parts: pairParts }
     : answerForSurface(reply.answer, state.editor, state.suppliedSubject ?? "");
-  const displayText = readableAnswer(shaped);
+  const displayText = counted ? counted.display : graphAnswer ? graphAnswer.display : proof ? `${proof.choice}: ${proof.pairs.map((p) => `(${p.x},${p.y})`).join(" and ")}` : hasDomainRange ? state.editor.domainRangeRows.map((row, i) =>
+    `${row.role === "domain" ? "Domain" : "Range"}: ${row.braces ? `{${domainParts[i]}}` : domainParts[i]}`).join("; ") : hasLinearProperties
+    ? `Slope: ${reply.answer.linear_properties.slope}; y-intercept: (0,${reply.answer.linear_properties.y_intercept.y})`
+    : readableAnswer(shaped);
   const carriesConditional = reply.answer?.conditional_choice !== null
     && reply.answer?.conditional_choice !== undefined;
   const conditionalChoice = typeof shaped.choice_text === "string"
@@ -3136,7 +3342,7 @@ async function acceptReply(reply) {
     : "";
   if (carriesConditional && (
     shaped.conditional_malformed === true
-    || conditionalChoice !== state.conditionalChoice
+    || (!counted && conditionalChoice !== state.conditionalChoice)
     || !(state.answerChoices ?? []).includes(conditionalChoice)
   )) {
     fail("errorAnswerInvalid", { detail: "conditional-choice-malformed" });
@@ -3220,7 +3426,7 @@ async function acceptReply(reply) {
       && (validateAnswer(value).ok || answersByChoosing(value))
   );
   const interceptDisplay = hasIntercepts ? axisInterceptDisplay(answerIntercepts) : "";
-  const answer = hasCoordinates ? coordinateDisplay : hasIntercepts
+  const answer = counted ? (counted.ready ? (counted.parts.length ? counted.display : counted.entry) : counted.choice) : graphAnswer ? graphAnswer.display : hasCoordinates ? coordinateDisplay : hasIntercepts
     ? interceptDisplay
     : hasParts
     ? displayText
@@ -3238,7 +3444,7 @@ async function acceptReply(reply) {
     fail("errorAnswerInvalid", { detail: displayText.slice(0, 300) });
     return;
   }
-  const entryText = hasParts || hasIntercepts || hasCoordinates
+  const entryText = hasGraphParts || hasParts || hasIntercepts || hasCoordinates
     ? ""
     :
     typeof shaped.keyboard_entry === "string"
@@ -3310,12 +3516,12 @@ async function acceptReply(reply) {
       ),
     });
   }
-  const fits = hasCoordinates ? { insertable: true, code: "labeled-coordinates" } : hasIntercepts
+  const fits = graphAnswer ? {insertable:true,code:"graph-domain-range"} : hasCoordinates ? { insertable: true, code: "labeled-coordinates" } : hasIntercepts
     ? { insertable: true, code: "axis-intercepts" }
     : hasParts
     ? { insertable: partsFit, code: "answer-parts" }
     : answerFitsEditor(answer, state.editor);
-  const plan = hasCoordinates ? { ok: true, code: "labeled-coordinates" } : hasIntercepts
+  const plan = graphAnswer ? {ok:true,code:"graph-domain-range"} : hasCoordinates ? { ok: true, code: "labeled-coordinates" } : hasIntercepts
     ? { ok: true, code: "axis-intercepts" }
     : hasParts
     ? { ok: false, code: "answer-parts" }
@@ -3346,7 +3552,7 @@ async function acceptReply(reply) {
     // The machine form is validated; the readable one is only preferred when
     // it is itself an answer. Falling back keeps the card honest without
     // failing a solve whose entry value was perfectly good all along.
-    displayText: hasCoordinates ? coordinateDisplay : hasIntercepts
+    displayText: graphAnswer ? displayText : proof ? displayText : hasCoordinates ? coordinateDisplay : hasIntercepts
       ? interceptDisplay
       : carriesConditional && state.editor?.kind === "option"
         ? displayText
@@ -3358,6 +3564,9 @@ async function acceptReply(reply) {
     answerConnector: hasCarriedPair ? pairConnector : "",
     answerIntercepts: hasIntercepts ? answerIntercepts : null,
     answerCoordinates: hasCoordinates ? answerCoordinates : [],
+    answerProofPairs: proof ? proof.pairs : [],
+    answerXIntercepts: countedValue,
+    answerGraphDomainRange: graphAnswer ? graphParts : null,
     problemText: reply.problem_text ?? "",
     source: answeredByBadge(certainty),
     // Absent means an older host that cannot report it; only an explicit false
@@ -3483,6 +3692,12 @@ function pinInsertionTarget() {
     graphCoefficients: state.graphCoefficients,
     graphSnapshot: state.editor?.snapshot,
     editorSurface: state.editor?.surface ?? "",
+    graphDomainRangeRows: JSON.stringify(state.editor?.graphDomainRangeRows ?? null),
+    answerGraphDomainRange: state.answerGraphDomainRange ? JSON.parse(JSON.stringify(state.answerGraphDomainRange)) : null,
+    domainRangeRows: JSON.stringify(state.editor?.domainRangeRows ?? null),
+    linearPropertyRows: JSON.stringify(state.editor?.linearPropertyRows ?? null),
+    conditionalProof: JSON.stringify(state.editor?.conditionalProof ?? null),
+    countedCoordinates: JSON.stringify(state.editor?.countedCoordinates ?? null),
     solveRun: state.solveRun,
     reviewed: state.answer,
     machineEntry: state.entryText || state.answer,
@@ -3549,6 +3764,9 @@ const OWNERSHIP_COMPONENTS = Object.freeze({
   fieldIdentity: (target) => (state.fieldIdentity ?? "") === target.fieldIdentity,
   tableTargets: (target) => sameTableMapping(state.tableTargets ?? [], target.tableTargets),
   answerParts: (target) => sameStringArray(state.answerParts ?? [], target.answerParts),
+  answerGraphDomainRange: (target) => JSON.stringify(state.answerGraphDomainRange ?? null) === JSON.stringify(target.answerGraphDomainRange),
+  graphDomainRangeRows: (target) => JSON.stringify(state.editor?.graphDomainRangeRows ?? null) === target.graphDomainRangeRows,
+  linearPropertyRows: (target) => JSON.stringify(state.editor?.linearPropertyRows ?? null) === target.linearPropertyRows,
   answerCoordinates: (target) => JSON.stringify(state.answerCoordinates ?? []) === JSON.stringify(target.answerCoordinates),
   coordinateRows: (target) => JSON.stringify(state.editor?.rows ?? []) === JSON.stringify(target.coordinateRows),
   answerConnector: (target) => (state.answerConnector ?? "") === target.answerConnector,
@@ -3683,6 +3901,14 @@ async function insert() {
     abandonInsertion(target, "editor");
     return;
   }
+  if (JSON.stringify(editor?.graphDomainRangeRows ?? null) !== target.graphDomainRangeRows
+    || JSON.stringify(editor?.domainRangeRows ?? null) !== target.domainRangeRows
+    || JSON.stringify(editor?.linearPropertyRows ?? null) !== target.linearPropertyRows
+    || JSON.stringify(editor?.conditionalProof ?? null) !== target.conditionalProof
+    || JSON.stringify(editor?.countedCoordinates ?? null) !== target.countedCoordinates) {
+    fail("errorQuestionChanged", { detail: "domain-range-surface-changed" });
+    return;
+  }
   update({ editor });
 
   // Confirm the answer still belongs to the question on screen. Hawkes swaps
@@ -3771,6 +3997,8 @@ async function insert() {
     log.info("inserted", {
       via: "graph-choice", transport: routed.transport,
       code: entry.result.code, events: entry.result.events,
+      characterWrites: 0,
+      structuralActions: entry.result.events ?? 0,
     });
     await finishInsertion("selected and verified the matching graph choice", target);
     return;
@@ -3832,6 +4060,8 @@ async function insert() {
       transport: routed.transport,
       code: entry.result.code ?? "",
       events: entry.result.events,
+      characterWrites: 0,
+      structuralActions: entry.result.events ?? 0,
     });
     await finishInsertion(
       target.detail + (entry.result.code === "numberline-verified"
@@ -3887,6 +4117,64 @@ async function insert() {
       rows: target.coordinateRows.length, fields: fields.length, settled: entry.result.settled,
       labeled: true, modelsRead: entry.result.models, elapsedMs: Date.now() - entryStartedAt });
     await finishInsertion("Each labeled coordinate pair entered and verified against its page-owned fields", target);
+    return;
+  }
+  if (target.answerGraphDomainRange) {
+    const rows=editor.graphDomainRangeRows ?? editor.domainRangeRows;
+    const result=graphDomainRangeAnswer(target.answerGraphDomainRange,rows);
+    const dynamic=transportMatches(routed,"hawkes-dynamic-keypad");
+    const plain=transportMatches(routed,"hawkes-plain-fields");
+    if (!result || (!dynamic && !plain)) {
+      fail("errorEditorUnknown",{detail:"graph-domain-range-route"}); return;
+    }
+    const values=result.items.map((item,i)=>({item,i})).filter(({item})=>!item.choice);
+    const plans=dynamic ? values.map(({item,i})=>planEntry(item.text,editor.editors[i])) : [];
+    if ((dynamic && plans.some(plan=>!plan.ok))
+      || (plain && values.some(({item,i})=>!answerFitsEditor(item.text,editor.editors[i]).insertable))
+      || !ownsTarget(target)) {fail("errorEditorUnknown");return;}
+    const frame={tabId:target.tabId,frameIds:[target.frameId]};
+    const hasOptions=rows.every(row=>Boolean(row.optionId));
+    let structuralActions=0;
+    if (hasOptions) {
+      const [selected]=await runInjection({target:frame,world:"MAIN",func:selectAxisAbsences,
+        args:[rows,target.answerGraphDomainRange,"graph-domain-range"]});
+      if (!selected?.result?.ok || !ownsTarget(target)) {fail("errorQuestionChanged");return;}
+      structuralActions=selected.result.events ?? 0;
+    }
+    let outcome=null;
+    if (values.length) {
+      const ids=values.map(({i})=>rows[i].fieldId);
+      const texts=values.map(({item})=>item.text);
+      const scoreSteps=dynamic ? plans.map(plan=>plan.steps)
+        : texts.map(text=>({op:"type",text}));
+      const results=await runScoredEntry(target,scoreSteps,cadence,()=>browser.scripting.executeScript(
+        dynamic
+          ? {target:frame,world:routed.world,func:enterPlan,
+            args:[scoreSteps,cadence,ids,routed.transport]}
+          : {target:frame,world:routed.world,func:enterOwnedFields,
+            args:[texts,ids,cadence,"fields"]}
+      ));
+      outcome=results?.[0]?.result;
+      if (!outcome?.ok || !ownsTarget(target)) {fail(insertErrorKey(outcome?.code ?? "answer-parts-incomplete"));return;}
+      if ((dynamic && (outcome.code !== "entered-fields"
+        || !sameStringArray(outcome.enteredFields,ids) || outcome.completed !== ids.length))
+        || (plain && (outcome.code !== "entered-answer-fields"
+          || !sameStringArray(outcome.fields,ids) || outcome.settled !== ids.length))) {
+        fail(insertErrorKey("answer-parts-incomplete")); return;
+      }
+    }
+    let selectedCount=0;
+    if (hasOptions) {
+      const [verified]=await runInjection({target:frame,world:"MAIN",func:selectAxisAbsences,
+        args:[rows,target.answerGraphDomainRange,"graph-domain-range",true]});
+      if (!verified?.result?.ok || !ownsTarget(target)) {fail("errorQuestionChanged");return;}
+      selectedCount=verified.result.selected;
+    }
+    log.info("inserted",{via:"graph-domain-range",transport:routed.transport,
+      characterTransport:outcome?.timing?.transport ?? "",characterWrites:outcome?.timing?.notes ?? 0,
+      structuralActions,fields:values.length,choices:selectedCount,
+      elapsedMs:Date.now()-entryStartedAt});
+    await finishInsertion("Entered Domain and Range using their page-owned fields and choices",target);
     return;
   }
   if (target.answerIntercepts !== null) {
@@ -3977,6 +4265,9 @@ async function insert() {
       fields: verified.result.fields,
       absent: verified.result.absent,
       settled: fieldOutcome.settled,
+      characterTransport: fieldOutcome.timing?.transport ?? "",
+      characterWrites: fieldOutcome.timing?.notes ?? 0,
+      structuralActions: selected?.result?.events ?? 0,
       elapsedMs: Date.now() - entryStartedAt,
     });
     await finishInsertion("entered both axis intercepts and verified the page", target);
@@ -4124,6 +4415,9 @@ async function insert() {
       models: outcome.models ?? 0,
       ownership: outcome.ownership ?? [],
       selected: outcome.selected ?? [],
+      characterTransport: outcome.timing?.transport ?? "",
+      characterWrites: outcome.timing?.notes ?? 0,
+      structuralActions: 0,
       elapsedMs: Date.now() - entryStartedAt,
     });
     await finishInsertion(
@@ -4183,6 +4477,8 @@ async function insert() {
         answerLength: reviewed.length,
         elapsedMs: Date.now() - entryStartedAt,
         timing: built.timing,
+        characterWrites: built.timing?.notes ?? 0,
+        structuralActions: 0,
       });
       await finishInsertion("entered both comma-separated answers", target);
       return;
@@ -4330,7 +4626,19 @@ async function insert() {
         || outcome.completed !== target.answerParts.length
         || (inequalityPair && outcome.connector !== target.answerConnector)
       ) {
-        fail(insertErrorKey(outcome?.code ?? "answer-parts-incomplete"));
+        const detail = outcome?.detail ?? "";
+        log.warn("answer-parts-not-placed", {
+          code: outcome?.code ?? "answer-parts-incomplete",
+          detail,
+          completed: outcome?.completed ?? 0,
+          fields: target.fieldIds.length,
+          parts: target.answerParts.length,
+          leftBehind: outcome?.leftBehind === true,
+        });
+        fail(insertErrorKey(outcome?.code ?? "answer-parts-incomplete"), {
+          detail,
+          args: detail ? [detail] : [],
+        });
         return;
       }
     }
@@ -4353,6 +4661,9 @@ async function insert() {
           selected: outcome.selected ?? [],
         }
         : {}),
+      characterTransport: outcome.timing?.transport ?? "",
+      characterWrites: outcome.timing?.notes ?? 0,
+      structuralActions: inequalityPair ? 1 : 0,
       elapsedMs: Date.now() - entryStartedAt,
     });
     await finishInsertion(
@@ -4404,6 +4715,8 @@ async function insert() {
         // phrase building structure, and how many characters went through the
         // keypad rather than through the box.
         timing: built.timing,
+        characterWrites: built.timing?.notes ?? 0,
+        structuralActions: 0,
       });
       await finishInsertion(`entered: ${built.entered ?? ""}`, target);
     } else {
@@ -4470,6 +4783,8 @@ async function insert() {
       code: outcome.code,
       answerLength: reviewed.length,
       elapsedMs: Date.now() - entryStartedAt,
+      characterWrites: reviewed.length,
+      structuralActions: 0,
     });
     await finishInsertion("", target);
   } catch (error) {
@@ -4545,6 +4860,9 @@ async function finishInsertion(detail, target) {
     answerIntercepts: null,
     graphPlan: null,
     answerCoordinates: [],
+    answerProofPairs: [],
+    answerXIntercepts: null,
+    answerGraphDomainRange: null,
     graphCoefficients: [],
     // `problemText` and `source` are left as they are: both describe the
     // question still on screen, which the insertion did not change.
@@ -5043,6 +5361,8 @@ function markedCode() {
     "common/editor-rules.js#insertErrorKey": insertErrorKey,
     "common/editor-rules.js#isTableMapping": isTableMapping,
     "common/editor-rules.js#publishableAnswer": publishableAnswer,
+    "common/editor-rules.js#graphDomainRangeAnswer": graphDomainRangeAnswer,
+    "common/editor-rules.js#countedInterceptAnswer": countedInterceptAnswer,
     "common/labeled-coordinates.js#labeledCoordinateAnswer": labeledCoordinateAnswer,
     "common/labeled-coordinates.js#labeledCoordinateSurface": labeledCoordinateSurface,
     "common/editor-rules.js#sameTableMapping": sameTableMapping,
@@ -5081,8 +5401,12 @@ function markedCode() {
     "background.js#describeFieldFailure": describeFieldFailure,
     "background.js#finishInsertion": finishInsertion,
     "background.js#insert": insert,
+    "background.js#graphEvidenceProblem": graphEvidenceProblem,
     "background.js#multiAnswerFits": multiAnswerFits,
     "background.js#multiEntryPlans": multiEntryPlans,
+    "background.js#domainRangeParts": domainRangeParts,
+    "background.js#linearPropertyParts": linearPropertyParts,
+    "background.js#conditionalPairProof": conditionalPairProof,
     "background.js#ownershipDelta": ownershipDelta,
     "background.js#pinInsertionTarget": pinInsertionTarget,
     "background.js#prepare": prepare,

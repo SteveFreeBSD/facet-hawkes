@@ -23,7 +23,7 @@
   // every decision, and the observatory applies the same normalization to the
   // tree. Unlike the event-page marker, this proves which Hawkes reader was
   // injected into the authoritative page DOM.
-  const HAWKES_READER_BUILD = "69f631b08010";
+  const HAWKES_READER_BUILD = "6548ac90d5d8";
 
   const ANSWER_CONTROLS =
     'input.qbaseCSS, input[id^="txtAns"], input.boxStyle, input[id$="_optchk"], '
@@ -61,6 +61,16 @@
     const parts = [...document.querySelectorAll("#partInformation")];
     if (parts.length !== 1) return refuse(`part-count-${parts.length}`);
     const words = String(parts[0].textContent ?? "").replace(/\s+/g, " ").trim();
+    if (/\b(?:domain\s+and\s+(?:the\s+)?range|range\s+and\s+(?:the\s+)?domain)\b/i.test(words)) {
+      return refuse("graph-domain-range-model-required", "domain-range");
+    }
+    const functionRequest = (
+      /\b(?:determine|decide|state|identify)\s+(?:if|whether)\b[\s\S]*\bfunction\b/i.test(words)
+      || /\b(?:does|is)\s+(?:the|this|a)\s+(?:graph|relation)\b[^.?!]{0,200}\b(?:a\s+)?function\b/i.test(words)
+    );
+    if (functionRequest) {
+      return refuse("function-test-model-required", "function-test");
+    }
     const coordinateRequest = (
       /\b(?:identify|find|determine|give|state|read|what\s+are)\b[^.?!]{0,200}\bcoordinates?\s+of\s+(?:the\s+)?(?:labeled\s+)?point\s+([^\s.,;:!?()[\]{}]{1,16})(?=\s|[.,;:!?]|$)/i.exec(words)
       || /\b(?:identify|find|determine|give|state|read|what\s+are)\b[^.?!]{0,200}\bpoint\s+([^\s.,;:!?()[\]{}'’]{1,16})(?:['’]s)?\s+coordinates?\b/i.exec(words)
@@ -1189,9 +1199,55 @@
     .map((operator) => String(operator.textContent ?? "").trim())
     .filter((operator) => ["<", "≤", ">", "≥", "="].includes(operator))
     .join(""));
-  const expressions = scopedMath.map((math) =>
-    new XMLSerializer().serializeToString(math).slice(0, 40000)
-  );
+  // A property label can be ordinary prose beside MathJax, e.g. "Slope of"
+  // followed by f = q. Keep that label bound to its own single-formula row;
+  // the flattened prompt cannot prove which formula it describes.
+  const propertyMath = (math) => {
+    const serialized = new XMLSerializer().serializeToString(math).slice(0, 40000);
+    if (!/\b(?:find|determine|write|give|state|express)\b[^.?!]*\b(?:linear\s+function|equation\s+of\s+(?:the|a)\s+line)\b/i.test(promptText)) {
+      return serialized;
+    }
+    const owner = math.closest("p, li, td, div");
+    if (!owner || !primaryQuestionOwners.some((root) => root.contains(owner))
+        || owner.querySelectorAll("math").length !== 1) return serialized;
+    const pieces = [];
+    const walk = (node) => {
+      if (node === math || (node.nodeType === 1
+          && node.matches("mjx-container, .MathJax") && node.contains(math))) {
+        pieces.push(null);
+      } else if (node.nodeType === 3) {
+        pieces.push(node.textContent);
+      } else {
+        for (const child of node.childNodes ?? []) walk(child);
+      }
+    };
+    walk(owner);
+    const position = pieces.indexOf(null);
+    if (position < 0 || pieces.filter((piece) => piece === null).length !== 1
+        || pieces.slice(position + 1).join("").trim()) return serialized;
+    const label = pieces.slice(0, position).join("").replace(/\s+/g, " ").trim();
+    if (!/^(?:the\s+)?slope\s*(?:of|is|=|:)$/i.test(label)) return serialized;
+    // Serialize a new value only; never edit the page-owned math node.
+    return serialized.replace(/^(<math\b[^>]*>)/, `$1<mtext>${label} </mtext>`);
+  };
+  const expressions = scopedMath.map(propertyMath);
+  // A written finite relation is already an exact statement of its points.
+  // Hawkes may draw those same points beside it, but a missing page-owned
+  // graph model does not make the written set less authoritative.  Record
+  // only the input shape here; Facet still owns parsing, validation and the
+  // domain/range calculation.  Requiring the complete set grammar prevents a
+  // brace, an isolated ordered pair, or prose containing coordinates from
+  // weakening a graph-evidence refusal.
+  const listedFiniteRelation = (() => {
+    if (scopedMath.length !== 1) return false;
+    const text = String(scopedMath[0].textContent ?? "")
+      .replace(/[\u200b\u2061-\u2064\ufeff]/g, "")
+      .replace(/\u2212/g, "-")
+      .replace(/\s+/g, "");
+    const number = "[+-]?(?:\\d+(?:\\.\\d+)?|\\.\\d+)(?:/[+-]?\\d+)?";
+    const pair = `\\(${number},${number}\\)`;
+    return new RegExp(`^(?:[A-Za-z]=)?\\{${pair}(?:,${pair})*\\}$`).test(text);
+  })();
   // Long enough for a word problem. A truncated instruction is not a shorter
   // question, it is a different one: lesson 3.3's revenue question states the
   // situation, then the table, then -- last -- says to fit a quadratic
@@ -1220,6 +1276,7 @@
       // inequality from answer-generated boundary math without retaining the
       // coursework expression in the diagnostic ring.
       mathRelations,
+      listedFiniteRelation,
       stepMathScope: Number.isInteger(ordinalIndex) ? ordinalInequality : "",
       systemConnector,
       promptChars: promptText.length,

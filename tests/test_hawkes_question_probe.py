@@ -15,6 +15,76 @@ from hawkes_dom import read_fixture
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
+def test_relationship_classification_keeps_two_equation_identities():
+    first = "<math><mi>x</mi><mo>+</mo><mn>3</mn><mi>y</mi><mo>=</mo><mn>8</mn></math>"
+    second = "<math><mn>2</mn><mi>x</mi><mo>−</mo><mi>y</mi><mo>=</mo><mn>5</mn></math>"
+    result = read_question(f"""
+        <div id="questionDescription">Given the following equations, determine
+          if the lines are parallel, perpendicular, or neither.</div>
+        <div id="questionString">
+          <mjx-container><mjx-assistive-mml>{first}</mjx-assistive-mml></mjx-container>
+          and <mjx-container><mjx-assistive-mml>{second}</mjx-assistive-mml></mjx-container>
+        </div>
+        <div id="partInformation">Step 1 of 1</div>
+        <div id="answerTemplateContainer">
+          <label><input type="radio" name="relationship" value="n">Neither</label>
+          <label><input type="radio" name="relationship" value="p">Parallel</label>
+          <label><input type="radio" name="relationship" value="o">Perpendicular</label>
+        </div>
+    """)
+    assert result["expressions"] == [first, second]
+    assert result["evidence"]["mathRelations"] == ["=", "="]
+    assert "parallel, perpendicular, or neither" in result["promptText"]
+
+
+@pytest.mark.parametrize(
+    "relation",
+    [
+        "<math><mtext>R={(7,-3),(7,4),(-2,4)}</mtext></math>",
+        (
+            "<math><mi>S</mi><mo>=</mo><mo>{</mo><mo>(</mo>"
+            "<mfrac><mn>1</mn><mn>2</mn></mfrac><mo>,</mo><mo>−</mo><mn>3</mn>"
+            "<mo>)</mo><mo>,</mo><mo>(</mo><mn>4</mn><mo>,</mo><mn>5</mn>"
+            "<mo>)</mo><mo>}</mo></math>"
+        ),
+    ],
+)
+def test_complete_listed_finite_relation_is_exact_evidence_without_a_graph_model(
+    relation,
+):
+    result = read_question(f"""
+        <div id="questionString">
+          <mjx-container><mjx-assistive-mml>{relation}</mjx-assistive-mml></mjx-container>
+        </div>
+        <div id="partInformation">Determine the domain and range of the relation.</div>
+        <input class="qbaseCSS" id="txtAns1">
+    """)
+
+    assert result["evidence"]["listedFiniteRelation"] is True
+    assert result["evidence"]["graphQuestion"] == "domain-range"
+    assert result["evidence"]["graphDecision"] == "unavailable"
+
+
+@pytest.mark.parametrize(
+    "expression",
+    [
+        "<math><mi>y</mi><mo>=</mo><mn>2</mn><mi>x</mi><mo>+</mo><mn>1</mn></math>",
+        "<math><mo>{</mo><mo>(</mo><mi>x</mi><mo>,</mo><mn>2</mn><mo>)</mo><mo>}</mo></math>",
+        "<math><mo>(</mo><mn>1</mn><mo>,</mo><mn>2</mn><mo>)</mo></math>",
+    ],
+)
+def test_non_finite_relation_math_does_not_bypass_graph_evidence(expression):
+    result = read_question(f"""
+        <div id="questionString">
+          <mjx-container><mjx-assistive-mml>{expression}</mjx-assistive-mml></mjx-container>
+        </div>
+        <div id="partInformation">Determine the domain and range of the relation.</div>
+        <input class="qbaseCSS" id="txtAns1">
+    """)
+
+    assert result["evidence"]["listedFiniteRelation"] is False
+
+
 @pytest.mark.parametrize(
     "reference", ["first equation", "second equation", "equation 1", "equation 2"]
 )
@@ -647,3 +717,93 @@ def test_a_named_positive_assumption_on_its_own_line_reaches_facet():
     )
     assert result["evidence"]["promptChars"] == 72
     assert len(result["expressions"]) == 2
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+@pytest.mark.parametrize(
+    "slope", ["<mn>7</mn>", "<mo>−</mo><mfrac><mn>5</mn><mn>8</mn></mfrac>"]
+)
+def test_linear_property_prose_stays_bound_to_its_own_math(reverse, slope):
+    from ethnos.hawkes_mathml import mathml_to_latex
+    from facet_runtime.solve import MathProblem, solve_math
+
+    value = "<math><mi>g</mi><mo>(</mo><mn>2</mn><mo>)</mo><mo>=</mo><mn>9</mn></math>"
+    gradient = f"<math><mi>g</mi><mo>=</mo>{slope}</math>"
+    rows = [
+        f"<p><mjx-container>{value}</mjx-container></p>",
+        f"<p><span>Slope of </span><mjx-container>{gradient}</mjx-container></p>",
+    ]
+    if reverse:
+        rows.reverse()
+    result = read_question(f"""<div id="questionDescription">Determine the linear function with the following properties.</div>
+        <div id="questionString">{"".join(rows)}</div><div id="partInformation">Step 1 of 1</div>
+        <div id="answerTemplateContainer"><math><mi>g</mi><mo>(</mo><mi>x</mi><mo>)</mo><mo>=</mo></math><input class="qbaseCSS"></div>""")
+    converted = [mathml_to_latex(m) for m in result["expressions"]]
+    assert any(m.startswith("Slopeofg=") for m in converted)
+
+    def no_model(_):
+        pytest.fail("property question called a model")
+
+    answer = solve_math(
+        MathProblem(
+            instruction=result["promptText"],
+            expressions=tuple(converted),
+            answer_parts=1,
+            label="",
+        ),
+        reason=no_model,
+    )
+    expected = "7x-5" if slope == "<mn>7</mn>" else "(-5/8)x+41/4"
+    assert answer["answer"]["relation"] == {"subject": "g(x)", "value": expected}
+    assert answer["provenance"]["evidence"]["model_calls"] == 0
+
+
+@pytest.mark.parametrize(
+    "row",
+    [
+        "<p>Slope of</p><p>{math}</p>",
+        "<p>{math} Slope of</p>",
+        "<p>Slope of {math} or another function</p>",
+        "<p>Slope of {math} {math}</p>",
+        "<p>Slope of the other line {math}</p>",
+    ],
+)
+def test_ambiguous_slope_labels_are_not_attached_by_proximity(row):
+    from ethnos.hawkes_mathml import mathml_to_latex
+    from facet_runtime.solve import MathProblem, SolveRefused, solve_math
+
+    equation = "<math><mi>f</mi><mo>=</mo><mn>7</mn></math>"
+    result = read_question(f"""<div id="questionDescription">Find the linear function with the following properties.</div>
+       <div id="questionString">{row.format(math=equation)}
+       <p><math><mi>f</mi><mo>(</mo><mn>2</mn><mo>)</mo><mo>=</mo><mn>9</mn></math></p></div>
+       <input class="qbaseCSS">""")
+    converted = tuple(mathml_to_latex(m) for m in result["expressions"])
+    assert "f=7" in converted
+    with pytest.raises(SolveRefused):
+        solve_math(
+            MathProblem(
+                instruction=result["promptText"],
+                expressions=converted,
+                answer_parts=1,
+                label="",
+            ),
+            reason=lambda _: pytest.fail("ambiguous slope reached model"),
+        )
+
+
+@pytest.mark.parametrize("fractional", [False, True])
+def test_property_reader_through_host_and_real_equation_surface(
+    monkeypatch, fractional
+):
+    from test_hawkes_equation_answer import solved, reviewed, SIDE_BOX
+
+    coefficient = "<mfrac><mn>3</mn><mn>4</mn></mfrac>" if fractional else "<mn>8</mn>"
+    result = read_question(f"""<div id="questionDescription">Find the linear function with the following properties.</div>
+      <div id="questionString"><p><math><mi>f</mi><mo>(</mo><mn>2</mn><mo>)</mo><mo>=</mo><mn>5</mn></math></p>
+      <p>Slope of <mjx-container><math><mi>f</mi><mo>=</mo>{coefficient}</math></mjx-container></p></div>
+      <input class="qbaseCSS">""")
+    reply = solved(monkeypatch, result["promptText"], result["expressions"])
+    assert reply["certainty"]["model_calls"] == 0
+    page = reviewed(reply, SIDE_BOX, "f(x)")
+    assert page.json("state.answer") == ("(3/4)x+7/2" if fractional else "8x-11")
+    assert page.json("planEntry(state.entryText, state.editor).ok") is True

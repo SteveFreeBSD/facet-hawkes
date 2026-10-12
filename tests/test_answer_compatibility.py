@@ -98,6 +98,56 @@ def entered(solution):
 
     # A recorded emission arrives as plain data; a live solution arrives as the
     # runtime's own object. Both name the same two sides.
+    projections = getattr(solution, "graph_domain_range", None)
+    if projections is not None:
+        from facet_runtime.exact.graph_domain_range import display_part
+
+        return [(solution.form, display_part(part)) for part in projections.values()]
+    counted = getattr(solution, "x_intercepts", None)
+    if counted is not None:
+        payload = answer_payload(
+            solution.display,
+            "",
+            (),
+            solution.entry_mode,
+            form=solution.form,
+            choice=getattr(solution, "choice", ""),
+            x_intercepts=counted,
+        )
+        value = payload.conditional_choice.x_intercepts
+        return [(solution.form, f"({p['x']},{p['y']})") for p in value["points"]] or [
+            (solution.form, payload.conditional_choice.choice)
+        ]
+    proof = getattr(solution, "proof_pairs", ())
+    if proof:
+        return [(solution.form, f"({x},{y})") for x, y in proof]
+    sets = getattr(solution, "domain_range", None)
+    if sets is not None:
+        payload = answer_payload(
+            solution.display, "", (), "verbatim", form=solution.form, domain_range=sets
+        )
+        return [
+            (solution.form, ",".join(values))
+            for values in payload.domain_range.values()
+        ]
+    properties = getattr(solution, "linear_properties", None)
+    if properties is not None:
+        payload = answer_payload(
+            solution.display,
+            "",
+            (),
+            "verbatim",
+            form=solution.form,
+            linear_properties=properties,
+        )
+        return [
+            (solution.form, payload.linear_properties.slope),
+            (
+                solution.form,
+                f"({payload.linear_properties.y_intercept.x},"
+                f"{payload.linear_properties.y_intercept.y})",
+            ),
+        ]
     relation = getattr(solution, "relation", None)
     intercepts = getattr(solution, "intercepts", None)
     if isinstance(intercepts, dict):
@@ -230,6 +280,22 @@ def test_every_entry_names_a_mechanism_that_exists(authority):
     ]
 
     assert missing == []
+
+
+def test_text_writers_are_scored_and_structural_writers_are_not(authority):
+    """The capability record must preserve the transport/Cadence boundary."""
+    text_writers = {"enterPlan", "enterOwnedFields"}
+    missing_score = []
+    scored_structure = []
+    for entry in authority.supported():
+        mechanisms = set(entry.mechanism)
+        if mechanisms & text_writers and "runScoredEntry" not in mechanisms:
+            missing_score.append(entry.id)
+        if "graphOperation" in mechanisms and "runScoredEntry" in mechanisms:
+            scored_structure.append(entry.id)
+
+    assert missing_score == []
+    assert scored_structure == []
 
 
 # --- what Facet emits ------------------------------------------------------
@@ -379,7 +445,14 @@ def test_every_supported_composition_plans_against_its_own_editor(
     entry = next(item for item in authority.entries if item.id == entry_id)
     editor = authority.editor_for(entry)
 
-    if entry.form == "choice":
+    if entry.form == "graph-domain-range" and entry.notation == ("phrase",):
+        assert entry.example == "All real numbers"
+        # Its typed row choice is exercised by the real conditional writer in
+        # test_graph_domain_range; no phrase is ever sent to the value planner.
+        return
+    if entry.form == "choice" or (
+        entry.form == "conditional-choice" and entry.notation == ("phrase",)
+    ):
         verdict = planner("answerFitsEditor", entry.example, editor)
         if editor.get("surface") == "graph-choice":
             assert verdict == {"insertable": True}

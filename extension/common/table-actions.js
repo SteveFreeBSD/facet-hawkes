@@ -118,6 +118,11 @@ export async function enterOwnedFields(parts, targets, cadence = {}, surface = "
   const MAX_ANSWER_LENGTH = 40;
   const MAX_ANSWER_PARTS = 5;
   const ANSWER_PATTERN = /^[0-9A-Za-z+\-*/^().,=√π ]+$/;
+  // A labeled plain field can own the same finite-set or interval text that a
+  // dynamic editor exposes through templates. The caller has already checked
+  // every value against that field's published model; this local allowlist is
+  // only the serialized writer's final code/markup boundary.
+  const OWNED_FIELD_PATTERN = /^[0-9A-Za-z+\-*/^().,=√π∞∅∪{}\[\] ]+$/;
 
   const HAWKES_FIELD_SELECTOR = 'input.qbaseCSS, input[id^="txtAns"], input.boxStyle';
   /** How long the editor is given to finish rerendering after one part. */
@@ -193,7 +198,7 @@ export async function enterOwnedFields(parts, targets, cadence = {}, surface = "
     typeof value === "string"
     && value.length > 0
     && value.length <= MAX_ANSWER_LENGTH
-    && ANSWER_PATTERN.test(value);
+    && (surface === FIELDS ? OWNED_FIELD_PATTERN : ANSWER_PATTERN).test(value);
 
   /**
    * One answer part, as the halves the cell will hold it in.
@@ -221,7 +226,7 @@ export async function enterOwnedFields(parts, targets, cadence = {}, surface = "
     id.endsWith("_num") ? `${id.slice(0, -"_num".length)}_den` : null;
   if (
     !Array.isArray(parts)
-    || parts.length < 2
+    || parts.length < (surface === FIELDS ? 1 : 2)
     || parts.length > (coordinates ? 24 : MAX_ANSWER_PARTS)
     || !parts.every(supported)
     || !Array.isArray(targets)
@@ -330,6 +335,9 @@ export async function enterOwnedFields(parts, targets, cadence = {}, surface = "
 
   /** How this performance actually ran, as numbers only. */
   const measured = () => ({
+    transport: "hawkes-plain-fields",
+    keypadWrites: 0,
+    nativeWrites: lateness.length,
     notes: lateness.length,
     heldMs: Math.round(heldMs),
     elapsedMs: Math.round(performance.now() - performanceStartedAt),

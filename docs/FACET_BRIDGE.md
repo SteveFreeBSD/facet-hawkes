@@ -388,6 +388,26 @@ form" is answered with an equation, and it crosses as one:
 refuses either half without the other, or sides that do not write out as
 `entry`. Facet holds the same invariants on its own side.
 
+Two-line classification is a separate requested operation from construction.
+The consumer preserves both page-owned equations and the page's exact choice
+labels. Facet normalizes each equation independently over rational affine
+coefficients, derives its slope or vertical form, detects coincidence, and
+classifies distinct lines as Parallel, Perpendicular or Neither. Vertical and
+horizontal cases use the same determinant and normal-vector orthogonality
+proofs. The answer is a `choice` whose text matches the unique published
+meaning, independent of choice order. Coincident lines, unreadable sources and
+ambiguous choices are terminal refusals, with no model call. The panel publishes
+the matching choice; ordinary radio-group selection remains the owner's action.
+
+A Yes/No relationship surface uses this same exact classifier and a semantic
+answer adapter. The prompt must supply one explicit proposition: parallel,
+perpendicular, or neither parallel nor perpendicular. Facet compares that
+predicate with its computed classification and matches the boolean result to
+the page's Yes/No labels independently of their order. Classification,
+proposition and truth value remain separate in computation evidence. The labels
+alone never determine the proposition; missing, compound or unsupported
+predicates and ambiguous labels are terminal refusals without model calls.
+
 Parallel and perpendicular through-point constructions share Facet's affine
 equation reader and point parser. They are construction operations, so they
 outrank generic slope-intercept rewriting language. The source slope, new slope,
@@ -626,3 +646,89 @@ The Facet side is `src/facet_runtime/remote.py`, with the routing in
 `src/facet_runtime/exact/`. A deployment that updates one repository must update
 both, and must reinstall the uv tool: protocol 2 refuses a protocol 1 helper
 outright rather than silently ignoring the fields it does not know.
+
+## Named finite relation sets
+
+Facet emits `form: "domain-range"` with `domain_range.domain` and
+`domain_range.range` arrays of unique exact rational values. It emits no
+single entry or positional parts. The host validates the composite and carries
+it intact. The browser associates labels with owning Hawkes models and field
+IDs, checks brace ownership, and only then adapts to two entry plans. A changed
+mapping invalidates a held answer. The relation route uses zero model calls;
+ambiguous or unsupported relation notation is a terminal refusal.
+
+## Conditional finite function proofs
+
+The shared exact finite-relation parser retains pair identity. Function
+classification reuses `conditional-choice`: No carries two `proof_pairs`
+objects with equal x and different y, and Yes is an ordinary choice with no
+proof. The client validates exact rational equality and rejects competing
+answer payloads. The host carries these as `conditional_choice.proof_pairs`.
+
+The existing conditional handoff remains explicit: the owner selects the
+semantic choice. When No reveals its proof editors, the add-on maps each
+whole pair to a model owned by No's `aria-controls` linkage and uses the
+existing multipart writer. Model order and radio order are not evidence of
+ownership. Duplicate owners, extra or missing fields, changed selection, and
+ambiguous pair boundaries refuse. The route makes zero model calls.
+
+## Conditional graph domain and range
+
+The browser reads one page-owned Cartesian line as exact defining points and
+explicit end semantics. Supported sources are an unrestricted equation line
+with both arrows, or a two-point line whose endpoint objects and extension
+metadata determine a line, ray or segment. Endpoint `displaystyle` determines
+open/closed inclusion. Viewport bounds never become answer bounds. Multiple
+objects, restrictions, holes, missing endpoint semantics and other curve
+families refuse before any picture or model path.
+
+The local helper receives normalized `graph_relation` geometry and returns
+`graph-domain-range` with two named typed projections: all-real-numbers,
+singleton, or interval (exact rational bounds, explicit inclusion, null for
+infinity). The client and host validate this as one exclusive composite.
+
+Domain/Range fieldset legends identify the roles, and each option's
+`aria-controls` identifies its alternative editor. A reviewed Insert uses the
+existing per-row option selector and targeted multipart `enterPlan` writer;
+“All real numbers” is selected only in its own row, never typed. Values use
+the page's published interval or CBrace templates. A mixed answer can target
+just one value editor. Duplicate roles or owners, unsupported templates,
+changed geometry or changed row mappings refuse. Nothing submits or checks.
+
+For a linear function stated by properties, the page reader preserves a prose
+`Slope of` label only when it belongs to a single formula in the same question
+row. It serializes that label with the math without mutating the page. Facet
+consumes the labeled property, derives the exact relation, and refuses ambiguous
+properties without reasoning. The existing relation subject/value contract
+continues to decide whether the page receives the whole equation or its right side.
+
+A Domain/Range request probes page-owned graph structure even when its prose
+says “relation.” Confirmed absence of a graph leaves finite-set and equation
+routing to Facet. Graph evidence retains a separately read equation, when one
+is present; Facet validates it against both defining points before projecting.
+The existing `graph-domain-range` result adapts to either labeled interval
+fields or fieldsets with semantic all-real choices. There is no new writer.
+
+Function requests use the same graph probe and source-agreement checks. A
+confirmed absent graph leaves finite pairs or one exact affine equation to
+Facet; ambiguous graph evidence is terminal. The existing `graph_relation`
+input may include exact `bounds: [xmin,xmax,ymin,ymax]`. These constrain proof
+point selection only, never the relation's extent. A nonvertical line returns
+the semantic Yes choice. A vertical relation returns No, with two distinct
+exact in-bounds points when requested. Open/closed endpoints and arrows remain
+authoritative. These results reuse `choice` / `conditional-choice`, including
+`proof_pairs`, and the existing conditional owner mapping and multipart writer.
+Missing bounds for a required proof, incompatible choices or competing sources
+refuse without a model call.
+
+Counted x-intercepts reuse `conditional-choice` with `x_intercepts: {count,
+points}` beside the semantic `choice` in the runtime result. The host preserves
+that object inside `conditional_choice`; points are whole exact `(x,0)` pairs.
+Count, choice label and point cardinality must agree, and competing carriers
+refuse. Selecting None needs no fields; One and Two reveal their explicitly
+owned whole-pair models. The reader validates owner IDs, model membership and
+page-owned parentheses, including separator commas, without using focus or
+collection positions. The existing conditional handoff leaves selecting the
+choice to the owner. Once the matching branch is selected, the existing scalar
+or multipart writer enters pairs. Changed ownership/choice and unsupported
+editor notation refuse before writing.

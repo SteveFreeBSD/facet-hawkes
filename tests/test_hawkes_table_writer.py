@@ -405,13 +405,13 @@ def score(parts):
     return {"score": {"offsets": [0] * len("".join(parts))}}
 
 
-def write(context, parts=None, cells=None, writer="enterOwnedFields"):
+def write(context, parts=None, cells=None, writer="enterOwnedFields", surface="table"):
     """Run one writer to completion and return what it reported."""
     parts = parts or LIVE_PARTS
     cells = cells or LIVE_CELLS
     call = (
         f"enterOwnedFields({json.dumps(parts)}, {json.dumps(cells)}, "
-        f"{json.dumps(score(parts))}, 'table')"
+        f"{json.dumps(score(parts))}, {json.dumps(surface)})"
         if writer == "enterOwnedFields"
         else f"{writer}({json.dumps(parts)}, {json.dumps(cells)})"
     )
@@ -530,6 +530,24 @@ def test_the_new_selection_fixes_both_of_those_starting_states() -> None:
 
         assert reported["ok"] is True, focused
         assert cellsNow(live) == dict(zip(LIVE_CELLS, LIVE_PARTS)), focused
+
+
+def test_one_owned_plain_field_reuses_the_native_field_writer_and_cadence() -> None:
+    """A conditional two-row surface may leave one value field enabled."""
+    live = page()
+    field = LIVE_CELLS[0]
+
+    reported = write(live, parts=["4"], cells=[field], surface="fields")
+
+    assert reported["ok"] is True
+    assert reported["code"] == "entered-answer-fields"
+    assert reported["fields"] == [field]
+    assert reported["settled"] == 1
+    assert reported["timing"]["transport"] == "hawkes-plain-fields"
+    assert reported["timing"]["keypadWrites"] == 0
+    assert reported["timing"]["nativeWrites"] == 1
+    assert reported["timing"]["notes"] == 1
+    assert cellsNow(live)[field] == "4"
 
 
 def test_a_page_that_cannot_be_proven_focused_refuses() -> None:

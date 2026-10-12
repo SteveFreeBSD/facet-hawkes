@@ -481,12 +481,12 @@ def test_the_question_label_reaches_facet_when_the_page_supplied_one() -> None:
 
 
 # A real Hawkes shape with two answers and no exact operation to match: the
-# roots of a quadratic asked for as intercepts rather than as a solve.
+# critical points, intentionally outside the supported exact families.
 QUADRATIC = (
     "<math><mrow><msup><mi>y</mi><mn>2</mn></msup><mo>−</mo><mn>4</mn>"
     "<mo>⁢</mo><mi>y</mi><mo>−</mo><mn>5</mn><mo>=</mo><mn>0</mn></mrow></math>"
 )
-INTERCEPTS = "Find the x-intercepts of the following function."
+REASONED_POINTS = "Find the critical points of the following function."
 TWO_PART_REPLY = "FINAL ANSWER: y = -1 or y = 5\nPART 1: -1\nPART 2: 5"
 FOUR_PART_REPLY = (
     "FINAL ANSWER: y = -2 or y = 2 or y = -3 or y = 3\n"
@@ -531,7 +531,7 @@ def test_a_paired_answer_shape_reaches_facet_as_a_two_part_contract(
     handle(
         request(
             mathml=[QUADRATIC],
-            instruction=INTERCEPTS,
+            instruction=REASONED_POINTS,
             shape="multi",
             shape_count=2,
         )
@@ -601,7 +601,7 @@ def test_a_numeric_only_pair_reaches_facet_as_an_answer_form_contract(
     response = handle(
         request(
             mathml=[QUADRATIC],
-            instruction=INTERCEPTS,
+            instruction=REASONED_POINTS,
             shape="multi",
             shape_count=2,
             representations=RETAINED_NUMERIC_PAIR,
@@ -610,7 +610,7 @@ def test_a_numeric_only_pair_reaches_facet_as_an_answer_form_contract(
 
     crossed = loopback.problems[0]
     assert crossed["answer_parts"] == 2
-    assert crossed["instruction"].startswith(INTERCEPTS)
+    assert crossed["instruction"].startswith(REASONED_POINTS)
     assert "only digits and an optional leading minus sign" in crossed["instruction"]
     assert "at most 6 characters" in crossed["instruction"]
     for structure in ("fraction", "radical", "exponent notation", "parentheses"):
@@ -656,7 +656,7 @@ def test_a_structured_two_part_reply_survives_validation_intact(
     response = handle(
         request(
             mathml=[QUADRATIC],
-            instruction=INTERCEPTS,
+            instruction=REASONED_POINTS,
             shape="multi",
             shape_count=2,
         )
@@ -695,7 +695,7 @@ def test_the_comma_instruction_makes_one_box_a_two_value_answer(
         request(
             mathml=[QUADRATIC],
             instruction=(
-                "Find the x-intercepts of the following function. "
+                "Find the critical points of the following function. "
                 "Separate multiple answers with a comma."
             ),
             shape="field",
@@ -737,7 +737,7 @@ def test_a_mismatched_part_count_fails_closed(monkeypatch, reply, why) -> None:
     response = handle(
         request(
             mathml=[QUADRATIC],
-            instruction=INTERCEPTS,
+            instruction=REASONED_POINTS,
             shape="multi",
             shape_count=2,
         )
@@ -1052,7 +1052,10 @@ def test_an_echoed_contract_never_crosses_as_an_answer(monkeypatch) -> None:
 
     response = handle(
         request(
-            mathml=[QUADRATIC], instruction=INTERCEPTS, shape="multi", shape_count=2
+            mathml=[QUADRATIC],
+            instruction=REASONED_POINTS,
+            shape="multi",
+            shape_count=2,
         )
     )
 
@@ -1071,7 +1074,10 @@ def test_an_echoed_part_is_refused_rather_than_rendered_around(monkeypatch) -> N
 
     response = handle(
         request(
-            mathml=[QUADRATIC], instruction=INTERCEPTS, shape="multi", shape_count=2
+            mathml=[QUADRATIC],
+            instruction=REASONED_POINTS,
+            shape="multi",
+            shape_count=2,
         )
     )
 
@@ -1084,7 +1090,7 @@ def test_prose_on_a_single_value_question_is_refused(monkeypatch) -> None:
     """There is no checked part list to rebuild a single answer from."""
     answering(monkeypatch, text=f"FINAL ANSWER: {ECHOED_CONTRACT}")
 
-    response = handle(request(mathml=[QUADRATIC], instruction=INTERCEPTS))
+    response = handle(request(mathml=[QUADRATIC], instruction=REASONED_POINTS))
 
     assert response.status == "ambiguous"
     assert response.answer is None

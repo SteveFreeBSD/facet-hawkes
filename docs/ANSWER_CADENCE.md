@@ -60,6 +60,12 @@ remains a fermata and a character remains a note; nothing here acquired a
 second clock, and `tests/test_cadence_score.py` executes both transports
 against the same score to say so.
 
+Targeted dynamic entry is explicit: nested plans and their exact field ids are
+required together, even when a conditional surface currently owns only one
+field. A flat one-box plan cannot enter that mode, and a nested plan cannot
+fall back to the ordinary single-field route. If the owned field is plain,
+`enterOwnedFields()` remains its writer and receives the same shared score.
+
 ### Structure is a fermata, not a burst
 
 Loading a template is real editor work of a length only the editor knows:
@@ -246,7 +252,10 @@ Mozilla references: [autoplay and Web Audio](https://developer.mozilla.org/en-US
 Solving, selecting a target, validating representation and planning structure
 remain outside Cadence. Hawkes ownership, stale-target and selection checks,
 structured rollback, graph actuation and never-submit behavior remain in their
-existing paths. Graph operations do not acquire a musical score.
+existing paths. Graph operations and radio or choice actions do not acquire a
+musical score. Insertion diagnostics report `characterWrites` from the active
+writer's measured notes and `structuralActions` from the page-owned action
+result, so a selection cannot be mistaken for typed input after the fact.
 
 The active writer emits a transient DOM CustomEvent with a per-performance
 channel name and a string containing only note index and elapsed time. It emits

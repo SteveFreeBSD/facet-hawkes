@@ -19,6 +19,9 @@ out what a number here was measured on, and why it is not restated.
 | [Hawkes live findings](HAWKES_LIVE_FINDINGS.md) | The 2026-09-03 live session on add-on `0.39.0-unsigned`. Every defect it names was fixed across 0.39.0–0.41.3 and the fixes are in the changelog | [Retained failure ledger](../FAILURE_LEDGER.md) for failures now |
 | [Live Hawkes coverage sweep](LIVE_HAWKES_COVERAGE_2026-09-05.md) | An observation-only sweep of lesson 3.3 on add-on 0.45.0, before the table, pair, fraction and graph routes landed | [Answer capabilities](../ANSWER_CAPABILITIES.md) |
 | [Ordinal equation rewrite proof](2026-10-01-ordinal-equation-rewrite.md) | Lesson 2.5 first-equation exact solve/insertion and subsequent second-equation Hawkes acceptance on 2026-10-01 | [Answer capabilities](../ANSWER_CAPABILITIES.md) |
+| [Two-line relationship classification proof](2026-10-01-line-relationship-classification.md) | Independent rational line normalization, semantic live choice matching and Steve-confirmed Hawkes acceptance on 2026-10-01 | [Answer capabilities](../ANSWER_CAPABILITIES.md) |
+
+| [Boolean line relationship proof](2026-10-01-line-relationship-boolean.md) | Reused exact classification, explicit proposition and semantic Yes/No mapping, with normal-profile acceptance evidence on 2026-10-01 | [Answer capabilities](../ANSWER_CAPABILITIES.md) |
 
 ## The two names
 
@@ -40,3 +43,19 @@ Move a document here when it is still evidence but no longer instruction, and
 give it a header saying so in its own first lines. Add a row above naming what
 it recorded and what to read instead. Do not delete it merely because it is
 old, and do not leave it in `docs/` where a reader will follow it as current.
+
+- [Finite relation domain and range](2026-10-12-finite-relation-domain-range.md): typed exact sets, semantic field mapping, and Steve-confirmed Hawkes acceptance.
+
+- [Finite relation function proof](2026-10-12-finite-relation-function.md): exact conditional pair proofs and Steve-confirmed Hawkes acceptance.
+
+- [Graph domain and range](2026-10-12-graph-domain-range.md): exact linear projections, conditional row choices, and Steve-confirmed Hawkes acceptance.
+
+- [Stated linear function: slope and one value](2026-10-12-stated-linear-function.md) — prose/math ownership, terminal exact routing and confirmed integer-surface acceptance.
+
+- [Continuous relation domain and range](2026-10-12-continuous-domain-range.md) — topology-based routing, reused interval writer and confirmed live acceptance.
+
+- [Continuous relation function test](2026-10-12-continuous-function.md) — topology routing, bounded proofs and confirmed nonvertical Yes acceptance.
+
+- [Counted x-intercepts](2026-10-12-counted-x-intercepts.md) — semantic count, owned coordinate editors and confirmed Two-pair acceptance.
+
+- [Linear function slope and y-intercept](2026-10-12-linear-properties.md) — typed exact scalar/pair properties, semantic field ownership and live insertion with acceptance awaiting Steve.

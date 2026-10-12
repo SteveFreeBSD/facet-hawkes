@@ -32,12 +32,10 @@ git fetch -q origin
 git branch -r --contains "$PIN"
 ```
 
-**Expect:** at least one `origin/…` line. As of 2026-09-08 that is
-`origin/feature/live-hawkes-next-slice`; `origin/main` is deliberately still
-`f2e0907`, which predates `ANSWER_FORMS`. Nothing here should say `main`
-until someone decides to advance it — in both repositories `main` is a frozen
-release baseline and the current system is on the branch, so a default clone
-lands on neither. See [Where the code is
+**Expect:** at least one `origin/…` line. The current pin
+`15fcc3a48e58c5df4b00a68df24800bf1f77c4b6` was published on
+`origin/feature/live-hawkes-next-slice` and resolved from a fresh clone on
+2026-10-12. `origin/main` remains the frozen release baseline. See [Where the code is
 published](CURRENT_STATE.md#where-the-code-is-published).
 
 The strongest form of this check is the clone itself, which is what a new
@@ -234,7 +232,10 @@ uv run ethnos hawkes-coverage
 
 **Expect** the same results as sections 2, 5 and 6 above: everything clean,
 1781 or more tests passing, 48 validated packaged files, and 37/37 answered
-exactly with 1 correctly declined. Passed on 2026-09-08.
+exactly with 1 correctly declined. The last complete public-pair pass was on
+2026-09-08. On 2026-10-12 a fresh clone resolved the current `15fcc3a` runtime
+pin; run the remaining commands whenever a full clean-clone release audit is
+required.
 
 Note the two checkout lines. Without them the clone lands on `main` in both
 repositories, which is a frozen release baseline in one and a pre-`ANSWER_FORMS`

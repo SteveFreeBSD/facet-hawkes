@@ -136,6 +136,14 @@ settle and reads it back before moving on. A contenteditable field and a graph
 each keep their own writer, and the branch an insertion takes is compared
 against the transport that was chosen rather than assumed to agree with it.
 
+A structured plan names target field ids only when it also carries one nested
+plan per target. That explicit targeted mode may contain one plan when a
+conditional surface enables one of its owned fields; the nested shape and the
+single id must both be present. An ordinary one-box plan carries neither, so
+the conditional case cannot absorb the normal dynamic or plain-box routes.
+Plain owned fields continue through `enterOwnedFields`, including the case
+where a semantic choice leaves only one such field enabled.
+
 An answer that does not suit the writer its page chose is refused by name. It
 is never a reason to choose a different writer — which is what the previous
 policy did, sending an answer whose characters happened to be typeable to a DOM
@@ -150,6 +158,8 @@ Current supported architecture, not experimental debris. The answer itself is a
 deterministic score: one clock drives when each character is typed, when the
 playhead moves, what the panel says and what you hear. A note exists because a
 character was accepted, so if Hawkes refuses one the music stops with it.
+Insertion telemetry records character writes separately from structural radio,
+choice and graph actions; the latter have no score and no synthetic notes.
 Insertion music is off unless it is turned on, and it adds no permission,
 sample, model or network dependency.
 
@@ -189,8 +199,9 @@ requires, and is the only place it is decided. CI reads it;
 `tests/test_runtime_pin.py` holds every document that quotes it to the same
 value and fails if the sibling checkout is behind.
 
-The ordinal-equation rewrite runtime pin is committed, installed locally and
-published on `feature/live-hawkes-next-slice` as of 2026-10-01. The preceding bounded-coordinate runtime
+The graph projection, finite-relation and two-line relationship runtime pin is committed and installed
+locally; its publication is pending. The preceding ordinal-equation rewrite
+runtime was published on `feature/live-hawkes-next-slice` on 2026-10-01. The bounded-coordinate runtime
 `fab053f` was published on 2026-09-24. See *Where the code is published* below
 for which branch, and why the default one is not it.
 
@@ -253,3 +264,89 @@ no model call: [Verification checklist](VERIFICATION_CHECKLIST.md).
 ## The whole map
 
 → [Documentation index](README.md)
+
+## Finite relation domain and range
+
+Fixed live on 2026-10-12 for the tested integer-set surface: Steve confirmed
+Hawkes accepted both entries. Facet computes unique exact x/y sets with zero
+model calls, carries them as a named `domain-range` composite, and the browser
+matches explicit Domain/Range labels through model ownership. Braces already
+owned by Hawkes are omitted from entry; bare editors must publish the required
+brace characters. Ambiguous or changed mappings refuse. Fraction and alternate
+brace surfaces have offline coverage. The runtime pin is installed locally and published on
+`origin/feature/live-hawkes-next-slice`.
+
+## Finite relation function test
+
+The exact route now determines whether a finite relation is a function.
+No carries two exact source pairs sharing x but differing in y, through the
+existing conditional-choice and multipart contracts; Yes has no proof fields.
+Fixed live on 2026-10-12 for the integer whole-pair surface: Steve confirmed
+Hawkes accepted No and both proof pairs. This route uses zero model calls and
+refuses ambiguous relations or field ownership. Yes, fractions and alternate
+parentheses ownership remain offline coverage. The runtime is installed locally and published on
+`origin/feature/live-hawkes-next-slice`.
+
+## Graph domain and range
+
+The exact route now projects one structurally verified line, ray or segment
+from page-owned graph geometry. Named Domain and Range results each carry
+a value or the semantic All real numbers choice, with zero model calls.
+Fieldset legends and explicit option/editor ownership determine placement.
+Ambiguous geometry or surfaces refuse. Fixed live on 2026-10-12 for an
+unbounded oblique line: Steve confirmed Hawkes accepted both All real numbers
+choices. Rays, segments, singleton values and rational endpoints remain offline
+coverage. The runtime pin is installed locally and published on `origin/feature/live-hawkes-next-slice`.
+
+## Linear function from slope and one value
+
+The reader now preserves a prose slope label bound to one formula in its own
+question row. The existing exact property solver computes `f(x)=m(x-a)+b` over
+rationals and returns the simplified relation; the existing surface adapter
+uses Hawkes' printed `f(x)=` subject. Ambiguous or conflicting properties refuse
+without a model call. Offline coverage includes nonzero inputs, rational values,
+reversed rows and constant functions. Fixed live on 2026-10-12 for the tested
+integer slope/value surface: Steve confirmed Hawkes accepted the entered
+function. Rational values and nonzero inputs remain offline coverage. The runtime
+pin is installed locally and published on `origin/feature/live-hawkes-next-slice`.
+
+## Continuous relation domain and range in interval fields
+
+Domain/range routing now distinguishes finite listed sets from continuous affine
+equations and page-owned line geometry, without requiring the word “graph” in
+the prompt. An equation accompanying a graph must agree with its defining
+points. Existing named projection results use the existing labeled multipart
+writer: all real numbers becomes `(-∞,∞)` on an interval surface, and singleton
+projections become `[a,a]`. Endpoints remain authoritative for rays/segments.
+No model runs; ambiguous sources and restrictions refuse. Fixed live on
+2026-10-12 for the tested unbounded oblique line and two interval fields: Steve
+confirmed Hawkes accepted both intervals. Horizontal/vertical lines, rays,
+segments and rational endpoints retain offline coverage. The runtime pin is
+installed locally and published on `origin/feature/live-hawkes-next-slice`.
+
+## Continuous relation function test
+
+Function classification now distinguishes finite listed pairs from continuous
+affine equations and page-owned line geometry. Nonvertical lines return Yes;
+vertical lines return No. When proof is required, two exact points are derived
+from the intersection of the relation and the page-owned viewport, respecting
+ray/segment endpoints. The existing conditional choice and multipart writer
+carry those whole pairs. Ambiguous geometry, source disagreement or unavailable
+proof points refuse with zero model calls. Fixed live on 2026-10-12 for the nonvertical Yes branch: Steve confirmed
+Hawkes accepted Yes. Vertical proofs retain offline coverage; the runtime
+source is published on `origin/feature/live-hawkes-next-slice`.
+
+## Counted x-intercepts
+
+The exact route sets the stated function equal to zero and returns one typed
+count with whole `(x,0)` pairs. None/One/Two are matched by their published
+labels. Distinct real roots of rational polynomials through degree four are
+supported; holes, unsupported functions or a count outside the published
+surface refuse without models. The reader follows option ownership without
+focus and recognizes page-owned parentheses and separator punctuation. Existing
+conditional handoff, coordinate planning and scalar/multipart entry are reused.
+Fixed live on 2026-10-12 for Two and both integer ordered pairs: Steve
+confirmed Hawkes accepted all three entries. None, One and rational/radical
+variants retain offline coverage. The helper is installed and the temporary
+add-on build verified; the runtime source is published on
+`origin/feature/live-hawkes-next-slice`.

@@ -12,6 +12,24 @@
 # exact parallel/perpendicular through-point construction, with no model call.
 # It also selects ordinal equation rewrites over exact rationals and makes
 # ambiguous or missing source selection a terminal refusal without reasoning.
+# It independently normalizes two source equations for exact relationship
+# classification and semantic choice matching, including axis-aligned lines.
+# Boolean relationship surfaces reuse that classifier and evaluate a unique
+# explicit prompt proposition before semantically matching Yes or No.
+# It also returns finite relation domain/range as named exact rational sets,
+# refusing ambiguous or unsupported relations without model calls.
+# It also classifies finite relations as functions and returns a conditional
+# No with two exact source pairs sharing x and differing in y.
+# It also projects explicit linear graph geometry into named exact interval,
+# singleton or all-real-numbers parts, with no model fallback.
+# Stated linear function properties are exact over rationals and ambiguity
+# is terminal: no reasoning fallback may replace an unreadable slope or value.
+# Continuous affine relations route separately from finite sets, corroborate
+# equations against graph points, and reuse typed named projections.
+# Affine equations also return one typed slope/y-intercept composite, preserving
+# exact rationals and refusing vertical or ambiguous relations.
+# Linear function graph choices compare exact slope/intercept semantics from
+# page-owned alternatives and refuse missing or duplicate matches terminally.
 # The tip of that repository may be ahead of it, and that is fine -- the pin is
 # a floor, and the test checks the sibling is not below it.
-358dad7bed0ec3f825d4d0b08dcdcd6de36b8038
+15fcc3a48e58c5df4b00a68df24800bf1f77c4b6

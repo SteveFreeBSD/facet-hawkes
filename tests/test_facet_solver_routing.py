@@ -300,7 +300,9 @@ def test_both_engines_derive_the_same_line_from_the_same_properties(
     assert local.certainty.answered_by == routed.certainty.answered_by == "exact"
 
 
-def test_a_line_that_the_page_does_not_determine_declines(monkeypatch) -> None:
+def test_a_line_that_the_page_does_not_determine_refuses_without_reasoning(
+    monkeypatch,
+) -> None:
     """A slope with no point is one fact about a line, and one is not enough."""
     response, loopback = ask(
         monkeypatch,
@@ -310,12 +312,10 @@ def test_a_line_that_the_page_does_not_determine_declines(monkeypatch) -> None:
         **reasoning("FINAL ANSWER: -5x"),
     )
 
-    assert len(loopback.prompts) == 1
-    assert response.certainty.router == "declined"
-    assert response.certainty.router_detail == (
-        "a slope alone does not determine a linear function"
-    )
-    assert response.certainty.answered_by == "facet"
+    assert loopback.prompts == []
+    assert response.status == "ambiguous"
+    assert response.answer is None
+    assert "a slope alone does not determine a linear function" in response.message
 
 
 def test_a_decline_names_which_gap_it_fell_through(monkeypatch) -> None:

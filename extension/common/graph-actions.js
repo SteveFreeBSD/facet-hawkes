@@ -335,6 +335,217 @@ export function graphOperation(offered = null) {
           "graphXML", "getEnableState"].filter((name) => typeof one?.[name] === "function"),
       })),
     });
+
+    // Some multiple-choice templates own a rendered graph as the caption of
+    // an ordinary option.  Those graphs do not enter controlsCollection as
+    // QASystem graph models: the exact source is controlsCollectionData's
+    // caption XML, and the matching controlsCollection member owns the radio.
+    // Join all four page-owned identities (model index/name, generated input
+    // id/value, aria label, and the rendered SVG below that label) before
+    // reading geometry.  This keeps choice order and screen position out of
+    // both description and actuation.
+    const optionData = Array.from(window.quant_wp_UI?.controlsCollectionData ?? []);
+    const optionControls = Array.from(window.quant_wp_UI?.controlsCollection ?? []);
+    const optionValue = (value) => typeof value === "function"
+      && window.ko?.isObservable?.(value) === true ? value() : value;
+    const captionGraphOptions = optionData.length >= 2
+      && optionData.length === optionControls.length
+      && optionData.every((data) => optionValue(data?.isOpt) === true
+        && typeof optionValue(data?.caption) === "string"
+        && /<graph(?:\s|>)/i.test(optionValue(data.caption)));
+    if (captionGraphOptions) {
+      const ui = window.quant_wp_UI;
+      const integer = (value) => Number.isSafeInteger(Number(value)) ? Number(value) : null;
+      const gcd = (left, right) => {
+        let a = left < 0n ? -left : left;
+        let b = right < 0n ? -right : right;
+        while (b) [a, b] = [b, a % b];
+        return a;
+      };
+      const fraction = (numerator, denominator = 1n) => {
+        if (denominator === 0n) return null;
+        let top = numerator;
+        let bottom = denominator;
+        if (bottom < 0n) { top = -top; bottom = -bottom; }
+        const divisor = gcd(top, bottom);
+        return { top: top / divisor, bottom: bottom / divisor };
+      };
+      const exact = (source) => {
+        const text = String(source ?? "").trim().replace(/\u2212/g, "-");
+        const match = text.match(/^([+-]?)(?:(\d+)(?:\.(\d*))?|\.(\d+))(?:\/([1-9]\d*))?$/);
+        if (!match) return null;
+        const sign = match[1] === "-" ? -1n : 1n;
+        const whole = match[2] ?? "0";
+        const decimals = match[3] ?? match[4] ?? "";
+        const scale = 10n ** BigInt(decimals.length);
+        const top = sign * BigInt(whole + decimals);
+        const dividedBy = match[5] ? BigInt(match[5]) : 1n;
+        return fraction(top, scale * dividedBy);
+      };
+      const subtract = (left, right) => fraction(
+        left.top * right.bottom - right.top * left.bottom,
+        left.bottom * right.bottom);
+      const multiply = (left, right) => fraction(
+        left.top * right.top, left.bottom * right.bottom);
+      const divide = (left, right) => right.top === 0n ? null
+        : fraction(left.top * right.bottom, left.bottom * right.top);
+      const written = (value) => value.bottom === 1n ? String(value.top)
+        : `${value.top}/${value.bottom}`;
+      const textOf = (parent, name) => {
+        const children = [...(parent?.children ?? [])]
+          .filter((node) => String(node.localName ?? node.tagName ?? "").toLowerCase() === name);
+        return children.length === 1 ? String(children[0].textContent ?? "").trim() : null;
+      };
+      const candidates = [];
+      const usedRadios = new Set();
+      const usedLabels = new Set();
+      const usedRoots = new Set();
+      for (let position = 0; position < optionData.length; position += 1) {
+        const data = optionData[position];
+        const wrapper = optionControls[position];
+        const members = Array.from(wrapper ?? []);
+        const index = integer(optionValue(data?.Index));
+        const name = String(optionValue(data?.Name) ?? "");
+        const labelledBy = String(optionValue(data?.ariaLabelledByValue) ?? "");
+        const expectedGroup = `${String(ui?.strUITemplateContainer ?? "")}_${name}`;
+        const expectedId = `${expectedGroup}${index}_opt`;
+        const radio = members.length === 1 ? members[0] : null;
+        const label = labelledBy ? document.getElementById(labelledBy) : null;
+        const ownedRoots = label ? [...label.querySelectorAll('svg[role="presentation"]')]
+          .filter(visible) : [];
+        if (index === null || index < 1 || !name || !labelledBy
+          || optionValue(data.enableState) !== true || optionValue(data.visibleState) !== true
+          || !radio || String(radio.type).toLowerCase() !== "radio"
+          || radio.id !== expectedId || String(radio.name) !== expectedGroup
+          || String(radio.value) !== String(index)
+          || radio.getAttribute?.("aria-labelledby") !== labelledBy
+          || document.getElementById(expectedId) !== radio
+          || !visible(radio) || radio.disabled === true
+          || !label || !visible(label) || ownedRoots.length !== 1
+          || usedRadios.has(radio) || usedLabels.has(label) || usedRoots.has(ownedRoots[0])) {
+          return refuse("graph-choice-option-ownership-unreadable");
+        }
+        let parsed;
+        try {
+          parsed = new DOMParser().parseFromString(optionValue(data.caption), "application/xml");
+        } catch {
+          return refuse("graph-choice-caption-unreadable");
+        }
+        if (parsed.querySelector?.("parsererror")) return refuse("graph-choice-caption-unreadable");
+        const graphs = [...(parsed.querySelectorAll?.("graph") ?? [])];
+        const objects = graphs.length === 1
+          ? [...(graphs[0].querySelector?.("graphobjects")?.children ?? [])] : [];
+        const lines = objects.filter((node) =>
+          String(node.localName ?? node.tagName ?? "").toLowerCase() === "line"
+          && textOf(node, "visible") === "true");
+        if (graphs.length !== 1 || objects.length !== 1 || lines.length !== 1) {
+          return refuse("graph-choice-line-geometry-unreadable");
+        }
+        const line = lines[0];
+        const points = [...(line.children ?? [])].filter((node) =>
+          String(node.localName ?? node.tagName ?? "").toLowerCase() === "point");
+        if (textOf(line, "type") !== "line" || textOf(line, "definedby") !== "twopoint"
+          || textOf(line, "extend") !== "both" || points.length !== 2) {
+          return refuse("graph-choice-line-geometry-unsupported");
+        }
+        const coordinates = points.map((point) => ({
+          x: exact(textOf(point, "x")), y: exact(textOf(point, "y")),
+        }));
+        if (coordinates.some((point) => !point.x || !point.y)) {
+          return refuse("graph-choice-line-points-unreadable");
+        }
+        const deltaX = subtract(coordinates[1].x, coordinates[0].x);
+        const deltaY = subtract(coordinates[1].y, coordinates[0].y);
+        const slope = divide(deltaY, deltaX);
+        if (!slope) return refuse("graph-choice-line-vertical");
+        const intercept = subtract(coordinates[0].y, multiply(slope, coordinates[0].x));
+        const choice = `Graph: line; slope=${written(slope)}; y-intercept=${written(intercept)}`;
+        usedRadios.add(radio); usedLabels.add(label); usedRoots.add(ownedRoots[0]);
+        candidates.push({ data, radio, label, root: ownedRoots[0], choice,
+          mode: optionValue(data.activeMode) });
+      }
+      const rendered = [...document.querySelectorAll('svg[role="presentation"]')].filter(visible);
+      const indices = candidates.map((one) => integer(optionValue(one.data.Index)));
+      const names = new Set(candidates.map((one) => String(optionValue(one.data.Name))));
+      const modes = new Set(candidates.map((one) => one.mode));
+      const choices = candidates.map((one) => one.choice);
+      if (usedRoots.size !== rendered.length || rendered.some((root) => !usedRoots.has(root))
+        || new Set(indices).size !== candidates.length || names.size !== 1 || modes.size !== 1
+        || new Set(choices).size !== choices.length) {
+        return refuse("graph-choice-option-contract-ambiguous");
+      }
+      const mode = candidates[0].mode;
+      if (!mode || typeof mode.getUserAnswer !== "function" || typeof mode.isEmpty !== "function") {
+        return refuse("graph-choice-answer-model-missing");
+      }
+      const selected = () => candidates.map((one) => {
+        const control = one.radio.checked === true;
+        if (control !== (optionValue(one.data.selectedState) === true)) {
+          throw Error("selection-disagrees");
+        }
+        return control;
+      });
+      const modelState = () => ({ answer: String(mode.getUserAnswer()), empty: mode.isEmpty() === true });
+      let selectedNow;
+      let stateNow;
+      try { selectedNow = selected(); stateNow = modelState(); } catch {
+        return refuse("graph-choice-selection-unreadable");
+      }
+      if (selectedNow.filter(Boolean).length > 1
+        || stateNow.empty !== (selectedNow.filter(Boolean).length === 0)) {
+        return refuse("graph-choice-selection-unreadable");
+      }
+      const snapshot = { choices: [...choices], selected: selectedNow, model: stateNow };
+      if (offered !== null) {
+        if (!offered || typeof offered !== "object" || typeof offered.choice !== "string"
+          || JSON.stringify(offered.snapshot) !== JSON.stringify(snapshot)) {
+          return refuse("graph-choice-target-stale");
+        }
+        const matching = candidates.filter((one) => one.choice === offered.choice);
+        if (matching.length !== 1) return refuse("graph-choice-answer-unmatched");
+        const target = matching[0];
+        const wanted = candidates.indexOf(target);
+        const pinned = () => candidates.every((one) => one.radio.isConnected !== false
+          && one.label.isConnected !== false && one.root.isConnected !== false
+          && one.label.contains(one.root) && visible(one.radio) && visible(one.label)
+          && visible(one.root));
+        if (!pinned()) return refuse("graph-choice-target-stale");
+        const beforeAnswer = stateNow.answer;
+        if (!selectedNow[wanted]) {
+          if (typeof target.radio.dispatchEvent !== "function") {
+            return refuse("graph-choice-control-unwritable");
+          }
+          target.radio.dispatchEvent(new MouseEvent("click", {
+            bubbles: true, cancelable: true, view: window, button: 0,
+          }));
+        }
+        return new Promise((resolve) => {
+          let polls = 0;
+          const settle = () => {
+            polls += 1;
+            try {
+              const readBack = selected();
+              const state = modelState();
+              const changed = snapshot.selected[wanted] || state.answer !== beforeAnswer;
+              if (pinned() && readBack[wanted] && readBack.filter(Boolean).length === 1
+                && state.empty === false && changed) {
+                if (polls < 8) { setTimeout(settle, 100); return; }
+                resolve({ ok: true, code: "graph-choice-verified", choice: offered.choice,
+                  selected: wanted, events: snapshot.selected[wanted] ? 0 : 1 });
+                return;
+              }
+            } catch { /* wait for the option template to settle */ }
+            if (polls < 20) { setTimeout(settle, 100); return; }
+            resolve(refuse("graph-choice-not-settled"));
+          };
+          setTimeout(settle, 100);
+        });
+      }
+      return { ok: true, kind: "option", surface: "graph-choice",
+        code: "graph-choice-described", enabled: true, choices, snapshot,
+        probe: { engine: "caption-linear-graph-choice", choices: choices.length,
+          ownership: "option-model-radio-aria-caption" } };
+    }
     if (fields.length === 4 && grouped.length === 2 && grouped.every((group) => group.length === 2)
       && boundaryGroup >= 0 && graphModels.length === 1) {
       const model = graphModels[0];

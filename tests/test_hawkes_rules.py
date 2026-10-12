@@ -116,6 +116,16 @@ def test_a_numeric_box_pattern_is_applied_as_a_character_class(fits):
     assert verdict["detail"] == "y"
 
 
+def test_a_plain_box_may_publish_literal_interval_structure(fits):
+    editor = {
+        **TEXTBOX_NUMERIC,
+        "allowedCharacters": "[0-9,()\\[\\]∞-]",
+        "maxLength": 40,
+    }
+
+    assert fits("[-3,∞)", editor) == {"insertable": True}
+
+
 def test_an_answer_longer_than_the_box_is_refused(fits):
     verdict = fits("1234567890", TEXTBOX_NUMERIC)  # maxLength 9
 

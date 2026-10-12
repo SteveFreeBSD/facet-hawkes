@@ -80,7 +80,12 @@
   const linearCoordinate = /\b(?:value|coordinate)\s+(?:for|of)\s+[xy]\b|\b[xy][- ]coordinate\b/i.test(instruction)
     && /\b(?:given|when|if|choose|select)\b/i.test(instruction);
   const pluralRequest = /\bcoordinates?\s+of\s+(?:the\s+)?(?:labeled\s+)?points\b([^.!?]*)/i.exec(instruction);
-  const graphQuestion = pluralRequest ? "labeled-coordinates" : coordinateRequest ? "labeled-point" : slopeRequest ? "line-slope" : linearCoordinate ? "linear-coordinate" : "";
+  const domainRangeRequest = /\b(?:domain\s+and\s+(?:the\s+)?range|range\s+and\s+(?:the\s+)?domain)\b/i.test(instruction);
+  const functionRequest = (
+    /\b(?:determine|decide|state|identify)\s+(?:if|whether)\b[\s\S]*\bfunction\b/i.test(instruction)
+    || /\b(?:does|is)\s+(?:the|this|a)\s+(?:graph|relation)\b[^.?!]{0,200}\b(?:a\s+)?function\b/i.test(instruction)
+  );
+  const graphQuestion = functionRequest ? "function-test" : domainRangeRequest ? "domain-range" : pluralRequest ? "labeled-coordinates" : coordinateRequest ? "labeled-point" : slopeRequest ? "line-slope" : linearCoordinate ? "linear-coordinate" : "";
   if (!graphQuestion) return unavailable("", "question-model-not-supported");
 
   const controls = readOwned(window.quant_wp_UI?.controlsCollectionData);
@@ -93,8 +98,16 @@
     ? graphHTML
     : typeof partSource === "string" && /<graph\b/i.test(partSource)
       ? partSource
-      : linearCoordinate && graphSources.length === 1 ? graphSources[0] : null;
-  if (linearCoordinate && graphSources.length > 1) return ambiguous(graphQuestion, "coordinate-graph-owners-ambiguous");
+      : (linearCoordinate || domainRangeRequest || functionRequest) && graphSources.length === 1 ? graphSources[0] : null;
+  if (slopeRequest && source === null && !String(graphHTML ?? "").trim()
+      && !/\bgraph\b/i.test(instruction)) {
+    return unavailable("", "line-slope-no-graph");
+  }
+  if ((linearCoordinate || domainRangeRequest || functionRequest) && graphSources.length > 1) return ambiguous(graphQuestion, "coordinate-graph-owners-ambiguous");
+  if ((domainRangeRequest || functionRequest) && source === null && !String(graphHTML ?? "").trim()
+      && !graphSources.length && !/\bgraph\b/i.test(instruction)) {
+    return unavailable("", functionRequest ? "function-test-no-graph" : "domain-range-no-graph");
+  }
   if (source === null || source.length === 0 || source.length > 200000) {
     return unavailable(graphQuestion, "question-graph-model-missing");
   }
@@ -126,7 +139,7 @@
   ) {
     return ambiguous(graphQuestion, "question-graph-scale-invalid");
   }
-  if (!linearCoordinate && (xmin.number > 0 || xmax.number < 0 || ymin.number > 0 || ymax.number < 0)) {
+  if (!linearCoordinate && !domainRangeRequest && !functionRequest && (xmin.number > 0 || xmax.number < 0 || ymin.number > 0 || ymax.number < 0)) {
     return ambiguous(graphQuestion, "question-graph-origin-missing");
   }
   if (linearCoordinate) {
@@ -173,6 +186,70 @@
   }
   const objects = direct(graph, "graphobjects");
   if (!objects) return unavailable(graphQuestion, "question-graph-objects-missing");
+  if (["domain-range", "function-test"].includes(graphQuestion)) {
+    const bad = (why) => ambiguous(graphQuestion, `graph-projection-${why}`);
+    const children = [...objects.children];
+    if (directText(grid, "type").toLowerCase() !== "cartesian" || children.length !== 1
+      || children[0].tagName.toLowerCase() !== "line") return bad("relation-not-one-line");
+    const line = children[0];
+    if (directText(line, "type") !== "line" || directText(line, "visible") !== "true"
+      || direct(line, "domain") || direct(line, "range")
+      || !["", "norole"].includes(directText(line, "interactiverole"))) return bad("line-restricted-or-interactive");
+    const unique = ["type","visible","definedby","extend","equation","domain","range","stroke"];
+    if (unique.some(name=>[...line.children].filter(n=>n.tagName.toLowerCase() === name).length > 1)
+      || !["","solid"].includes(directText(line,"stroke"))) return bad("line-metadata-ambiguous");
+    const extend = directText(line, "extend");
+    if (!["both", "positive", "negative", "neither"].includes(extend)) return bad("extension-unknown");
+    const ratio = (n, d) => {
+      if (d === 0n) return null;
+      if (d < 0n) { n = -n; d = -d; }
+      const g = gcd(n,d); n /= g; d /= g;
+      const v = d === 1n ? String(n) : `${n}/${d}`;
+      return v.length <= 40 ? v : null;
+    };
+    const pointNodes = [...line.children].filter((n) => n.tagName.toLowerCase() === "point");
+    let points, ends;
+    if (directText(line, "definedby") === "equation") {
+      if (extend !== "both" || pointNodes.length) return bad("equation-endpoints-unverified");
+      const eq = direct(line, "equation");
+      const abc = ["a","b","c"].map((name) => exactNumber(direct(eq,name)));
+      if (abc.some((v) => !v) || [...(eq?.children ?? [])].length !== 3) return bad("equation-invalid");
+      const [a,b,c] = abc;
+      if (a.numerator === 0n && b.numerator === 0n) return bad("degenerate-line");
+      if (b.numerator === 0n) {
+        const x = ratio(-c.numerator * a.denominator, c.denominator * a.numerator);
+        points = [{x,y:"0"},{x,y:"1"}];
+      } else {
+        const y = ratio(-c.numerator * b.denominator, c.denominator * b.numerator);
+        const y1 = ratio(-(a.numerator*c.denominator + c.numerator*a.denominator)*b.denominator,
+          a.denominator*c.denominator*b.numerator);
+        points = [{x:"0",y},{x:"1",y:y1}];
+      }
+      ends = ["infinite", "infinite"];
+    } else if (directText(line, "definedby") === "twopoint") {
+      if (pointNodes.length !== 2) return bad("point-count");
+      const reads = pointNodes.map((p) => ({type:directText(p,"type"), style:directText(p,"displaystyle"),
+        x:exactNumber(direct(p,"x")), y:exactNumber(direct(p,"y")), node:p}));
+      if (reads.some((p) => !p.x || !p.y || !["point","endpoint"].includes(p.type)
+        || directText(p.node,"coordinatestype") !== "cartesian"
+        || (p.type === "endpoint" && (directText(p.node,"visible") !== "true" || !["open","closed"].includes(p.style)))
+        || (p.type === "point" && !["","closed"].includes(p.style))
+        || ["type","x","y","coordinatestype","visible","displaystyle"].some(name=>[...p.node.children].filter(n=>n.tagName.toLowerCase() === name).length > 1)
+        || direct(p.node,"xstring") || direct(p.node,"ystring"))) return bad("endpoint-unverified");
+      const cmp = (a,b) => a.numerator*b.denominator - b.numerator*a.denominator;
+      reads.sort((a,b) => {const d=cmp(a.x,b.x)||cmp(a.y,b.y);return d<0n?-1:d>0n?1:0;});
+      if (!cmp(reads[0].x,reads[1].x) && !cmp(reads[0].y,reads[1].y)) return bad("coincident-points");
+      const finite = reads.map((p) => p.type === "endpoint");
+      if ((!finite[0] && ["positive","neither"].includes(extend))
+        || (!finite[1] && ["negative","neither"].includes(extend))) return bad("finite-bound-missing");
+      points = reads.map((p) => ({x:p.x.exact,y:p.y.exact}));
+      ends = reads.map((p) => p.type === "endpoint" ? p.style : "infinite");
+    } else return bad("line-definition-unsupported");
+    if (points.some((p) => !p.x || !p.y)) return bad("exact-coordinate-too-large");
+    return result(graphQuestion,"accepted","",{graphRelation:{kind:"linear",points,ends,...(functionRequest ? {bounds:[xmin,xmax,ymin,ymax].map(v=>v.exact)} : {})},
+      coordinateInstruction:instruction, graphReading:"page-model"});
+  }
+
   const onGrid = (value, interval) => (
     (value.numerator * interval.denominator)
     % (value.denominator * interval.numerator) === 0n

@@ -8,6 +8,7 @@ chooses its own models and paths from settings.
 
 from __future__ import annotations
 
+import re
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -406,6 +407,7 @@ class ProblemPayload(BaseModel):
     #: Separate from regression data and from a single requested point so the
     #: host never has to infer a graph question's meaning from point count.
     line_points: list[LabeledPoint] = Field(default_factory=list, max_length=2)
+    graph_relation: dict | None = None
     coordinate_task: CoordinateTask | None = None
     #: The question's own data table, when it stated its numbers in one. Like
     #: `mathml`, this is the page saying what the question is rather than the
@@ -468,7 +470,9 @@ class AnswerConditionalChoice(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     choice: str = Field(min_length=1, max_length=MAX_CHOICE_CHARS)
-    relation: AnswerRelation
+    relation: AnswerRelation | None = None
+    proof_pairs: list["AnswerCoordinate"] = Field(default_factory=list, max_length=2)
+    x_intercepts: dict | None = None
 
 
 class AnswerCoordinate(BaseModel):
@@ -483,6 +487,13 @@ class AnswerAxisIntercepts(BaseModel):
 
     x: AnswerCoordinate | None
     y: AnswerCoordinate | None
+
+
+class AnswerLinearProperties(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    slope: str = Field(min_length=1, max_length=40)
+    y_intercept: AnswerCoordinate
 
 
 class AnswerComparison(BaseModel):
@@ -530,7 +541,10 @@ class AnswerPayload(BaseModel):
             "relation",
             "axis-intercepts",
             "labeled-coordinates",
+            "domain-range",
+            "graph-domain-range",
             "inequality-pair",
+            "linear-properties",
         ]
         | None
     ) = None
@@ -544,10 +558,77 @@ class AnswerPayload(BaseModel):
     conditional_choice: AnswerConditionalChoice | None = None
     axis_intercepts: AnswerAxisIntercepts | None = None
     labeled_coordinates: list[LabeledPoint] = Field(default_factory=list, max_length=12)
+    graph_domain_range: dict | None = None
+    domain_range: dict[Literal["domain", "range"], list[str]] | None = None
     inequality_pair: AnswerInequalityPair | None = None
+    linear_properties: AnswerLinearProperties | None = None
 
     @model_validator(mode="after")
     def conditional_answer_is_one_composite(self) -> AnswerPayload:
+        if self.form == "linear-properties" or self.linear_properties is not None:
+            value = self.linear_properties
+            number = re.compile(r"-?\d+(?:/[1-9]\d*)?")
+            if (
+                self.form != "linear-properties"
+                or value is None
+                or number.fullmatch(value.slope) is None
+                or value.y_intercept.x != "0"
+                or number.fullmatch(value.y_intercept.y) is None
+                or self.parts
+                or self.keyboard_entry
+                or self.relation
+                or self.conditional_choice
+                or self.axis_intercepts
+                or self.labeled_coordinates
+                or self.graph_domain_range
+                or self.domain_range
+                or self.inequality_pair
+                or self.graph_plan
+            ):
+                raise ValueError("slope and y-intercept must be one typed composite")
+            return self
+        if self.form == "graph-domain-range" or self.graph_domain_range is not None:
+            from facet_runtime.exact.graph_domain_range import validate_parts
+
+            if (
+                self.form != "graph-domain-range"
+                or self.parts
+                or self.keyboard_entry
+                or self.domain_range
+                or self.relation
+                or self.conditional_choice
+                or self.axis_intercepts
+                or self.labeled_coordinates
+                or self.inequality_pair
+                or self.graph_plan
+            ):
+                raise ValueError("graph projection must be one typed composite")
+            validate_parts(self.graph_domain_range)
+        if self.form == "domain-range" or self.domain_range is not None:
+            if (
+                self.form != "domain-range"
+                or self.domain_range is None
+                or set(self.domain_range) != {"domain", "range"}
+                or any(
+                    not 1 <= len(values) <= 64
+                    or len(set(values)) != len(values)
+                    or any(
+                        len(value) > 120
+                        or re.fullmatch(r"-?\d+(?:/[1-9]\d*)?", value) is None
+                        for value in values
+                    )
+                    for values in self.domain_range.values()
+                )
+                or self.parts
+                or self.keyboard_entry
+                or self.relation
+                or self.axis_intercepts
+                or self.inequality_pair
+                or self.conditional_choice
+                or self.labeled_coordinates
+                or self.graph_plan is not None
+            ):
+                raise ValueError("domain and range are one named composite")
         if self.form == "labeled-coordinates" or self.labeled_coordinates:
             if (
                 self.form != "labeled-coordinates"
@@ -576,7 +657,60 @@ class AnswerPayload(BaseModel):
                 raise ValueError("an inequality pair is one composite answer")
         if self.conditional_choice is None:
             return self
+        counted = self.conditional_choice.x_intercepts
+        if counted is not None:
+            from facet_runtime.exact.x_intercepts import validate
+
+            validate(counted)
+            if (
+                self.form != "conditional-choice"
+                or self.conditional_choice.choice.strip().casefold()
+                != ("none", "one", "two")[counted["count"]]
+                or self.conditional_choice.relation is not None
+                or self.conditional_choice.proof_pairs
+                or self.parts
+                or self.keyboard_entry
+                or self.relation
+                or self.axis_intercepts
+                or self.inequality_pair
+                or self.domain_range
+                or self.graph_domain_range
+                or self.labeled_coordinates
+                or self.graph_plan
+            ):
+                raise ValueError(
+                    "counted x-intercepts are one conditional coordinate answer"
+                )
+            return self
+        proof = self.conditional_choice.proof_pairs
+        if proof:
+            from fractions import Fraction
+
+            if (
+                self.form != "conditional-choice"
+                or self.conditional_choice.choice.strip().lower() != "no"
+                or len(proof) != 2
+                or self.conditional_choice.relation is not None
+                or self.parts
+                or self.keyboard_entry
+                or self.relation
+                or self.axis_intercepts
+                or self.inequality_pair
+                or self.domain_range
+                or self.labeled_coordinates
+                or self.graph_plan
+            ):
+                raise ValueError(
+                    "a function counterexample is one conditional pair proof"
+                )
+            if Fraction(proof[0].x) != Fraction(proof[1].x) or Fraction(
+                proof[0].y
+            ) == Fraction(proof[1].y):
+                raise ValueError("pairs do not prove non-function")
+            return self
         relation = self.conditional_choice.relation
+        if relation is None:
+            raise ValueError("a conditional answer needs its relation or proof")
         if (
             self.relation is not None
             or self.parts

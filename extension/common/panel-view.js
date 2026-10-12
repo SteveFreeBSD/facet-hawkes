@@ -20,7 +20,7 @@ import { labeledCoordinateAnswer } from "./labeled-coordinates.js";
  */
 
 import { MAX_ANSWER_PARTS } from "/common/config.js";
-import { answerFitsEditor, tableAnswerFits } from "/common/editor-rules.js";
+import { answerFitsEditor, tableAnswerFits, graphDomainRangeAnswer, countedInterceptAnswer } from "/common/editor-rules.js";
 import { planAnswerParts, planEntry } from "/common/editor-plan.js";
 
 /** The stages a solve goes through, in order. */
@@ -142,6 +142,20 @@ function refusal(verdict) {
  * keypad templates. Only when neither works is this the user's job.
  */
 function reviewOffer(state) {
+  if (state.answerXIntercepts) {
+    const result=countedInterceptAnswer(state.answerXIntercepts,state.editor,state.fieldIds,state.answerChoices);
+    if (!result?.ready) return {insertable:false,status:{key:result ? "errorOptionAnswer" : "errorEditorUnknown",args:[],kind:result ? "ready" : "error"}};
+  }
+  if (state.answerGraphDomainRange) {
+    const result = graphDomainRangeAnswer(state.answerGraphDomainRange,state.editor?.graphDomainRangeRows ?? state.editor?.domainRangeRows);
+    const insertable = Boolean(result) && !state.errorKey && result.items.every((item,i)=>
+      item.choice || planEntry(item.text,state.editor.editors[i]).ok);
+    return {insertable,status:{key:insertable ? "statusSolved" : "errorEditorUnknown",args:[],kind:insertable ? "ready" : "error"}};
+  }
+  if (state.editor?.conditionalProof && !state.answerProofPairs?.length && !state.answerXIntercepts
+    && state.answerChoices?.includes(state.answer)) {
+    return { insertable: false, status: { key: "errorOptionAnswer", args: [], kind: "ready" } };
+  }
   if (state.editor?.kind === "option" && state.editor?.surface === "graph-choice"
     && Array.isArray(state.editor.choices) && state.editor.choices.includes(state.answer)
     && !state.errorKey) {
@@ -294,10 +308,31 @@ function heldRefusal(state) {
  * @returns {{kind: string, items: {label: string, text: string}[]}}
  */
 function answerBreakdown(state) {
+  if (state.answerGraphDomainRange) {
+    const result=graphDomainRangeAnswer(state.answerGraphDomainRange,state.editor?.graphDomainRangeRows ?? state.editor?.domainRangeRows);
+    return result ? {kind:"fields",items:result.items} : {kind:"none",items:[]};
+  }
+  if (state.answerXIntercepts) {
+    return {kind:"fields",items:state.answerXIntercepts.points.map((p,i)=>({
+      label:`x-intercept ${i+1}`,text:`(${p.x},${p.y})`,
+    }))};
+  }
+  if (state.answerProofPairs?.length === 2) {
+    return { kind: "fields", items: state.answerProofPairs.map((p, i) => ({
+      label: `Proof pair ${i + 1}`, text: `(${p.x},${p.y})`,
+    })) };
+  }
   const parts = Array.isArray(state.answerParts) ? state.answerParts : [];
   const none = { kind: "none", items: [] };
   if (parts.length < 2 || parts.length > MAX_ANSWER_PARTS) {
     return none;
+  }
+  const rows = state.editor?.domainRangeRows;
+  if (Array.isArray(rows) && rows.length === 2 && parts.length === 2) {
+    return { kind: "fields", items: parts.map((text, index) => ({
+      label: rows[index].role === "domain" ? "Domain" : "Range",
+      text: rows[index].braces ? `{${text}}` : text,
+    })) };
   }
   const targets = Array.isArray(state.tableTargets) ? state.tableTargets : [];
   if (targets.length === parts.length) {
